@@ -202,4 +202,90 @@ describe("Sidecar WebSocket server", () => {
     assert.equal(body.result, null);
     ws.close();
   });
+
+  it("handles reconnect with fresh snapshot", async () => {
+    // First connection: auth + get state
+    const ws1 = await connect(server.port);
+    await wsRequest(ws1, {
+      type: "client-hello",
+      version: 1,
+      token: server.token,
+    });
+    // server-ready + state.snapshot arrive sequentially
+    // Skip first response (server-ready), check second (state.snapshot)
+    // Actually wsRequest only reads one message, which is server-ready.
+    // We need to read past it.
+    ws1.close();
+
+    // Second connection: same process
+    const ws2 = await connect(server.port);
+    const helloResp = await wsRequest(ws2, {
+      type: "client-hello",
+      version: 1,
+      token: server.token,
+    });
+    assert.equal(
+      (helloResp as { type: string }).type,
+      "server-ready",
+    );
+    ws2.close();
+  });
+
+  it("receives state.snapshot event after auth", async () => {
+    const ws = await connect(server.port);
+
+    // Send client-hello
+    ws.send(
+      JSON.stringify({
+        type: "client-hello",
+        version: 1,
+        token: server.token,
+      }),
+    );
+
+    // Read two messages: server-ready then state.snapshot
+    const messages: unknown[] = [];
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        if (messages.length >= 2) {
+          resolve();
+        } else {
+          reject(new Error(`Only got ${messages.length} messages`));
+        }
+      }, 3000);
+      ws.on("message", (raw) => {
+        const buf =
+          raw instanceof Buffer
+            ? raw
+            : Buffer.isBuffer(raw)
+              ? raw
+              : undefined;
+        const str = buf
+          ? buf.toString("utf8")
+          : typeof raw === "string"
+            ? raw
+            : "";
+        messages.push(JSON.parse(str));
+        if (messages.length >= 2) {
+          clearTimeout(timer);
+          resolve();
+        }
+      });
+    });
+
+    assert.equal(messages.length, 2);
+    assert.equal(
+      (messages[0] as { type: string }).type,
+      "server-ready",
+    );
+    assert.equal(
+      (messages[1] as { type: string; event: string }).type,
+      "event",
+    );
+    assert.equal(
+      (messages[1] as { event: string }).event,
+      "state.snapshot",
+    );
+    ws.close();
+  });
 });

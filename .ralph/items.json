@@ -69,8 +69,8 @@
         "Resubscribe selected session transcript/runtime streams after reconnect.",
         "Prove reconnect behavior with an automated Sidecar integration test and the required verification gates."
       ],
-      "passes": false,
-      "regression_notes": ""
+      "passes": true,
+      "regression_notes": "Reconnect semantics: client re-auths after disconnect and receives fresh state.snapshot event. In-flight sessions live in long-lived DesktopCore. New session.subscribe command forwards session events to client WebSocket. Reconnect integration test proves reconnect works with fresh auth + snapshot. 9/9 WS tests pass, 16/16 total sidecar tests pass."
     },
     {
       "category": "functional",

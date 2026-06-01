@@ -86,7 +86,7 @@ export async function startSidecarServer(
           }
 
           if (!client.authenticated) {
-            handleAuth(ws, client, token, parsed);
+            handleAuth(ws, client, token, parsed, core);
             return;
           }
 
@@ -125,6 +125,7 @@ function handleAuth(
   client: ClientState,
   token: string,
   parsed: unknown,
+  core: DesktopCore,
 ): void {
   // Quick version/token check before full schema parse
   const p = parsed as Record<string, unknown> | null;
@@ -172,6 +173,15 @@ function handleAuth(
       sidecarPid: process.pid,
     }),
   );
+
+  // Send initial state snapshot after auth
+  ws.send(
+    JSON.stringify({
+      type: "event",
+      event: "state.snapshot",
+      payload: core.state,
+    }),
+  );
 }
 
 /* ── Commands ──────────────────────────────────────────── */
@@ -191,7 +201,7 @@ async function handleCommand(
   }
 
   try {
-    const result = await executeCommand(core, cmd.command, cmd.payload, unsubs);
+    const result = await executeCommand(core, cmd.command, cmd.payload, unsubs, ws);
     ws.send(
       JSON.stringify({ type: "command-result", id: cmd.id, ok: true, result }),
     );
@@ -211,6 +221,7 @@ async function executeCommand(
   command: string,
   payload: unknown,
   _unsubs: Array<() => void>,
+  ws: WebSocket,
 ): Promise<unknown> {
   const p = payload as Record<string, unknown> | undefined;
 
@@ -307,6 +318,31 @@ async function executeCommand(
 
     case "shutdown":
       return { shuttingDown: true };
+
+    case "session.subscribe": {
+      const t = p as { workspaceId: string; sessionId: string };
+      const sessionRef = {
+        workspaceId: t.workspaceId,
+        sessionId: t.sessionId,
+      };
+      const unsub = core.subscribe(sessionRef, (event) => {
+        if (ws.readyState === ws.OPEN) {
+          ws.send(
+            JSON.stringify({
+              type: "event",
+              event: "session.event",
+              payload: {
+                workspaceId: t.workspaceId,
+                sessionId: t.sessionId,
+                event,
+              },
+            }),
+          );
+        }
+      });
+      _unsubs.push(unsub);
+      return { subscribed: true };
+    }
 
     default:
       throw new Error(`Unknown command: ${command}`);

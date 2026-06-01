@@ -105,3 +105,27 @@
 - Event forwarding to clients is scaffolded but not yet wired (session event subscription placeholder).
 - Server.stop() flushes core persistence then closes the ws server.
 - Used ws npm package (not Node built-in WebSocket) because Node 24 doesn't expose WebSocketServer globally.
+
+## Iteration 5 — Sidecar reconnect semantics
+
+**Item:** Support Sidecar reconnect semantics with fresh snapshots and live in-flight session continuity.
+
+**Why chosen:** Prioritization strategy: real Svelte/Tauri connection after protocol + runtime + core + server (items 1-4 done).
+
+**Changed files:**
+- `packages/sidecar/src/ws-server.ts` — state.snapshot event sent after auth; session.subscribe command forwards events to client; handleAuth + executeCommand accept core/ws params
+- `packages/sidecar/tests/ws-server.test.ts` — 2 new tests: reconnect with fresh snapshot, state.snapshot event received after auth
+- `.ralph/items.json` — marked item 5 passing
+- `.ralph/progress.md` — this file
+
+**Verification:**
+- 9/9 WS integration tests pass (7 original + 2 reconnect)
+- 16/16 total sidecar tests pass (7 probe + 9 ws-server)
+- `pnpm typecheck`: root passes all 9 workspace projects
+- `pnpm lint`: no errors
+
+**Decisions:**
+- On auth success, server emits server-ready then a state.snapshot event immediately — client doesn't need to request snapshot.getState for initial state.
+- session.subscribe command subscribes to PiSdkDriver session events and forwards as session.event envelopes to the authenticated WebSocket client.
+- In-flight sessions live in long-lived DesktopCore instance — client reconnect does not disrupt running agents.
+- Unsubscribe cleanup on WebSocket close prevents event leaks.
