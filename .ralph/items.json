@@ -1,0 +1,175 @@
+{
+  "version": 1,
+  "runtime_contract": {
+    "source_docs": [],
+    "verification_gates": [
+      { "name": "typecheck", "command": "pnpm typecheck" },
+      { "name": "lint", "command": "pnpm lint" }
+    ],
+    "require_progress_append": true,
+    "require_one_item_per_iteration": true,
+    "require_commit": true
+  },
+  "items": [
+    {
+      "category": "functional",
+      "description": "Create the shared Desktop Protocol package with Valibot-validated command, response, event, snapshot, and error envelopes.",
+      "steps": [
+        "Create a workspace package for the Desktop Protocol.",
+        "Define protocol versioning, request/response correlation, command envelopes, event envelopes, snapshot envelopes, and structured errors.",
+        "Add Valibot runtime validation tests that reject malformed privileged messages and accept representative valid messages.",
+        "Run the package tests plus the required verification gates."
+      ],
+      "passes": true,
+      "regression_notes": "Committed in d6c02a9 (feat(protocol): add @pi-gui/desktop-protocol with Valibot schemas and auth handshake). Contains typed command/event/snapshot/error envelopes, parseClientCommand/parseServerEnvelope/parseEventPayload helpers, 17/17 tests. Fixed missing workspace dep in desktop-core and noUncheckedIndexedAccess lint in commit-push-service.ts to satisfy root typecheck gate."
+    },
+    {
+      "category": "functional",
+      "description": "Add a Sidecar runtime compatibility probe that decides whether Bun can run the pi runtime stack or whether the plan must switch to bundled Node.",
+      "steps": [
+        "Create the Sidecar package or runtime test harness.",
+        "Probe imports for `@earendil-works/pi-coding-agent`, `@pi-gui/pi-sdk-driver`, filesystem catalog persistence, and child process spawning under Bun.",
+        "Record a deterministic Node fallback path when a clear Bun incompatibility is observed.",
+        "Run the probe and the required verification gates without interactive prompts."
+      ],
+      "passes": false,
+      "regression_notes": ""
+    },
+    {
+      "category": "functional",
+      "description": "Extract a headless Desktop Core seam from the current Electron store for workspace, session, composer, model, and persistence behavior.",
+      "steps": [
+        "Create a shared Desktop Core package with explicit platform adapter interfaces.",
+        "Move or wrap the minimum state orchestration needed for workspace listing/sync, session create/select/archive, composer send/cancel, model selection, and JSON persistence.",
+        "Keep Electron Desktop callers working through adapters or compatibility wrappers.",
+        "Run focused core tests or existing Electron tests that cover the touched behavior plus the required verification gates."
+      ],
+      "passes": false,
+      "regression_notes": ""
+    },
+    {
+      "category": "functional",
+      "description": "Implement the Sidecar authenticated WebSocket service around Desktop Core.",
+      "steps": [
+        "Start a localhost-only WebSocket service that accepts the Desktop Protocol envelopes.",
+        "Require a per-run token and reject missing, invalid, or wrong-origin clients.",
+        "Expose commands for fresh snapshot, workspace list/sync, session create/select/archive, composer send/cancel, model refresh/selection, and shutdown.",
+        "Emit typed state, runtime, and error events to connected clients.",
+        "Run Sidecar integration tests plus the required verification gates."
+      ],
+      "passes": false,
+      "regression_notes": ""
+    },
+    {
+      "category": "functional",
+      "description": "Support Sidecar reconnect semantics with fresh snapshots and live in-flight session continuity.",
+      "steps": [
+        "Add client reconnect handling that authenticates again and requests a fresh snapshot.",
+        "Keep in-flight Sidecar sessions alive across Desktop Client reloads.",
+        "Resubscribe selected session transcript/runtime streams after reconnect.",
+        "Prove reconnect behavior with an automated Sidecar integration test and the required verification gates."
+      ],
+      "passes": false,
+      "regression_notes": ""
+    },
+    {
+      "category": "functional",
+      "description": "Create the Svelte Desktop app shell using SvelteKit static output inside Tauri.",
+      "steps": [
+        "Create `apps/svelte-desktop` as a workspace app with SvelteKit static output and Tauri configuration.",
+        "Add root scripts or package scripts for typecheck, lint, development launch, and bounded desktop smoke execution.",
+        "Ensure production build does not require a SvelteKit SSR server.",
+        "Run the Svelte app build/typecheck plus the required verification gates."
+      ],
+      "passes": false,
+      "regression_notes": ""
+    },
+    {
+      "category": "functional",
+      "description": "Make Tauri supervise the local Sidecar process and hand the Desktop Client its connection data safely.",
+      "steps": [
+        "On app launch, mint a random token and start the Sidecar as a supervised child process with port, token, and environment.",
+        "Expose only the connection data needed by the Svelte Desktop Client through a Tauri command.",
+        "Show a user-visible error when the Sidecar fails or crashes instead of silently hanging.",
+        "Terminate the Sidecar on full app quit without killing it on frontend reload.",
+        "Run a bounded Tauri lifecycle smoke test plus the required verification gates."
+      ],
+      "passes": false,
+      "regression_notes": ""
+    },
+    {
+      "category": "functional",
+      "description": "Implement the Svelte `desktopClient` store that owns connection lifecycle, state projection, command status, and event reduction.",
+      "steps": [
+        "Connect to the Sidecar with the Tauri-provided token and WebSocket URL.",
+        "Load an initial full snapshot and apply typed events into a projected app state.",
+        "Expose derived state for workspace, selected session, timeline, composer status, model settings, connection state, and known gaps.",
+        "Handle reconnect and snapshot resync without duplicating canonical state ownership in the client.",
+        "Run store tests or component-level integration tests plus the required verification gates."
+      ],
+      "passes": false,
+      "regression_notes": ""
+    },
+    {
+      "category": "functional",
+      "description": "Build the Svelte Tracer Bullet UI for workspace and session workflows.",
+      "steps": [
+        "Render the Desktop App shell with workspace menu, session list, selected session, timeline, composer, and settings/model affordances needed for the Tracer Bullet.",
+        "Support adding/selecting a workspace, creating/selecting/archiving a session, sending a message, canceling a run, and selecting model/thinking settings.",
+        "Render live timeline streaming from Sidecar events.",
+        "Show clear known-gap labels or hidden controls for terminal, extension UI, worktree create/remove, and commit/push.",
+        "Run Svelte UI tests or desktop smoke tests plus the required verification gates."
+      ],
+      "passes": false,
+      "regression_notes": ""
+    },
+    {
+      "category": "functional",
+      "description": "Preserve JSON catalog/session persistence across Svelte Desktop app restart.",
+      "steps": [
+        "Use the existing JSON catalog/session persistence path through Desktop Core or compatible adapters.",
+        "Create a workspace and session in the Svelte Desktop, quit or restart the app, and verify the same workspace/session state is restored.",
+        "Ensure no migration to SQLite or Tauri key-value storage is introduced for this milestone.",
+        "Run persistence tests plus the required verification gates."
+      ],
+      "passes": false,
+      "regression_notes": ""
+    },
+    {
+      "category": "functional",
+      "description": "Add the Svelte/Tauri Playwright desktop core smoke lane.",
+      "steps": [
+        "Add Playwright helpers that launch the real Svelte Desktop Tauri surface with controlled Sidecar fixtures or test runtime configuration.",
+        "Cover launch/reopen, workspace menu, session create/select/archive, composer send/cancel, timeline streaming, model selection, and persistence.",
+        "Make the lane bounded and non-interactive on macOS.",
+        "Run the new smoke lane plus the required verification gates."
+      ],
+      "passes": false,
+      "regression_notes": ""
+    },
+    {
+      "category": "functional",
+      "description": "Add a local macOS packaged `.app` smoke path for the Svelte Desktop.",
+      "steps": [
+        "Add package scripts that build a local unsigned macOS `.app` for development smoke only.",
+        "Verify the packaged app launches the Sidecar, completes token handshake, opens the Desktop Client, restores persisted state, and cleans up the Sidecar on quit.",
+        "Do not require signing, notarization, keychain access, admin prompts, or Apple credentials.",
+        "Run the package smoke command plus the required verification gates."
+      ],
+      "passes": false,
+      "regression_notes": ""
+    },
+    {
+      "category": "functional",
+      "description": "Document canonical promotion status, known gaps, and follow-up issue seeds for post-Tracer parity work.",
+      "steps": [
+        "Add developer/user-facing documentation that explains when the Svelte Desktop is eligible to become the Canonical App.",
+        "List explicit known gaps for terminal UI, extension UI rendering, worktree create/remove, commit/push, signed releases, Linux, Windows, and auto-update.",
+        "Ensure missing features are not exposed as half-working controls in the Svelte UI.",
+        "Run documentation-adjacent checks and the required verification gates."
+      ],
+      "passes": false,
+      "regression_notes": ""
+    }
+  ]
+}
