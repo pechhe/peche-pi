@@ -44,8 +44,8 @@
         "Keep Electron Desktop callers working through adapters or compatibility wrappers.",
         "Run focused core tests or existing Electron tests that cover the touched behavior plus the required verification gates."
       ],
-      "passes": false,
-      "regression_notes": ""
+      "passes": true,
+      "regression_notes": "DesktopCore interface + DesktopCoreImpl extracted into @pi-gui/desktop-core. Wraps PiSdkDriver for workspace list/sync/add/remove/select, session list/create/select/archive/unarchive/getTranscript, composer submit/cancel, model refresh/setDefault/setThinkingLevel, state subscriptions, and persistence flush. 11 new DesktopCore tests + 7 existing adapter tests = 18/18 pass. Electron Desktop callers unaffected — core is additive, not breaking."
     },
     {
       "category": "functional",
