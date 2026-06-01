@@ -2,8 +2,11 @@ import { PROTOCOL_VERSION } from "@pi-gui/desktop-protocol";
 import type {
   CoreState,
   CoreWorkspaceRecord,
+  CoreSessionRecord,
   CoreSessionCommandRecord,
 } from "@pi-gui/desktop-core";
+
+export type { CoreWorkspaceRecord, CoreSessionRecord };
 
 /* ── Types ─────────────────────────────────────────── */
 

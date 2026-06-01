@@ -120,8 +120,8 @@
         "Show clear known-gap labels or hidden controls for terminal, extension UI, worktree create/remove, and commit/push.",
         "Run Svelte UI tests or desktop smoke tests plus the required verification gates."
       ],
-      "passes": false,
-      "regression_notes": ""
+      "passes": true,
+      "regression_notes": "Svelte Tracer Bullet UI with 5 components (ConnectionBadge, WorkspacePanel, SessionList, Timeline, Composer, ModelSettings) wired to DesktopClientStore via +page.svelte. Full Tracer Bullet workflows: workspace add/select/remove, session create/select/archive, composer send/cancel, model provider/model/thinking selection, live timeline streaming. Known-gap labels footer for terminal, extensions, worktree, commit/push. 16 new UI integration tests (4 workspace + 3 session + 2 composer + 2 model + 4 timeline + 1 snapshot). 30/30 total tests pass. Build produces static dist. svelte-check: 0 errors, 0 warnings. Uses relative imports with .js extension after $lib alias failed in svelte-check. CoreWorkspaceRecord/CoreSessionRecord re-exported from desktop-client.ts for component imports."
     },
     {
       "category": "functional",

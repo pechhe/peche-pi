@@ -208,3 +208,37 @@
 - Reconnect: on non-1000 close, exponential backoff from 1s to 30s max. Dispose flag prevents reconnect after explicit disconnect().
 - Event reduction: snapshot/changed events overwrite workspaces/selection state. transcript.appended and session.event (stream kind) append to transcript array. selectedTranscript.changed replaces transcript.
 - MockWebSocket in tests uses manual control (no auto-open) for deterministic async testing with sleep pauses.
+
+## Iteration 9 — Svelte Tracer Bullet UI
+
+**Item:** Build the Svelte Tracer Bullet UI for workspace and session workflows.
+
+**Why chosen:** Prioritization strategy: real Svelte/Tauri connection and UI behavior after desktopClient store (items 1-8 done). The UI is the visible tracer bullet that validates the full stack.
+
+**Changed files:**
+- `apps/svelte-desktop/src/lib/context.ts` — Svelte context helper (setDesktopClient/getDesktopClient)
+- `apps/svelte-desktop/src/lib/components/ConnectionBadge.svelte` — connection status dot + connect/disconnect button
+- `apps/svelte-desktop/src/lib/components/WorkspacePanel.svelte` — workspace list, add path input, select/remove with keyboard a11y
+- `apps/svelte-desktop/src/lib/components/SessionList.svelte` — session list filtered by selected workspace, create/select/archive with keyboard a11y
+- `apps/svelte-desktop/src/lib/components/Timeline.svelte` — transcript rendering with role-based styling + streaming indicator + auto-scroll
+- `apps/svelte-desktop/src/lib/components/Composer.svelte` — textarea input with Enter-to-send, cancel button when running
+- `apps/svelte-desktop/src/lib/components/ModelSettings.svelte` — provider/model dropdowns, thinking level selector, with a11y label associations
+- `apps/svelte-desktop/src/routes/+page.svelte` — full shell rewrite: header with ConnectionBadge, left sidebar (workspaces + sessions), main area (timeline + composer), right sidebar (model settings), footer with known-gap labels (terminal, extensions, worktree, commit/push)
+- `apps/svelte-desktop/src/lib/desktop-client.ts` — re-exported CoreWorkspaceRecord, CoreSessionRecord from @pi-gui/desktop-core
+- `apps/svelte-desktop/tests/ui-integration.test.ts` — 16 new integration tests (workspace add/select/remove, session create/select/archive, composer submit/cancel, model settings, timeline streaming via transcript.appended + session.event + selectedTranscript.changed, state snapshot)
+- `.ralph/items.json` — marked item 9 passing
+- `.ralph/progress.md` — this file
+
+**Verification:**
+- `pnpm --filter @pi-gui/svelte-desktop test`: 30/30 pass (14 store + 16 UI integration)
+- `pnpm --filter @pi-gui/svelte-desktop build`: produces static dist via adapter-static
+- `pnpm typecheck`: all 10 workspace projects pass; svelte-check 0 errors, 0 warnings
+- `pnpm lint`: no errors
+
+**Decisions:**
+- Relative imports instead of $lib alias — $lib path mapping failed to resolve in svelte-check with verbatimModuleSyntax. Used ../desktop-client.js pattern (Svelte convention: .js extension for .ts source files).
+- Context pattern: setDesktopClient/getDesktopClient via Svelte context for component tree access.
+- Added CoreWorkspaceRecord and CoreSessionRecord re-exports to desktop-client.ts so components don't need direct @pi-gui/desktop-core imports.
+- A11y fixes: tabindex+role+aria-selected+keydown on clickable li items; for/id on label+select pairs; removed autofocus attributes.
+
+**Next-iteration notes:** Item 10 (JSON persistence verification) next — Svelte Desktop restart persistence through existing Desktop Core JSON path.
