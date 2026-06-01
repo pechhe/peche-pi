@@ -21,6 +21,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "probe": "bun run src/probe.ts",
     "probe:node": "node --import tsx src/probe.ts",
+    "run": "node --import tsx src/run.ts",
     "test": "node --test --import tsx tests/*.test.ts"
   },
   "dependencies": {

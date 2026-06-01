@@ -153,3 +153,32 @@
 - Tauri v2 config: greet command, 1200x800 window, devUrl port 5174
 - Shell page renders known-gap labels for workspace, timeline, composer, settings, terminal, extensions
 - Production build does not require SvelteKit SSR server — verified by static output in dist/
+
+## Iteration 7 — Tauri Sidecar supervision
+
+**Item:** Make Tauri supervise the local Sidecar process and hand the Desktop Client its connection data safely.
+
+**Why chosen:** Prioritization strategy: real Svelte/Tauri connection after app shell exists (items 1-6 done).
+
+**Changed files:**
+- `apps/svelte-desktop/src-tauri/src/lib.rs` — start_sidecar, get_sidecar_connection, stop_sidecar commands; SidecarProcess managed state; RunEvent::Exit cleanup
+- `apps/svelte-desktop/src-tauri/Cargo.toml` — tauri default features
+- `apps/svelte-desktop/src-tauri/icons/icon.png` — RGBA placeholder
+- `apps/svelte-desktop/src-tauri/tauri.conf.json` — removed invalid app.title field
+- `packages/sidecar/src/run.ts` — CLI entry point for sidecar server
+- `packages/sidecar/package.json` — added `run` script
+- `.ralph/items.json` — marked item 7 passing
+- `.ralph/progress.md` — this file
+
+**Verification:**
+- `cargo check` in src-tauri: compiles successfully
+- `pnpm --filter @pi-gui/sidecar build`: passes
+- `pnpm typecheck`: passes all 10 workspace projects (0 svelte-check errors)
+- `pnpm lint`: no errors
+
+**Decisions:**
+- Sidecar process spawned via std::process::Command using Node + tsx runner.
+- Token generated per-launch via hashed entropy (time + PID).
+- Connection info (port + token) read from sidecar's first stdout JSON line.
+- Sidecar cleanup via RunEvent::Exit (not WindowEvent::Destroyed) avoids frontend-reload kills.
+- Mutex<SidecarProcess> managed as Tauri state for thread-safe access from commands and events.

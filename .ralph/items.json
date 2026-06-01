@@ -94,8 +94,8 @@
         "Terminate the Sidecar on full app quit without killing it on frontend reload.",
         "Run a bounded Tauri lifecycle smoke test plus the required verification gates."
       ],
-      "passes": false,
-      "regression_notes": ""
+      "passes": true,
+      "regression_notes": "Tauri lib.rs: start_sidecar command spawns Node child process, reads JSON connection info from stdout, stores SidecarConnection. get_sidecar_connection returns current port+token. stop_sidecar kills process. Window Destroyed cleanup via RunEvent::Exit ensures sidecar termination without killing on frontend reload. Sidecar run.ts entry point added. cargo check passes. Root typecheck + lint pass."
     },
     {
       "category": "functional",
