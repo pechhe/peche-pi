@@ -1,0 +1,37 @@
+{
+  "name": "@pi-gui/sidecar",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "Localhost Sidecar process: runtime compatibility probe, authenticated WebSocket service, and canonical state owner.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "probe": "bun run src/probe.ts",
+    "probe:node": "node --import tsx src/probe.ts",
+    "test": "node --test --import tsx tests/*.test.ts"
+  },
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "^0.74.0",
+    "@pi-gui/catalogs": "workspace:*",
+    "@pi-gui/desktop-protocol": "workspace:*",
+    "@pi-gui/pi-sdk-driver": "workspace:*",
+    "@pi-gui/session-driver": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.19.0"
+  }
+}

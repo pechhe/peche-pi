@@ -22,4 +22,28 @@
 - Protocol uses Valibot 1.x pipe-based schemas: client-hello, server-ready, auth-rejected, server-error, command envelopes, event envelopes, and a closed command catalog (workspace, session, composer, model, view, auth).
 - Fixed two unrelated gate blockers: desktop-core missing the protocol workspace dep, and commit-push-service.ts tripping `noUncheckedIndexedAccess` on array indexing.
 
-**Next-iteration notes:** Item 2 (Sidecar runtime compatibility probe) is next per prioritization strategy: runtime compatibility and process lifecycle after stable contracts. The desktop-core and commit-push-service fixes are staged and will be committed alongside this iteration's state updates.
+**Next-iteration notes:** Item 3 (Desktop Core extraction) is next per prioritization strategy: headless state ownership and persistence after runtime compatibility.
+
+## Iteration 2 — Sidecar runtime compatibility probe
+
+**Item:** Add a Sidecar runtime compatibility probe that decides whether Bun can run the pi runtime stack or whether the plan must switch to bundled Node.
+
+**Why chosen:** Prioritization strategy: runtime compatibility and process lifecycle after stable contracts (item 1 done).
+
+**Changed files:**
+- `packages/sidecar/` — new package with `src/probe.ts`, `src/index.ts`, `tests/probe.test.ts`, `package.json`, `tsconfig.json`
+- `.ralph/items.json` — marked item 2 passing
+- `.ralph/progress.md` — this file
+- `pnpm-lock.yaml` — new dependency links
+
+**Verification:**
+- `bun run packages/sidecar/src/probe.ts`: 8/8 probes pass
+- `node --import tsx packages/sidecar/src/probe.ts`: 8/8 probes pass (Node fallback)
+- `pnpm --filter @pi-gui/sidecar test`: 7/7 pass
+- `pnpm typecheck`: root passes all 9 workspace projects
+- `pnpm lint`: no errors
+
+**Decisions:**
+- Bun 1.3.14 fully compatible — no native addons, node-pty, or worker_threads in pi-coding-agent, pi-sdk-driver, or any workspace dependency.
+- Bun is the preferred Sidecar runtime; Node v24.16.0 is the documented fallback (`node --import tsx dist/sidecar.js`).
+- Probe covers all five capability dimensions from the item steps: package imports, child_process spawn, fs r/w/unlink, PiSdkDriver instantiation, and runtime detection.

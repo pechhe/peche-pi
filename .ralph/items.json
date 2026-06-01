@@ -32,8 +32,8 @@
         "Record a deterministic Node fallback path when a clear Bun incompatibility is observed.",
         "Run the probe and the required verification gates without interactive prompts."
       ],
-      "passes": false,
-      "regression_notes": ""
+      "passes": true,
+      "regression_notes": "Bun 1.3.14 passes all 8 probes: pi-coding-agent import, pi-sdk-driver import, desktop-protocol import, session-driver import, catalogs import, fs r/w/unlink, child_process spawn, PiSdkDriver instantiation. Node v24.16.0 fallback also passes all probes. Compat gate: Bun preferred, Node fallback via node --import tsx. No native addons, node-pty, or worker_threads in any dependency tree."
     },
     {
       "category": "functional",

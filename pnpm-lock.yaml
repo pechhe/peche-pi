@@ -240,6 +240,31 @@ importers:
 
   packages/session-driver: {}
 
+  packages/sidecar:
+    dependencies:
+      '@earendil-works/pi-coding-agent':
+        specifier: ^0.74.0
+        version: 0.74.0(ws@8.20.0)(zod@4.3.6)
+      '@pi-gui/catalogs':
+        specifier: workspace:*
+        version: link:../catalogs
+      '@pi-gui/desktop-protocol':
+        specifier: workspace:*
+        version: link:../desktop-protocol
+      '@pi-gui/pi-sdk-driver':
+        specifier: workspace:*
+        version: link:../pi-sdk-driver
+      '@pi-gui/session-driver':
+        specifier: workspace:*
+        version: link:../session-driver
+    devDependencies:
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.12.2
+      tsx:
+        specifier: ^4.19.0
+        version: 4.22.4
+
   video:
     dependencies:
       '@remotion/cli':
