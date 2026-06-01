@@ -81,8 +81,8 @@
         "Ensure production build does not require a SvelteKit SSR server.",
         "Run the Svelte app build/typecheck plus the required verification gates."
       ],
-      "passes": false,
-      "regression_notes": ""
+      "passes": true,
+      "regression_notes": "@pi-gui/svelte-desktop created with SvelteKit + @sveltejs/adapter-static (fallback: index.html, prerender: /). No SSR server needed — static SPA output. Tauri v2 configuration with greet command, 1200x800 default window, devUrl to Vite port 5174. Svelte-check 0 errors, 0 warnings. Build produces dist/ with static assets. Known-gap labels for workspace, timeline, composer, settings, terminal, extensions."
     },
     {
       "category": "functional",

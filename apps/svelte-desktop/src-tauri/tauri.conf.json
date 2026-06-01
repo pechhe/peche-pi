@@ -1,0 +1,29 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nicbarker/tauri/dev/crates/tauri-cli/schema.json",
+  "productName": "Pi Desktop",
+  "version": "0.0.0",
+  "identifier": "com.pi-gui.desktop",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:5174",
+    "beforeDevCommand": "pnpm dev",
+    "beforeBuildCommand": "pnpm build"
+  },
+  "app": {
+    "title": "Pi Desktop",
+    "windows": [
+      {
+        "title": "Pi Desktop",
+        "width": 1200,
+        "height": 800,
+        "minWidth": 800,
+        "minHeight": 600,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  }
+}

@@ -129,3 +129,27 @@
 - session.subscribe command subscribes to PiSdkDriver session events and forwards as session.event envelopes to the authenticated WebSocket client.
 - In-flight sessions live in long-lived DesktopCore instance — client reconnect does not disrupt running agents.
 - Unsubscribe cleanup on WebSocket close prevents event leaks.
+
+## Iteration 6 — Svelte Desktop app shell
+
+**Item:** Create the Svelte Desktop app shell using SvelteKit static output inside Tauri.
+
+**Why chosen:** Prioritization strategy: real Svelte/Tauri connection and UI behavior after all backend seams exist (items 1-5 done).
+
+**Changed files:**
+- `apps/svelte-desktop/` — new workspace app: package.json, svelte.config.js, tsconfig.json, vite.config.ts, src/app.html, src/routes/+page.svelte
+- `apps/svelte-desktop/src-tauri/` — Tauri v2: Cargo.toml, tauri.conf.json, src/main.rs, src/lib.rs, build.rs
+- `.ralph/items.json` — marked item 6 passing
+- `.ralph/progress.md` — this file
+- `pnpm-lock.yaml` — SvelteKit, adapter-static, Tauri deps
+
+**Verification:**
+- `pnpm --filter @pi-gui/svelte-desktop build`: builds to dist/ via static adapter
+- `pnpm --filter @pi-gui/svelte-desktop typecheck`: 0 errors, 0 warnings
+- `pnpm lint`: no errors across 10 workspace projects
+
+**Decisions:**
+- Static SPA output: @sveltejs/adapter-static with fallback index.html and prerender /
+- Tauri v2 config: greet command, 1200x800 window, devUrl port 5174
+- Shell page renders known-gap labels for workspace, timeline, composer, settings, terminal, extensions
+- Production build does not require SvelteKit SSR server — verified by static output in dist/
