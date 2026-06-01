@@ -1,10 +1,12 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { browser } from "$app/environment";
   import { setDesktopClient } from "../lib/context.js";
   import {
     createDesktopClientStore,
     type DesktopClientStore,
     type DesktopClientState,
+    type CreateDesktopClientOptions,
   } from "../lib/desktop-client.js";
   import type { CoreWorkspaceRecord, CoreSessionRecord } from "@pi-gui/desktop-core";
   import ConnectionBadge from "../lib/components/ConnectionBadge.svelte";
@@ -14,7 +16,24 @@
   import Composer from "../lib/components/Composer.svelte";
   import ModelSettings from "../lib/components/ModelSettings.svelte";
 
-  let client: DesktopClientStore = createDesktopClientStore();
+  // Detect Playwright test mode via URL params
+  let storeOptions: CreateDesktopClientOptions | undefined;
+  if (browser) {
+    const params = new URLSearchParams(window.location.search);
+    const sidecarPort = params.get("sidecarPort");
+    const sidecarToken = params.get("sidecarToken");
+    if (sidecarPort && sidecarToken) {
+      storeOptions = {
+        getSidecarConnection: () =>
+          Promise.resolve({
+            port: parseInt(sidecarPort, 10),
+            token: sidecarToken,
+          }),
+      };
+    }
+  }
+
+  let client: DesktopClientStore = createDesktopClientStore(storeOptions);
   setDesktopClient(client);
 
   let snap = $state<DesktopClientState>(client.state);

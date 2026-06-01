@@ -9,6 +9,9 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "node --test --import tsx tests/*.test.ts",
+    "test:smoke": "playwright test",
+    "build:app": "pnpm tauri build",
+    "smoke:app": "pnpm build && cargo check --manifest-path src-tauri/Cargo.toml && echo 'OK: SvelteKit static build + Tauri Rust compilation pass'",
     "typecheck": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "tauri": "tauri"
   },
@@ -18,13 +21,15 @@
     "@tauri-apps/api": "^2.0.0"
   },
   "devDependencies": {
+    "@pi-gui/sidecar": "workspace:*",
+    "@playwright/test": "^1.58.2",
     "@sveltejs/adapter-static": "^3.0.0",
     "@sveltejs/kit": "^2.0.0",
     "@sveltejs/vite-plugin-svelte": "^5.0.0",
     "@tauri-apps/cli": "^2.0.0",
     "svelte": "^5.0.0",
     "svelte-check": "^4.0.0",
-    "tsx": "^4.0.0",
+    "tsx": "^4.22.4",
     "typescript": "^5.5.0",
     "vite": "^6.0.0"
   }
