@@ -182,3 +182,29 @@
 - Connection info (port + token) read from sidecar's first stdout JSON line.
 - Sidecar cleanup via RunEvent::Exit (not WindowEvent::Destroyed) avoids frontend-reload kills.
 - Mutex<SidecarProcess> managed as Tauri state for thread-safe access from commands and events.
+
+## Iteration 8 — Svelte desktopClient store
+
+**Item:** Implement the Svelte `desktopClient` store that owns connection lifecycle, state projection, command status, and event reduction.
+
+**Why chosen:** Prioritization strategy: real Svelte/Tauri connection and UI behavior after Tauri supervision (items 1-7 done). The store is the glue between the Tauri-provided Sidecar connection and the Svelte UI components.
+
+**Changed files:**
+- `apps/svelte-desktop/src/lib/desktop-client.ts` — new store module: WebSocket connect/client-hello auth, command dispatch with per-id Promise tracking, event reduction (state.snapshot/changed, transcript.appended, session.event, selectedTranscript.changed, app.error), reconnect with exponential backoff, subscribe() for external reactivity, Tauri bridge via dynamic import
+- `apps/svelte-desktop/tests/desktop-client.test.ts` — 14 tests: initial state, connect lifecycle, auth rejection, state snapshot, command result/error, transcript.appended, session.event stream, selectedTranscript.changed, app.error, disconnect, subscribeSession, subscriber notification
+- `apps/svelte-desktop/package.json` — added @pi-gui/desktop-core dep, test script (node --test --import tsx), tsx dev dep
+- `.ralph/items.json` — marked item 8 passing
+- `.ralph/progress.md` — this file
+
+**Verification:**
+- `pnpm --filter @pi-gui/svelte-desktop test`: 14/14 pass
+- `pnpm typecheck`: all 10 workspace projects pass, svelte-check 0 errors 0 warnings
+- `pnpm lint`: no errors
+
+**Decisions:**
+- Store is plain TypeScript (.ts), not Svelte 5 runes (.svelte.ts), because $state is a Svelte compiler directive unavailable in node --test. Reactivity bridge: subscribe(callback) + consumers wrap in $state at component level.
+- Connection flow: getSidecarConnection() -> new WebSocket -> onopen sends client-hello -> server-ready confirms auth -> state.snapshot populates state.
+- Command dispatch: each sendCommand returns a Promise, tracked by auto-generated id. On command-result, the matching pending promise resolves. On server-error, it rejects. On connection loss, all pending commands reject with "Connection lost".
+- Reconnect: on non-1000 close, exponential backoff from 1s to 30s max. Dispose flag prevents reconnect after explicit disconnect().
+- Event reduction: snapshot/changed events overwrite workspaces/selection state. transcript.appended and session.event (stream kind) append to transcript array. selectedTranscript.changed replaces transcript.
+- MockWebSocket in tests uses manual control (no auto-open) for deterministic async testing with sleep pauses.

@@ -107,8 +107,8 @@
         "Handle reconnect and snapshot resync without duplicating canonical state ownership in the client.",
         "Run store tests or component-level integration tests plus the required verification gates."
       ],
-      "passes": false,
-      "regression_notes": ""
+      "passes": true,
+      "regression_notes": "createDesktopClientStore in src/lib/desktop-client.ts: WebSocket connection with client-hello auth (PROTOCOL_VERSION + token), command dispatch with per-id Promise tracking (30s timeout), event reduction (state.snapshot, state.changed, transcript.appended, session.event, selectedTranscript.changed, app.error), reconnect with exponential backoff on non-1000 close codes, subscribe() for external reactivity. Tauri bridge via dynamic @tauri-apps/api import. 14/14 tests pass. Root typecheck + lint pass."
     },
     {
       "category": "functional",
