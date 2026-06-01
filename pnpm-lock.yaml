@@ -248,6 +248,9 @@ importers:
       '@pi-gui/catalogs':
         specifier: workspace:*
         version: link:../catalogs
+      '@pi-gui/desktop-core':
+        specifier: workspace:*
+        version: link:../desktop-core
       '@pi-gui/desktop-protocol':
         specifier: workspace:*
         version: link:../desktop-protocol
@@ -257,10 +260,16 @@ importers:
       '@pi-gui/session-driver':
         specifier: workspace:*
         version: link:../session-driver
+      ws:
+        specifier: ^8.18.0
+        version: 8.20.0
     devDependencies:
       '@types/node':
         specifier: ^24.0.0
         version: 24.12.2
+      '@types/ws':
+        specifier: ^8.5.0
+        version: 8.18.1
       tsx:
         specifier: ^4.19.0
         version: 4.22.4
@@ -2095,6 +2104,9 @@ packages:
 
   '@types/verror@1.10.11':
     resolution: {integrity: sha512-RlDm9K7+o5stv0Co8i8ZRGxDbrTxhJtgjqjFyVh/tXQyl/rYtTKlnTvZ88oSTeYREWurwx20Js4kTuKCsFkUtg==}
+
+  '@types/ws@8.18.1':
+    resolution: {integrity: sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg==}
 
   '@types/yauzl@2.10.3':
     resolution: {integrity: sha512-oJoftv0LSuaDZE3Le4DbKX+KS9G36NzOeSap90UIK0yMA/NhKJhqlSGtNDORNRaIbQfzjXDrQa0ytJ6mNRGz/Q==}
@@ -6605,6 +6617,10 @@ snapshots:
 
   '@types/verror@1.10.11':
     optional: true
+
+  '@types/ws@8.18.1':
+    dependencies:
+      '@types/node': 24.12.2
 
   '@types/yauzl@2.10.3':
     dependencies:

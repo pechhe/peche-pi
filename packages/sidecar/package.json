@@ -26,12 +26,15 @@
   "dependencies": {
     "@earendil-works/pi-coding-agent": "^0.74.0",
     "@pi-gui/catalogs": "workspace:*",
+    "@pi-gui/desktop-core": "workspace:*",
     "@pi-gui/desktop-protocol": "workspace:*",
     "@pi-gui/pi-sdk-driver": "workspace:*",
-    "@pi-gui/session-driver": "workspace:*"
+    "@pi-gui/session-driver": "workspace:*",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "@types/ws": "^8.5.0",
     "tsx": "^4.19.0"
   }
 }

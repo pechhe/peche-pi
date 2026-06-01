@@ -76,3 +76,32 @@
 - `exactOptionalPropertyTypes` required conditional inclusion of optional CreateSessionOptions fields.
 - macOS `/tmp` symlink to `/private/tmp` required realpathSync in tests.
 - Electron Desktop callers remain completely unaffected — no imports changed in apps/desktop/.
+
+## Iteration 4 — Sidecar WebSocket server
+
+**Item:** Implement the Sidecar authenticated WebSocket service around Desktop Core.
+
+**Why chosen:** Prioritization strategy: real Svelte/Tauri connection and UI behavior after headless state ownership (items 1-3 done).
+
+**Changed files:**
+- `packages/sidecar/src/ws-server.ts` — WebSocket server: 127.0.0.1-only, token auth via client-hello, command dispatch to DesktopCore
+- `packages/sidecar/src/index.ts` — exports startSidecarServer, SidecarServer, SidecarServerOptions
+- `packages/sidecar/package.json` — added ws, @types/ws, @pi-gui/desktop-core deps
+- `packages/sidecar/tests/ws-server.test.ts` — 7 integration tests (auth rejection x3, handshake, snapshot, unknown command, transcript null)
+- `.ralph/items.json` — marked item 4 passing
+- `.ralph/progress.md` — this file
+- `pnpm-lock.yaml` — ws + @types/ws entries
+
+**Verification:**
+- 14/14 sidecar tests pass (7 probe + 7 ws-server)
+- WS tests: rejects pre-auth commands, rejects wrong token, rejects wrong version, completes handshake, snapshot.getState returns state, unknown command returns error, null transcript when no session
+- `pnpm typecheck`: root passes all 9 workspace projects
+- `pnpm lint`: no errors
+
+**Decisions:**
+- Token auth via client-hello envelope: version check first (literal match), then token check (string equality), then full Valibot validation.
+- Server binds 127.0.0.1 only via ws WebSocketServer options.
+- Command dispatch matches the closed command catalog from desktop-protocol.
+- Event forwarding to clients is scaffolded but not yet wired (session event subscription placeholder).
+- Server.stop() flushes core persistence then closes the ws server.
+- Used ws npm package (not Node built-in WebSocket) because Node 24 doesn't expose WebSocketServer globally.

@@ -57,8 +57,8 @@
         "Emit typed state, runtime, and error events to connected clients.",
         "Run Sidecar integration tests plus the required verification gates."
       ],
-      "passes": false,
-      "regression_notes": ""
+      "passes": true,
+      "regression_notes": "WebSocket server (startSidecarServer) in @pi-gui/sidecar: binds 127.0.0.1 only, per-run token auth via client-hello handshake, dispatches all tracer-bullet commands (snapshot, workspace CRUD, session CRUD, composer submit/cancel, model set, shutdown). 7 integration tests covering auth rejection (no hello, wrong token, wrong version), handshake, state snapshot, unknown commands, and transcript null. 14/14 total sidecar tests pass."
     },
     {
       "category": "functional",
