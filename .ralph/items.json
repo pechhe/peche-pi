@@ -132,8 +132,8 @@
         "Ensure no migration to SQLite or Tauri key-value storage is introduced for this milestone.",
         "Run persistence tests plus the required verification gates."
       ],
-      "passes": false,
-      "regression_notes": ""
+      "passes": true,
+      "regression_notes": "4 new DesktopCore persistence tests: workspace persists across restart, session persists across restart, multiple workspaces/sessions persist, initialWorkspacePaths auto-adds on first init then restores from catalog on subsequent. 1 new Sidecar persistence test: workspace persists across sidecar restart (add workspace via WS, stop server, restart with same dataDir, verify via WS). DesktopCore: 15/15 pass. Sidecar: 17/17 pass. Svelte Desktop: 30/30 pass. No SQLite or Tauri KV introduced — uses existing catalogs.json from PiSdkDriver."
     },
     {
       "category": "functional",

@@ -242,3 +242,31 @@
 - A11y fixes: tabindex+role+aria-selected+keydown on clickable li items; for/id on label+select pairs; removed autofocus attributes.
 
 **Next-iteration notes:** Item 10 (JSON persistence verification) next — Svelte Desktop restart persistence through existing Desktop Core JSON path.
+
+## Iteration 10 — JSON persistence across restart
+
+**Item:** Preserve JSON catalog/session persistence across Svelte Desktop app restart.
+
+**Why chosen:** Prioritization strategy: core smoke parity and packaging after UI (items 1-9 done). Persistence is the last backend seam to validate before Playwright smoke tests.
+
+**Changed files:**
+- `packages/desktop-core/tests/desktop-core.test.ts` — 4 new persistence tests: workspace across restart, session across restart, multiple workspaces/sessions, initialWorkspacePaths auto-add then restore
+- `packages/sidecar/tests/ws-server.test.ts` — 1 new persistence test: workspace persists across sidecar restart via WS protocol
+- `.ralph/items.json` — marked item 10 passing
+- `.ralph/progress.md` — this file
+
+**Verification:**
+- `pnpm --filter @pi-gui/desktop-core test`: 15/15 pass (11 original + 4 persistence)
+- `pnpm --filter @pi-gui/sidecar test`: 17/17 pass (16 original + 1 persistence)
+- `pnpm --filter @pi-gui/svelte-desktop test`: 30/30 pass
+- `pnpm typecheck`: all 10 workspace projects pass; svelte-check 0 errors, 0 warnings
+- `pnpm lint`: no errors
+
+**Decisions:**
+- Persistence is proven at two layers: DesktopCore (raw API) and Sidecar (WS protocol). Both confirm workspace/session state restored from catalogs.json on restart.
+- Session creation (createSession) takes ~2s because it initializes a real pi session — acceptable for integration tests, but sidecar persistence test only verifies workspace restore (faster, 10ms).
+- DesktopCoreImpl.initialize() calls refreshState() which reads from the existing catalogs.json — workspaces added in a previous run are automatically visible.
+- initialWorkspacePaths only syncs on first init; on subsequent inits, syncWorkspace skips already-catalogued paths and refreshState picks up all persisted state.
+- No SQLite or Tauri KV introduced — uses existing catalogs.json from PiSdkDriver.
+
+**Next-iteration notes:** Item 11 (Playwright smoke lane) next — needs real Tauri surface launch with controlled Sidecar fixtures on macOS.

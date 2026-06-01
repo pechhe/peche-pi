@@ -288,4 +288,105 @@ describe("Sidecar WebSocket server", () => {
     );
     ws.close();
   });
+
+  /* ── Persistence across restart ──────────────── */
+
+  it("persists workspace across sidecar restart", async () => {
+    const persistDir = mkdtempSync(join(tmpdir(), "pi-sidecar-persist-"));
+    const wsDir = mkdtempSync(join(tmpdir(), "pi-test-ws-"));
+    try {
+      // Start first server
+      const server1 = await startSidecarServer({ dataDir: persistDir });
+      const ws1 = await connect(server1.port);
+
+      // Auth
+      ws1.send(JSON.stringify({
+        type: "client-hello",
+        version: 1,
+        token: server1.token,
+      }));
+
+      // Read server-ready + state.snapshot
+      await readPastServerReady(ws1);
+
+      // Add workspace
+      const addResp = await wsRequest(ws1, {
+        type: "command",
+        id: "ws-add",
+        command: "workspace.addPath",
+        payload: { path: wsDir },
+      });
+      assert.equal((addResp as { type: string }).type, "command-result");
+
+      // Get state to verify
+      const listResp = await wsRequest(ws1, {
+        type: "command",
+        id: "ws-list",
+        command: "snapshot.getState",
+        payload: {},
+      });
+      const state = (listResp as { result: { workspaces: { id: string }[] } }).result;
+      assert.equal(state.workspaces.length, 1);
+      const wsId = state.workspaces[0]!.id;
+
+      // Stop first server
+      ws1.close();
+      await server1.stop();
+
+      // Start second server with same dataDir — workspace should be restored from catalogs.json
+      const server2 = await startSidecarServer({ dataDir: persistDir });
+      const ws2 = await connect(server2.port);
+
+      // Auth
+      ws2.send(JSON.stringify({
+        type: "client-hello",
+        version: 1,
+        token: server2.token,
+      }));
+      await readPastServerReady(ws2);
+
+      // Get state — should have workspace restored
+      const listResp2 = await wsRequest(ws2, {
+        type: "command",
+        id: "ws-list2",
+        command: "snapshot.getState",
+        payload: {},
+      });
+      const state2 = (listResp2 as { result: { workspaces: { id: string }[] } }).result;
+      assert.equal(state2.workspaces.length, 1);
+      assert.equal(state2.workspaces[0]!.id, wsId);
+
+      ws2.close();
+      await server2.stop();
+    } finally {
+      rmSync(persistDir, { recursive: true, force: true });
+      rmSync(wsDir, { recursive: true, force: true });
+    }
+  });
 });
+
+/** Read past the server-ready message to get to subsequent events. */
+async function readPastServerReady(ws: WebSocket): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => resolve(), 2000);
+    const handler = (raw: unknown) => {
+      const buf = raw instanceof Buffer ? raw : Buffer.isBuffer(raw) ? raw : undefined;
+      const str = buf ? buf.toString("utf8") : typeof raw === "string" ? raw : "";
+      try {
+        const msg = JSON.parse(str);
+        if (msg.type === "server-ready" || msg.type === "event") {
+          // Keep reading past server-ready + state.snapshot
+          // We need at least the state.snapshot event consumed
+          if (msg.type === "event" && msg.event === "state.snapshot") {
+            clearTimeout(timer);
+            ws.off("message", handler);
+            resolve();
+          }
+        }
+      } catch {
+        // ignore
+      }
+    };
+    ws.on("message", handler);
+  });
+}
