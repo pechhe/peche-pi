@@ -7,9 +7,9 @@ import type {
   ComposerSlashOptionEmptyState,
 } from "./composer-commands";
 import { hasFilesInDataTransfer } from "./composer-attachments";
-import { ExtensionDock, type ExtensionDockModel } from "./extension-session-ui";
 import { FileIcon, ModelIcon, ReasoningIcon, SettingsIcon, SkillIcon, SparkIcon, StatusIcon } from "./icons";
 import { QueuedComposerMessages } from "./queued-composer-messages";
+import { openImageLightbox } from "./image-lightbox";
 
 interface ComposerSurfaceProps {
   readonly lastError?: string;
@@ -48,9 +48,6 @@ interface ComposerSurfaceProps {
   readonly textareaTestId: string;
   readonly textareaPlaceholder: string;
   readonly textareaClassName?: string;
-  readonly extensionDock?: ExtensionDockModel;
-  readonly extensionDockExpanded?: boolean;
-  readonly onToggleExtensionDock?: () => void;
   readonly footer: ReactNode;
 }
 
@@ -91,9 +88,6 @@ export function ComposerSurface({
   textareaTestId,
   textareaPlaceholder,
   textareaClassName,
-  extensionDock,
-  extensionDockExpanded = false,
-  onToggleExtensionDock,
   footer,
 }: ComposerSurfaceProps) {
   const [isDragActive, setIsDragActive] = useState(false);
@@ -188,11 +182,23 @@ export function ComposerSurface({
           {attachments.map((attachment) => (
             <div className={`composer-attachment composer-attachment--${attachment.kind}`} key={attachment.id}>
               {attachment.kind === "image" ? (
-                <img
-                  alt={attachment.name}
-                  className="composer-attachment__preview"
-                  src={`data:${attachment.mimeType};base64,${attachment.data}`}
-                />
+                <button
+                  type="button"
+                  className="composer-attachment__preview-button"
+                  aria-label={`View ${attachment.name}`}
+                  onClick={() =>
+                    openImageLightbox({
+                      src: `data:${attachment.mimeType};base64,${attachment.data}`,
+                      alt: attachment.name,
+                    })
+                  }
+                >
+                  <img
+                    alt={attachment.name}
+                    className="composer-attachment__preview"
+                    src={`data:${attachment.mimeType};base64,${attachment.data}`}
+                  />
+                </button>
               ) : (
                 <span className="composer-attachment__icon" aria-hidden="true">
                   <FileIcon />
@@ -210,9 +216,6 @@ export function ComposerSurface({
             </div>
           ))}
         </div>
-      ) : null}
-      {extensionDock && onToggleExtensionDock ? (
-        <ExtensionDock dock={extensionDock} expanded={extensionDockExpanded} onToggle={onToggleExtensionDock} />
       ) : null}
       {lastError ? (
         <div className="composer__error error-banner" data-testid="composer-error-banner">
@@ -333,8 +336,8 @@ export function ComposerSurface({
           onKeyDown={onComposerKeyDown}
           placeholder={textareaPlaceholder}
         />
-        <div className="composer__bar">{footer}</div>
       </div>
+      <div className="composer__bar">{footer}</div>
     </div>
   );
 }

@@ -15,7 +15,7 @@ export interface ExtensionUiState {
 
 export type ExtensionUiDialogRequest = Extract<
   HostUiRequest,
-  { readonly kind: "confirm" | "select" | "input" | "editor" }
+  { readonly kind: "confirm" | "select" | "input" | "editor" | "questionnaire" }
 >;
 
 export function createEmptyExtensionUiState(): ExtensionUiState {
@@ -62,5 +62,11 @@ export function applyHostUiRequestToExtensionUiState(
 }
 
 export function isExtensionUiDialogRequest(request: HostUiRequest): request is ExtensionUiDialogRequest {
-  return request.kind === "confirm" || request.kind === "select" || request.kind === "input" || request.kind === "editor";
+  return (
+    request.kind === "confirm" ||
+    request.kind === "select" ||
+    request.kind === "input" ||
+    request.kind === "editor" ||
+    request.kind === "questionnaire"
+  );
 }

@@ -15,6 +15,44 @@ export interface ChangedFileEntry {
   readonly staged: boolean;
 }
 
+export interface WorkspaceGitInfo {
+  readonly isGitRepo: boolean;
+  readonly changedCount: number;
+}
+
+export function getWorkspaceGitInfo(workspacePath: string): Promise<WorkspaceGitInfo> {
+  return new Promise((resolve) => {
+    execFile(
+      "git",
+      ["rev-parse", "--is-inside-work-tree"],
+      { cwd: workspacePath },
+      (repoError, repoStdout) => {
+        const isGitRepo = !repoError && repoStdout.trim() === "true";
+        if (!isGitRepo) {
+          resolve({ isGitRepo: false, changedCount: 0 });
+          return;
+        }
+        execFile(
+          "git",
+          ["status", "--porcelain"],
+          { cwd: workspacePath, maxBuffer: 2 * 1024 * 1024 },
+          (statusError, statusStdout) => {
+            if (statusError) {
+              resolve({ isGitRepo: true, changedCount: 0 });
+              return;
+            }
+            let changedCount = 0;
+            for (const line of statusStdout.split("\n")) {
+              if (line.trim()) changedCount += 1;
+            }
+            resolve({ isGitRepo: true, changedCount });
+          },
+        );
+      },
+    );
+  });
+}
+
 export function getChangedFiles(workspacePath: string): Promise<ChangedFileEntry[]> {
   return new Promise((resolve) => {
     execFile(

@@ -19,8 +19,9 @@ interface SettingsViewProps {
   readonly notificationPermissionPending: boolean;
   readonly modelSettingsScopeMode: ModelSettingsScopeMode;
   readonly integratedTerminalShell: string;
-  readonly themeMode: "system" | "light" | "dark";
+  readonly themeMode: import("./desktop-state").ThemeMode;
   readonly enableTransparency: boolean;
+  readonly composerDeviceMode: import("./desktop-state").ComposerDeviceMode;
   readonly onSetModelSettingsScopeMode: (mode: ModelSettingsScopeMode) => void;
   readonly onSetDefaultModel: (provider: string, modelId: string) => void;
   readonly onSetThinkingLevel: (thinkingLevel: RuntimeSettingsSnapshot["defaultThinkingLevel"]) => void;
@@ -34,8 +35,9 @@ interface SettingsViewProps {
   readonly onSetIntegratedTerminalShell: (shellPath: string) => void;
   readonly onRequestNotificationPermission: () => void;
   readonly onOpenSystemNotificationSettings: () => void;
-  readonly onSetThemeMode: (mode: "system" | "light" | "dark") => void;
+  readonly onSetThemeMode: (mode: import("./desktop-state").ThemeMode) => void;
   readonly onSetEnableTransparency: (enabled: boolean) => void;
+  readonly onSetComposerDeviceMode: (mode: import("./desktop-state").ComposerDeviceMode) => void;
 }
 
 export function SettingsView({
@@ -49,6 +51,7 @@ export function SettingsView({
   integratedTerminalShell,
   themeMode,
   enableTransparency,
+  composerDeviceMode,
   onSetModelSettingsScopeMode,
   onSetDefaultModel,
   onSetThinkingLevel,
@@ -64,6 +67,7 @@ export function SettingsView({
   onOpenSystemNotificationSettings,
   onSetThemeMode,
   onSetEnableTransparency,
+  onSetComposerDeviceMode,
 }: SettingsViewProps) {
   if (!workspace && section !== "general" && section !== "notifications" && section !== "appearance") {
     return (
@@ -97,6 +101,8 @@ export function SettingsView({
               onSetThemeMode={onSetThemeMode}
               enableTransparency={enableTransparency}
               onSetEnableTransparency={onSetEnableTransparency}
+              composerDeviceMode={composerDeviceMode}
+              onSetComposerDeviceMode={onSetComposerDeviceMode}
             />
           ) : null}
 

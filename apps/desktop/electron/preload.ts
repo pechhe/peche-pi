@@ -10,6 +10,7 @@ import {
   type TerminalPanelSnapshot,
   type TerminalSize,
 } from "../src/ipc";
+import type { ComposerMode } from "../src/composer-mode";
 import type {
   NavigateSessionTreeOptions,
   NavigateSessionTreeResult,
@@ -158,6 +159,9 @@ contextBridge.exposeInMainWorld("piApp", {
     ipcRenderer.invoke(desktopIpc.setDefaultModel, workspaceId, provider, modelId) as Promise<DesktopAppState>,
   setDefaultThinkingLevel: (workspaceId: string, thinkingLevel: RuntimeSettingsSnapshot["defaultThinkingLevel"]) =>
     ipcRenderer.invoke(desktopIpc.setDefaultThinkingLevel, workspaceId, thinkingLevel) as Promise<DesktopAppState>,
+  getCavemanConfig: () => ipcRenderer.invoke(desktopIpc.getCavemanConfig),
+  setCavemanDefaultLevel: (level: import("../src/ipc").CavemanLevel) =>
+    ipcRenderer.invoke(desktopIpc.setCavemanDefaultLevel, level),
   setSessionModel: (workspaceId: string, sessionId: string, provider: string, modelId: string) =>
     ipcRenderer.invoke(desktopIpc.setSessionModel, workspaceId, sessionId, provider, modelId) as Promise<DesktopAppState>,
   setSessionThinkingLevel: (workspaceId: string, sessionId: string, thinkingLevel: RuntimeSettingsSnapshot["defaultThinkingLevel"]) =>
@@ -176,6 +180,8 @@ contextBridge.exposeInMainWorld("piApp", {
     ipcRenderer.invoke(desktopIpc.setSkillEnabled, workspaceId, filePath, enabled) as Promise<DesktopAppState>,
   setExtensionEnabled: (workspaceId: string, filePath: string, enabled: boolean) =>
     ipcRenderer.invoke(desktopIpc.setExtensionEnabled, workspaceId, filePath, enabled) as Promise<DesktopAppState>,
+  deleteExtension: (workspaceId: string, filePath: string) =>
+    ipcRenderer.invoke(desktopIpc.deleteExtension, workspaceId, filePath) as Promise<DesktopAppState>,
   respondToHostUiRequest: (workspaceId: string, sessionId: string, response: HostUiResponse) =>
     ipcRenderer.invoke(desktopIpc.respondToHostUiRequest, workspaceId, sessionId, response) as Promise<DesktopAppState>,
   setNotificationPreferences: (preferences: Partial<NotificationPreferences>) =>
@@ -184,6 +190,8 @@ contextBridge.exposeInMainWorld("piApp", {
     ipcRenderer.invoke(desktopIpc.setIntegratedTerminalShell, shellPath) as Promise<DesktopAppState>,
   setEnableTransparency: (enabled: boolean) =>
     ipcRenderer.invoke(desktopIpc.setEnableTransparency, enabled) as Promise<DesktopAppState>,
+  setComposerDeviceMode: (mode: "off" | "screen" | "modular") =>
+    ipcRenderer.invoke(desktopIpc.setComposerDeviceMode, mode) as Promise<DesktopAppState>,
   ensureTerminalPanel: (workspaceId: string, terminalScopeId: string, size?: Partial<TerminalSize>) =>
     ipcRenderer.invoke(desktopIpc.terminalEnsurePanel, workspaceId, terminalScopeId, size) as Promise<TerminalPanelSnapshot>,
   createTerminalSession: (workspaceId: string, terminalScopeId: string, size?: Partial<TerminalSize>) =>
@@ -239,7 +247,7 @@ contextBridge.exposeInMainWorld("piApp", {
     ipcRenderer.invoke(desktopIpc.steerQueuedComposerMessage, messageId) as Promise<DesktopAppState>,
   updateComposerDraft: (composerDraft: string) =>
     ipcRenderer.invoke(desktopIpc.updateComposerDraft, composerDraft) as Promise<DesktopAppState>,
-  submitComposer: (text: string, options?: { readonly deliverAs?: "steer" | "followUp" }) =>
+  submitComposer: (text: string, options?: { readonly deliverAs?: "steer" | "followUp"; readonly mode?: ComposerMode }) =>
     ipcRenderer.invoke(desktopIpc.submitComposer, text, options) as Promise<DesktopAppState>,
   getSessionTree: (target: WorkspaceSessionTarget) =>
     ipcRenderer.invoke(desktopIpc.getSessionTree, target) as Promise<SessionTreeSnapshot>,
@@ -252,15 +260,21 @@ contextBridge.exposeInMainWorld("piApp", {
     ipcRenderer.invoke(desktopIpc.listWorkspaceFiles, workspaceId) as Promise<string[]>,
   getChangedFiles: (workspaceId: string) =>
     ipcRenderer.invoke(desktopIpc.getChangedFiles, workspaceId) as Promise<{ path: string; status: "added" | "modified" | "deleted" | "untracked"; staged: boolean }[]>,
+  getWorkspaceGitInfo: (workspaceId: string) =>
+    ipcRenderer.invoke(desktopIpc.getWorkspaceGitInfo, workspaceId) as Promise<{ readonly isGitRepo: boolean; readonly changedCount: number }>,
   getFileDiff: (workspaceId: string, filePath: string) =>
     ipcRenderer.invoke(desktopIpc.getFileDiff, workspaceId, filePath) as Promise<string>,
   stageFile: (workspaceId: string, filePath: string) =>
     ipcRenderer.invoke(desktopIpc.stageFile, workspaceId, filePath) as Promise<void>,
+  commitPushExecute: (workspaceId: string) =>
+    ipcRenderer.invoke(desktopIpc.commitPushExecute, workspaceId) as Promise<{ readonly success: boolean; readonly message: string; readonly commitMessage?: string }>,
+  setCommitPushModel: (workspaceId: string, model: string) =>
+    ipcRenderer.invoke(desktopIpc.setCommitPushModel, workspaceId, model) as Promise<DesktopAppState>,
   toggleWindowMaximize: () => ipcRenderer.invoke(desktopIpc.toggleWindowMaximize) as Promise<void>,
   openExternal: (url: string) => ipcRenderer.invoke(desktopIpc.openExternal, url) as Promise<void>,
-  getThemeMode: () => ipcRenderer.invoke(desktopIpc.getThemeMode) as Promise<"system" | "light" | "dark">,
+  getThemeMode: () => ipcRenderer.invoke(desktopIpc.getThemeMode) as Promise<"system" | "light" | "dark" | "dracula">,
   getResolvedTheme: () => ipcRenderer.invoke(desktopIpc.getResolvedTheme) as Promise<"light" | "dark">,
-  setThemeMode: (mode: "system" | "light" | "dark") =>
+  setThemeMode: (mode: "system" | "light" | "dark" | "dracula") =>
     ipcRenderer.invoke(desktopIpc.setThemeMode, mode) as Promise<string>,
   onThemeChanged: (callback: (theme: "light" | "dark") => void) => {
     const handler = (_event: Electron.IpcRendererEvent, theme: "light" | "dark") => callback(theme);

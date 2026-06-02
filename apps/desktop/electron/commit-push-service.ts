@@ -1,9 +1,40 @@
 import { execFile } from "node:child_process";
+import { appendFile, mkdir } from "node:fs/promises";
+import path from "node:path";
 
 export interface CommitPushResult {
   readonly success: boolean;
   readonly message: string;
   readonly commitMessage?: string;
+}
+
+// Module-scoped log destination. Set once by main.ts via configureCommitPushLogDir.
+let logFilePath: string | undefined;
+
+export function configureCommitPushLogDir(dir: string): void {
+  logFilePath = path.join(dir, "commit-push.log");
+}
+
+function log(step: string, payload: Record<string, unknown> = {}): void {
+  const entry = { tag: "commit-push", step, ts: new Date().toISOString(), ...payload };
+  const line = JSON.stringify(entry);
+  // Always emit to stderr for terminal-launched Pi Dev.
+  console.error(line);
+  // Best-effort append to a log file so launches from Finder are diagnosable.
+  if (logFilePath) {
+    const target = logFilePath;
+    void mkdir(path.dirname(target), { recursive: true })
+      .then(() => appendFile(target, line + "\n"))
+      .catch(() => {
+        // Logging must never throw into the caller.
+      });
+  }
+}
+
+function logError(step: string, err: unknown, payload: Record<string, unknown> = {}): void {
+  const message = err instanceof Error ? err.message : String(err);
+  const stack = err instanceof Error ? err.stack : undefined;
+  log(step, { ...payload, error: message, stack });
 }
 
 const COMMIT_SYSTEM_PROMPT = [
@@ -63,48 +94,78 @@ async function generateCommitMessage(
 ): Promise<string> {
   const config = resolveProviderConfig(providerId);
   if (!config) {
-    throw new Error(`No API config for provider: ${providerId}`);
+    const supported = Object.keys(PROVIDER_CONFIGS).join(", ");
+    throw new Error(
+      `Provider "${providerId}" is not wired for commit-message generation. Supported: ${supported}. Pick another model with the gear icon.`,
+    );
   }
 
   const apiKey = process.env[config.apiKeyEnv];
   if (!apiKey) {
-    throw new Error(`${config.apiKeyEnv} not set in environment.`);
+    throw new Error(
+      `${config.apiKeyEnv} not set in the Electron process. Launch Pi Dev from a shell that exports it, or set it in your environment before opening Pi Dev.`,
+    );
   }
 
   const truncatedDiff = diff.length > 15000 ? diff.slice(0, 15000) + "\n... (truncated)" : diff;
+  log("llm.request", { providerId, modelId, diffBytes: diff.length, truncated: diff.length > 15000 });
 
   // OpenAI-compatible endpoint (works for OpenAI, DeepSeek, Groq, and many others)
-  const response = await fetch(`${config.apiBase}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: modelId,
-      messages: [
-        { role: "system", content: COMMIT_SYSTEM_PROMPT },
-        { role: "user", content: `Generate a commit message for this diff:\n\n${truncatedDiff}` },
-      ],
-      max_tokens: 100,
-      temperature: 0.3,
-    }),
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${config.apiBase}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: modelId,
+        messages: [
+          { role: "system", content: COMMIT_SYSTEM_PROMPT },
+          { role: "user", content: `Generate a commit message for this diff:\n\n${truncatedDiff}` },
+        ],
+        // Reasoning models burn tokens on internal reasoning before emitting
+        // visible content. 512 leaves headroom while still capping cost.
+        max_tokens: 512,
+        temperature: 0.3,
+      }),
+    });
+  } catch (err) {
+    logError("llm.network", err, { providerId, modelId, apiBase: config.apiBase });
+    throw new Error(`Network error reaching ${config.apiBase}: ${err instanceof Error ? err.message : String(err)}`);
+  }
 
   if (!response.ok) {
     const body = await response.text();
-    throw new Error(`API error ${response.status}: ${body.slice(0, 200)}`);
+    log("llm.http_error", { providerId, modelId, status: response.status, body: body.slice(0, 500) });
+    throw new Error(`API error ${response.status} from ${providerId}: ${body.slice(0, 200)}`);
   }
 
   const data = (await response.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
+    choices?: Array<{
+      message?: { content?: string; reasoning_content?: string };
+      finish_reason?: string;
+    }>;
   };
 
-  const content = data.choices?.[0]?.message?.content;
+  const choice = data.choices?.[0];
+  const content = choice?.message?.content;
+  const finishReason = choice?.finish_reason;
+
   if (!content) {
-    throw new Error("Empty response from API");
+    log("llm.empty_response", { providerId, modelId, finishReason, data });
+    // Specific case: reasoning model exhausted the token budget before
+    // emitting visible content. Help the user pick a better model.
+    if (finishReason === "length" && choice?.message?.reasoning_content) {
+      throw new Error(
+        `${providerId}/${modelId} ran out of tokens on internal reasoning (finish_reason=length). Pick a non-reasoning chat model (e.g. deepseek-chat, gpt-4o-mini) with the gear icon next to the commit button.`,
+      );
+    }
+    throw new Error(`Empty response from ${providerId}/${modelId} (finish_reason=${finishReason ?? "unknown"})`);
   }
 
+  log("llm.ok", { providerId, modelId, finishReason, rawContent: content.slice(0, 200) });
   return cleanCommitMessage(content);
 }
 
@@ -158,36 +219,48 @@ export async function executeCommitPush(
   workspacePath: string,
   modelString: string,
 ): Promise<CommitPushResult> {
+  const started = Date.now();
+  log("start", { workspacePath, modelString });
+
   // 1. Check git repo
-  const { code: repoCode } = await execGit(["rev-parse", "--git-dir"], workspacePath);
+  const { code: repoCode, stderr: repoErr } = await execGit(["rev-parse", "--git-dir"], workspacePath);
   if (repoCode !== 0) {
-    return { success: false, message: "Not a git repository." };
+    log("not_git_repo", { workspacePath, repoErr });
+    return { success: false, message: "[repo] Not a git repository." };
   }
 
   // 2. Check for changes
-  const { stdout: status, code: statusCode } = await execGit(["status", "--porcelain"], workspacePath);
+  const { stdout: status, code: statusCode, stderr: statusErr } = await execGit(["status", "--porcelain"], workspacePath);
   if (statusCode !== 0) {
-    return { success: false, message: "Failed to check git status." };
+    log("status_failed", { workspacePath, statusErr });
+    return { success: false, message: `[status] git status failed: ${statusErr}` };
   }
 
   if (!status.trim()) {
-    return { success: false, message: "Nothing to commit. Working tree clean." };
+    log("clean", { workspacePath });
+    return { success: false, message: "[status] Nothing to commit. Working tree clean." };
   }
 
+  const changedCount = status.split("\n").filter((l) => l.trim()).length;
+  log("dirty", { workspacePath, changedCount });
+
   // 3. Stage all changes
-  const { code: addCode } = await execGit(["add", "-A"], workspacePath);
+  const { code: addCode, stderr: addErr } = await execGit(["add", "-A"], workspacePath);
   if (addCode !== 0) {
-    return { success: false, message: "Failed to stage changes." };
+    log("stage_failed", { workspacePath, addErr });
+    return { success: false, message: `[stage] git add -A failed: ${addErr}` };
   }
 
   // 4. Get the diff for LLM
-  const { stdout: diff, code: diffCode } = await execGit(["diff", "--staged"], workspacePath);
+  const { stdout: diff, code: diffCode, stderr: diffErr } = await execGit(["diff", "--staged"], workspacePath);
   if (diffCode !== 0) {
-    return { success: false, message: "Failed to get staged diff." };
+    log("diff_failed", { workspacePath, diffErr });
+    return { success: false, message: `[diff] git diff --staged failed: ${diffErr}` };
   }
 
   if (!diff.trim()) {
-    return { success: false, message: "No staged changes to commit." };
+    log("no_staged_diff", { workspacePath });
+    return { success: false, message: "[diff] No staged changes to commit." };
   }
 
   // 5. Generate commit message via LLM
@@ -198,18 +271,22 @@ export async function executeCommitPush(
   } catch (err) {
     // Unstage so user can try again
     await execGit(["reset", "HEAD"], workspacePath);
+    logError("llm_failed", err, { providerId, modelId });
     const errorMessage = err instanceof Error ? err.message : String(err);
-    return { success: false, message: `Commit message generation failed: ${errorMessage}` };
+    return { success: false, message: `[llm] ${errorMessage}` };
   }
+  log("commit_message", { commitMessage });
 
   // 6. Commit
-  const { stderr: commitStderr, code: commitCode } = await execGit(
+  const { stderr: commitStderr, stdout: commitStdout, code: commitCode } = await execGit(
     ["commit", "-m", commitMessage],
     workspacePath,
   );
   if (commitCode !== 0) {
-    return { success: false, message: `Commit failed: ${commitStderr}` };
+    log("commit_failed", { commitCode, commitStderr, commitStdout });
+    return { success: false, message: `[commit] git commit failed: ${commitStderr || commitStdout}` };
   }
+  log("commit_ok", { commitMessage });
 
   // 7. Push
   const { stdout: pushOut, stderr: pushErr, code: pushCode } = await execGit(
@@ -218,6 +295,7 @@ export async function executeCommitPush(
   );
 
   if (pushCode === 0) {
+    log("push_ok", { durationMs: Date.now() - started, pushOut, pushErr });
     return {
       success: true,
       message: `Committed and pushed: "${commitMessage}"`,
@@ -226,9 +304,10 @@ export async function executeCommitPush(
   }
 
   const pushOutput = pushErr || pushOut || "Unknown error";
+  log("push_failed", { pushCode, pushOut, pushErr });
   return {
     success: false,
-    message: `Committed (${commitMessage}) but push failed: ${pushOutput.slice(0, 200)}`,
+    message: `[push] Committed (${commitMessage}) but git push failed: ${pushOutput.slice(0, 300)}`,
     commitMessage,
   };
 }

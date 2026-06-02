@@ -11,11 +11,13 @@ import {
   type MessageBoxOptions,
 } from "electron";
 import { randomUUID } from "node:crypto";
-import { readFile, stat } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { DesktopAppStore } from "./app-store";
-import { getChangedFiles, getFileDiff, stageFile } from "./app-store-diff";
+import { getChangedFiles, getFileDiff, getWorkspaceGitInfo, stageFile } from "./app-store-diff";
+import { configureCommitPushLogDir, executeCommitPush } from "./commit-push-service";
 import { listWorkspaceFiles } from "./app-store-files";
 import { MAIN_DEV_RELOAD_MARKER } from "./dev-reload-main-probe";
 import { NotificationManager } from "./notification-manager";
@@ -26,7 +28,8 @@ import { checkForUpdate, initUpdateChecker } from "./update-checker";
 import { ThemeManager } from "./theme-manager";
 import { TerminalService } from "./terminal-service";
 import type { DesktopAppState, ThemeMode } from "../src/desktop-state";
-import { desktopIpc, getDesktopCommandFromShortcut } from "../src/ipc";
+import type { ComposerMode } from "../src/composer-mode";
+import { desktopIpc, getDesktopCommandFromShortcut, type CavemanConfigSnapshot, type CavemanLevel } from "../src/ipc";
 import { SUPPORTED_COMPOSER_IMAGE_TYPES } from "../src/composer-attachments";
 import type {
   ComposerAttachment,
@@ -389,10 +392,34 @@ if (missingPaths.length > 0) {
   process.env.PATH = [...missingPaths, currentPath].join(":");
 }
 
-app.setName("pi");
+app.setName(process.env.PI_APP_NAME?.trim() || "pi");
 
 const configuredUserDataDir = process.env.PI_APP_USER_DATA_DIR?.trim() || app.getPath("userData");
 app.setPath("userData", configuredUserDataDir);
+configureCommitPushLogDir(configuredUserDataDir);
+
+// Crash log: write uncaught errors to a persistent file in userData.
+// This survives before-quit and lets the dev script point users at it.
+import { appendFileSync } from "node:fs";
+import { format } from "node:util";
+const crashLogPath = path.join(configuredUserDataDir, "crash.log");
+let crashGuard = false;
+function writeCrash(kind: string, error: unknown) {
+  if (crashGuard) return;
+  crashGuard = true;
+  const line = `[${new Date().toISOString()}] ${kind}: ${format(error)}`;
+  try { appendFileSync(crashLogPath, line + "\n"); } catch { /* best-effort */ }
+  if (isDev) {
+    try { process.stderr.write(line + "\n"); } catch { /* stderr may be closed */ }
+  }
+}
+process.on("uncaughtException", (err) => {
+  writeCrash("uncaughtException", err.stack ?? err.message);
+  process.exit(1);
+});
+process.on("unhandledRejection", (reason) => {
+  writeCrash("unhandledRejection", reason instanceof Error ? (reason.stack ?? reason.message) : reason);
+});
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) {
@@ -438,7 +465,9 @@ app.whenReady().then(async () => {
     generateThreadTitleOverride: async (workspace, options) => generateThreadTitleOverride?.(workspace, options),
   });
   await store.initialize();
-  integratedTerminalShell = (await store.getState()).integratedTerminalShell;
+  const initialState = await store.getState();
+  integratedTerminalShell = initialState.integratedTerminalShell;
+  themeManager.setMode(initialState.themeMode);
   stopPruningTerminals = store.subscribe((state) => {
     integratedTerminalShell = state.integratedTerminalShell;
     const workspacePaths = state.workspaces.map((workspace) => workspace.path);
@@ -498,6 +527,7 @@ app.whenReady().then(async () => {
   ipcMain.handle(desktopIpc.getResolvedTheme, () => themeManager.getResolvedTheme());
   ipcMain.handle(desktopIpc.setThemeMode, (_event, mode: ThemeMode) => {
     themeManager.setMode(mode);
+    void store.setThemeMode(mode);
     return mode;
   });
   ipcMain.handle(desktopIpc.openExternal, (_event, url: string) => {
@@ -556,6 +586,13 @@ app.whenReady().then(async () => {
     desktopIpc.setDefaultThinkingLevel,
     (_event, workspaceId: string, thinkingLevel) => store.setDefaultThinkingLevel(workspaceId, thinkingLevel),
   );
+  ipcMain.handle(desktopIpc.getCavemanConfig, () => readCavemanConfig());
+  ipcMain.handle(desktopIpc.setCavemanDefaultLevel, async (_event, level: CavemanLevel) => {
+    const current = await readCavemanConfig();
+    const next = { ...current, defaultLevel: normalizeCavemanLevel(level) };
+    await writeCavemanConfig(next);
+    return next;
+  });
   ipcMain.handle(
     desktopIpc.setSessionThinkingLevel,
     (_event, workspaceId: string, sessionId: string, thinkingLevel) =>
@@ -582,6 +619,9 @@ app.whenReady().then(async () => {
   ipcMain.handle(desktopIpc.setExtensionEnabled, (_event, workspaceId: string, filePath: string, enabled: boolean) =>
     store.setExtensionEnabled(workspaceId, filePath, enabled),
   );
+  ipcMain.handle(desktopIpc.deleteExtension, (_event, workspaceId: string, filePath: string) =>
+    store.deleteExtension(workspaceId, filePath),
+  );
   ipcMain.handle(desktopIpc.respondToHostUiRequest, (_event, workspaceId: string, sessionId: string, response) =>
     store.respondToHostUiRequest({ workspaceId, sessionId }, response),
   );
@@ -599,6 +639,9 @@ app.whenReady().then(async () => {
       }
     }
     return nextState;
+  });
+  ipcMain.handle(desktopIpc.setComposerDeviceMode, async (_event, mode: "off" | "screen" | "modular") => {
+    return store.setComposerDeviceMode(mode);
   });
   ipcMain.handle(desktopIpc.terminalEnsurePanel, (event, workspaceId: string, terminalScopeId: string, size) => {
     return getTerminalService().ensurePanel(event.sender, workspaceId, terminalScopeId, size);
@@ -697,7 +740,7 @@ app.whenReady().then(async () => {
   );
   ipcMain.handle(
     desktopIpc.submitComposer,
-    (_event, text: string, options?: { readonly deliverAs?: "steer" | "followUp" }) => store.submitComposer(text, options),
+    (_event, text: string, options?: { readonly deliverAs?: "steer" | "followUp"; readonly mode?: ComposerMode }) => store.submitComposer(text, options),
   );
   ipcMain.handle(desktopIpc.getSessionTree, (_event, target: WorkspaceSessionTarget) =>
     store.getSessionTree(target),
@@ -721,6 +764,13 @@ app.whenReady().then(async () => {
     }
     return getChangedFiles(workspacePath);
   });
+  ipcMain.handle(desktopIpc.getWorkspaceGitInfo, async (_event, workspaceId: string) => {
+    const workspacePath = store.getWorkspacePath(workspaceId);
+    if (!workspacePath) {
+      return { isGitRepo: false, changedCount: 0 };
+    }
+    return getWorkspaceGitInfo(workspacePath);
+  });
   ipcMain.handle(desktopIpc.getFileDiff, async (_event, workspaceId: string, filePath: string) => {
     const workspacePath = store.getWorkspacePath(workspaceId);
     if (!workspacePath) {
@@ -734,6 +784,32 @@ app.whenReady().then(async () => {
       throw new Error(`Unknown workspace: ${workspaceId}`);
     }
     await stageFile(workspacePath, filePath);
+  });
+  ipcMain.handle(desktopIpc.setCommitPushModel, (_event, workspaceId: string, model: string) =>
+    store.setCommitPushModel(workspaceId, model),
+  );
+  ipcMain.handle(desktopIpc.commitPushExecute, async (_event, workspaceId: string) => {
+    const workspacePath = store.getWorkspacePath(workspaceId);
+    if (!workspacePath) {
+      console.error(JSON.stringify({ tag: "commit-push", step: "ipc.unknown_workspace", workspaceId }));
+      return { success: false, message: `Unknown workspace: ${workspaceId}` };
+    }
+    const configuredModel = store.state.commitPushModel;
+    // Default to a fast non-reasoning chat model. Reasoning models like
+    // deepseek-v4-flash burn the token budget on internal reasoning before
+    // emitting any commit-message content (see commit-push.log empty_response
+    // cases with finish_reason=length).
+    const modelString = configuredModel ?? "deepseek:deepseek-chat";
+    console.error(JSON.stringify({
+      tag: "commit-push",
+      step: "ipc.invoke",
+      workspaceId,
+      workspacePath,
+      configuredModel,
+      effectiveModel: modelString,
+      usingDefault: !configuredModel,
+    }));
+    return executeCommitPush(workspacePath, modelString);
   });
   ipcMain.handle(desktopIpc.toggleWindowMaximize, (event) => {
     const window = BrowserWindow.fromWebContents(event.sender);
@@ -904,6 +980,31 @@ function createRuntimeLoginCallbacks() {
     onPrompt: async ({ message, placeholder }: { readonly message: string; readonly placeholder?: string }) =>
       promptForText(message, placeholder),
   };
+}
+
+const CAVEMAN_LEVELS: readonly CavemanLevel[] = ["off", "lite", "full", "ultra", "wenyan-lite", "wenyan", "wenyan-ultra", "micro"];
+const CAVEMAN_CONFIG_PATH = path.join(homedir(), ".pi", "agent", "caveman.json");
+const DEFAULT_CAVEMAN_CONFIG: CavemanConfigSnapshot = { defaultLevel: "full", showStatus: true };
+
+function normalizeCavemanLevel(value: unknown): CavemanLevel {
+  return CAVEMAN_LEVELS.includes(value as CavemanLevel) ? (value as CavemanLevel) : DEFAULT_CAVEMAN_CONFIG.defaultLevel;
+}
+
+async function readCavemanConfig(): Promise<CavemanConfigSnapshot> {
+  try {
+    const parsed = JSON.parse(await readFile(CAVEMAN_CONFIG_PATH, "utf8")) as Partial<CavemanConfigSnapshot>;
+    return {
+      defaultLevel: normalizeCavemanLevel(parsed.defaultLevel),
+      showStatus: typeof parsed.showStatus === "boolean" ? parsed.showStatus : DEFAULT_CAVEMAN_CONFIG.showStatus,
+    };
+  } catch {
+    return DEFAULT_CAVEMAN_CONFIG;
+  }
+}
+
+async function writeCavemanConfig(config: CavemanConfigSnapshot): Promise<void> {
+  await mkdir(path.dirname(CAVEMAN_CONFIG_PATH), { recursive: true });
+  await writeFile(CAVEMAN_CONFIG_PATH, `${JSON.stringify(config, null, 2)}\n`, "utf8");
 }
 
 async function promptForText(message: string, placeholder = ""): Promise<string> {

@@ -24,6 +24,7 @@ export class ThemeManager {
     if (this.mode === "system") {
       return nativeTheme.shouldUseDarkColors ? "dark" : "light";
     }
+    if (this.mode === "dracula") return "dark";
     return this.mode;
   }
 
@@ -31,6 +32,8 @@ export class ThemeManager {
     this.mode = mode;
     if (mode === "system") {
       nativeTheme.themeSource = "system";
+    } else if (mode === "dracula") {
+      nativeTheme.themeSource = "dark";
     } else {
       nativeTheme.themeSource = mode;
     }

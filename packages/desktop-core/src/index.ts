@@ -1,5 +1,12 @@
 export * from "./adapter.js";
 export {
+  decideNotification,
+  type NotificationDecision,
+  type NotificationDecisionInput,
+  type NotificationEventKind,
+  type NotificationPreferencesInput,
+} from "./notification-decision.js";
+export {
   createPlatformAdapter,
   type WindowFocusState,
 } from "./create-platform-adapter.js";

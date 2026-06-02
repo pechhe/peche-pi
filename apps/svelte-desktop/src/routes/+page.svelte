@@ -36,6 +36,15 @@
   let client: DesktopClientStore = createDesktopClientStore(storeOptions);
   setDesktopClient(client);
 
+  // Auto-connect when sidecar is available
+  onMount(() => {
+    // Slight delay to let Tauri bridge initialize
+    const timer = setTimeout(() => {
+      void client.commands.connect();
+    }, 500);
+    return () => clearTimeout(timer);
+  });
+
   let snap = $state<DesktopClientState>(client.state);
 
   onMount(() => {

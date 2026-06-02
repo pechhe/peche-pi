@@ -6,6 +6,10 @@
   --titlebar-collapsed-main-padding-left: calc(
     var(--titlebar-toggle-left) + var(--titlebar-toggle-size) + var(--titlebar-toggle-main-gap)
   );
+  --sidebar-hover-transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
   width: 100%;
   height: 100%;
   display: grid;
@@ -35,7 +39,48 @@
   grid-template-rows: auto 1fr auto;
   overflow: hidden;
   background: var(--sidebar);
-  border-right: 1px solid var(--line);
+  border-top-right-radius: 14px;
+  border-bottom-right-radius: 14px;
+  position: relative;
+}
+
+.sidebar__resize-handle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 20;
+  background: transparent;
+  transition: background 140ms ease;
+}
+
+.sidebar__resize-handle::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 1px;
+  height: 100%;
+  background: transparent;
+  transition: background 140ms ease;
+}
+
+.sidebar__resize-handle:hover::after,
+.sidebar__resize-handle--active::after {
+  background: rgba(84, 99, 220, 0.45);
+}
+
+:root.dark .sidebar__resize-handle:hover::after,
+:root.dark .sidebar__resize-handle--active::after {
+  background: rgba(150, 165, 255, 0.45);
+}
+
+.shell--sidebar-resizing,
+.shell--sidebar-resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
 }
 
 .enable-transparency .sidebar {
@@ -70,6 +115,20 @@
   font-size: 14px;
   font-weight: 560;
   border: 1px solid transparent;
+  background: transparent;
+  transition: var(--sidebar-hover-transition);
+}
+
+.sidebar__nav-item:hover:not(:disabled),
+.sidebar__nav-item:focus-visible {
+  background: rgba(0, 0, 0, 0.05);
+  border-color: rgba(0, 0, 0, 0.06);
+}
+
+:root.dark .sidebar__nav-item:hover:not(:disabled),
+:root.dark .sidebar__nav-item:focus-visible {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.08);
 }
 
 .sidebar__nav-item svg {
@@ -77,30 +136,6 @@
   height: 16px;
 }
 
-.sidebar__nav-item--active {
-  background: var(--surface-overlay);
-  border-color: var(--line);
-  color: var(--text-strong);
-}
-
-.sidebar__new {
-  -webkit-app-region: no-drag;
-  width: 100%;
-  min-height: 36px;
-  padding: 8px 12px;
-  border-radius: 10px;
-  background: var(--surface-muted);
-  border: 1px solid var(--line);
-  color: var(--text-strong);
-  font-size: 14px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 8px;
-}
-
-.sidebar__new:disabled,
 .icon-button:disabled {
   opacity: 0.45;
   cursor: default;
@@ -131,10 +166,7 @@
 .icon-button,
 .sidebar__settings {
   border: 1px solid transparent;
-  transition:
-    background 140ms ease,
-    border-color 140ms ease,
-    color 140ms ease;
+  transition: var(--sidebar-hover-transition);
 }
 
 .icon-button {
@@ -148,7 +180,7 @@
 
 .workspace-row:hover,
 .session-row:hover,
-.icon-button:hover:not(:disabled),
+.icon-button:hover:not(:disabled):not(.session-row__action):not(.workspace-row__menu-button):not(.workspace-row__compose-button):not(.sidebar-toggle__button),
 .sidebar__settings:hover {
   background: rgba(255, 255, 255, 0.62);
   border-color: rgba(210, 215, 226, 0.85);
@@ -186,6 +218,8 @@
   text-align: left;
   color: var(--text);
   border: 1px solid transparent;
+  background: transparent;
+  transition: var(--sidebar-hover-transition);
 }
 
 .workspace-row {
@@ -333,21 +367,59 @@
   font-weight: 500;
 }
 
-.workspace-row__menu-wrap {
+.workspace-row__actions {
   position: relative;
-  display: grid;
+  display: flex;
   align-items: center;
-  justify-items: end;
+  gap: 2px;
+  /* Hidden until row hover or menu open (Codex-style). */
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
 }
 
-.workspace-row__menu-button {
-  width: 28px;
-  height: 28px;
-  border-radius: 10px;
+.workspace-row:hover .workspace-row__actions,
+.workspace-row__actions[data-menu-open],
+.workspace-row__actions:focus-within {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.workspace-row__menu-button,
+.workspace-row__compose-button {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
   font-size: 18px;
   line-height: 1;
-  color: var(--muted-soft);
+  color: color-mix(in srgb, var(--accent) 45%, transparent);
   background: transparent;
+  transition: color 140ms ease;
+}
+
+.workspace-row__menu-button:hover:not(:disabled),
+.workspace-row__menu-button:focus-visible,
+.workspace-row__menu-button[aria-expanded="true"],
+.workspace-row__compose-button:hover:not(:disabled),
+.workspace-row__compose-button:focus-visible {
+  background: transparent;
+  border-color: transparent;
+  color: var(--accent);
+}
+
+:root.dark .workspace-row__menu-button:hover:not(:disabled),
+:root.dark .workspace-row__menu-button:focus-visible,
+:root.dark .workspace-row__menu-button[aria-expanded="true"],
+:root.dark .workspace-row__compose-button:hover:not(:disabled),
+:root.dark .workspace-row__compose-button:focus-visible {
+  background: transparent;
+  border-color: transparent;
+  color: var(--accent);
+}
+
+.workspace-row__compose-button svg {
+  width: 16px;
+  height: 16px;
 }
 
 .workspace-menu {
@@ -448,8 +520,10 @@
   border-radius: 10px;
   min-height: 36px;
   grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
   position: relative;
   overflow: visible;
+  cursor: pointer;
 }
 
 .session-row--active {
@@ -466,7 +540,7 @@
   align-items: center;
   grid-template-columns: minmax(0, 1fr);
   gap: 0;
-  padding-left: 18px;
+  padding-left: 14px;
   text-align: left;
   color: inherit;
   position: relative;
@@ -534,7 +608,7 @@
 }
 
 .session-row__trailing {
-  min-width: 60px;
+  min-width: 22px;
   height: 28px;
   position: relative;
   display: grid;
@@ -598,6 +672,26 @@
   visibility: hidden;
   pointer-events: none;
   transform: scale(0.92);
+  color: color-mix(in srgb, var(--accent) 45%, transparent);
+  transition:
+    color 140ms ease,
+    opacity 140ms ease,
+    transform 140ms ease,
+    visibility 140ms ease;
+}
+
+.session-row .session-row__action:hover:not(:disabled),
+.session-row .session-row__action:focus-visible {
+  background: transparent;
+  border-color: transparent;
+  color: var(--accent);
+}
+
+:root.dark .session-row .session-row__action:hover:not(:disabled),
+:root.dark .session-row .session-row__action:focus-visible {
+  background: transparent;
+  border-color: transparent;
+  color: var(--accent);
 }
 
 .session-row .session-row__action svg {
@@ -691,7 +785,7 @@
 
 @media (max-width: 1180px) {
   .shell {
-    grid-template-columns: 272px minmax(0, 1fr);
+    grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
   }
 }
 
@@ -709,26 +803,17 @@
 
 :root.dark .sidebar {
   background: var(--sidebar);
-  border-right-color: var(--line);
 }
 
 .enable-transparency.dark .sidebar {
   backdrop-filter: var(--glass-blur) var(--glass-saturation);
 }
 
-:root.dark .sidebar__nav-item--active {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: var(--line);
-}
 
-:root.dark .sidebar__new {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: var(--line);
-}
 
 :root.dark .workspace-row:hover,
 :root.dark .session-row:hover,
-:root.dark .icon-button:hover:not(:disabled),
+:root.dark .icon-button:hover:not(:disabled):not(.session-row__action):not(.workspace-row__menu-button):not(.workspace-row__compose-button):not(.sidebar-toggle__button),
 :root.dark .sidebar__settings:hover {
   background: rgba(255, 255, 255, 0.06);
   border-color: rgba(255, 255, 255, 0.08);

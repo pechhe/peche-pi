@@ -14,15 +14,35 @@ import {
 import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { AppView, SessionRecord, WorkspaceRecord, WorktreeRecord } from "./desktop-state";
-import { ArchiveIcon, ChevronDownIcon, ExtensionIcon, FolderIcon, PlusIcon, RestoreIcon, SettingsIcon, SkillIcon, WorktreeIcon } from "./icons";
+import { ArchiveIcon, ChevronDownIcon, ChevronRightIcon, ComposeIcon, ExtensionIcon, FolderIcon, RestoreIcon, SettingsIcon, SkillIcon, WorktreeIcon } from "./icons";
 import type { PiDesktopApi } from "./ipc";
-import { formatRelativeTime } from "./string-utils";
+import { formatRelativeTime, titleCase } from "./string-utils";
+import type { RuntimeSkillRecord } from "@pi-gui/session-driver/runtime-types";
 import type { WorkspaceMenuState } from "./hooks/use-workspace-menu";
 import type { ThreadGroup, ThreadListEntry } from "./thread-groups";
 import type { Dispatch, SetStateAction } from "react";
 import type { DesktopAppState } from "./desktop-state";
+import type { SidebarResize } from "./hooks/use-sidebar-width";
+
+/**
+ * Skills payload. When provided alongside `activeView === "skills"`, the
+ * sidebar renders a SKILLS section in place of the threads tree. Lives at the
+ * App level so search/selection state survives route changes.
+ */
+export interface SidebarSkillsPayload {
+  readonly skills: readonly RuntimeSkillRecord[];
+  readonly query: string;
+  readonly onQueryChange: (value: string) => void;
+  readonly showDisabled: boolean;
+  readonly onShowDisabledChange: (value: boolean) => void;
+  readonly selectedSkillPath: string | undefined;
+  readonly onSelectSkill: (filePath: string) => void;
+  readonly collapsedGroups: ReadonlySet<string>;
+  readonly onToggleGroup: (key: string) => void;
+}
 
 interface SidebarProps {
+  readonly resize: SidebarResize;
   readonly activeView: AppView;
   readonly selectedWorkspace: WorkspaceRecord | undefined;
   readonly selectedSession: SessionRecord | undefined;
@@ -37,7 +57,7 @@ interface SidebarProps {
     setSnapshot: Dispatch<SetStateAction<DesktopAppState | null>>,
     action: () => Promise<DesktopAppState>,
   ) => Promise<DesktopAppState>;
-  readonly onNewThread: () => void;
+  readonly onNewThreadForWorkspace: (rootWorkspaceId: string) => void;
   readonly onSetActiveView: (view: AppView) => void;
   readonly onOpenSkills: (workspaceId?: string) => void;
   readonly onOpenExtensions: (workspaceId?: string) => void;
@@ -45,10 +65,12 @@ interface SidebarProps {
   readonly onArchiveSession: (target: { workspaceId: string; sessionId: string }) => void;
   readonly onSelectSession: (target: { workspaceId: string; sessionId: string }) => void;
   readonly onUnarchiveSession: (target: { workspaceId: string; sessionId: string }) => void;
+  readonly skillsPayload?: SidebarSkillsPayload;
 }
 
 export function Sidebar(props: SidebarProps) {
   const {
+    resize,
     activeView,
     selectedWorkspace,
     selectedSession,
@@ -59,7 +81,7 @@ export function Sidebar(props: SidebarProps) {
     api,
     setSnapshot,
     updateSnapshot,
-    onNewThread,
+    onNewThreadForWorkspace,
     onSetActiveView,
     onOpenSkills,
     onOpenExtensions,
@@ -67,7 +89,9 @@ export function Sidebar(props: SidebarProps) {
     onArchiveSession,
     onSelectSession,
     onUnarchiveSession,
+    skillsPayload,
   } = props;
+  const inSkillsMode = activeView === "skills" && skillsPayload != null;
 
   const [activeId, setActiveId] = useState<string | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
@@ -119,28 +143,27 @@ export function Sidebar(props: SidebarProps) {
 
   return (
     <aside className="sidebar">
+      <div
+        className={`sidebar__resize-handle ${resize.isResizing ? "sidebar__resize-handle--active" : ""}`}
+        onPointerDown={resize.onPointerDown}
+        role="separator"
+        aria-label="Resize sidebar"
+        aria-orientation="vertical"
+      />
       <div className="sidebar__top">
-        <button
-          className="sidebar__new"
-          type="button"
-          disabled={!selectedWorkspace}
-          onClick={onNewThread}
-        >
-          <PlusIcon />
-          <span>New thread</span>
-        </button>
-
         <div className="sidebar__nav">
+          {activeView !== "threads" ? (
+            <button
+              className="sidebar__nav-item"
+              type="button"
+              onClick={() => onSetActiveView("threads")}
+            >
+              <span aria-hidden="true" className="sidebar__nav-back">←</span>
+              <span>Threads</span>
+            </button>
+          ) : null}
           <button
-            className={`sidebar__nav-item ${activeView === "threads" ? "sidebar__nav-item--active" : ""}`}
-            type="button"
-            onClick={() => onSetActiveView("threads")}
-          >
-            <FolderIcon />
-            <span>Threads</span>
-          </button>
-          <button
-            className="sidebar__nav-item"
+            className={`sidebar__nav-item ${activeView === "skills" ? "sidebar__nav-item--active" : ""}`}
             type="button"
             onClick={() => onOpenSkills(selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id)}
           >
@@ -148,7 +171,7 @@ export function Sidebar(props: SidebarProps) {
             <span>Skills</span>
           </button>
           <button
-            className="sidebar__nav-item"
+            className={`sidebar__nav-item ${activeView === "extensions" ? "sidebar__nav-item--active" : ""}`}
             type="button"
             onClick={() => onOpenExtensions(selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id)}
           >
@@ -156,7 +179,7 @@ export function Sidebar(props: SidebarProps) {
             <span>Extensions</span>
           </button>
           <button
-            className="sidebar__nav-item"
+            className={`sidebar__nav-item ${activeView === "settings" ? "sidebar__nav-item--active" : ""}`}
             type="button"
             onClick={() => onOpenSettings(selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id)}
           >
@@ -166,6 +189,9 @@ export function Sidebar(props: SidebarProps) {
         </div>
       </div>
 
+      {inSkillsMode ? (
+        <SkillsSidebarSection payload={skillsPayload!} />
+      ) : (
       <div className="sidebar__section">
         <div className="section__head">
           <span>Threads</span>
@@ -214,6 +240,7 @@ export function Sidebar(props: SidebarProps) {
                     onArchiveSession={onArchiveSession}
                     onSelectSession={onSelectSession}
                     onUnarchiveSession={onUnarchiveSession}
+                    onNewThreadForWorkspace={onNewThreadForWorkspace}
                   />
                 ))}
                 {orphanGroups.map((group) => (
@@ -229,6 +256,7 @@ export function Sidebar(props: SidebarProps) {
                     onArchiveSession={onArchiveSession}
                     onSelectSession={onSelectSession}
                     onUnarchiveSession={onUnarchiveSession}
+                    onNewThreadForWorkspace={onNewThreadForWorkspace}
                   />
                 ))}
               </div>
@@ -247,6 +275,7 @@ export function Sidebar(props: SidebarProps) {
                     onArchiveSession={onArchiveSession}
                     onSelectSession={onSelectSession}
                     onUnarchiveSession={onUnarchiveSession}
+                    onNewThreadForWorkspace={onNewThreadForWorkspace}
                   />
                 </div>
               ) : null}
@@ -254,7 +283,134 @@ export function Sidebar(props: SidebarProps) {
           </DndContext>
         )}
       </div>
+      )}
     </aside>
+  );
+}
+
+/* ── Skills section (rendered inside the threads sidebar when active) ── */
+
+interface SkillsSidebarSectionProps {
+  readonly payload: SidebarSkillsPayload;
+}
+
+function SkillsSidebarSection({ payload }: SkillsSidebarSectionProps) {
+  const {
+    skills,
+    query,
+    onQueryChange,
+    showDisabled,
+    onShowDisabledChange,
+    selectedSkillPath,
+    onSelectSkill,
+    collapsedGroups,
+    onToggleGroup,
+  } = payload;
+
+  const normalized = query.trim().toLowerCase();
+  const filtered = skills.filter((skill) => {
+    if (!showDisabled && !skill.enabled) return false;
+    if (!normalized) return true;
+    return [skill.name, skill.description, skill.source, skill.slashCommand].some((value) =>
+      value.toLowerCase().includes(normalized),
+    );
+  });
+
+  const buckets = new Map<string, RuntimeSkillRecord[]>();
+  for (const skill of filtered) {
+    const key = skill.source || "other";
+    const existing = buckets.get(key);
+    if (existing) existing.push(skill);
+    else buckets.set(key, [skill]);
+  }
+  const groups = Array.from(buckets.entries())
+    .map(([key, items]) => ({
+      key,
+      label: titleCase(key),
+      skills: items.slice().sort((a, b) => a.name.localeCompare(b.name)),
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+
+  const enabledCount = skills.filter((skill) => skill.enabled).length;
+
+  return (
+    <div className="sidebar__section sidebar__section--skills">
+      <div className="section__head">
+        <span>Skills</span>
+      </div>
+      <div className="sidebar-skills__controls">
+        <input
+          aria-label="Search skills"
+          className="sidebar-skills__search"
+          placeholder="Search skills…"
+          value={query}
+          onChange={(event) => onQueryChange(event.target.value)}
+        />
+        <label className="sidebar-skills__toggle">
+          <input
+            type="checkbox"
+            checked={showDisabled}
+            onChange={(event) => onShowDisabledChange(event.target.checked)}
+          />
+          <span>Show disabled</span>
+        </label>
+      </div>
+      <div className="sidebar-skills__list" data-testid="skills-list">
+        {groups.length === 0 ? (
+          <div className="sidebar-skills__empty">No skills match your search.</div>
+        ) : (
+          groups.map((group) => {
+            const collapsed = collapsedGroups.has(group.key);
+            return (
+              <div className="sidebar-skills__group" key={group.key}>
+                <button
+                  type="button"
+                  className="sidebar-skills__group-head"
+                  onClick={() => onToggleGroup(group.key)}
+                  aria-expanded={!collapsed}
+                >
+                  {collapsed ? <ChevronRightIcon /> : <ChevronDownIcon />}
+                  <span>{group.label}</span>
+                  <span className="sidebar-skills__group-count">({group.skills.length})</span>
+                </button>
+                {collapsed ? null : (
+                  <div className="sidebar-skills__group-items">
+                    {group.skills.map((skill) => (
+                      <button
+                        key={skill.filePath}
+                        type="button"
+                        className={`sidebar-skills__row ${
+                          selectedSkillPath === skill.filePath ? "sidebar-skills__row--active" : ""
+                        }`}
+                        onClick={() => onSelectSkill(skill.filePath)}
+                      >
+                        <span className="sidebar-skills__row-title">{titleCase(skill.name)}</span>
+                        <span
+                          className={`sidebar-skills__row-status ${
+                            skill.enabled
+                              ? "sidebar-skills__row-status--enabled"
+                              : "sidebar-skills__row-status--disabled"
+                          }`}
+                          aria-label={skill.enabled ? "Enabled" : "Disabled"}
+                          title={skill.enabled ? "Enabled" : "Disabled"}
+                        />
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+      <div className="sidebar-skills__footer">
+        <span>
+          {skills.length} skill{skills.length === 1 ? "" : "s"}
+        </span>
+        <span className="sidebar-skills__footer-dot">•</span>
+        <span>{enabledCount} enabled</span>
+      </div>
+    </div>
   );
 }
 
@@ -271,6 +427,7 @@ interface WorkspaceGroupProps {
   readonly onArchiveSession: (target: { workspaceId: string; sessionId: string }) => void;
   readonly onSelectSession: (target: { workspaceId: string; sessionId: string }) => void;
   readonly onUnarchiveSession: (target: { workspaceId: string; sessionId: string }) => void;
+  readonly onNewThreadForWorkspace: (rootWorkspaceId: string) => void;
 }
 
 function SortableWorkspaceGroup(props: WorkspaceGroupProps) {
@@ -321,6 +478,7 @@ function WorkspaceGroupContent(
     onArchiveSession,
     onSelectSession,
     onUnarchiveSession,
+    onNewThreadForWorkspace,
     dragHandleProps,
   } = props;
 
@@ -333,7 +491,14 @@ function WorkspaceGroupContent(
 
   return (
     <>
-      <div className={`workspace-row ${workspaceActive ? "workspace-row--active" : ""}`}>
+      <div
+        className={`workspace-row ${workspaceActive ? "workspace-row--active" : ""}`}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          wsMenu.openWorkspaceMenu(rootWorkspace.id);
+        }}
+      >
         <button
           className={`workspace-row__select ${dragHandleProps ? "workspace-row__select--draggable" : ""}`}
           onClick={() => wsMenu.toggleWorkspaceCollapsed(rootWorkspace.id)}
@@ -347,22 +512,21 @@ function WorkspaceGroupContent(
           <span className="workspace-row__name">{rootWorkspace.name}</span>
         </button>
         <span
-          className="workspace-row__menu-wrap"
+          className="workspace-row__actions"
+          data-menu-open={wsMenu.workspaceMenuId === rootWorkspace.id || undefined}
           ref={wsMenu.workspaceMenuId === rootWorkspace.id ? wsMenu.workspaceMenuWrapRef : undefined}
         >
           <button
-            aria-label={`Workspace actions for ${rootWorkspace.name}`}
-            aria-haspopup="menu"
-            className="icon-button workspace-row__menu-button"
-            aria-expanded={wsMenu.workspaceMenuId === rootWorkspace.id}
+            aria-label={`New thread in ${rootWorkspace.name}`}
+            className="icon-button workspace-row__compose-button"
             type="button"
             onClick={(event) => {
               event.preventDefault();
               event.stopPropagation();
-              wsMenu.openWorkspaceMenu(rootWorkspace.id);
+              onNewThreadForWorkspace(rootWorkspace.id);
             }}
           >
-            …
+            <ComposeIcon />
           </button>
           {wsMenu.workspaceMenuId === rootWorkspace.id ? (
             <div className="workspace-menu">
@@ -552,6 +716,7 @@ function ThreadSessionRow({
       className={`session-row ${active ? "session-row--active" : ""}`}
       data-sidebar-indicator={indicatorVariant}
       data-session-id={thread.session.id}
+      onClick={onSelect}
     >
       <button className="session-row__select" onClick={onSelect} type="button">
         <span className="session-row__leading" aria-hidden="true">
@@ -562,7 +727,6 @@ function ThreadSessionRow({
           <span className="session-row__title-line">
             <span className="session-row__title">{thread.session.title}</span>
           </span>
-          {thread.session.preview ? <span className="session-row__preview">{thread.session.preview}</span> : null}
         </span>
       </button>
       <span className="session-row__trailing">
@@ -576,7 +740,10 @@ function ThreadSessionRow({
           aria-label={`${archived ? "Restore" : "Archive"} ${thread.session.title}`}
           className="icon-button session-row__action"
           type="button"
-          onClick={onAction}
+          onClick={(event) => {
+            event.stopPropagation();
+            onAction();
+          }}
         >
           {archived ? <RestoreIcon /> : <ArchiveIcon />}
         </button>

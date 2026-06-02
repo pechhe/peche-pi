@@ -73,6 +73,11 @@ export const SessionConfigSchema = v.object({
   thinkingLevel: v.optional(v.string()),
 });
 
+export const SessionContextUsageSchema = v.object({
+  usedTokens: v.number(),
+  contextWindow: v.number(),
+});
+
 export const SessionRecordSchema = v.object({
   id: SessionIdSchema,
   title: v.string(),
@@ -84,6 +89,7 @@ export const SessionRecordSchema = v.object({
   runningSince: v.optional(TimestampSchema),
   hasUnseenUpdate: v.boolean(),
   config: v.optional(SessionConfigSchema),
+  contextUsage: v.optional(SessionContextUsageSchema),
 });
 
 export const WorkspaceRecordSchema = v.object({

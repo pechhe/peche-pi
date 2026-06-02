@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { sessionKey } from "@pi-gui/pi-sdk-driver";
 import type { SessionConfig, SessionQueuedMessage, SessionRef } from "@pi-gui/session-driver";
 import type { ComposerAttachment, DesktopAppState, QueuedComposerMessage, WorkspaceSessionTarget } from "../src/desktop-state";
+import { buildPlanModePrompt, type ComposerMode } from "../src/composer-mode";
 import { toSessionRef } from "./app-store-utils";
 import {
   formatSessionConfigStatus,
@@ -262,10 +263,12 @@ export async function submitComposer(
   textInput: string,
   options: {
     readonly deliverAs?: "steer" | "followUp";
+    readonly mode?: ComposerMode;
   } = {},
 ): Promise<DesktopAppState> {
   await store.initialize();
-  const text = textInput.trim();
+  const submittedText = options.mode === "plan" ? buildPlanModePrompt(textInput) : textInput;
+  const text = submittedText.trim();
   const sessionRef = store.selectedSessionRef();
   const attachments = sessionRef
     ? store.sessionState.composerAttachmentsBySession.get(sessionKey(sessionRef)) ?? []
@@ -405,7 +408,7 @@ export async function setSessionModel(
   return store.withErrorHandling(async () => {
     await store.driver.setSessionModel(sessionRef, { provider, modelId });
     syncSessionConfig(store, key, { provider, modelId });
-    return finishComposerCommand(store, sessionRef, key, `Model set to ${provider}:${modelId}`);
+    return finishComposerCommand(store, sessionRef, key, `Model set to ${provider}:${modelId}`, { keepDraft: true });
   });
 }
 
@@ -419,7 +422,7 @@ export async function setSessionThinkingLevel(
   return store.withErrorHandling(async () => {
     await store.driver.setSessionThinkingLevel(sessionRef, thinkingLevel);
     syncSessionConfig(store, key, { thinkingLevel });
-    return finishComposerCommand(store, sessionRef, key, `Thinking set to ${thinkingLevel}`);
+    return finishComposerCommand(store, sessionRef, key, `Thinking set to ${thinkingLevel}`, { keepDraft: true });
   });
 }
 
@@ -625,9 +628,13 @@ function finishComposerCommand(
   sessionRef: SessionRef,
   key: string,
   label: string,
+  options?: { readonly keepDraft?: boolean },
 ): DesktopAppState {
-  store.sessionState.composerDraftsBySession.delete(key);
-  store.sessionState.composerAttachmentsBySession.delete(key);
+  const keepDraft = options?.keepDraft ?? false;
+  if (!keepDraft) {
+    store.sessionState.composerDraftsBySession.delete(key);
+    store.sessionState.composerAttachmentsBySession.delete(key);
+  }
   appendLocalActivity(store, sessionRef, label);
   const transcript = store.sessionState.transcriptCache.get(key) ?? [];
   const preview = previewFromTranscript(transcript);
@@ -649,10 +656,10 @@ function finishComposerCommand(
           }
         : workspace,
     ),
-    composerDraft: "",
-    composerDraftSyncSource: "command",
-    composerDraftSyncNonce: store.state.composerDraftSyncNonce + 1,
-    composerAttachments: [],
+    composerDraft: keepDraft ? store.state.composerDraft : "",
+    composerDraftSyncSource: keepDraft ? store.state.composerDraftSyncSource : "command",
+    composerDraftSyncNonce: keepDraft ? store.state.composerDraftSyncNonce : store.state.composerDraftSyncNonce + 1,
+    composerAttachments: keepDraft ? store.state.composerAttachments : [],
     lastError: undefined,
     revision: store.state.revision + 1,
   };

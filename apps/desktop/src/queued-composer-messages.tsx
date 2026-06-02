@@ -1,5 +1,6 @@
 import type { ComposerAttachment, QueuedComposerMessage } from "./desktop-state";
 import { FileIcon } from "./icons";
+import { openImageLightbox } from "./image-lightbox";
 
 interface QueuedComposerMessagesProps {
   readonly messages: readonly QueuedComposerMessage[];
@@ -71,11 +72,23 @@ function QueuedAttachmentPreview({ attachment }: { readonly attachment: Composer
   return (
     <div className={`queued-composer-attachment queued-composer-attachment--${attachment.kind}`}>
       {attachment.kind === "image" ? (
-        <img
-          alt={attachment.name}
-          className="queued-composer-attachment__preview"
-          src={`data:${attachment.mimeType};base64,${attachment.data}`}
-        />
+        <button
+          type="button"
+          className="queued-composer-attachment__preview-button"
+          aria-label={`View ${attachment.name}`}
+          onClick={() =>
+            openImageLightbox({
+              src: `data:${attachment.mimeType};base64,${attachment.data}`,
+              alt: attachment.name,
+            })
+          }
+        >
+          <img
+            alt={attachment.name}
+            className="queued-composer-attachment__preview"
+            src={`data:${attachment.mimeType};base64,${attachment.data}`}
+          />
+        </button>
       ) : (
         <span className="queued-composer-attachment__icon" aria-hidden="true">
           <FileIcon />

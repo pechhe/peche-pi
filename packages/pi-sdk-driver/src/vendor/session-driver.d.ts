@@ -38,6 +38,11 @@ declare module "@pi-gui/session-driver" {
     readonly updatedAt: Timestamp;
   }
 
+  export interface SessionContextUsage {
+    readonly usedTokens: number;
+    readonly contextWindow: number;
+  }
+
   export interface SessionSnapshot {
     readonly ref: SessionRef;
     readonly workspace: WorkspaceRef;
@@ -48,6 +53,7 @@ declare module "@pi-gui/session-driver" {
     readonly preview?: string;
     readonly config?: SessionConfig;
     readonly runningRunId?: RunId;
+    readonly contextUsage?: SessionContextUsage;
     readonly queuedMessages?: readonly SessionQueuedMessage[];
   }
 
@@ -163,6 +169,14 @@ declare module "@pi-gui/session-driver" {
     readonly error: SessionErrorInfo;
   }
 
+  export interface HostUiQuestionnaireAnswer {
+    readonly id: string;
+    readonly value: string;
+    readonly label: string;
+    readonly wasCustom: boolean;
+    readonly index?: number;
+  }
+
   export type HostUiResponse =
     | {
         readonly requestId: string;
@@ -171,6 +185,10 @@ declare module "@pi-gui/session-driver" {
     | {
         readonly requestId: string;
         readonly confirmed: boolean;
+      }
+    | {
+        readonly requestId: string;
+        readonly answers: readonly HostUiQuestionnaireAnswer[];
       }
     | {
         readonly requestId: string;
@@ -238,9 +256,33 @@ declare module "@pi-gui/session-driver" {
         readonly text: string;
     }
     | {
+        readonly kind: "questionnaire";
+        readonly requestId: string;
+        readonly title?: string;
+        readonly intro?: string;
+        readonly questions: readonly HostUiQuestionnaireQuestion[];
+        readonly timeoutMs?: number;
+      }
+    | {
         readonly kind: "reset";
         readonly requestId: string;
     };
+
+  export interface HostUiQuestionnaireOption {
+    readonly value: string;
+    readonly label: string;
+    readonly description?: string;
+    readonly recommended?: boolean;
+  }
+
+  export interface HostUiQuestionnaireQuestion {
+    readonly id: string;
+    readonly label?: string;
+    readonly prompt: string;
+    readonly options: readonly HostUiQuestionnaireOption[];
+    readonly allowOther?: boolean;
+    readonly otherPlaceholder?: string;
+  }
 
   export interface HostUiRequestEvent extends SessionEventBase {
     readonly type: "hostUiRequest";
@@ -355,6 +397,7 @@ declare module "@pi-gui/session-driver/runtime-types" {
     readonly authType: RuntimeAuthType;
     readonly reasoning: boolean;
     readonly supportsImages: boolean;
+    readonly contextWindow: number;
   }
 
   export interface RuntimeSkillRecord {
@@ -450,5 +493,6 @@ declare module "@pi-gui/session-driver/runtime-types" {
     setScopedModelPatterns(workspace: WorkspaceRef, patterns: readonly string[]): Promise<RuntimeSnapshot>;
     setSkillEnabled(workspace: WorkspaceRef, filePath: string, enabled: boolean): Promise<RuntimeSnapshot>;
     setExtensionEnabled(workspace: WorkspaceRef, filePath: string, enabled: boolean): Promise<RuntimeSnapshot>;
+    deleteExtension(workspace: WorkspaceRef, filePath: string): Promise<RuntimeSnapshot>;
   }
 }

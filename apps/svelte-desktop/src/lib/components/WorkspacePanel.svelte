@@ -27,6 +27,21 @@
     if (e.key === "Enter") handleAdd();
     if (e.key === "Escape") { addPath = ""; showAdd = false; }
   }
+
+  async function handleBrowse() {
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      const folder = await invoke<string | null>("pick_folder");
+      if (folder) {
+        addPath = folder;
+        onAdd(folder);
+        addPath = "";
+        showAdd = false;
+      }
+    } catch {
+      // Tauri bridge unavailable — user can still type path manually
+    }
+  }
 </script>
 
 <aside class="workspace-panel">
@@ -47,6 +62,7 @@
         onkeydown={handleKeydown}
       />
       <button class="btn-add" onclick={handleAdd}>Add</button>
+      <button class="btn-browse" onclick={handleBrowse} title="Browse folder...">📁</button>
     </div>
   {/if}
 
@@ -144,6 +160,17 @@
     cursor: pointer;
   }
   .btn-add:hover { background: #c0392b; }
+
+  .btn-browse {
+    background: #0f3460;
+    color: #e0e0e0;
+    border: 1px solid #1a5276;
+    border-radius: 3px;
+    padding: 3px 8px;
+    font-size: 0.75rem;
+    cursor: pointer;
+  }
+  .btn-browse:hover { background: #1a5276; }
 
   .workspace-list {
     list-style: none;

@@ -1,5 +1,5 @@
-import { readFile } from "node:fs/promises";
-import { basename, dirname, join, relative, resolve } from "node:path";
+import { readFile, rm } from "node:fs/promises";
+import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import {
   DefaultPackageManager,
   DefaultResourceLoader,
@@ -54,7 +54,7 @@ export interface RuntimeSupervisorOptions {
   readonly modelRegistry?: ModelRegistry;
 }
 
-type ResourceScope = "user" | "project";
+type ResourceScope = "user" | "project" | "temporary";
 type ToggleableResourceKind = "extension" | "skill";
 
 export class RuntimeSupervisor implements RuntimeResourceDriver {
@@ -285,6 +285,37 @@ export class RuntimeSupervisor implements RuntimeResourceDriver {
     return this.buildSnapshot(context);
   }
 
+  async deleteExtension(workspace: WorkspaceRef, filePath: string): Promise<RuntimeSnapshot> {
+    const context = await this.ensureContext(workspace);
+    const resolvedPaths = await this.resolveRuntimePaths(context);
+    const resource = resolvedPaths.extensions.find((entry) => resolve(entry.path) === resolve(filePath));
+    if (!resource) {
+      throw new Error(`Unknown extension: ${filePath}`);
+    }
+
+    if (resource.metadata.origin === "top-level") {
+      const extDir = dirname(resolve(resource.path));
+      await rm(extDir, { recursive: true, force: true });
+
+      // Remove the stale path from settings so reload doesn't find it.
+      const pattern = this.relativeResourcePattern(resource.path, resource.metadata, resource.metadata.scope, "top-level");
+      const settings = resource.metadata.scope === "project"
+        ? context.settingsManager.getProjectSettings()
+        : context.settingsManager.getGlobalSettings();
+      const currentPaths = [...(settings.extensions ?? [])];
+      const updated = currentPaths.filter((entry) => stripPrefix(entry) !== pattern);
+      this.setTopLevelResourcePaths(context.settingsManager, resource.metadata.scope, "extension", updated);
+    } else {
+      await context.packageManager.removeAndPersist(resource.metadata.source, {
+        local: resource.metadata.scope === "project",
+      });
+    }
+
+    await context.settingsManager.flush();
+    await context.resourceLoader.reload();
+    return this.buildSnapshot(context);
+  }
+
   private async ensureContext(workspace: WorkspaceRef): Promise<RuntimeContext> {
     const existing = this.contexts.get(workspace.workspaceId);
     if (existing) {
@@ -450,6 +481,7 @@ export class RuntimeSupervisor implements RuntimeResourceDriver {
           authType: provider?.authType ?? "none",
           reasoning: Boolean(model.reasoning),
           supportsImages: model.input.includes("image"),
+          contextWindow: model.contextWindow,
         };
       })
       .sort((left, right) =>
@@ -745,10 +777,22 @@ async function inferExtensionDisplayName(
   metadata: PathMetadata,
   packageDisplayNameCache: Map<string, Promise<string | undefined>>,
 ): Promise<string> {
-  if (metadata.origin === "package" && metadata.baseDir) {
-    const packageDisplayName = await inferPackageDisplayName(metadata.baseDir, packageDisplayNameCache);
+  const packageRoot = await inferExtensionPackageRoot(filePath, metadata);
+  if (packageRoot) {
+    const packageDisplayName = await inferPackageDisplayName(packageRoot, packageDisplayNameCache);
     if (packageDisplayName) {
       return packageDisplayName;
+    }
+  }
+
+  // Top-level extension folders typically ship an `index.ts` entrypoint. When
+  // we can't find a `package.json` to anchor the name, fall back to the
+  // enclosing folder name (e.g. `codex-pool/index.ts` → "codex-pool") instead
+  // of the generic "index".
+  if (inferExtensionEntryName(filePath) === "index") {
+    const folderName = basename(dirname(filePath));
+    if (folderName) {
+      return folderName;
     }
   }
 
@@ -757,6 +801,43 @@ async function inferExtensionDisplayName(
 
 function inferExtensionEntryName(filePath: string): string {
   return basename(filePath).replace(/\.(c|m)?(t|j)sx?$/i, "");
+}
+
+async function inferExtensionPackageRoot(
+  filePath: string,
+  metadata: PathMetadata,
+): Promise<string | undefined> {
+  if (metadata.origin === "package" && metadata.baseDir) {
+    return resolve(metadata.baseDir);
+  }
+
+  // Top-level extensions typically live at <baseDir>/<name>/.../entry.ts. Walk
+  // up from the entry looking for a `package.json` so we can show the package
+  // name instead of the entry filename (e.g. "index" for src/index.ts).
+  const baseDir = metadata.baseDir ? resolve(metadata.baseDir) : undefined;
+  let cursor = resolve(dirname(filePath));
+  while (true) {
+    if (baseDir && (cursor === baseDir || !cursor.startsWith(`${baseDir}${sep}`))) {
+      return undefined;
+    }
+    if (await hasPackageManifest(cursor)) {
+      return cursor;
+    }
+    const parent = dirname(cursor);
+    if (parent === cursor) {
+      return undefined;
+    }
+    cursor = parent;
+  }
+}
+
+async function hasPackageManifest(dir: string): Promise<boolean> {
+  try {
+    const raw = await readFile(join(dir, "package.json"), "utf8");
+    return raw.trim().length > 0;
+  } catch {
+    return false;
+  }
 }
 
 async function inferPackageDisplayName(

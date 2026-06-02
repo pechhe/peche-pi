@@ -343,3 +343,25 @@ export function DiffIcon() {
     </Icon>
   );
 }
+
+export function ComposeIcon() {
+  // Square-with-pencil — Codex-style "new thread" affordance.
+  return (
+    <Icon>
+      <path
+        d="M9 4.25H6.25A2 2 0 0 0 4.25 6.25v7.5A2 2 0 0 0 6.25 15.75h7.5A2 2 0 0 0 15.75 13.75V11"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.4"
+      />
+      <path
+        d="m12.4 4.6 3 3-5.1 5.1H7.3V9.7l5.1-5.1Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.4"
+      />
+    </Icon>
+  );
+}

@@ -1,19 +1,46 @@
+import { memo } from "react";
 import type { SessionTranscriptMessage } from "@pi-gui/pi-sdk-driver";
+
+// Tracks user-message ids whose entrance animation has already played. We use a
+// module-level Set so virtualised remounts (scroll-back) don't replay the
+// animation, while genuinely new submissions still animate. The createdAt gate
+// suppresses animation when an existing transcript is loaded for the first
+// time.
+const animatedUserMessageIds = new Set<string>();
+
+function shouldAnimateUserBubble(item: SessionTranscriptMessage): boolean {
+  if (animatedUserMessageIds.has(item.id)) {
+    return false;
+  }
+  animatedUserMessageIds.add(item.id);
+  const createdAt = Date.parse(item.createdAt);
+  if (!Number.isFinite(createdAt)) {
+    return false;
+  }
+  return Date.now() - createdAt < 1500;
+}
 import type { TimelineActivity, TimelineToolCall, TimelineSummary, TranscriptMessage } from "./timeline-types";
+import type { TimelineRow, TimelineToolBurst } from "./timeline-grouping";
+import { summariseToolBurst } from "./timeline-grouping";
 import { MessageMarkdown } from "./message-markdown";
 import { InlineDiff, extractDiffFromOutput } from "./diff-inline";
 import { ChevronRightIcon, CopyIcon, DiffIcon, FileIcon } from "./icons";
+import { openImageLightbox } from "./image-lightbox";
 import { extensionToLanguage } from "./syntax-highlight";
 
-export function TimelineItem({
+export const TimelineItem = memo(function TimelineItem({
   item,
   expandedToolCallIds,
+  expandedBurstIds,
   onToggleToolCall,
+  onToggleBurst,
   onViewFileInDiff,
 }: {
-  readonly item: TranscriptMessage;
+  readonly item: TimelineRow;
   readonly expandedToolCallIds?: ReadonlySet<string>;
+  readonly expandedBurstIds?: ReadonlySet<string>;
   readonly onToggleToolCall?: (callId: string) => void;
+  readonly onToggleBurst?: (burstId: string) => void;
   readonly onViewFileInDiff?: (path: string) => void;
 }) {
   switch (item.kind) {
@@ -30,28 +57,122 @@ export function TimelineItem({
           onViewFileInDiff={onViewFileInDiff}
         />
       );
+    case "toolBurst":
+      return (
+        <TimelineToolBurstItem
+          item={item}
+          expanded={expandedBurstIds?.has(item.id) ?? false}
+          onToggle={onToggleBurst}
+          expandedToolCallIds={expandedToolCallIds}
+          onToggleToolCall={onToggleToolCall}
+          onViewFileInDiff={onViewFileInDiff}
+        />
+      );
     case "summary":
       return <TimelineSummaryItem item={item} />;
     default:
       return null;
   }
+}, (prev, next) => {
+  // The main process re-clones every transcript message before pushing to
+  // the renderer, so identity comparison is useless. Compare the fields that
+  // actually affect rendering for each item kind, and the tool-row expansion.
+  if (prev.onToggleToolCall !== next.onToggleToolCall) return false;
+  if (prev.onToggleBurst !== next.onToggleBurst) return false;
+  if (prev.onViewFileInDiff !== next.onViewFileInDiff) return false;
+  if (!isSameTimelineItem(prev.item, next.item)) return false;
+  if (prev.item.kind === "tool" && next.item.kind === "tool") {
+    const callId = prev.item.callId;
+    const prevExpanded = prev.expandedToolCallIds?.has(callId) ?? false;
+    const nextExpanded = next.expandedToolCallIds?.has(callId) ?? false;
+    if (prevExpanded !== nextExpanded) return false;
+  }
+  if (prev.item.kind === "toolBurst" && next.item.kind === "toolBurst") {
+    const prevExpanded = prev.expandedBurstIds?.has(prev.item.id) ?? false;
+    const nextExpanded = next.expandedBurstIds?.has(next.item.id) ?? false;
+    if (prevExpanded !== nextExpanded) return false;
+    // When expanded, individual tool expansion state may also change.
+    if (prevExpanded) {
+      for (const tool of prev.item.tools) {
+        const pe = prev.expandedToolCallIds?.has(tool.callId) ?? false;
+        const ne = next.expandedToolCallIds?.has(tool.callId) ?? false;
+        if (pe !== ne) return false;
+      }
+    }
+  }
+  return true;
+});
+
+function isSameTimelineItem(a: TimelineRow, b: TimelineRow): boolean {
+  if (a.id !== b.id || a.kind !== b.kind) return false;
+  if (a.kind === "toolBurst" && b.kind === "toolBurst") {
+    if (a.tools.length !== b.tools.length) return false;
+    for (let idx = 0; idx < a.tools.length; idx += 1) {
+      const ta = a.tools[idx]!;
+      const tb = b.tools[idx]!;
+      if (ta.callId !== tb.callId || ta.status !== tb.status || ta.toolName !== tb.toolName) {
+        return false;
+      }
+    }
+    return true;
+  }
+  if (a.kind === "message" && b.kind === "message") {
+    return (
+      a.text === b.text &&
+      a.role === b.role &&
+      (a.attachments?.length ?? 0) === (b.attachments?.length ?? 0)
+    );
+  }
+  if (a.kind === "tool" && b.kind === "tool") {
+    // input/output are cloned objects across publishes; comparing by reference is
+    // useless and deep equality is too expensive. Once a tool reaches a terminal
+    // status its content is immutable, so status + identity is sufficient.
+    return (
+      a.callId === b.callId &&
+      a.toolName === b.toolName &&
+      a.status === b.status &&
+      a.label === b.label &&
+      a.status !== "running"
+    );
+  }
+  if (a.kind === "activity" && b.kind === "activity") {
+    return a.label === b.label && a.detail === b.detail && a.metadata === b.metadata && a.tone === b.tone;
+  }
+  if (a.kind === "summary" && b.kind === "summary") {
+    return a.label === b.label && a.metadata === b.metadata && a.presentation === b.presentation;
+  }
+  return true;
 }
 
 function TimelineMessage({ item }: { readonly item: SessionTranscriptMessage }) {
   if (item.role === "user") {
+    const justSent = shouldAnimateUserBubble(item);
     return (
-      <article className="timeline-item timeline-item--user">
+      <article className={`timeline-item timeline-item--user${justSent ? " timeline-item--just-sent" : ""}`}>
         <div className="timeline-item__bubble">
           {item.attachments?.length ? (
             <div className="timeline-item__attachments">
               {item.attachments.map((attachment, index) =>
                 attachment.kind === "image" ? (
-                  <img
-                    alt={attachment.name ?? `Attachment ${index + 1}`}
-                    className="timeline-item__attachment timeline-item__attachment--image"
-                    key={`${item.id}:${index}`}
-                    src={`data:${attachment.mimeType};base64,${attachment.data}`}
-                  />
+                  (() => {
+                    const src = `data:${attachment.mimeType};base64,${attachment.data}`;
+                    const alt = attachment.name ?? `Attachment ${index + 1}`;
+                    return (
+                      <button
+                        type="button"
+                        className="timeline-item__attachment-button"
+                        key={`${item.id}:${index}`}
+                        onClick={() => openImageLightbox({ src, alt })}
+                        aria-label={`View ${alt}`}
+                      >
+                        <img
+                          alt={alt}
+                          className="timeline-item__attachment timeline-item__attachment--image"
+                          src={src}
+                        />
+                      </button>
+                    );
+                  })()
                 ) : (
                   <div
                     className="timeline-item__attachment timeline-item__attachment--file"
@@ -262,6 +383,54 @@ function statusLabel(status: "running" | "success" | "error") {
   if (status === "running") return "running";
   if (status === "success") return "done";
   return "failed";
+}
+
+function TimelineToolBurstItem({
+  item,
+  expanded,
+  onToggle,
+  expandedToolCallIds,
+  onToggleToolCall,
+  onViewFileInDiff,
+}: {
+  readonly item: TimelineToolBurst;
+  readonly expanded: boolean;
+  readonly onToggle?: (burstId: string) => void;
+  readonly expandedToolCallIds?: ReadonlySet<string>;
+  readonly onToggleToolCall?: (callId: string) => void;
+  readonly onViewFileInDiff?: (path: string) => void;
+}) {
+  const summary = summariseToolBurst(item);
+  const hasError = item.tools.some((tool) => tool.status === "error");
+  return (
+    <article className={`timeline-tool-burst${hasError ? " timeline-tool-burst--error" : ""}`}>
+      <button
+        className="timeline-tool-burst__header"
+        type="button"
+        aria-expanded={expanded}
+        data-testid="timeline-tool-burst"
+        onClick={() => onToggle?.(item.id)}
+      >
+        <span className={`timeline-tool-burst__chevron ${expanded ? "timeline-tool-burst__chevron--expanded" : ""}`}>
+          <ChevronRightIcon />
+        </span>
+        <span className="timeline-tool-burst__label">{summary}</span>
+      </button>
+      {expanded ? (
+        <div className="timeline-tool-burst__body">
+          {item.tools.map((tool) => (
+            <TimelineToolCallItem
+              key={tool.id}
+              item={tool}
+              expanded={expandedToolCallIds?.has(tool.callId) ?? false}
+              onToggle={onToggleToolCall}
+              onViewFileInDiff={onViewFileInDiff}
+            />
+          ))}
+        </div>
+      ) : null}
+    </article>
+  );
 }
 
 function TimelineSummaryItem({ item }: { readonly item: TimelineSummary }) {

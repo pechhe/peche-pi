@@ -27,6 +27,11 @@ export interface SessionQueuedMessage {
   readonly updatedAt: Timestamp;
 }
 
+export interface SessionContextUsage {
+  readonly usedTokens: number;
+  readonly contextWindow: number;
+}
+
 export interface SessionSnapshot {
   readonly ref: SessionRef;
   readonly workspace: WorkspaceRef;
@@ -38,6 +43,7 @@ export interface SessionSnapshot {
   readonly config?: SessionConfig;
   readonly runningRunId?: RunId;
   readonly queuedMessages?: readonly SessionQueuedMessage[];
+  readonly contextUsage?: SessionContextUsage;
 }
 
 export interface SessionImageAttachment {
@@ -193,6 +199,14 @@ export interface RunFailedEvent extends SessionEventBase {
   readonly error: SessionErrorInfo;
 }
 
+export interface HostUiQuestionnaireAnswer {
+  readonly id: string;
+  readonly value: string;
+  readonly label: string;
+  readonly wasCustom: boolean;
+  readonly index?: number;
+}
+
 export type HostUiResponse =
   | {
       readonly requestId: string;
@@ -201,6 +215,10 @@ export type HostUiResponse =
   | {
       readonly requestId: string;
       readonly confirmed: boolean;
+    }
+  | {
+      readonly requestId: string;
+      readonly answers: readonly HostUiQuestionnaireAnswer[];
     }
   | {
       readonly requestId: string;
@@ -268,9 +286,33 @@ export type HostUiRequest =
       readonly text: string;
     }
   | {
+      readonly kind: "questionnaire";
+      readonly requestId: string;
+      readonly title?: string;
+      readonly intro?: string;
+      readonly questions: readonly HostUiQuestionnaireQuestion[];
+      readonly timeoutMs?: number;
+    }
+  | {
       readonly kind: "reset";
       readonly requestId: string;
     };
+
+export interface HostUiQuestionnaireOption {
+  readonly value: string;
+  readonly label: string;
+  readonly description?: string;
+  readonly recommended?: boolean;
+}
+
+export interface HostUiQuestionnaireQuestion {
+  readonly id: string;
+  readonly label?: string;
+  readonly prompt: string;
+  readonly options: readonly HostUiQuestionnaireOption[];
+  readonly allowOther?: boolean;
+  readonly otherPlaceholder?: string;
+}
 
 export interface HostUiRequestEvent extends SessionEventBase {
   readonly type: "hostUiRequest";

@@ -1,6 +1,7 @@
 import { access, realpath } from "node:fs/promises";
 import { resolve } from "node:path";
 import {
+  estimateTokens,
   ModelRegistry,
   SessionManager,
   type AgentSessionRuntime,
@@ -27,7 +28,9 @@ import type {
   CreateSessionOptions,
   HostUiRequest,
   HostUiResponse,
+  HostUiQuestionnaireQuestion,
   SessionConfig,
+  SessionContextUsage,
   SessionDriverEvent,
   SessionEventListener,
   SessionModelSelection,
@@ -101,6 +104,7 @@ interface ManagedSessionRecord {
   config: SessionConfig | undefined;
   runningRunId: string | undefined;
   queuedMessages: SessionQueuedMessage[];
+  contextUsage: SessionContextUsage | undefined;
   closed: boolean;
   listeners: Set<SessionEventListener>;
   eventQueue: Promise<void>;
@@ -325,7 +329,7 @@ export class SessionSupervisor {
     this.records.set(sessionKey(record.ref), record);
     await this.bindSessionRuntime(record);
     await this.persistSnapshot(record);
-    const snapshot = buildSnapshot(record);
+    const snapshot = snapshotForRecord(record);
     await this.emit(record, {
       type: "sessionOpened",
       sessionRef: record.ref,
@@ -338,7 +342,7 @@ export class SessionSupervisor {
   async openSession(sessionRef: SessionRef): Promise<SessionSnapshot> {
     const record = await this.ensureRecord(sessionRef);
     await this.touchWorkspace(record.workspace);
-    const snapshot = buildSnapshot(record);
+    const snapshot = snapshotForRecord(record);
     await this.emit(record, {
       type: "sessionOpened",
       sessionRef: record.ref,
@@ -693,6 +697,7 @@ export class SessionSupervisor {
       config: deriveSessionConfig(session.sessionManager),
       runningRunId: undefined,
       queuedMessages: [],
+      contextUsage: undefined,
       closed: false,
       listeners: new Set<SessionEventListener>(),
       eventQueue: Promise.resolve(),
@@ -836,6 +841,11 @@ export class SessionSupervisor {
   }
 
   private createExtensionUiContext(record: ManagedSessionRecord): ExtensionUIContext {
+    const ctx = this.buildExtensionUiContextObject(record);
+    return ctx as ExtensionUIContext;
+  }
+
+  private buildExtensionUiContextObject(record: ManagedSessionRecord) {
     const noOpTheme = extensionUiThemeStub;
 
     const createDialogPromise = <T>(
@@ -891,7 +901,7 @@ export class SessionSupervisor {
     };
 
     return {
-      select: (title, options, opts) =>
+      select: (title: string, options: readonly string[], opts?: ExtensionUIDialogOptions) =>
         createDialogPromise(
           opts,
           undefined,
@@ -904,7 +914,7 @@ export class SessionSupervisor {
           }),
           (response) => ("cancelled" in response && response.cancelled ? undefined : "value" in response ? response.value : undefined),
         ),
-      confirm: (title, message, opts) =>
+      confirm: (title: string, message: string, opts?: ExtensionUIDialogOptions) =>
         createDialogPromise(
           opts,
           false,
@@ -918,7 +928,7 @@ export class SessionSupervisor {
           (response) =>
             "cancelled" in response && response.cancelled ? false : "confirmed" in response ? response.confirmed : false,
         ),
-      input: (title, placeholder, opts) =>
+      input: (title: string, placeholder: string | undefined, opts?: ExtensionUIDialogOptions) =>
         createDialogPromise(
           opts,
           undefined,
@@ -931,7 +941,7 @@ export class SessionSupervisor {
           }),
           (response) => ("cancelled" in response && response.cancelled ? undefined : "value" in response ? response.value : undefined),
         ),
-      notify: (message, level) => {
+      notify: (message: string, level?: "info" | "warning" | "error") => {
         this.emitHostUiRequest(record, {
           kind: "notify",
           requestId: crypto.randomUUID(),
@@ -940,7 +950,7 @@ export class SessionSupervisor {
         });
       },
       onTerminalInput: () => () => {},
-      setStatus: (key, text) => {
+      setStatus: (key: string, text: string | undefined) => {
         this.emitHostUiRequest(record, {
           kind: "status",
           requestId: crypto.randomUUID(),
@@ -952,7 +962,7 @@ export class SessionSupervisor {
       setWorkingVisible: () => {},
       setWorkingIndicator: () => {},
       setHiddenThinkingLabel: () => {},
-      setWidget: (key, content: unknown, options?: ExtensionWidgetOptions) => {
+      setWidget: (key: string, content: unknown, options?: ExtensionWidgetOptions) => {
         if (content === undefined || Array.isArray(content)) {
           const lines = content as readonly string[] | undefined;
           this.emitHostUiRequest(record, {
@@ -966,7 +976,7 @@ export class SessionSupervisor {
       },
       setFooter: () => {},
       setHeader: () => {},
-      setTitle: (title) => {
+      setTitle: (title: string) => {
         this.emitHostUiRequest(record, {
           kind: "title",
           requestId: crypto.randomUUID(),
@@ -976,18 +986,69 @@ export class SessionSupervisor {
       // pi-gui does not render arbitrary TUI custom components. Throwing a
       // typed unsupported-host error allows extensions to catch and degrade,
       // while uncaught command paths fail fast and are surfaced cleanly by
-      // the desktop host.
-      custom: async () => {
+      // the desktop host. Extensions that need a structured question flow
+      // should call `ctx.ui.questionnaire(...)` (pi-gui extension) instead.
+      custom: async (_component: unknown, props: unknown) => {
+        // Heuristic bridge: if an extension passes a questionnaire-shaped
+        // payload via the generic `custom` channel, route it through the
+        // native questionnaire host UI instead of failing. This lets the
+        // upstream questionnaire example work in pi-gui unchanged when its
+        // props match our schema.
+        const maybe = props as { readonly questions?: unknown; readonly title?: unknown; readonly intro?: unknown } | undefined;
+        if (maybe && Array.isArray(maybe.questions)) {
+          return createDialogPromise(
+            undefined,
+            undefined,
+            (requestId) => ({
+              kind: "questionnaire",
+              requestId,
+              ...(typeof maybe.title === "string" ? { title: maybe.title } : {}),
+              ...(typeof maybe.intro === "string" ? { intro: maybe.intro } : {}),
+              questions: maybe.questions as readonly HostUiQuestionnaireQuestion[],
+            }),
+            (response) =>
+              "cancelled" in response && response.cancelled
+                ? undefined
+                : "answers" in response
+                  ? response.answers
+                  : undefined,
+          );
+        }
         throw createUnsupportedHostUiError("custom");
       },
-      pasteToEditor: (text) => {
+      questionnaire: (input: {
+        readonly title?: string;
+        readonly intro?: string;
+        readonly questions: readonly unknown[];
+        readonly timeout?: number;
+        readonly signal?: AbortSignal;
+      }) =>
+        createDialogPromise(
+          { ...(input.timeout !== undefined ? { timeout: input.timeout } : {}), ...(input.signal ? { signal: input.signal } : {}) },
+          undefined,
+          (requestId) => ({
+            kind: "questionnaire",
+            requestId,
+            ...(input.title ? { title: input.title } : {}),
+            ...(input.intro ? { intro: input.intro } : {}),
+            questions: input.questions as readonly HostUiQuestionnaireQuestion[],
+            ...(input.timeout !== undefined ? { timeoutMs: input.timeout } : {}),
+          }),
+          (response) =>
+            "cancelled" in response && response.cancelled
+              ? undefined
+              : "answers" in response
+                ? response.answers
+                : undefined,
+        ),
+      pasteToEditor: (text: string) => {
         this.emitHostUiRequest(record, {
           kind: "editorText",
           requestId: crypto.randomUUID(),
           text,
         });
       },
-      setEditorText: (text) => {
+      setEditorText: (text: string) => {
         this.emitHostUiRequest(record, {
           kind: "editorText",
           requestId: crypto.randomUUID(),
@@ -995,7 +1056,7 @@ export class SessionSupervisor {
         });
       },
       getEditorText: () => record.extensionUiState.editorText ?? "",
-      editor: (title, initialValue) =>
+      editor: (title: string, initialValue: string | undefined) =>
         createDialogPromise(
           undefined,
           undefined,
@@ -1372,7 +1433,7 @@ export class SessionSupervisor {
                 type: "runCompleted" as const,
                 sessionRef: record.ref,
                 timestamp,
-                snapshot: buildSnapshot(record),
+                snapshot: snapshotForRecord(record),
               }
             : {
                 type: "runFailed" as const,
@@ -1403,7 +1464,7 @@ export class SessionSupervisor {
   }
 
   private async persistSnapshot(record: ManagedSessionRecord): Promise<void> {
-    const snapshot = buildSnapshot(record);
+    const snapshot = snapshotForRecord(record);
     await this.catalogs.sessions.upsertSession({
       sessionRef: snapshot.ref,
       workspaceId: snapshot.ref.workspaceId,
@@ -1962,12 +2023,27 @@ function reconcileQueuedMessagesForStartedUserMessage(
   return undefined;
 }
 
+function snapshotForRecord(record: ManagedSessionRecord): SessionSnapshot {
+  record.contextUsage = computeContextUsage(record.session);
+  return buildSnapshot(record);
+}
+
+function computeContextUsage(session: AgentSession | undefined): SessionContextUsage | undefined {
+  const contextWindow = session?.model?.contextWindow;
+  if (!session || typeof contextWindow !== "number" || contextWindow <= 0) {
+    return undefined;
+  }
+
+  const tokens = session.messages.reduce((sum, m) => sum + estimateTokens(m), 0);
+  return { usedTokens: Math.max(0, tokens), contextWindow };
+}
+
 function sessionUpdatedEvent(record: ManagedSessionRecord): SessionDriverEvent {
   return {
     type: "sessionUpdated",
     sessionRef: record.ref,
     timestamp: record.updatedAt,
-    snapshot: buildSnapshot(record),
+    snapshot: snapshotForRecord(record),
   };
 }
 

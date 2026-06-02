@@ -44,6 +44,8 @@ import {
   type CreateWorktreeInput,
   type DesktopAppState,
   type NotificationPreferences,
+  type ComposerDeviceMode,
+  type ThemeMode,
   type QueuedComposerMessage,
   type RemoveWorktreeInput,
   type SelectedTranscriptRecord,
@@ -51,6 +53,7 @@ import {
   type TranscriptMessage,
   type WorkspaceSessionTarget,
 } from "../src/desktop-state";
+import type { ComposerMode } from "../src/composer-mode";
 import {
   applyTimelineEvent,
   appendAssistantDelta,
@@ -207,7 +210,8 @@ export class DesktopAppStore implements AppStoreInternals {
     await Promise.all(
       pendingTranscriptWrites.map(async ([key, timer]) => {
         clearTimeout(timer);
-        const transcript = (this.sessionState.transcriptCache.get(key) ?? []).map(cloneTranscriptMessage);
+        // writePersistedTranscript clones internally before serializing.
+        const transcript = this.sessionState.transcriptCache.get(key) ?? [];
         await this.writePersistedTranscript(key, transcript);
       }),
     );
@@ -355,7 +359,7 @@ export class DesktopAppStore implements AppStoreInternals {
 
   async submitComposer(
     textInput: string,
-    options?: { readonly deliverAs?: "steer" | "followUp" },
+    options?: { readonly deliverAs?: "steer" | "followUp"; readonly mode?: ComposerMode },
   ): Promise<DesktopAppState> {
     return composer.submitComposer(this, textInput, options);
   }
@@ -494,6 +498,21 @@ export class DesktopAppStore implements AppStoreInternals {
     return this.emit();
   }
 
+  async setCommitPushModel(workspaceId: string, model: string): Promise<DesktopAppState> {
+    await this.initialize();
+    if (this.state.commitPushModel === model) {
+      return this.emit();
+    }
+    this.state = {
+      ...this.state,
+      commitPushModel: model,
+      lastError: undefined,
+      revision: this.state.revision + 1,
+    };
+    await this.persistUiState();
+    return this.emit();
+  }
+
   async setEnableTransparency(enabled: boolean): Promise<DesktopAppState> {
     await this.initialize();
     if (this.state.enableTransparency === enabled) {
@@ -502,6 +521,36 @@ export class DesktopAppStore implements AppStoreInternals {
     this.state = {
       ...this.state,
       enableTransparency: enabled,
+      lastError: undefined,
+      revision: this.state.revision + 1,
+    };
+    await this.persistUiState();
+    return this.emit();
+  }
+
+  async setComposerDeviceMode(mode: ComposerDeviceMode): Promise<DesktopAppState> {
+    await this.initialize();
+    if (this.state.composerDeviceMode === mode) {
+      return structuredClone(this.state);
+    }
+    this.state = {
+      ...this.state,
+      composerDeviceMode: mode,
+      lastError: undefined,
+      revision: this.state.revision + 1,
+    };
+    await this.persistUiState();
+    return this.emit();
+  }
+
+  async setThemeMode(mode: ThemeMode): Promise<DesktopAppState> {
+    await this.initialize();
+    if (this.state.themeMode === mode) {
+      return structuredClone(this.state);
+    }
+    this.state = {
+      ...this.state,
+      themeMode: mode,
       lastError: undefined,
       revision: this.state.revision + 1,
     };
@@ -719,6 +768,13 @@ export class DesktopAppStore implements AppStoreInternals {
     );
   }
 
+  async deleteExtension(workspaceId: string, filePath: string): Promise<DesktopAppState> {
+    return this.withRuntimeUpdate(workspaceId, (ws) =>
+      this.driver.runtimeSupervisor.deleteExtension(ws, filePath),
+      { reloadSessions: true },
+    );
+  }
+
   private async withRuntimeUpdate(
     workspaceId: string,
     action: (ws: WorkspaceRef) => Promise<RuntimeSnapshot>,
@@ -763,6 +819,9 @@ export class DesktopAppStore implements AppStoreInternals {
         workspaceOrder: persisted.workspaceOrder ?? [],
         sidebarCollapsed: persisted.sidebarCollapsed ?? this.state.sidebarCollapsed,
         enableTransparency: persisted.enableTransparency ?? this.state.enableTransparency,
+        composerDeviceMode: persisted.composerDeviceMode ?? this.state.composerDeviceMode,
+        themeMode: persisted.themeMode ?? this.state.themeMode,
+        commitPushModel: persisted.commitPushModel ?? this.state.commitPushModel,
       };
       await this.migrateLegacyPersistence(persisted);
       this.sessionState.lastViewedAtBySession.clear();
@@ -819,7 +878,10 @@ export class DesktopAppStore implements AppStoreInternals {
       this.state = {
         ...createEmptyDesktopAppState(),
         enableTransparency: persisted.enableTransparency ?? false,
+        composerDeviceMode: persisted.composerDeviceMode ?? "off",
+        themeMode: persisted.themeMode ?? "system",
         lastError: error instanceof Error ? error.message : String(error),
+        commitPushModel: persisted.commitPushModel,
         revision: 1,
       };
       await this.persistUiState();
@@ -1427,7 +1489,6 @@ export class DesktopAppStore implements AppStoreInternals {
       runMetricsBySession: this.sessionState.runMetricsBySession,
       runningSinceBySession: this.sessionState.runningSinceBySession,
       activeAssistantMessageBySession: this.sessionState.activeAssistantMessageBySession,
-      activeWorkingActivityBySession: this.sessionState.activeWorkingActivityBySession,
     });
     this.state = applySessionEventState(
       this.state,
@@ -1713,6 +1774,8 @@ export class DesktopAppStore implements AppStoreInternals {
       appGlobalModelSettings: hasStoredModelSettings(this.state.globalModelSettings) ? this.state.globalModelSettings : undefined,
       sidebarCollapsed: this.state.sidebarCollapsed || undefined,
       enableTransparency: this.state.enableTransparency,
+      composerDeviceMode: this.state.composerDeviceMode,
+      themeMode: this.state.themeMode,
     };
 
     await writePersistedUiState(this.uiStateFilePath, payload);
@@ -1735,7 +1798,8 @@ export class DesktopAppStore implements AppStoreInternals {
 
     const timer = setTimeout(() => {
       this.transcriptPersistTimers.delete(key);
-      const transcript = (this.sessionState.transcriptCache.get(key) ?? []).map(cloneTranscriptMessage);
+      // writePersistedTranscript clones internally before serializing.
+      const transcript = this.sessionState.transcriptCache.get(key) ?? [];
       void this.writePersistedTranscript(key, transcript);
     }, 250);
 
@@ -1829,10 +1893,13 @@ export class DesktopAppStore implements AppStoreInternals {
   }
 
   private buildSelectedTranscriptRecord(sessionRef: SessionRef): SelectedTranscriptRecord {
+    // No manual clone: Electron IPC structured-clones the payload when sending
+    // to the renderer, so an extra in-process copy is pure waste. Listeners on
+    // the main side treat the array as read-only.
     return {
       workspaceId: sessionRef.workspaceId,
       sessionId: sessionRef.sessionId,
-      transcript: (this.sessionState.transcriptCache.get(sessionKey(sessionRef)) ?? []).map(cloneTranscriptMessage),
+      transcript: this.sessionState.transcriptCache.get(sessionKey(sessionRef)) ?? [],
     };
   }
 
@@ -2235,7 +2302,8 @@ export class DesktopAppStore implements AppStoreInternals {
     runtimeByWorkspace?: Record<string, RuntimeSnapshot>,
   ): DesktopAppState {
     const key = sessionKey(sessionRef);
-    const transcript = (this.sessionState.transcriptCache.get(key) ?? []).map(cloneTranscriptMessage);
+    // Only used to compute a preview; no need to clone.
+    const transcript = this.sessionState.transcriptCache.get(key) ?? [];
     const preview = previewFromTranscript(transcript);
     const lastViewedAt = this.sessionState.lastViewedAtBySession.get(key);
     const nextState = {

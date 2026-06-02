@@ -1,7 +1,9 @@
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::sync::Mutex;
 use tauri::{Manager, State};
+use tauri_plugin_dialog::DialogExt;
 
 /// Connection details handed to the Svelte Desktop Client.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -31,7 +33,6 @@ fn generate_token() -> String {
     use std::hash::{BuildHasher, Hasher};
     let hasher = RandomState::new().build_hasher();
     let mut state = hasher;
-    // Mix in some entropy
     state.write_u64(
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -40,6 +41,19 @@ fn generate_token() -> String {
     );
     state.write_u64(std::process::id() as u64);
     format!("{:016x}{:016x}", state.finish(), state.finish())
+}
+
+/// Resolve the repo root from CARGO_MANIFEST_DIR (apps/svelte-desktop/src-tauri).
+fn repo_root() -> PathBuf {
+    let manifest_dir = PathBuf::from(
+        std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string()),
+    );
+    manifest_dir
+        .parent() // src-tauri -> apps/svelte-desktop
+        .and_then(|p| p.parent()) // -> apps
+        .and_then(|p| p.parent()) // -> repo root
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| PathBuf::from("."))
 }
 
 /// Start the sidecar process and wait for its connection info.
@@ -62,24 +76,19 @@ fn start_sidecar(
         .to_string();
 
     let token = generate_token();
+    let root = repo_root();
+    let tsx_path = root.join("node_modules").join(".bin").join("tsx");
+    let sidecar_script = root.join("packages").join("sidecar").join("src").join("run.ts");
 
-    // Use Node as the runtime (fallback; Bun can be substituted)
     let node_path = std::env::var("PI_SIDECAR_NODE")
         .unwrap_or_else(|_| "node".to_string());
 
-    let sidecar_script = std::env::var("PI_SIDECAR_SCRIPT")
-        .unwrap_or_else(|_| {
-            // Default: the sidecar package's run.ts via tsx
-            let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
-                .unwrap_or_else(|_| ".".to_string());
-            format!(
-                "{}/../../packages/sidecar/src/run.ts",
-                manifest_dir
-            )
-        });
-
     let mut child = Command::new(&node_path)
-        .args(["--import", "tsx", &sidecar_script])
+        .args([
+            "--import",
+            &tsx_path.to_string_lossy(),
+            &sidecar_script.to_string_lossy(),
+        ])
         .env("PI_SIDECAR_TOKEN", &token)
         .env("PI_SIDECAR_PORT", "0")
         .env("PI_SIDECAR_DATA_DIR", &data_dir)
@@ -101,7 +110,6 @@ fn start_sidecar(
     let conn: SidecarConnection =
         serde_json::from_str(&line).map_err(|e| format!("Invalid sidecar output: {}", e))?;
 
-    // Store the connection and child process
     proc.connection = Some(conn.clone());
     proc.child = Some(child);
 
@@ -131,17 +139,97 @@ fn stop_sidecar(state: State<'_, Mutex<SidecarProcess>>) -> Result<(), String> {
     Ok(())
 }
 
+/// Open a native folder picker and return the selected path.
+#[tauri::command]
+async fn pick_folder(app_handle: tauri::AppHandle) -> Result<Option<String>, String> {
+    let path = app_handle
+        .dialog()
+        .file()
+        .blocking_pick_folder();
+
+    Ok(path.map(|p| p.to_string()))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            // Start sidecar on app launch
+            let app_handle = app.handle().clone();
+            std::thread::spawn(move || {
+                if let Some(state) = app_handle.try_state::<Mutex<SidecarProcess>>() {
+                    if let Ok(mut proc) = state.lock() {
+                        if proc.child.is_none() {
+                            let data_dir = app_handle
+                                .path()
+                                .app_data_dir()
+                                .map(|p| p.to_string_lossy().to_string())
+                                .unwrap_or_else(|_| {
+                                    std::env::temp_dir()
+                                        .join("pi-desktop-data")
+                                        .to_string_lossy()
+                                        .to_string()
+                                });
+
+                            let token = generate_token();
+                            let root = repo_root();
+                            let tsx_path = root.join("node_modules").join(".bin").join("tsx");
+                            let sidecar_script = root
+                                .join("packages")
+                                .join("sidecar")
+                                .join("src")
+                                .join("run.ts");
+
+                            let node_path = std::env::var("PI_SIDECAR_NODE")
+                                .unwrap_or_else(|_| "node".to_string());
+
+                            match Command::new(&node_path)
+                                .args([
+                                    "--import",
+                                    &tsx_path.to_string_lossy(),
+                                    &sidecar_script.to_string_lossy(),
+                                ])
+                                .env("PI_SIDECAR_TOKEN", &token)
+                                .env("PI_SIDECAR_PORT", "0")
+                                .env("PI_SIDECAR_DATA_DIR", &data_dir)
+                                .stdout(std::process::Stdio::piped())
+                                .stderr(std::process::Stdio::piped())
+                                .spawn()
+                            {
+                                Ok(mut child) => {
+                                    use std::io::{BufRead, BufReader};
+                                    if let Some(stdout) = child.stdout.take() {
+                                        let reader = BufReader::new(stdout);
+                                        if let Some(Ok(line)) = reader.lines().next() {
+                                            if let Ok(conn) = serde_json::from_str::<
+                                                SidecarConnection,
+                                            >(&line)
+                                            {
+                                                proc.connection = Some(conn);
+                                                proc.child = Some(child);
+                                            }
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    eprintln!("Failed to start sidecar: {}", e);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+            Ok(())
+        })
         .manage(Mutex::new(SidecarProcess::new()))
         .invoke_handler(tauri::generate_handler![
             start_sidecar,
             get_sidecar_connection,
             stop_sidecar,
+            pick_folder,
         ])
         .on_window_event(|_window, event| {
-            // Track window lifecycle but actual sidecar cleanup is on RunEvent
             let _ = event;
         })
         .build(tauri::generate_context!())
@@ -149,8 +237,7 @@ pub fn run() {
         .run(|app_handle, event| {
             if let tauri::RunEvent::Exit = event {
                 if let Some(state) = app_handle.try_state::<Mutex<SidecarProcess>>() {
-                    let guard = state.lock().ok();
-                    if let Some(mut proc) = guard {
+                    if let Ok(mut proc) = state.lock() {
                         if let Some(mut child) = proc.child.take() {
                             let _ = child.kill();
                             let _ = child.wait();
