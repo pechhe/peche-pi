@@ -60,6 +60,7 @@ import {
   clearActiveAssistantMessage,
 } from "./app-store-timeline";
 import { applySessionEventState, updateSessionRecord } from "./app-store-session-state";
+import { reduce } from "./app-state-reducer";
 import type { AppStoreInternals, RefreshStateOptions } from "./app-store-internals";
 import {
   readPersistedUiState,
@@ -454,15 +455,11 @@ export class DesktopAppStore implements AppStoreInternals {
 
   async setSidebarCollapsed(sidebarCollapsed: boolean): Promise<DesktopAppState> {
     await this.initialize();
-    if (this.state.sidebarCollapsed === sidebarCollapsed) {
+    const next = reduce(this.state, { type: "settings/setSidebarCollapsed", sidebarCollapsed });
+    if (next === this.state) {
       return structuredClone(this.state);
     }
-    this.state = {
-      ...this.state,
-      sidebarCollapsed,
-      lastError: undefined,
-      revision: this.state.revision + 1,
-    };
+    this.state = next;
     await this.persistUiState();
     return this.emit();
   }
