@@ -440,12 +440,7 @@ export class DesktopAppStore implements AppStoreInternals {
         await this.cancelPendingDialogsForSession(sessionRef);
       }
     }
-    this.state = {
-      ...this.state,
-      activeView,
-      lastError: undefined,
-      revision: this.state.revision + 1,
-    };
+    this.state = reduce(this.state, { type: "view/setActiveView", activeView });
     if (activeView === "threads") {
       this.markSelectedSessionViewedIfVisible();
     }

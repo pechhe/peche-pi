@@ -86,6 +86,30 @@ test("settings/setCommitPushModel sets the field and is a no-op when unchanged",
   assert.equal(noop, next);
 });
 
+test("view/setActiveView sets the field, clears lastError, bumps revision", () => {
+  const base = {
+    ...createEmptyDesktopAppState(),
+    activeView: "threads" as const,
+    lastError: "boom",
+    revision: 4,
+  };
+  const next = reduce(base, { type: "view/setActiveView", activeView: "settings" });
+  assert.equal(next.activeView, "settings");
+  assert.equal(next.lastError, undefined);
+  assert.equal(next.revision, 5);
+});
+
+test("view/setActiveView ALWAYS bumps revision, even when the view is unchanged", () => {
+  // Documented deviation from the no-op convention: callers rely on a
+  // fresh revision so re-selecting the current view still produces a
+  // state-changed event for downstream side effects.
+  const base = { ...createEmptyDesktopAppState(), activeView: "threads" as const, revision: 10 };
+  const next = reduce(base, { type: "view/setActiveView", activeView: "threads" });
+  assert.notEqual(next, base);
+  assert.equal(next.activeView, "threads");
+  assert.equal(next.revision, 11);
+});
+
 test("settings/mergeNotificationPreferences merges shallowly and always bumps revision", () => {
   const base = {
     ...createEmptyDesktopAppState(),
