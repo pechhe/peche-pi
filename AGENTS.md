@@ -42,9 +42,7 @@ These rules apply for the full session.
 ### Package structure
 - `packages/pi-sdk-driver/` — runtime metadata, extension/skill display names, provider/model sync. **Shared between renderer and main via require().**
 - `packages/session-driver/` — session lifecycle, transcript types. Also shared.
-- `packages/desktop-core/` — core state, workspace/session management used by the sidecar.
-- `apps/desktop/` — Electron app (React renderer + Node main process).
-- `apps/svelte-desktop/` — Tauri/Svelte alternative (separate surface, not the primary app).
+- `apps/desktop/` — Electron app (React renderer + Node main process). The canonical Desktop App.
 
 ### Verification
 - Prefer running the real Electron app and checking the UI directly.
