@@ -1,4 +1,4 @@
-import type { AppView, ComposerDeviceMode, DesktopAppState, NotificationPreferences, ThemeMode } from "../src/desktop-state";
+import type { AppView, ComposerDeviceMode, DesktopAppState, ModelSettingsScopeMode, NotificationPreferences, ThemeMode } from "../src/desktop-state";
 
 /**
  * Pure state-transition layer for the desktop app.
@@ -30,7 +30,8 @@ export type DesktopAction =
   | { readonly type: "settings/setIntegratedTerminalShell"; readonly integratedTerminalShell: string }
   | { readonly type: "settings/setCommitPushModel"; readonly commitPushModel: string }
   | { readonly type: "settings/mergeNotificationPreferences"; readonly preferences: Partial<NotificationPreferences> }
-  | { readonly type: "view/setActiveView"; readonly activeView: AppView };
+  | { readonly type: "view/setActiveView"; readonly activeView: AppView }
+  | { readonly type: "settings/setModelSettingsScopeMode"; readonly modelSettingsScopeMode: ModelSettingsScopeMode };
 
 export function reduce(state: DesktopAppState, action: DesktopAction): DesktopAppState {
   switch (action.type) {
@@ -87,6 +88,12 @@ export function reduce(state: DesktopAppState, action: DesktopAction): DesktopAp
       // current view still triggers the post-state "mark viewed" side
       // effect via a fresh state-changed event.
       return bump({ ...state, activeView: action.activeView });
+    }
+    case "settings/setModelSettingsScopeMode": {
+      if (state.modelSettingsScopeMode === action.modelSettingsScopeMode) {
+        return state;
+      }
+      return bump({ ...state, modelSettingsScopeMode: action.modelSettingsScopeMode });
     }
   }
 }

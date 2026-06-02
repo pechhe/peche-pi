@@ -526,18 +526,16 @@ export class DesktopAppStore implements AppStoreInternals {
 
   async setModelSettingsScopeMode(modelSettingsScopeMode: ModelSettingsScopeMode): Promise<DesktopAppState> {
     await this.initialize();
-    if (this.state.modelSettingsScopeMode === modelSettingsScopeMode) {
+    const next = reduce(this.state, { type: "settings/setModelSettingsScopeMode", modelSettingsScopeMode });
+    if (next === this.state) {
       return this.emit();
     }
+    // Side effect runs BEFORE the state write so it still sees the
+    // outgoing globalModelSettings (mirrors the original ordering).
     if (modelSettingsScopeMode === "app-global") {
       await this.restoreGlobalModelSettings(this.state.globalModelSettings);
     }
-    this.state = {
-      ...this.state,
-      modelSettingsScopeMode,
-      lastError: undefined,
-      revision: this.state.revision + 1,
-    };
+    this.state = next;
     await this.persistUiState();
     return this.refreshState({ clearLastError: true });
   }

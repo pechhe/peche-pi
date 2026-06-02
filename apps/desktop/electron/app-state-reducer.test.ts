@@ -110,6 +110,31 @@ test("view/setActiveView ALWAYS bumps revision, even when the view is unchanged"
   assert.equal(next.revision, 11);
 });
 
+test("settings/setModelSettingsScopeMode sets the field, clears lastError, bumps revision", () => {
+  const base = {
+    ...createEmptyDesktopAppState(),
+    modelSettingsScopeMode: "app-global" as const,
+    lastError: "boom",
+    revision: 4,
+  };
+  const next = reduce(base, {
+    type: "settings/setModelSettingsScopeMode",
+    modelSettingsScopeMode: "per-repo",
+  });
+  assert.equal(next.modelSettingsScopeMode, "per-repo");
+  assert.equal(next.lastError, undefined);
+  assert.equal(next.revision, 5);
+});
+
+test("settings/setModelSettingsScopeMode returns the same reference when unchanged", () => {
+  const base = { ...createEmptyDesktopAppState(), modelSettingsScopeMode: "per-repo" as const };
+  const next = reduce(base, {
+    type: "settings/setModelSettingsScopeMode",
+    modelSettingsScopeMode: "per-repo",
+  });
+  assert.equal(next, base);
+});
+
 test("settings/mergeNotificationPreferences merges shallowly and always bumps revision", () => {
   const base = {
     ...createEmptyDesktopAppState(),
