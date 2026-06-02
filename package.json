@@ -9,7 +9,7 @@
     "bun:dev": "cd apps/desktop && bun run dev",
     "build": "pnpm -r --if-present build",
     "bun:build": "for dir in apps/* packages/*; do (cd \"$dir\" && (grep -q '\"bun:build\":' package.json && bun run bun:build || (grep -q '\"build\":' package.json && bun run build))); done",
-    "typecheck": "pnpm --filter @pi-gui/desktop-protocol build && pnpm --filter @pi-gui/session-driver build && pnpm --filter @pi-gui/catalogs build && pnpm --filter @pi-gui/pi-sdk-driver build && pnpm -r --if-present typecheck",
+    "typecheck": "pnpm --filter @pi-gui/session-driver build && pnpm --filter @pi-gui/catalogs build && pnpm --filter @pi-gui/pi-sdk-driver build && pnpm -r --if-present typecheck",
     "bun:typecheck": "cd packages/session-driver && bun run build && cd ../pi-sdk-driver && bun run build && cd ../catalogs && bun run build && for dir in apps/* packages/*; do (cd \"$dir\" && grep -q '\"typecheck\":' package.json && bun run typecheck); done",
     "bun:package": "cd apps/desktop && bun run bun:package",
     "bun:package:dir": "cd apps/desktop && bun run bun:package:dir",
