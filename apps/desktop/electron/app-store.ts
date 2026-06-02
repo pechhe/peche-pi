@@ -466,91 +466,65 @@ export class DesktopAppStore implements AppStoreInternals {
 
   async setNotificationPreferences(preferences: Partial<NotificationPreferences>): Promise<DesktopAppState> {
     await this.initialize();
-    this.state = {
-      ...this.state,
-      notificationPreferences: {
-        ...this.state.notificationPreferences,
-        ...preferences,
-      },
-      lastError: undefined,
-      revision: this.state.revision + 1,
-    };
+    this.state = reduce(this.state, { type: "settings/mergeNotificationPreferences", preferences });
     await this.persistUiState();
     return this.emit();
   }
 
   async setIntegratedTerminalShell(integratedTerminalShell: string): Promise<DesktopAppState> {
     await this.initialize();
-    const normalizedShell = integratedTerminalShell.trim();
-    if (this.state.integratedTerminalShell === normalizedShell) {
+    const next = reduce(this.state, {
+      type: "settings/setIntegratedTerminalShell",
+      integratedTerminalShell: integratedTerminalShell.trim(),
+    });
+    if (next === this.state) {
       return this.emit();
     }
-    this.state = {
-      ...this.state,
-      integratedTerminalShell: normalizedShell,
-      lastError: undefined,
-      revision: this.state.revision + 1,
-    };
+    this.state = next;
     await this.persistUiState();
     return this.emit();
   }
 
   async setCommitPushModel(workspaceId: string, model: string): Promise<DesktopAppState> {
     await this.initialize();
-    if (this.state.commitPushModel === model) {
+    const next = reduce(this.state, { type: "settings/setCommitPushModel", commitPushModel: model });
+    if (next === this.state) {
       return this.emit();
     }
-    this.state = {
-      ...this.state,
-      commitPushModel: model,
-      lastError: undefined,
-      revision: this.state.revision + 1,
-    };
+    this.state = next;
     await this.persistUiState();
     return this.emit();
   }
 
   async setEnableTransparency(enabled: boolean): Promise<DesktopAppState> {
     await this.initialize();
-    if (this.state.enableTransparency === enabled) {
+    const next = reduce(this.state, { type: "settings/setEnableTransparency", enableTransparency: enabled });
+    if (next === this.state) {
       return structuredClone(this.state);
     }
-    this.state = {
-      ...this.state,
-      enableTransparency: enabled,
-      lastError: undefined,
-      revision: this.state.revision + 1,
-    };
+    this.state = next;
     await this.persistUiState();
     return this.emit();
   }
 
   async setComposerDeviceMode(mode: ComposerDeviceMode): Promise<DesktopAppState> {
     await this.initialize();
-    if (this.state.composerDeviceMode === mode) {
+    const next = reduce(this.state, { type: "settings/setComposerDeviceMode", composerDeviceMode: mode });
+    if (next === this.state) {
       return structuredClone(this.state);
     }
-    this.state = {
-      ...this.state,
-      composerDeviceMode: mode,
-      lastError: undefined,
-      revision: this.state.revision + 1,
-    };
+    this.state = next;
     await this.persistUiState();
     return this.emit();
   }
 
   async setThemeMode(mode: ThemeMode): Promise<DesktopAppState> {
     await this.initialize();
-    if (this.state.themeMode === mode) {
+    const next = reduce(this.state, { type: "settings/setThemeMode", themeMode: mode });
+    if (next === this.state) {
       return structuredClone(this.state);
     }
-    this.state = {
-      ...this.state,
-      themeMode: mode,
-      lastError: undefined,
-      revision: this.state.revision + 1,
-    };
+    this.state = next;
     await this.persistUiState();
     return this.emit();
   }

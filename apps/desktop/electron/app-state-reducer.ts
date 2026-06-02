@@ -1,4 +1,4 @@
-import type { DesktopAppState } from "../src/desktop-state";
+import type { ComposerDeviceMode, DesktopAppState, NotificationPreferences, ThemeMode } from "../src/desktop-state";
 
 /**
  * Pure state-transition layer for the desktop app.
@@ -16,13 +16,20 @@ import type { DesktopAppState } from "../src/desktop-state";
  * `lastError` and bumps `revision`. Those cross-cutting concerns belong
  * to the reducer, not to each caller.
  *
- * This module is the seam being grown. Today it handles a single
- * action; sibling `app-store-*.ts` files will be migrated one slice at
- * a time as we deepen candidate #2.
+ * This module is the seam being grown. Today it handles the trivial
+ * single-field settings setters; orchestrators with real side effects
+ * (composer submit, session lifecycle, runtime refresh) will arrive in
+ * later slices of candidate #2.
  */
 
 export type DesktopAction =
-  | { readonly type: "settings/setSidebarCollapsed"; readonly sidebarCollapsed: boolean };
+  | { readonly type: "settings/setSidebarCollapsed"; readonly sidebarCollapsed: boolean }
+  | { readonly type: "settings/setEnableTransparency"; readonly enableTransparency: boolean }
+  | { readonly type: "settings/setComposerDeviceMode"; readonly composerDeviceMode: ComposerDeviceMode }
+  | { readonly type: "settings/setThemeMode"; readonly themeMode: ThemeMode }
+  | { readonly type: "settings/setIntegratedTerminalShell"; readonly integratedTerminalShell: string }
+  | { readonly type: "settings/setCommitPushModel"; readonly commitPushModel: string }
+  | { readonly type: "settings/mergeNotificationPreferences"; readonly preferences: Partial<NotificationPreferences> };
 
 export function reduce(state: DesktopAppState, action: DesktopAction): DesktopAppState {
   switch (action.type) {
@@ -31,6 +38,46 @@ export function reduce(state: DesktopAppState, action: DesktopAction): DesktopAp
         return state;
       }
       return bump({ ...state, sidebarCollapsed: action.sidebarCollapsed });
+    }
+    case "settings/setEnableTransparency": {
+      if (state.enableTransparency === action.enableTransparency) {
+        return state;
+      }
+      return bump({ ...state, enableTransparency: action.enableTransparency });
+    }
+    case "settings/setComposerDeviceMode": {
+      if (state.composerDeviceMode === action.composerDeviceMode) {
+        return state;
+      }
+      return bump({ ...state, composerDeviceMode: action.composerDeviceMode });
+    }
+    case "settings/setThemeMode": {
+      if (state.themeMode === action.themeMode) {
+        return state;
+      }
+      return bump({ ...state, themeMode: action.themeMode });
+    }
+    case "settings/setIntegratedTerminalShell": {
+      // Caller is expected to normalise the value (e.g. trim) before
+      // dispatching; the reducer stores the exact value it receives.
+      if (state.integratedTerminalShell === action.integratedTerminalShell) {
+        return state;
+      }
+      return bump({ ...state, integratedTerminalShell: action.integratedTerminalShell });
+    }
+    case "settings/setCommitPushModel": {
+      if (state.commitPushModel === action.commitPushModel) {
+        return state;
+      }
+      return bump({ ...state, commitPushModel: action.commitPushModel });
+    }
+    case "settings/mergeNotificationPreferences": {
+      // Existing behaviour is to bump revision on every merge, even when
+      // the merged result is structurally identical. Preserve that.
+      return bump({
+        ...state,
+        notificationPreferences: { ...state.notificationPreferences, ...action.preferences },
+      });
     }
   }
 }

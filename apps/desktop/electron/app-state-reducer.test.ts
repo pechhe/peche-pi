@@ -32,3 +32,80 @@ test("settings/setSidebarCollapsed does not mutate the input state", () => {
   assert.equal(frozen.sidebarCollapsed, false);
   assert.equal(frozen.revision, 3);
 });
+
+test("settings/setEnableTransparency sets the field and is a no-op when unchanged", () => {
+  const base = { ...createEmptyDesktopAppState(), enableTransparency: false, revision: 1 };
+  const next = reduce(base, { type: "settings/setEnableTransparency", enableTransparency: true });
+  assert.equal(next.enableTransparency, true);
+  assert.equal(next.revision, 2);
+
+  const noop = reduce(next, { type: "settings/setEnableTransparency", enableTransparency: true });
+  assert.equal(noop, next);
+});
+
+test("settings/setComposerDeviceMode sets the field and is a no-op when unchanged", () => {
+  const base = { ...createEmptyDesktopAppState(), composerDeviceMode: "off" as const };
+  const next = reduce(base, { type: "settings/setComposerDeviceMode", composerDeviceMode: "screen" });
+  assert.equal(next.composerDeviceMode, "screen");
+
+  const noop = reduce(next, { type: "settings/setComposerDeviceMode", composerDeviceMode: "screen" });
+  assert.equal(noop, next);
+});
+
+test("settings/setThemeMode sets the field and is a no-op when unchanged", () => {
+  const base = { ...createEmptyDesktopAppState(), themeMode: "system" as const };
+  const next = reduce(base, { type: "settings/setThemeMode", themeMode: "dark" });
+  assert.equal(next.themeMode, "dark");
+
+  const noop = reduce(next, { type: "settings/setThemeMode", themeMode: "dark" });
+  assert.equal(noop, next);
+});
+
+test("settings/setIntegratedTerminalShell sets the field exactly as given (caller normalises)", () => {
+  const base = { ...createEmptyDesktopAppState(), integratedTerminalShell: "" };
+  const next = reduce(base, {
+    type: "settings/setIntegratedTerminalShell",
+    integratedTerminalShell: "/bin/zsh",
+  });
+  assert.equal(next.integratedTerminalShell, "/bin/zsh");
+
+  // No-op identity when value unchanged.
+  const noop = reduce(next, {
+    type: "settings/setIntegratedTerminalShell",
+    integratedTerminalShell: "/bin/zsh",
+  });
+  assert.equal(noop, next);
+});
+
+test("settings/setCommitPushModel sets the field and is a no-op when unchanged", () => {
+  const base = { ...createEmptyDesktopAppState(), commitPushModel: undefined };
+  const next = reduce(base, { type: "settings/setCommitPushModel", commitPushModel: "openai/gpt-4" });
+  assert.equal(next.commitPushModel, "openai/gpt-4");
+
+  const noop = reduce(next, { type: "settings/setCommitPushModel", commitPushModel: "openai/gpt-4" });
+  assert.equal(noop, next);
+});
+
+test("settings/mergeNotificationPreferences merges shallowly and always bumps revision", () => {
+  const base = {
+    ...createEmptyDesktopAppState(),
+    notificationPreferences: { backgroundCompletion: true, backgroundFailure: true, attentionNeeded: true },
+    revision: 5,
+  };
+  const next = reduce(base, {
+    type: "settings/mergeNotificationPreferences",
+    preferences: { backgroundFailure: false },
+  });
+  assert.deepEqual(next.notificationPreferences, {
+    backgroundCompletion: true,
+    backgroundFailure: false,
+    attentionNeeded: true,
+  });
+  assert.equal(next.revision, 6);
+
+  // Existing behaviour: even an empty-or-identical patch still bumps revision.
+  // Preserved verbatim so step-2 cannot smuggle a behaviour change.
+  const stillBumps = reduce(next, { type: "settings/mergeNotificationPreferences", preferences: {} });
+  assert.equal(stillBumps.revision, 7);
+  assert.notEqual(stillBumps, next);
+});
