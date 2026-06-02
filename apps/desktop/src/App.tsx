@@ -51,6 +51,7 @@ import { useSidebarWidth } from "./hooks/use-sidebar-width";
 import { ExtensionDialog } from "./extension-session-ui";
 import { TreeModal } from "./tree-modal";
 import { ImageLightbox } from "./image-lightbox";
+import { ToastHost } from "./toast";
 import { getEffectiveModelRuntime } from "./model-settings";
 import { resolveRepoWorkspaceId } from "./workspace-roots";
 import {
@@ -2562,6 +2563,7 @@ export default function App() {
         ) : null}
       </main>
       <ImageLightbox />
+      <ToastHost />
     </div>
   );
 }

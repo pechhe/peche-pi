@@ -3,6 +3,7 @@ import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
 import { buildModelOptions, type ComposerModelOption } from "./composer-commands";
 import type { PiDesktopApi } from "./ipc";
 import { SettingsIcon } from "./icons";
+import { showToast } from "./toast";
 
 function GitCommitIcon() {
   return (
@@ -43,7 +44,6 @@ export function CommitPushButton({
 }: CommitPushButtonProps) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [lastResult, setLastResult] = useState<string | null>(null);
   const [gitInfo, setGitInfo] = useState<GitInfo>({ isGitRepo: false, changedCount: 0 });
   const containerRef = useRef<HTMLDivElement | null>(null);
 
@@ -108,34 +108,30 @@ export function CommitPushButton({
     return () => document.removeEventListener("keydown", handle);
   }, [open]);
 
-  // Clear result after timeout
-  useEffect(() => {
-    if (!lastResult) return undefined;
-    const t = setTimeout(() => setLastResult(null), 5000);
-    return () => clearTimeout(t);
-  }, [lastResult]);
-
   const handleCommitPush = useCallback(async () => {
     if (busy || !workspaceId) return;
     if (!gitInfo.isGitRepo) return;
     setBusy(true);
-    setLastResult(null);
     // eslint-disable-next-line no-console
     console.info("[commit-push] invoke", { workspaceId, model: commitPushModel });
     try {
       const result = await api.commitPushExecute(workspaceId);
-      setLastResult(result.message);
       if (result.success) {
         // eslint-disable-next-line no-console
         console.info("[commit-push] success", result);
+        showToast({ variant: "success", message: result.message });
       } else {
         // eslint-disable-next-line no-console
         console.error("[commit-push] failed", result);
+        showToast({ variant: "error", message: result.message });
       }
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error("[commit-push] threw", err);
-      setLastResult(err instanceof Error ? err.message : "Commit & push failed");
+      showToast({
+        variant: "error",
+        message: err instanceof Error ? err.message : "Commit & push failed",
+      });
     } finally {
       setBusy(false);
       refreshGitInfo();
@@ -188,16 +184,10 @@ export function CommitPushButton({
             </span>
           ) : null}
         </button>
-        {lastResult ? (
-          <span className="shortcut-tooltip topbar__tooltip commit-push__result-tooltip" role="tooltip">
-            <span>{lastResult}</span>
-          </span>
-        ) : (
-          <span className="shortcut-tooltip topbar__tooltip" role="tooltip">
-            <span>Commit &amp; Push</span>
-            <kbd>{shortcutLabel}</kbd>
-          </span>
-        )}
+        <span className="shortcut-tooltip topbar__tooltip" role="tooltip">
+          <span>Commit &amp; Push</span>
+          <kbd>{shortcutLabel}</kbd>
+        </span>
       </div>
       <div className="shortcut-tooltip-wrap topbar__tooltip-wrap">
         <button

@@ -2010,10 +2010,71 @@
   z-index: 60;
 }
 
-.commit-push__result-tooltip {
-  max-width: 320px;
-  white-space: normal;
-  text-align: center;
+/* ── Toast (singleton, app-root) ───────────────────── */
+
+.toast {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 9999;
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 12px;
+  max-width: 420px;
+  padding: 10px 12px 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-lg);
+  font-size: 13px;
+  line-height: 1.4;
+  animation: toast-slide-in 0.18s ease-out;
+}
+
+.toast--success {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  border-left: 3px solid var(--accent);
+}
+
+.toast--error {
+  border-color: color-mix(in srgb, var(--error-ink) 55%, transparent);
+  border-left: 3px solid var(--error-ink);
+}
+
+.toast__message {
+  flex: 1 1 auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.toast__close {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: 0;
+  background: transparent;
+  color: var(--muted-soft, var(--ink));
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0;
+}
+
+.toast__close:hover {
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+}
+
+@keyframes toast-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .composer__actions {
@@ -5063,34 +5124,75 @@ mark.thread-find-active {
   animation: composer-crt-scanbeam 17ms linear infinite;
 }
 
-/* .composer__bar sits on the chassis directly below the screen.
-   No background — chassis shows through. */
+/* .composer__bar is the CONTROLS PANEL — a distinct module sitting
+   below the screen inside the chassis. The chassis frames the whole
+   composer; the screen is one module; this is the other. */
 .composer-device--modular .composer__bar {
-  margin-top: 12px;
-  background: transparent;
+  position: relative;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  /* Slightly lighter than the chassis, so it reads as a separate
+     mounted panel — the way an instrument panel sits in a console. */
+  background: linear-gradient(
+    180deg,
+    oklch(0.20 0.005 250) 0%,
+    oklch(0.16 0.005 250) 100%
+  );
+  box-shadow:
+    /* Inset top-edge dark groove: panel is recessed into chassis */
+    inset 0 1px 0 oklch(0 0 0 / 0.55),
+    /* Inset bottom highlight: catches light from below the recess */
+    inset 0 -1px 0 oklch(0.28 0.005 250 / 0.35),
+    /* Hairline outline */
+    inset 0 0 0 1px oklch(0 0 0 / 0.35);
 }
 
-/* Context bar lives on the chassis. The green progress fill still
-   reads as "on-screen" telemetry against the dark chassis. */
+/* Subtle brushed pinstripe over the panel face */
+.composer-device--modular .composer__bar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  border-radius: inherit;
+  background: repeating-linear-gradient(
+    90deg,
+    oklch(1 0 0 / 0.012) 0px,
+    oklch(1 0 0 / 0.012) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+  opacity: 0.7;
+}
+
+.composer-device--modular .composer__footer,
+.composer-device--modular .composer__context,
+.composer-device--modular .composer__footer-row {
+  position: relative;
+  z-index: 1; /* above the panel pinstripe */
+}
+
+/* Context bar = telemetry strip at the top of the controls panel.
+   Green phosphor against the dark panel reads as a small LCD readout. */
 .composer-device--modular .composer__context {
   color: rgb(var(--crt-phosphor) / 0.78);
   font-family: ui-monospace, "SF Mono", Menlo, "Roboto Mono", monospace;
   font-size: 11px;
   letter-spacing: 0.02em;
-  padding: 4px 4px 10px;
+  padding: 0 2px 12px;
+  border-bottom: 1px solid oklch(0 0 0 / 0.45);
+  margin-bottom: 12px;
+  box-shadow: 0 1px 0 oklch(0.28 0.005 250 / 0.3);
 }
 
-/* Footer-row = 3-zone grid on the chassis. No background, no border
-   — just controls floating on the chassis. */
+/* Footer-row = 3-zone grid on the controls panel. */
 .composer-device--modular .composer__footer-row {
-  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 14px;
   min-height: 44px;
-  padding: 4px 4px 0;
-  background: transparent;
 }
 
 /* In modular mode the .composer__hint contains two siblings:
