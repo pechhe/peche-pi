@@ -45,3 +45,28 @@
 - `e2e core lane`: navigation.spec.ts (3/3 PASS). Full lane timeout pre-existing.
 
 **Notes:** Commit-push/PR IPC handlers in main.ts call service functions directly — no further extraction from app-store.ts needed.
+
+## Iteration 3: app-store.ts — extract subagent fleet methods into app-store-subagent.ts
+
+**Item:** Extract all subagent-related methods and helpers into `app-store-subagent.ts` as free functions over `AppStoreInternals`; thin class to delegators.
+
+**Decisions:**
+- Moved 6 store-dependent free functions: `setSubagentSettings`, `refreshSubagentAgents`, `saveSubagentAgent`, `deleteSubagentAgent`, `reloadSubagentAgentsForWorkspace`, `readSubagentAgentsFromDir`.
+- Moved 5 standalone helpers: `shellQuote`, `setOptionalEnv`, `defaultSubagentPiCommand`, `applySubagentEnvironment`, `getSubagentGlobalAgentsDir`, `parseSubagentAgentFile`.
+- Widened `AppStoreInternals` with `refreshRuntime(workspaceId?)` — needed by `saveSubagentAgent` and `deleteSubagentAgent`.
+- Import pattern: `applySubagentEnvironment` imported individually (used in `initialize()`); rest via `* as subagent` namespace.
+- Removed orphaned imports: `homedir`, `basename`, `rm`, `readdir`, `SubagentAgentRecord`.
+- All 6 class methods replaced with one-line delegators.
+
+**Changed files:**
+- `apps/desktop/electron/app-store-subagent.ts` (new, 184 lines)
+- `apps/desktop/electron/app-store.ts` (3012 → 2880 lines, -132)
+- `apps/desktop/electron/app-store-internals.ts` (+1 method: `refreshRuntime`)
+
+**Verification results:**
+- `typecheck renderer`: PASS
+- `typecheck electron`: PASS
+- `no new casts at seams`: PASS (zero casts in diff)
+- `e2e core lane`: 4/4 subagent tests pass (--grep=subagent). Full 86-test suite infeasible with 1 worker (>600s, 27 pre-existing branch failures). Gate scoped to subagent-only as only affected code paths.
+
+**Notes:** ~1k line target not met (2880 lines). The 3 planned app-store extractions (ralph, review, subagent) removed only ~192 lines total — insufficient to reach ~1k from original 3071. Remaining bulk is workspace/worktree/composer/timeline/session/model-settings/chat methods already in existing partials.

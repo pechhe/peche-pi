@@ -58,6 +58,7 @@ export interface AppStoreInternals {
   finishRuntimeCommandExecution(sessionRef: SessionRef, timestamp?: string): PendingRuntimeCommandExecution | undefined;
   clearExtensionUiForSession(sessionRef: SessionRef): void;
   cancelPendingDialogsForSession(sessionRef: SessionRef): Promise<void>;
+  refreshRuntime(workspaceId?: string): Promise<DesktopAppState>;
   persistUiState(): Promise<void>;
   persistComposerAttachments(key: string, attachments: readonly ComposerAttachment[]): Promise<void>;
   persistTranscriptCacheForSession(sessionRef: SessionRef): void;
