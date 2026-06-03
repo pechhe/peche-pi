@@ -4,6 +4,7 @@ export {
   isMetaActivity,
   isQuietTool,
   summariseToolBurst,
+  type TimelineEditedFiles,
   type TimelineMetaEvent,
   type TimelineRow,
   type TimelineThinkingSection,

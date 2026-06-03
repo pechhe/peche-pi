@@ -138,10 +138,13 @@ test("tool activity uses Codex-style running, completed, and grouped states", as
       text: " Edited live file.",
     });
     await expect(window.locator(".timeline-item--assistant", { hasText: "Edited live file." })).toBeVisible();
-    const editCard = window.locator(".timeline-tool--write", { hasText: "Edited src/live.ts" });
-    await expect(editCard.locator(".timeline-tool__label")).toHaveText("Edited src/live.ts");
-    await expect(editCard.locator(".timeline-tool__stat-add")).toHaveText("+2");
-    await expect(editCard.locator(".timeline-tool__stat-del")).toHaveText("-1");
+    // The edit stays inline as a quiet line (no prominent box), and the
+    // prominent edited-files box is brought out after the assistant reply.
+    await expect(window.locator(".timeline-tool--write")).toHaveCount(0);
+    const editBox = window.getByTestId("timeline-edited-files");
+    await expect(editBox.locator(".timeline-edited-files__path")).toHaveText("Edited src/live.ts");
+    await expect(editBox.locator(".timeline-tool__stat-add")).toHaveText("+2");
+    await expect(editBox.locator(".timeline-tool__stat-del")).toHaveText("-1");
   } finally {
     await harness.close();
   }

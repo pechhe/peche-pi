@@ -298,9 +298,7 @@ export function ConversationTimeline({
         />
       ) : null}
       {isTranscriptLoading ? (
-        <div className="timeline" data-testid="transcript">
-          <div className="timeline-empty">Loading transcript…</div>
-        </div>
+        <div className="timeline" data-testid="transcript" aria-hidden="true" />
       ) : timelineRows.length === 0 ? (
         <div className="timeline" data-testid="transcript">
           <div className="timeline-empty">Send a prompt to start the session.</div>
@@ -642,6 +640,9 @@ function estimateTimelineItemHeight(item: TimelineRow): number {
     // Live/expanded sections are tall; the ResizeObserver corrects the real
     // height once mounted, so this is just a first-paint placeholder.
     return item.trailing ? 120 : 32;
+  }
+  if (item.kind === "editedFiles") {
+    return 24 + item.tools.length * 28;
   }
   return 38;
 }

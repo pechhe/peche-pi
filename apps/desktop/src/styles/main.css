@@ -239,6 +239,7 @@
 }
 
 .canvas--thread {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -327,6 +328,49 @@
   display: grid;
   gap: 4px;
   margin-bottom: 18px;
+}
+
+/* Dia-style indeterminate loading bar pinned to the top of the thread
+ * canvas — the divider between the topbar title and the page content. */
+.canvas__loading-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  z-index: 2;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--text-strong) 8%, transparent);
+}
+
+.canvas__loading-bar-indicator {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 40%;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--accent, var(--text-strong)) 50%,
+    transparent 100%
+  );
+  animation: canvas-loading-slide 1.15s ease-in-out infinite;
+}
+
+@keyframes canvas-loading-slide {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .canvas__loading-bar-indicator {
+    animation-duration: 2.4s;
+  }
 }
 
 .chat-header__eyebrow {
@@ -767,6 +811,64 @@
   }
 }
 
+/* Codex-style edited-files box: the actionable artifact of an assistant turn,
+   brought out below the reply while the inline edits stay quiet single lines. */
+.timeline-edited-files {
+  display: grid;
+  gap: 4px;
+  max-width: 860px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--surface-muted) 72%, transparent);
+}
+
+.timeline-edited-files__title {
+  font-size: 12px;
+  font-weight: 560;
+  color: var(--muted-strong);
+  padding: 2px 2px 4px;
+}
+
+.timeline-edited-files__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 2px;
+}
+
+.timeline-edited-files__icon {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  background: var(--main);
+  color: var(--muted-strong);
+}
+
+.timeline-edited-files__icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.timeline-edited-files__path {
+  color: var(--text-strong);
+  font-size: 14px;
+  font-weight: 560;
+}
+
+.timeline-edited-files__stats {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.timeline-edited-files__view {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
 .timeline-activity--error {
   color: var(--error-ink);
 }
@@ -835,39 +937,6 @@
 .timeline-tool--error .timeline-tool__label,
 .timeline-tool--error .timeline-tool__icon {
   color: var(--error-ink);
-}
-
-.timeline-tool--write.timeline-tool--success {
-  max-width: 860px;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 12px 14px;
-  background: color-mix(in srgb, var(--surface-muted) 72%, transparent);
-}
-
-.timeline-tool--write.timeline-tool--success .timeline-tool__header {
-  gap: 8px;
-}
-
-.timeline-tool--write.timeline-tool--success .timeline-tool__icon {
-  width: 34px;
-  height: 34px;
-  display: grid;
-  place-items: center;
-  border-radius: 10px;
-  background: var(--main);
-  color: var(--muted-strong);
-}
-
-.timeline-tool--write.timeline-tool--success .timeline-tool__icon svg {
-  width: 18px;
-  height: 18px;
-}
-
-.timeline-tool--write.timeline-tool--success .timeline-tool__label {
-  color: var(--text-strong);
-  font-size: 14px;
-  font-weight: 560;
 }
 
 .timeline-tool__header-row {
@@ -2623,6 +2692,71 @@
   background: #e8ecf5;
 }
 
+.composer-attachment--tile {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  max-width: none;
+  gap: 0;
+}
+
+.composer-attachment__tile {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  flex-shrink: 0;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: #e8ecf5;
+}
+
+.composer-attachment__tile .composer-attachment__preview-button {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  border-radius: 12px;
+  cursor: zoom-in;
+}
+
+.composer-attachment__tile .composer-attachment__preview {
+  width: 100%;
+  height: 100%;
+  border-radius: 12px;
+  object-fit: cover;
+  background: transparent;
+}
+
+.composer-attachment__tile .composer-attachment__remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #fff;
+  font-size: 16px;
+  line-height: 1;
+  text-shadow: 0 0 4px rgba(0, 0, 0, 0.65);
+  cursor: pointer;
+  transition: transform 120ms ease;
+}
+
+.composer-attachment__tile .composer-attachment__remove:hover {
+  transform: scale(1.1);
+}
+
+.composer-attachment__tile .composer-attachment__remove:focus-visible {
+  outline: 2px solid var(--accent, #4f8cff);
+  outline-offset: 2px;
+}
+
 .composer-attachment__icon {
   width: 28px;
   height: 28px;
@@ -3204,6 +3338,50 @@
   padding-bottom: 24px;
   width: min(1120px, 100%);
   margin: 0 auto;
+}
+
+.settings-view {
+  display: flex;
+  gap: 48px;
+  padding-top: 36px;
+}
+
+.settings-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 180px;
+  flex-shrink: 0;
+  padding-top: 4px;
+}
+
+.settings-sidebar__item {
+  display: flex;
+  align-items: center;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--muted-strong);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background 120ms;
+}
+
+.settings-sidebar__item:hover {
+  background: var(--chrome-hover);
+}
+
+.settings-sidebar__item--active {
+  color: var(--text-strong);
+  background: var(--chrome-highlight);
+}
+
+.settings-content {
+  flex: 1;
+  min-width: 0;
 }
 
 .settings-grid {
@@ -4637,6 +4815,14 @@ mark.thread-find-active {
   background: var(--surface);
 }
 
+:root.dark .composer-attachment__tile {
+  background: var(--surface);
+}
+
+:root.dark .composer-attachment--tile {
+  background: transparent;
+}
+
 :root.dark .slash-menu {
   border-color: var(--line);
   background: rgba(43, 45, 49, 0.98);
@@ -5082,6 +5268,8 @@ mark.thread-find-active {
 /* ================================================================ */
 
 .composer-device {
+  /* Unified frame + controls-strip grey */
+  --crt-frame: oklch(0.185 0.005 250);
   /* CRT phosphor */
   --crt-phosphor: 140 240 165;
   --crt-bright: rgb(var(--crt-phosphor));
@@ -5181,29 +5369,23 @@ mark.thread-find-active {
 /* surface. The chassis is the device. The CRT screen + chip row     */
 /* sit inside it.                                                    */
 
-.composer-device .composer__surface {
+:root.composer-device .composer__surface {
   position: relative;
-  /* Grey controls-strip tone extended to wrap the whole composer as the
-     outer frame (replaces the former lighter lavender chassis). */
-  background: linear-gradient(
-    180deg,
-    var(--crt-body) 0%,
-    var(--crt-body-bottom) 100%
-  );
+  /* Single flat darker-grey frame: identical to the controls strip so the
+     whole composer reads as one grey box with the screen inset into it
+     (no separate lighter/lavender chassis layer). */
+  background: var(--crt-frame);
   border: 0;
   border-radius: 20px;
   padding: 22px 26px 24px;
+  /* Flat darker grey frame (no bright raised edges) so it reads as the
+     same box as the controls strip, surrounding the screen. */
   box-shadow:
-    /* Top edge: bright highlight (light catches the rim) */
-    0 1px 0 var(--crt-edge-highlight) inset,
-    /* Left edge: subtle highlight */
-    1px 0 0 oklch(0.48 0.006 250 / 0.75) inset,
-    /* Right edge: dark shadow */
-    -1px 0 0 oklch(0.08 0 0 / 0.75) inset,
-    /* Bottom edge: deepest shadow */
+    /* Edges: subtle dark definition only */
+    -1px 0 0 oklch(0.08 0 0 / 0.6) inset,
     0 -1px 0 oklch(0.06 0 0) inset,
-    /* Outer bezel hairline */
-    0 0 0 1px oklch(0.32 0.005 250 / 0.5),
+    /* Outer bezel hairline (dark) */
+    0 0 0 1px oklch(0.14 0.005 250 / 0.8),
     /* Drop shadows */
     0 24px 60px -20px oklch(0 0 0 / 0.7),
     0 8px 20px -8px oklch(0 0 0 / 0.5);
@@ -5211,7 +5393,7 @@ mark.thread-find-active {
   overflow: visible;
 }
 
-/* Overhead light from top-left (chassis sheen) */
+/* Faint brushed-metal pinstripe only (no raised top-left highlight). */
 .composer-device .composer__surface::before {
   content: "";
   position: absolute;
@@ -5219,21 +5401,13 @@ mark.thread-find-active {
   pointer-events: none;
   z-index: 0;
   border-radius: inherit;
-  background:
-    /* Brushed pinstripe */
-    repeating-linear-gradient(
-      90deg,
-      oklch(1 0 0 / 0.012) 0px,
-      oklch(1 0 0 / 0.012) 1px,
-      transparent 1px,
-      transparent 3px
-    ),
-    /* Top-left highlight */
-    radial-gradient(
-      ellipse at 25% -10%,
-      oklch(0.34 0.006 250 / 0.55) 0%,
-      transparent 55%
-    );
+  background: repeating-linear-gradient(
+    90deg,
+    oklch(1 0 0 / 0.012) 0px,
+    oklch(1 0 0 / 0.012) 1px,
+    transparent 1px,
+    transparent 3px
+  );
   opacity: 0.85;
 }
 
@@ -5567,17 +5741,13 @@ mark.thread-find-active {
   --crt-modular-controls-h: 56px;
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: 14px;
   min-height: var(--crt-modular-controls-h);
   margin: 0 -16px -2px;
   padding: 12px 18px;
-  background: linear-gradient(
-    180deg,
-    var(--crt-body) 0%,
-    var(--crt-body-bottom) 100%
-  );
+  background: var(--crt-frame);
   box-shadow:
     inset 0 1px 0 oklch(0 0 0 / 0.5),
     inset 0 2px 0 var(--crt-edge-highlight),
@@ -5596,18 +5766,7 @@ mark.thread-find-active {
 }
 
 .composer-device--modular .composer__hint-prose {
-  grid-column: 1;
-  align-self: center;
-  color: var(--crt-ink-muted);
-  font-family: ui-monospace, "SF Mono", Menlo, "Roboto Mono", monospace;
-  font-size: 10px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  opacity: 0.65;
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  display: none;
 }
 
 /* Hide the inline-prose bullet separators in modular mode */
@@ -5615,9 +5774,10 @@ mark.thread-find-active {
   display: none;
 }
 
-/* Controls cluster: middle grid column, row of physical keys */
+/* Controls cluster: left grid column, row of physical keys */
 .composer-device--modular .composer__controls {
-  grid-column: 2;
+  grid-column: 1;
+  align-self: center;
   display: inline-flex;
   align-items: center;
   gap: 10px;
@@ -5643,9 +5803,17 @@ mark.thread-find-active {
 /* Send button: right grid column */
 .composer-device--modular .composer__actions {
   grid-column: 3;
+  align-self: center;
   display: flex;
   align-items: center;
   justify-self: end;
+}
+
+/* Slightly larger send button in modular mode */
+.composer-device--modular .composer__send {
+  width: 52px;
+  min-width: 52px;
+  height: 52px;
 }
 
 /* ---------------------------------------------------------------- */

@@ -15,7 +15,6 @@ import {
   type WorktreeRecord,
   type WorkspaceRecord,
 } from "./desktop-state";
-import { formatRelativeTime } from "./string-utils";
 import { ComposerPanel } from "./composer-panel";
 import { buildPlanModePrompt, type ComposerMode } from "./composer-mode";
 import { DiffPanel, type DiffPanelFileRequest } from "./diff-panel";
@@ -2243,6 +2242,7 @@ export default function App() {
             }}
           />
         </main>
+        {import.meta.env.DEV && <Agentation />}
       </div>
     );
   }
@@ -2341,6 +2341,7 @@ export default function App() {
             }
           />
         </main>
+        {import.meta.env.DEV && <Agentation />}
       </div>
     );
   }
@@ -2398,6 +2399,7 @@ export default function App() {
             onDeleteExtension={handleDeleteExtension}
           />
         </main>
+        {import.meta.env.DEV && <Agentation />}
       </div>
     );
   }
@@ -2538,21 +2540,17 @@ export default function App() {
         ) : selectedWorkspace && selectedSession ? (
           <>
             <section className="canvas canvas--thread">
-              <div className="conversation conversation--thread">
-                <div className="chat-header">
-                  <div className="chat-header__eyebrow">
-                    {selectedWorkspace.kind === "worktree"
-                      ? `${rootWorkspace?.name ?? selectedWorkspace.name} · ${selectedWorktree?.name ?? selectedWorkspace.branchName ?? "Worktree"}`
-                      : `${selectedWorkspace.name} · Local`}
-                  </div>
-                  <div className="chat-header__row">
-                    <h1 className="chat-header__title">{displayedSessionTitle}</h1>
-                    <div className="chat-header__status">
-                      {selectedSession.status === "running" ? null : formatRelativeTime(selectedSession.updatedAt)}
-                    </div>
-                  </div>
+              {isTranscriptLoading ? (
+                <div
+                  className="canvas__loading-bar"
+                  role="progressbar"
+                  aria-label="Loading transcript"
+                  data-testid="transcript-loading-bar"
+                >
+                  <span className="canvas__loading-bar-indicator" />
                 </div>
-
+              ) : null}
+              <div className="conversation conversation--thread">
                 <ConversationTimeline
                   transcript={visibleTranscript}
                   isTranscriptLoading={isTranscriptLoading}

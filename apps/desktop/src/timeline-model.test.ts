@@ -249,7 +249,7 @@ test("timeline model keeps an active thinking section trailing until the answer 
   assert.equal(model.rows[1]!.kind === "thinkingSection" ? model.rows[1]!.trailing : undefined, true);
 });
 
-test("timeline model moves completed edit cards after the assistant reply", () => {
+test("timeline model keeps inline edits and appends an edited-files box after the assistant reply", () => {
   const transcript: TranscriptMessage[] = [
     { kind: "message", id: "user-1", role: "user", text: "Fix", createdAt: "2026-01-01T00:00:00.000Z" },
     { kind: "tool", id: "edit-1", callId: "edit-1", toolName: "edit", status: "success", label: "Edited a.ts", input: { file_path: "a.ts" }, createdAt: "2026-01-01T00:00:02.000Z" },
@@ -258,8 +258,25 @@ test("timeline model moves completed edit cards after the assistant reply", () =
 
   const model = createTimelineViewModel(transcript);
 
-  assert.deepEqual(model.rows.map((item) => item.kind), ["message", "message", "tool"]);
-  assert.equal(model.rows[2]!.kind === "tool" ? model.rows[2]!.toolName : undefined, "edit");
+  // The edit stays inline as a quiet tool line, and the prominent edited-files
+  // box is appended after the assistant reply.
+  assert.deepEqual(model.rows.map((item) => item.kind), ["message", "tool", "message", "editedFiles"]);
+  const box = model.rows[3]!;
+  assert.equal(box.kind === "editedFiles" ? box.tools.length : undefined, 1);
+  assert.equal(box.kind === "editedFiles" ? box.tools[0]!.callId : undefined, "edit-1");
+});
+
+test("timeline model does not show the edited-files box while the run is still working", () => {
+  const transcript: TranscriptMessage[] = [
+    { kind: "message", id: "user-1", role: "user", text: "Fix", createdAt: "2026-01-01T00:00:00.000Z" },
+    { kind: "reasoning", id: "r-1", text: "Editing now.", createdAt: "2026-01-01T00:00:01.000Z" },
+    { kind: "tool", id: "edit-1", callId: "edit-1", toolName: "edit", status: "success", label: "Edited a.ts", input: { file_path: "a.ts" }, createdAt: "2026-01-01T00:00:02.000Z" },
+  ];
+
+  const model = createTimelineViewModel(transcript);
+
+  // Tail is a live thinking section, so no box yet — it appears once the answer lands.
+  assert.deepEqual(model.rows.map((item) => item.kind), ["message", "thinkingSection"]);
 });
 
 test("timeline model summarises completed file bursts semantically", () => {

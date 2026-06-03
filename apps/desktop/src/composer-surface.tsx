@@ -180,39 +180,51 @@ export function ComposerSurface({
       {attachments.length > 0 ? (
         <div className="composer__attachments">
           {attachments.map((attachment) => (
-            <div className={`composer-attachment composer-attachment--${attachment.kind}`} key={attachment.id}>
+            <div className={`composer-attachment composer-attachment--${attachment.kind} ${attachment.kind === "image" ? "composer-attachment--tile" : ""}`} key={attachment.id}>
               {attachment.kind === "image" ? (
-                <button
-                  type="button"
-                  className="composer-attachment__preview-button"
-                  aria-label={`View ${attachment.name}`}
-                  onClick={() =>
-                    openImageLightbox({
-                      src: `data:${attachment.mimeType};base64,${attachment.data}`,
-                      alt: attachment.name,
-                    })
-                  }
-                >
-                  <img
-                    alt={attachment.name}
-                    className="composer-attachment__preview"
-                    src={`data:${attachment.mimeType};base64,${attachment.data}`}
-                  />
-                </button>
+                <div className="composer-attachment__tile">
+                  <button
+                    type="button"
+                    className="composer-attachment__preview-button"
+                    aria-label={`View ${attachment.name}`}
+                    onClick={() =>
+                      openImageLightbox({
+                        src: `data:${attachment.mimeType};base64,${attachment.data}`,
+                        alt: attachment.name,
+                      })
+                    }
+                  >
+                    <img
+                      alt={attachment.name}
+                      className="composer-attachment__preview"
+                      src={`data:${attachment.mimeType};base64,${attachment.data}`}
+                    />
+                  </button>
+                  <button
+                    aria-label={`Remove ${attachment.name}`}
+                    className="composer-attachment__remove"
+                    type="button"
+                    onClick={() => onRemoveAttachment(attachment.id)}
+                  >
+                    ×
+                  </button>
+                </div>
               ) : (
-                <span className="composer-attachment__icon" aria-hidden="true">
-                  <FileIcon />
-                </span>
+                <>
+                  <span className="composer-attachment__icon" aria-hidden="true">
+                    <FileIcon />
+                  </span>
+                  <span className="composer-attachment__name">{attachment.name}</span>
+                  <button
+                    aria-label={`Remove ${attachment.name}`}
+                    className="composer-attachment__remove"
+                    type="button"
+                    onClick={() => onRemoveAttachment(attachment.id)}
+                  >
+                    ×
+                  </button>
+                </>
               )}
-              <span className="composer-attachment__name">{attachment.name}</span>
-              <button
-                aria-label={`Remove ${attachment.name}`}
-                className="composer-attachment__remove"
-                type="button"
-                onClick={() => onRemoveAttachment(attachment.id)}
-              >
-                ×
-              </button>
             </div>
           ))}
         </div>

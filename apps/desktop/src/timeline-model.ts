@@ -550,7 +550,19 @@ export interface TimelineThinkingSection {
   readonly trailing: boolean;
 }
 
-export type TimelineRow = TranscriptMessage | TimelineToolBurst | TimelineThinkingSection;
+/**
+ * A prominent, turn-level summary of the files an assistant turn changed,
+ * surfaced as a box after the assistant reply (Codex-style). The individual
+ * edit tool calls still appear as quiet single lines inside the thought chain;
+ * this row brings the net changes out as the actionable artifact.
+ */
+export interface TimelineEditedFiles {
+  readonly kind: "editedFiles";
+  readonly id: string;
+  readonly tools: readonly ToolItem[];
+}
+
+export type TimelineRow = TranscriptMessage | TimelineToolBurst | TimelineThinkingSection | TimelineEditedFiles;
 
 export interface TimelineViewModel {
   readonly rows: TimelineRow[];
@@ -582,7 +594,7 @@ export function createTimelineViewModel(transcript: readonly TranscriptMessage[]
     filtered.push(item);
   }
 
-  const displayItems = moveCompletedEditsAfterAssistantReplies(filtered);
+  const displayItems = filtered;
 
   let i = 0;
   while (i < displayItems.length) {
@@ -642,7 +654,7 @@ export function createTimelineViewModel(transcript: readonly TranscriptMessage[]
     }
   }
 
-  return { rows, metaEvents };
+  return { rows: appendEditedFilesSummaries(rows), metaEvents };
 }
 
 /**
@@ -653,34 +665,57 @@ export function groupTranscript(transcript: readonly TranscriptMessage[]): Timel
   return createTimelineViewModel(transcript);
 }
 
-function moveCompletedEditsAfterAssistantReplies(items: readonly TranscriptMessage[]): TranscriptMessage[] {
-  const result: TranscriptMessage[] = [];
-  let pendingEdits: TranscriptMessage[] = [];
+/**
+ * Codex-style edited-files boxes: completed edits stay inline as quiet lines,
+ * but the net changes for a turn are also surfaced as a prominent box right
+ * after the assistant reply that ends the turn. Edits are aggregated (not
+ * moved), so the thought chain keeps its single-line trace.
+ */
+function appendEditedFilesSummaries(rows: readonly TimelineRow[]): TimelineRow[] {
+  const result: TimelineRow[] = [];
+  let pending: ToolItem[] = [];
 
-  const flushPendingEdits = () => {
-    if (pendingEdits.length === 0) {
+  const flush = (anchorId: string) => {
+    if (pending.length === 0) {
       return;
     }
-    result.push(...pendingEdits);
-    pendingEdits = [];
+    result.push({ kind: "editedFiles", id: `edits:${anchorId}`, tools: pending });
+    pending = [];
   };
 
-  for (const item of items) {
-    if (isCompletedWriteTool(item)) {
-      pendingEdits.push(item);
-      continue;
-    }
-
-    result.push(item);
-    if (item.kind === "message" && item.role === "assistant") {
-      flushPendingEdits();
-    } else if (!isTimelineTool(item)) {
-      flushPendingEdits();
+  for (const row of rows) {
+    collectCompletedEdits(row, pending);
+    result.push(row);
+    if (row.kind === "message" && row.role === "assistant") {
+      flush(row.id);
     }
   }
 
-  flushPendingEdits();
+  // Flush any trailing edits unless the run is still working (the tail is a
+  // live thinking section), so the box doesn't appear before the turn ends.
+  const last = rows[rows.length - 1];
+  if (!(last?.kind === "thinkingSection" && last.trailing)) {
+    flush(last?.id ?? "end");
+  }
   return result;
+}
+
+function collectCompletedEdits(row: TimelineRow, into: ToolItem[]): void {
+  if (row.kind === "tool") {
+    if (isCompletedWriteTool(row)) into.push(row);
+    return;
+  }
+  if (row.kind === "toolBurst") {
+    for (const tool of row.tools) {
+      if (isCompletedWriteTool(tool)) into.push(tool);
+    }
+    return;
+  }
+  if (row.kind === "thinkingSection") {
+    for (const child of row.children) {
+      if (child.kind === "tool" && isCompletedWriteTool(child)) into.push(child);
+    }
+  }
 }
 
 function isTimelineTool(item: TranscriptMessage): item is ToolItem {

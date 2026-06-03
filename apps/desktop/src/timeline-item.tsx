@@ -1,7 +1,7 @@
 import { memo, useEffect, useState } from "react";
 import type { SessionTranscriptMessage } from "@pi-gui/pi-sdk-driver";
 import type { TimelineActivity, TimelineReasoning, TimelineToolCall, TimelineSummary, TranscriptMessage } from "./timeline-types";
-import type { TimelineThinkingSection } from "./timeline-model";
+import type { TimelineEditedFiles, TimelineThinkingSection } from "./timeline-model";
 import type { TimelineRow, TimelineToolBurst } from "./timeline-grouping";
 import { summariseToolBurst } from "./timeline-grouping";
 import { MessageMarkdown, StreamingMessageText } from "./message-markdown";
@@ -101,6 +101,8 @@ export const TimelineItem = memo(function TimelineItem({
           onViewFileInDiff={onViewFileInDiff}
         />
       );
+    case "editedFiles":
+      return <TimelineEditedFilesItem item={item} onViewFileInDiff={onViewFileInDiff} />;
     case "summary":
       return <TimelineSummaryItem item={item} />;
     default:
@@ -215,6 +217,13 @@ function isSameTimelineItem(a: TimelineRow, b: TimelineRow): boolean {
   }
   if (a.kind === "reasoning" && b.kind === "reasoning") {
     return a.text === b.text;
+  }
+  if (a.kind === "editedFiles" && b.kind === "editedFiles") {
+    if (a.tools.length !== b.tools.length) return false;
+    for (let idx = 0; idx < a.tools.length; idx += 1) {
+      if (a.tools[idx]!.id !== b.tools[idx]!.id) return false;
+    }
+    return true;
   }
   if (a.kind === "thinkingSection" && b.kind === "thinkingSection") {
     if (a.trailing !== b.trailing) return false;
@@ -369,6 +378,75 @@ function formatThinkDuration(children: TimelineThinkingSection["children"]): str
   return rest ? `${minutes}m ${rest}s` : `${minutes}m`;
 }
 
+interface EditedFileEntry {
+  readonly path: string;
+  readonly added: number;
+  readonly removed: number;
+}
+
+function aggregateEditedFiles(tools: TimelineEditedFiles["tools"]): EditedFileEntry[] {
+  const byPath = new Map<string, { added: number; removed: number }>();
+  const order: string[] = [];
+  for (const tool of tools) {
+    const path = extractFilename(tool.input);
+    if (!path) continue;
+    const diff = extractDiffFromOutput(tool.output) ?? extractDiffFromOutput(tool.input);
+    const stats = diff ? countDiffStats(diff) : { added: 0, removed: 0 };
+    const current = byPath.get(path);
+    if (current) {
+      current.added += stats.added;
+      current.removed += stats.removed;
+    } else {
+      byPath.set(path, { added: stats.added, removed: stats.removed });
+      order.push(path);
+    }
+  }
+  return order.map((path) => ({ path, ...byPath.get(path)! }));
+}
+
+function TimelineEditedFilesItem({
+  item,
+  onViewFileInDiff,
+}: {
+  readonly item: TimelineEditedFiles;
+  readonly onViewFileInDiff?: (path: string) => void;
+}) {
+  const files = aggregateEditedFiles(item.tools);
+  if (files.length === 0) {
+    return null;
+  }
+  return (
+    <article className="timeline-edited-files" data-testid="timeline-edited-files">
+      {files.length > 1 ? (
+        <div className="timeline-edited-files__title">{`Edited ${files.length} files`}</div>
+      ) : null}
+      {files.map((file) => (
+        <div className="timeline-edited-files__row" key={file.path}>
+          <span className="timeline-edited-files__icon" aria-hidden="true">
+            <FileIcon />
+          </span>
+          <span className="timeline-edited-files__path">{`Edited ${shortenPath(file.path)}`}</span>
+          <span className="timeline-edited-files__stats">
+            <span className="timeline-tool__stat-add">{`+${file.added}`}</span>{" "}
+            <span className="timeline-tool__stat-del">{`-${file.removed}`}</span>
+          </span>
+          {onViewFileInDiff ? (
+            <button
+              aria-label={`View ${file.path} in changes`}
+              className="icon-button timeline-edited-files__view"
+              data-testid="timeline-edited-files-view"
+              type="button"
+              onClick={() => onViewFileInDiff(file.path)}
+            >
+              <DiffIcon />
+            </button>
+          ) : null}
+        </div>
+      ))}
+    </article>
+  );
+}
+
 function TimelineMessage({
   item,
   streamingAssistantId,
@@ -494,7 +572,7 @@ function TimelineToolCallItem({
   };
 
   return (
-    <article className={`timeline-tool timeline-tool--${item.status}${isWriteTool(item.toolName) ? " timeline-tool--write" : ""}`}>
+    <article className={`timeline-tool timeline-tool--${item.status}`}>
       <div className="timeline-tool__header-row">
         <button
           className="timeline-tool__header"

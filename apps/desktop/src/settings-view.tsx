@@ -6,7 +6,7 @@ import { SettingsGeneralSection } from "./settings-general-section";
 import { SettingsModelsSection } from "./settings-models-section";
 import { SettingsNotificationsSection } from "./settings-notifications-section";
 import { SettingsProvidersSection } from "./settings-providers-section";
-import { type SettingsSection, sectionTitle, sectionDescription } from "./settings-utils";
+import { type SettingsSection, sectionTitle } from "./settings-utils";
 
 export type { SettingsSection } from "./settings-utils";
 
@@ -89,31 +89,22 @@ export function SettingsView({
 
   return (
     <div className="settings-view">
-      <header className="view-header">
-        <div>
-          <div className="chat-header__eyebrow">Settings</div>
-          <h1 className="view-header__title">{sectionTitle(section)}</h1>
-          <p className="view-header__body">
-            {sectionDescription(section, workspace?.name ?? "this workspace")}
-          </p>
-        </div>
-      </header>
-
-      <div className="settings-section-menu">
-        <button className="settings-section-menu__back" type="button" onClick={onBack}>Back to app</button>
+      <nav className="settings-sidebar">
         {(["appearance", "general", "providers", "models", "notifications"] as const).map((item) => (
           <button
             key={item}
-            className={`settings-section-menu__item${section === item ? " settings-section-menu__item--active" : ""}`}
+            className={`settings-sidebar__item${section === item ? " settings-sidebar__item--active" : ""}`}
             type="button"
             onClick={() => onSelectSection(item)}
           >
             {sectionTitle(item)}
           </button>
         ))}
-      </div>
+      </nav>
 
-      <div className="settings-grid">
+      <div className="settings-content">
+        <h1 className="view-header__title">{sectionTitle(section)}</h1>
+        <div className="settings-grid">
           {section === "appearance" ? (
             <SettingsAppearanceSection
               themeMode={themeMode}
@@ -167,6 +158,7 @@ export function SettingsView({
               onOpenSystemNotificationSettings={onOpenSystemNotificationSettings}
             />
           ) : null}
+        </div>
       </div>
     </div>
   );
