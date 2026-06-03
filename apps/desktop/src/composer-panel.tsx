@@ -1,6 +1,6 @@
 import { type ClipboardEvent, type Dispatch, type DragEvent, type KeyboardEvent, type RefObject, type SetStateAction } from "react";
 import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
-import type { ComposerAttachment, QueuedComposerMessage, SessionRecord } from "./desktop-state";
+import type { ComposerAttachment, QueuedComposerMessage, RalphLoopStatus, SessionRecord } from "./desktop-state";
 import type { ComposerMode } from "./composer-mode";
 import { CavemanSelector } from "./caveman-selector";
 import { ComposerModeSelector } from "./composer-mode-selector";
@@ -20,8 +20,21 @@ import type { ModelSelectorHandle } from "./model-selector";
 import type { CavemanLevel } from "./ipc";
 import type { TimelineMetaEvent } from "./timeline-grouping";
 
+export interface LoopControlProps {
+  readonly status: RalphLoopStatus;
+  readonly onStop: () => void;
+  readonly onResume: () => void;
+  readonly onRestart: () => void;
+}
+
 interface ComposerPanelProps {
   readonly selectedSession: SessionRecord;
+  /**
+   * When present, the selected thread is a Ralph loop iteration: the normal
+   * composer is replaced by a read-only control bar so the loop cannot be
+   * interrupted by typing into the active iteration.
+   */
+  readonly loopControl?: LoopControlProps;
   readonly lastError?: string;
   readonly runtime?: RuntimeSnapshot;
   readonly activeSlashCommand?: ComposerSlashCommand;
@@ -146,7 +159,12 @@ export function ComposerPanel({
   mentionOptions,
   selectedMentionIndex,
   onSelectMention,
+  loopControl,
 }: ComposerPanelProps) {
+  if (loopControl) {
+    return <LoopControlBar {...loopControl} />;
+  }
+
   const hasComposerInput = composerDraft.trim().length > 0 || attachments.length > 0;
   const primaryActionIsStop = selectedSession.status === "running" && !hasComposerInput;
 
@@ -315,6 +333,42 @@ export function ComposerPanel({
             </div>
           )}
         />
+      </div>
+    </footer>
+  );
+}
+
+function LoopControlBar({ status, onStop, onResume, onRestart }: LoopControlProps) {
+  const { running, iteration, maxIterations, stopReason } = status;
+  const progress = `iteration ${iteration}/${maxIterations}`;
+  return (
+    <footer className="composer composer--loop">
+      <div className="loop-control-bar">
+        <div className="loop-control-bar__status">
+          <span className="loop-control-bar__title">Ralph loop</span>
+          <span className="loop-control-bar__detail">
+            {running ? `Running · ${progress}` : `Stopped${stopReason ? ` · ${stopReason}` : ""} · ${progress}`}
+          </span>
+          <span className="loop-control-bar__hint">
+            Input is disabled — each iteration runs in a fresh session so the loop is not interrupted.
+          </span>
+        </div>
+        <div className="loop-control-bar__actions">
+          {running ? (
+            <button type="button" className="loop-control-bar__button" onClick={onStop}>
+              Stop loop
+            </button>
+          ) : (
+            <>
+              <button type="button" className="loop-control-bar__button" onClick={onResume}>
+                Resume
+              </button>
+              <button type="button" className="loop-control-bar__button" onClick={onRestart}>
+                Restart
+              </button>
+            </>
+          )}
+        </div>
       </div>
     </footer>
   );

@@ -50,6 +50,7 @@ import {
   type QueuedComposerMessage,
   type RemoveWorktreeInput,
   type SelectedTranscriptRecord,
+  type RalphLoopStatus,
   type StartChatInput,
   type StartThreadInput,
   type TranscriptMessage,
@@ -101,6 +102,7 @@ import * as workspace from "./app-store-workspace";
 import * as worktree from "./app-store-worktree";
 import * as composer from "./app-store-composer";
 import { isSessionActivelyViewed } from "./session-visibility";
+import { readRalphLoopStatus } from "./ralph-loop-status";
 import { launchSessionInDefaultTerminal } from "./external-terminal";
 
 const DEFAULT_CHAT_AGENTS_MD = `# Chat Agent
@@ -1054,8 +1056,10 @@ export class DesktopAppStore implements AppStoreInternals {
 
       const activeView = options.activeView ?? this.state.activeView;
       const composerDraftSync = this.resolveComposerDraftSync(selectedWorkspaceId, selectedSessionId, options);
+      const selectedLoopStatus = this.resolveSelectedLoopStatus(workspaces, selectedWorkspaceId, selectedSessionId);
       this.state = {
         ...this.state,
+        selectedLoopStatus,
         workspaces,
         worktreesByWorkspace,
         selectedWorkspaceId,
@@ -1162,6 +1166,26 @@ export class DesktopAppStore implements AppStoreInternals {
       rows.push(...iteration.messages);
     }
     return rows;
+  }
+
+  /**
+   * Read the Ralph loop status (if any) for the selected workspace so the
+   * renderer can lock the loop thread's composer and surface loop controls.
+   * Returns undefined when no `.ralph/loop.md` exists.
+   */
+  private resolveSelectedLoopStatus(
+    workspaces: readonly { id: string; path: string }[],
+    selectedWorkspaceId: string,
+    selectedSessionId: string,
+  ): RalphLoopStatus | undefined {
+    if (!selectedWorkspaceId || !selectedSessionId) {
+      return undefined;
+    }
+    const workspace = workspaces.find((entry) => entry.id === selectedWorkspaceId);
+    if (!workspace) {
+      return undefined;
+    }
+    return readRalphLoopStatus(workspace.path, selectedSessionId) ?? undefined;
   }
 
   private async ensureTranscriptLoaded(sessionRef: SessionRef): Promise<void> {

@@ -90,6 +90,20 @@ export interface SessionContextUsage {
   readonly contextWindow: number;
 }
 
+/**
+ * Status of a Ralph loop owning the selected workspace, read from
+ * `.ralph/loop.md`. Drives the loop thread's locked composer + control bar.
+ */
+export interface RalphLoopStatus {
+  readonly running: boolean;
+  readonly iteration: number;
+  readonly maxIterations: number;
+  readonly stopReason?: string;
+  readonly sessionId?: string;
+  /** True when the selected session is the loop's current active iteration. */
+  readonly isSelectedSessionActive: boolean;
+}
+
 export interface SessionRecord {
   readonly id: string;
   readonly title: string;
@@ -227,6 +241,7 @@ export interface DesktopAppState {
   readonly commitPushModel?: string;
   readonly chats: readonly ChatRecord[];
   readonly selectedChatId: string;
+  readonly selectedLoopStatus?: RalphLoopStatus;
   readonly revision: number;
   readonly lastError?: string;
 }
