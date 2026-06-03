@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 
+import logoUrl from "./assets/logo.png";
+
 function Icon({ children }: { readonly children: ReactNode }) {
   return (
     <svg aria-hidden="true" fill="none" viewBox="0 0 20 20">
@@ -72,22 +74,15 @@ export function ArrowUpIcon() {
 
 export function PiLogoMark() {
   return (
-    <svg aria-hidden="true" viewBox="0 0 64 64" fill="none">
-      <rect width="64" height="64" rx="18" fill="#1f2638" />
-      <text
-        x="50%"
-        y="54%"
-        textAnchor="middle"
-        dominantBaseline="middle"
-        fontFamily="SF Pro Display, SF Pro Text, ui-sans-serif, system-ui, sans-serif"
-        fontSize="34"
-        fontStyle="italic"
-        fontWeight="700"
-        fill="#ffffff"
-      >
-        π
-      </text>
-    </svg>
+    <img
+      src={logoUrl}
+      alt=""
+      aria-hidden="true"
+      width={64}
+      height={64}
+      draggable={false}
+      style={{ display: "block" }}
+    />
   );
 }
 

@@ -150,20 +150,6 @@ export function NewThreadView({
           </div>
           <div className="new-thread__eyebrow">New thread</div>
           <h1 className="new-thread__title">Let&apos;s build</h1>
-          <label className="new-thread__workspace-picker">
-            <span className="sr-only">Workspace</span>
-            <select
-              className="new-thread__workspace"
-              value={workspace.id}
-              onChange={(event) => onSelectWorkspace(event.target.value)}
-            >
-              {workspaces.map((entry) => (
-                <option key={entry.id} value={entry.id}>
-                  {entry.name}
-                </option>
-              ))}
-            </select>
-          </label>
         </div>
 
         <div className="new-thread__composer composer">

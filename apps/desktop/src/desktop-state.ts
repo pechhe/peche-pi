@@ -71,6 +71,7 @@ export interface SessionRecord {
   readonly status: SessionStatus;
   readonly runningSince?: string;
   readonly hasUnseenUpdate: boolean;
+  readonly isAwaitingAssistantText: boolean;
   readonly config?: SessionConfig;
   readonly contextUsage?: SessionContextUsage;
 }

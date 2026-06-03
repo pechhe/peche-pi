@@ -15,31 +15,14 @@ import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } 
 import { CSS } from "@dnd-kit/utilities";
 import type { AppView, SessionRecord, WorkspaceRecord, WorktreeRecord } from "./desktop-state";
 import { ArchiveIcon, ChevronDownIcon, ChevronRightIcon, ComposeIcon, ExtensionIcon, FolderIcon, RestoreIcon, SettingsIcon, SkillIcon, WorktreeIcon } from "./icons";
+import { WorkingSpinner } from "./working-label";
 import type { PiDesktopApi } from "./ipc";
-import { formatRelativeTime, titleCase } from "./string-utils";
-import type { RuntimeSkillRecord } from "@pi-gui/session-driver/runtime-types";
+import { formatRelativeTime } from "./string-utils";
 import type { WorkspaceMenuState } from "./hooks/use-workspace-menu";
 import type { ThreadGroup, ThreadListEntry } from "./thread-groups";
 import type { Dispatch, SetStateAction } from "react";
 import type { DesktopAppState } from "./desktop-state";
 import type { SidebarResize } from "./hooks/use-sidebar-width";
-
-/**
- * Skills payload. When provided alongside `activeView === "skills"`, the
- * sidebar renders a SKILLS section in place of the threads tree. Lives at the
- * App level so search/selection state survives route changes.
- */
-export interface SidebarSkillsPayload {
-  readonly skills: readonly RuntimeSkillRecord[];
-  readonly query: string;
-  readonly onQueryChange: (value: string) => void;
-  readonly showDisabled: boolean;
-  readonly onShowDisabledChange: (value: boolean) => void;
-  readonly selectedSkillPath: string | undefined;
-  readonly onSelectSkill: (filePath: string) => void;
-  readonly collapsedGroups: ReadonlySet<string>;
-  readonly onToggleGroup: (key: string) => void;
-}
 
 interface SidebarProps {
   readonly resize: SidebarResize;
@@ -65,7 +48,6 @@ interface SidebarProps {
   readonly onArchiveSession: (target: { workspaceId: string; sessionId: string }) => void;
   readonly onSelectSession: (target: { workspaceId: string; sessionId: string }) => void;
   readonly onUnarchiveSession: (target: { workspaceId: string; sessionId: string }) => void;
-  readonly skillsPayload?: SidebarSkillsPayload;
 }
 
 export function Sidebar(props: SidebarProps) {
@@ -89,9 +71,7 @@ export function Sidebar(props: SidebarProps) {
     onArchiveSession,
     onSelectSession,
     onUnarchiveSession,
-    skillsPayload,
   } = props;
-  const inSkillsMode = activeView === "skills" && skillsPayload != null;
 
   const [activeId, setActiveId] = useState<string | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
@@ -152,16 +132,6 @@ export function Sidebar(props: SidebarProps) {
       />
       <div className="sidebar__top">
         <div className="sidebar__nav">
-          {activeView !== "threads" ? (
-            <button
-              className="sidebar__nav-item"
-              type="button"
-              onClick={() => onSetActiveView("threads")}
-            >
-              <span aria-hidden="true" className="sidebar__nav-back">←</span>
-              <span>Threads</span>
-            </button>
-          ) : null}
           <button
             className={`sidebar__nav-item ${activeView === "skills" ? "sidebar__nav-item--active" : ""}`}
             type="button"
@@ -189,9 +159,6 @@ export function Sidebar(props: SidebarProps) {
         </div>
       </div>
 
-      {inSkillsMode ? (
-        <SkillsSidebarSection payload={skillsPayload!} />
-      ) : (
       <div className="sidebar__section">
         <div className="section__head">
           <span>Threads</span>
@@ -283,134 +250,7 @@ export function Sidebar(props: SidebarProps) {
           </DndContext>
         )}
       </div>
-      )}
     </aside>
-  );
-}
-
-/* ── Skills section (rendered inside the threads sidebar when active) ── */
-
-interface SkillsSidebarSectionProps {
-  readonly payload: SidebarSkillsPayload;
-}
-
-function SkillsSidebarSection({ payload }: SkillsSidebarSectionProps) {
-  const {
-    skills,
-    query,
-    onQueryChange,
-    showDisabled,
-    onShowDisabledChange,
-    selectedSkillPath,
-    onSelectSkill,
-    collapsedGroups,
-    onToggleGroup,
-  } = payload;
-
-  const normalized = query.trim().toLowerCase();
-  const filtered = skills.filter((skill) => {
-    if (!showDisabled && !skill.enabled) return false;
-    if (!normalized) return true;
-    return [skill.name, skill.description, skill.source, skill.slashCommand].some((value) =>
-      value.toLowerCase().includes(normalized),
-    );
-  });
-
-  const buckets = new Map<string, RuntimeSkillRecord[]>();
-  for (const skill of filtered) {
-    const key = skill.source || "other";
-    const existing = buckets.get(key);
-    if (existing) existing.push(skill);
-    else buckets.set(key, [skill]);
-  }
-  const groups = Array.from(buckets.entries())
-    .map(([key, items]) => ({
-      key,
-      label: titleCase(key),
-      skills: items.slice().sort((a, b) => a.name.localeCompare(b.name)),
-    }))
-    .sort((a, b) => a.label.localeCompare(b.label));
-
-  const enabledCount = skills.filter((skill) => skill.enabled).length;
-
-  return (
-    <div className="sidebar__section sidebar__section--skills">
-      <div className="section__head">
-        <span>Skills</span>
-      </div>
-      <div className="sidebar-skills__controls">
-        <input
-          aria-label="Search skills"
-          className="sidebar-skills__search"
-          placeholder="Search skills…"
-          value={query}
-          onChange={(event) => onQueryChange(event.target.value)}
-        />
-        <label className="sidebar-skills__toggle">
-          <input
-            type="checkbox"
-            checked={showDisabled}
-            onChange={(event) => onShowDisabledChange(event.target.checked)}
-          />
-          <span>Show disabled</span>
-        </label>
-      </div>
-      <div className="sidebar-skills__list" data-testid="skills-list">
-        {groups.length === 0 ? (
-          <div className="sidebar-skills__empty">No skills match your search.</div>
-        ) : (
-          groups.map((group) => {
-            const collapsed = collapsedGroups.has(group.key);
-            return (
-              <div className="sidebar-skills__group" key={group.key}>
-                <button
-                  type="button"
-                  className="sidebar-skills__group-head"
-                  onClick={() => onToggleGroup(group.key)}
-                  aria-expanded={!collapsed}
-                >
-                  {collapsed ? <ChevronRightIcon /> : <ChevronDownIcon />}
-                  <span>{group.label}</span>
-                  <span className="sidebar-skills__group-count">({group.skills.length})</span>
-                </button>
-                {collapsed ? null : (
-                  <div className="sidebar-skills__group-items">
-                    {group.skills.map((skill) => (
-                      <button
-                        key={skill.filePath}
-                        type="button"
-                        className={`sidebar-skills__row ${
-                          selectedSkillPath === skill.filePath ? "sidebar-skills__row--active" : ""
-                        }`}
-                        onClick={() => onSelectSkill(skill.filePath)}
-                      >
-                        <span className="sidebar-skills__row-title">{titleCase(skill.name)}</span>
-                        <span
-                          className={`sidebar-skills__row-status ${
-                            skill.enabled
-                              ? "sidebar-skills__row-status--enabled"
-                              : "sidebar-skills__row-status--disabled"
-                          }`}
-                          aria-label={skill.enabled ? "Enabled" : "Disabled"}
-                          title={skill.enabled ? "Enabled" : "Disabled"}
-                        />
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })
-        )}
-      </div>
-      <div className="sidebar-skills__footer">
-        <span>
-          {skills.length} skill{skills.length === 1 ? "" : "s"}
-        </span>
-        <span className="sidebar-skills__footer-dot">•</span>
-        <span>{enabledCount} enabled</span>
-      </div>
-    </div>
   );
 }
 
@@ -688,7 +528,11 @@ function WorkspaceGroupContent(
 /* ── Thread session row ────────────────────────────────── */
 
 function sessionIndicatorVariant(thread: ThreadListEntry): "running" | "unseen" | "none" {
-  if (thread.session.status === "running") {
+  // Codex-style: only show the spinner while the assistant hasn't started
+  // producing visible output for the current turn. Once text streams in or a
+  // tool call lands, the indicator goes away even though status is still
+  // "running".
+  if (thread.session.status === "running" && thread.session.isAwaitingAssistantText) {
     return "running";
   }
   if (thread.session.hasUnseenUpdate) {
@@ -720,7 +564,9 @@ function ThreadSessionRow({
     >
       <button className="session-row__select" onClick={onSelect} type="button">
         <span className="session-row__leading" aria-hidden="true">
-          {indicatorVariant === "running" ? <span className="session-row__status session-row__status--running" /> : null}
+          {indicatorVariant === "running" ? (
+            <WorkingSpinner className="session-row__status session-row__status--running" title="Thinking…" />
+          ) : null}
           {indicatorVariant === "unseen" ? <span className="session-row__status session-row__status--unseen" /> : null}
         </span>
         <span className="session-row__body">

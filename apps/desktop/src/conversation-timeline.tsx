@@ -67,6 +67,13 @@ export function ConversationTimeline({
   const hasUnreliableVirtualizedHeights = timelineRows.some(
     (item) => item.kind === "message" && (item.text.length > 2000 || Boolean(item.attachments?.length)),
   );
+  // Codex-style "Thinking…" gate: only show the indicator while the assistant
+  // hasn't produced visible output for the current turn. The last visible row
+  // being a user message (or no rows at all) means we're still waiting.
+  const lastRow = timelineRows[timelineRows.length - 1];
+  const isAwaitingAssistantOutput =
+    !lastRow || (lastRow.kind === "message" && lastRow.role === "user");
+  const showThinkingIndicator = isRunning && isAwaitingAssistantOutput;
   const shouldVirtualize =
     !threadSearch.isOpen &&
     timelineRows.length > VIRTUALIZATION_THRESHOLD &&
@@ -227,7 +234,7 @@ export function ConversationTimeline({
           onToggleToolCall={toggleToolCall}
           onToggleBurst={toggleBurst}
           onViewFileInDiff={onViewFileInDiff}
-          isRunning={isRunning}
+          isRunning={showThinkingIndicator}
         />
       ) : (
         <div className="timeline" data-testid="transcript">
@@ -243,9 +250,9 @@ export function ConversationTimeline({
               onViewFileInDiff={onViewFileInDiff}
             />
           ))}
-          {isRunning ? (
+          {showThinkingIndicator ? (
             <div className="timeline-working" data-testid="timeline-working">
-              <WorkingLabel label="Working…" />
+              <WorkingLabel label="Thinking…" />
             </div>
           ) : null}
         </div>
@@ -370,7 +377,7 @@ function VirtualizedTranscriptList({
           data-testid="timeline-working"
           style={{ transform: `translateY(${totalHeight}px)` }}
         >
-          <WorkingLabel label="Working…" />
+          <WorkingLabel label="Thinking…" />
         </div>
       ) : null}
     </div>

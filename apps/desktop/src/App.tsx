@@ -11,6 +11,7 @@ import {
   type NewThreadEnvironment,
   type SelectedTranscriptRecord,
   type StartThreadInput,
+  type TranscriptMessage,
   type WorktreeRecord,
   type WorkspaceRecord,
 } from "./desktop-state";
@@ -37,7 +38,7 @@ import { SecondarySurface } from "./secondary-surface";
 import { NewThreadView } from "./new-thread-view";
 import { PendingThreadView } from "./pending-thread-view";
 import { buildThreadGroups } from "./thread-groups";
-import { Sidebar, type SidebarSkillsPayload } from "./sidebar";
+import { Sidebar } from "./sidebar";
 import { SidebarToggleButton } from "./sidebar-toggle-button";
 import { Topbar } from "./topbar";
 import { TerminalPanel } from "./terminal-panel";
@@ -59,6 +60,14 @@ import {
   extractFilesFromDataTransfer,
   readComposerAttachmentsFromFiles,
 } from "./composer-attachments";
+
+// Stable reference for the "no transcript yet" fallback. A fresh `[]` each
+// render caused an infinite loop: ConversationTimeline's groupTranscript ran
+// every render, producing a new metaEvents array, which fired
+// onMetaEventsChange → setTimelineMetaEvents → App re-render → new `[]` →
+// repeat, until React tripped the max-update-depth guard and the tree
+// unmounted (the "black screen on thread switch" symptom).
+const EMPTY_TRANSCRIPT: readonly TranscriptMessage[] = Object.freeze([]) as readonly TranscriptMessage[];
 
 function useDesktopAppState() {
   const [snapshot, setSnapshot] = useState<DesktopAppState | null>(null);
@@ -485,7 +494,7 @@ export default function App() {
     selectedTranscript.workspaceId === selectedWorkspace.id &&
     selectedTranscript.sessionId === selectedSession.id
       ? selectedTranscript.transcript
-      : [];
+      : EMPTY_TRANSCRIPT;
   const isTranscriptLoading = Boolean(selectedSession) && activeTranscript.length === 0 && (
     !selectedTranscript ||
     selectedTranscript.workspaceId !== selectedWorkspace?.id ||
@@ -2152,17 +2161,6 @@ export default function App() {
         return next;
       });
     };
-    const skillsPayload: SidebarSkillsPayload = {
-      skills: skillsRuntime?.skills ?? [],
-      query: skillsQuery,
-      onQueryChange: setSkillsQuery,
-      showDisabled: skillsShowDisabled,
-      onShowDisabledChange: setSkillsShowDisabled,
-      selectedSkillPath: skillsSelectedPath,
-      onSelectSkill: setSkillsSelectedPath,
-      collapsedGroups: skillsCollapsedGroups,
-      onToggleGroup: handleToggleSkillGroup,
-    };
     const skillsShellClass = `shell shell--skills${snapshot.sidebarCollapsed ? " shell--sidebar-collapsed" : ""}${sidebarResize.isResizing ? " shell--sidebar-resizing" : ""}`;
     const skillsShellStyle = snapshot.sidebarCollapsed
       ? undefined
@@ -2197,7 +2195,6 @@ export default function App() {
             onArchiveSession={handleArchiveSession}
             onSelectSession={handleSelectSession}
             onUnarchiveSession={handleUnarchiveSession}
-            skillsPayload={skillsPayload}
           />
         ) : null}
         <main className="main main--skills">
@@ -2222,8 +2219,13 @@ export default function App() {
             workspace={skillsWorkspace}
             runtime={skillsRuntime}
             query={skillsQuery}
+            onQueryChange={setSkillsQuery}
             showDisabled={skillsShowDisabled}
+            onShowDisabledChange={setSkillsShowDisabled}
+            collapsedGroups={skillsCollapsedGroups}
+            onToggleGroup={handleToggleSkillGroup}
             selectedSkillPath={skillsSelectedPath}
+            onSelectSkill={setSkillsSelectedPath}
             onOpenSkillFolder={handleOpenSkillFolder}
             onRefresh={() => {
               if (!skillsWorkspace) {

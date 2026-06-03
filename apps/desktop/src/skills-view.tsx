@@ -178,8 +178,13 @@ interface SkillsViewProps {
   readonly workspace?: WorkspaceRecord;
   readonly runtime?: RuntimeSnapshot;
   readonly query: string;
+  readonly onQueryChange: (value: string) => void;
   readonly showDisabled: boolean;
+  readonly onShowDisabledChange: (value: boolean) => void;
+  readonly collapsedGroups: ReadonlySet<string>;
+  readonly onToggleGroup: (key: string) => void;
   readonly selectedSkillPath: string | undefined;
+  readonly onSelectSkill: (filePath: string) => void;
   readonly onRefresh: () => void;
   readonly onOpenSkillFolder: (filePath: string) => void;
   readonly onToggleSkill: (filePath: string, enabled: boolean) => void;
@@ -190,8 +195,13 @@ export function SkillsView({
   workspace,
   runtime,
   query,
+  onQueryChange,
   showDisabled,
+  onShowDisabledChange,
+  collapsedGroups,
+  onToggleGroup,
   selectedSkillPath,
+  onSelectSkill,
   onRefresh,
   onOpenSkillFolder,
   onToggleSkill,
@@ -252,20 +262,36 @@ export function SkillsView({
         </div>
       </header>
 
-      <div className="skill-detail">
-        {selectedSkill ? (
-          <SkillDetail
-            skill={selectedSkill}
-            onOpenFolder={onOpenSkillFolder}
-            onToggle={onToggleSkill}
-            onTry={onTrySkill}
+      <div className="skills-main-grid">
+        <section className="skills-main-list" aria-label="Skills list">
+          <SkillsSidebar
+            runtime={runtime}
+            query={query}
+            onQueryChange={onQueryChange}
+            showDisabled={showDisabled}
+            onShowDisabledChange={onShowDisabledChange}
+            collapsedGroups={collapsedGroups}
+            onToggleGroup={onToggleGroup}
+            selectedSkillPath={selectedSkillPath}
+            onSelectSkill={onSelectSkill}
           />
-        ) : (
-          <div className="empty-state">
-            <h2>No skills found</h2>
-            <p>Refresh runtime discovery to load workspace and user-level skills.</p>
-          </div>
-        )}
+        </section>
+
+        <div className="skill-detail">
+          {selectedSkill ? (
+            <SkillDetail
+              skill={selectedSkill}
+              onOpenFolder={onOpenSkillFolder}
+              onToggle={onToggleSkill}
+              onTry={onTrySkill}
+            />
+          ) : (
+            <div className="empty-state">
+              <h2>No skills found</h2>
+              <p>Refresh runtime discovery to load workspace and user-level skills.</p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -2660,7 +2660,8 @@
   place-items: center;
 }
 
-.new-thread__logo svg {
+.new-thread__logo svg,
+.new-thread__logo img {
   width: 64px;
   height: 64px;
   display: block;
@@ -2684,20 +2685,6 @@
 
 .new-thread__title {
   margin: 0;
-}
-
-.new-thread__workspace-picker {
-  display: grid;
-  justify-items: center;
-}
-
-.new-thread__workspace {
-  padding: 10px 14px;
-  border-radius: 999px;
-  border: 1px solid #dfe4ee;
-  background: #fff;
-  color: var(--text-strong);
-  font: inherit;
 }
 
 .new-thread__composer {
@@ -3147,6 +3134,24 @@
   display: flex;
   flex-direction: column;
   gap: 18px;
+}
+
+.skills-main-grid {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.9fr) minmax(420px, 1.1fr);
+  gap: 18px;
+  min-height: 0;
+}
+
+.skills-main-list {
+  display: flex;
+  min-height: 320px;
+  max-height: calc(100vh - 220px);
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  overflow: hidden;
 }
 
 /* Groups */
@@ -4305,11 +4310,6 @@ mark.thread-find-active {
   border-top-color: var(--line);
 }
 
-:root.dark .new-thread__workspace {
-  border-color: var(--line);
-  background: var(--surface);
-}
-
 :root.dark .new-thread__composer {
   background: transparent;
 }
@@ -4746,11 +4746,10 @@ mark.thread-find-active {
 /* ---------------------------------------------------------------- */
 /* Chassis                                                          */
 /* ---------------------------------------------------------------- */
-/* The chassis is a 3-stop vertical gradient with 4-sided inset    */
-/* shadows that fake the bevel where the bezel meets the panel.    */
-/* A radial highlight from top-left simulates an overhead light    */
-/* catching the case. A faint repeating-linear pattern gives a     */
-/* hint of brushed-metal texture.                                  */
+/* The chassis is the ONE device surface. The screen (textarea) and  */
+/* the controls (context bar + chip row) are both regions of this    */
+/* surface. There is no separate outer container, and no separate    */
+/* inner panel for the controls — just one chassis with screws.     */
 
 .composer-device .composer__surface {
   position: relative;
@@ -4761,25 +4760,25 @@ mark.thread-find-active {
     var(--crt-body-bottom) 100%
   );
   border: 0;
-  border-radius: 20px;
-  padding: 18px 20px 20px;
+  border-radius: 14px;
+  padding: 14px 16px 14px;
   box-shadow:
     /* Top edge: bright highlight (light catches the rim) */
-    0 1px 0 var(--crt-edge-highlight) inset,
+    inset 0 1px 0 var(--crt-edge-highlight),
     /* Left edge: subtle highlight */
-    1px 0 0 oklch(0.48 0.006 250 / 0.75) inset,
+    inset 1px 0 0 oklch(0.48 0.006 250 / 0.75),
     /* Right edge: dark shadow */
-    -1px 0 0 oklch(0.08 0 0 / 0.75) inset,
+    inset -1px 0 0 oklch(0.08 0 0 / 0.75),
     /* Bottom edge: deepest shadow */
-    0 -1px 0 oklch(0.06 0 0) inset,
+    inset 0 -1px 0 oklch(0.06 0 0),
     /* Drop shadows */
-    0 24px 60px -20px oklch(0 0 0 / 0.7),
-    0 8px 20px -8px oklch(0 0 0 / 0.5);
+    0 18px 40px -16px oklch(0 0 0 / 0.6),
+    0 6px 16px -8px oklch(0 0 0 / 0.45);
   isolation: isolate;
   overflow: visible;
 }
 
-/* Overhead light from top-left (chassis sheen) */
+/* Top-left highlight + subtle pinstripe finish */
 .composer-device .composer__surface::before {
   content: "";
   position: absolute;
@@ -4788,7 +4787,6 @@ mark.thread-find-active {
   z-index: 0;
   border-radius: inherit;
   background:
-    /* Brushed pinstripe */
     repeating-linear-gradient(
       90deg,
       oklch(1 0 0 / 0.012) 0px,
@@ -4796,7 +4794,6 @@ mark.thread-find-active {
       transparent 1px,
       transparent 3px
     ),
-    /* Top-left highlight */
     radial-gradient(
       ellipse at 25% -10%,
       oklch(0.34 0.006 250 / 0.55) 0%,
@@ -4805,8 +4802,8 @@ mark.thread-find-active {
   opacity: 0.85;
 }
 
-/* Four corner screws. Each is a small radial gradient — light from
-   top-left to dark on the rim, mimicking a sunken Phillips head. */
+/* Four corner screws. Each is a small radial gradient — a sunken
+   Phillips head with a bright spot at top-left fading to dark rim. */
 .composer-device .composer__surface::after {
   content: "";
   position: absolute;
@@ -4823,12 +4820,12 @@ mark.thread-find-active {
   );
   background-image: var(--screw), var(--screw), var(--screw), var(--screw);
   background-repeat: no-repeat;
-  background-size: 9px 9px;
+  background-size: 8px 8px;
   background-position:
-    10px 10px,
-    calc(100% - 10px) 10px,
-    10px calc(100% - 10px),
-    calc(100% - 10px) calc(100% - 10px);
+    8px 8px,
+    calc(100% - 8px) 8px,
+    8px calc(100% - 8px),
+    calc(100% - 8px) calc(100% - 8px);
 }
 
 /* Keep all composer interior children above the chassis ::before/::after. */
@@ -4852,12 +4849,14 @@ mark.thread-find-active {
 
 .composer-device .composer__editor {
   isolation: isolate;
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--crt-screen-bg-deep);
-  /* Inset CRT bezel: a thin dark groove on the inside edge */
+  /* Screen window cut into the chassis: outer dark shadow simulates
+     the chassis edge casting shadow into the recessed screen well. */
   box-shadow:
-    inset 0 0 0 1px oklch(0 0 0 / 0.85),
-    inset 0 0 0 2px oklch(0.18 0.005 250 / 0.5),
+    inset 0 1px 2px oklch(0 0 0 / 0.85),
+    inset 0 -1px 0 oklch(0.28 0.005 250 / 0.25),
+    inset 0 0 0 1px oklch(0 0 0 / 0.7),
     inset 0 0 32px rgb(140 240 165 / 0.05);
   padding: 14px 16px;
   overflow: hidden;
@@ -5124,66 +5123,26 @@ mark.thread-find-active {
   animation: composer-crt-scanbeam 17ms linear infinite;
 }
 
-/* .composer__bar is the CONTROLS PANEL — a distinct module sitting
-   below the screen inside the chassis. The chassis frames the whole
-   composer; the screen is one module; this is the other. */
+/* .composer__bar is the lower region of the chassis. The chassis IS
+   the one device surface; there is no separate panel. We just give
+   it some breathing space below the screen. */
 .composer-device--modular .composer__bar {
   position: relative;
-  margin-top: 14px;
-  padding: 12px 14px;
-  border-radius: 10px;
-  /* Slightly lighter than the chassis, so it reads as a separate
-     mounted panel — the way an instrument panel sits in a console. */
-  background: linear-gradient(
-    180deg,
-    oklch(0.20 0.005 250) 0%,
-    oklch(0.16 0.005 250) 100%
-  );
-  box-shadow:
-    /* Inset top-edge dark groove: panel is recessed into chassis */
-    inset 0 1px 0 oklch(0 0 0 / 0.55),
-    /* Inset bottom highlight: catches light from below the recess */
-    inset 0 -1px 0 oklch(0.28 0.005 250 / 0.35),
-    /* Hairline outline */
-    inset 0 0 0 1px oklch(0 0 0 / 0.35);
+  margin-top: 12px;
 }
 
-/* Subtle brushed pinstripe over the panel face */
-.composer-device--modular .composer__bar::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 0;
-  border-radius: inherit;
-  background: repeating-linear-gradient(
-    90deg,
-    oklch(1 0 0 / 0.012) 0px,
-    oklch(1 0 0 / 0.012) 1px,
-    transparent 1px,
-    transparent 3px
-  );
-  opacity: 0.7;
-}
-
-.composer-device--modular .composer__footer,
-.composer-device--modular .composer__context,
-.composer-device--modular .composer__footer-row {
-  position: relative;
-  z-index: 1; /* above the panel pinstripe */
-}
-
-/* Context bar = telemetry strip at the top of the controls panel.
-   Green phosphor against the dark panel reads as a small LCD readout. */
+/* Context bar = telemetry strip. Green phosphor on dark chassis reads
+   as a small LCD readout. A hairline divider beneath separates it
+   from the chip row. */
 .composer-device--modular .composer__context {
   color: rgb(var(--crt-phosphor) / 0.78);
   font-family: ui-monospace, "SF Mono", Menlo, "Roboto Mono", monospace;
   font-size: 11px;
   letter-spacing: 0.02em;
-  padding: 0 2px 12px;
+  padding: 0 4px 12px;
   border-bottom: 1px solid oklch(0 0 0 / 0.45);
   margin-bottom: 12px;
-  box-shadow: 0 1px 0 oklch(0.28 0.005 250 / 0.3);
+  box-shadow: 0 1px 0 oklch(0.28 0.005 250 / 0.25);
 }
 
 /* Footer-row = 3-zone grid on the controls panel. */

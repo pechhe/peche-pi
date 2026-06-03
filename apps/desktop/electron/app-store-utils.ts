@@ -11,6 +11,7 @@ import type {
   WorkspaceRecord,
   WorkspaceSessionTarget,
 } from "../src/desktop-state";
+import { isMetaActivity } from "../src/timeline-grouping";
 
 export const LEGACY_TRANSCRIPT_HISTORY_LIMIT = 180;
 
@@ -219,6 +220,7 @@ function buildSessionRecord(
     status: session.status,
     runningSince: runningSinceBySession.get(key),
     hasUnseenUpdate: hasUnseenSessionUpdate(session.status, session.updatedAt, lastViewedAt, transcript),
+    isAwaitingAssistantText: isAwaitingAssistantText(session.status, transcript),
     config: sessionConfigBySession.get(key),
   };
 }
@@ -235,6 +237,32 @@ export function hasUnseenSessionUpdate(
 
   const activityAt = latestSessionActivityAt(updatedAt, transcript);
   return activityAt > lastViewedAt;
+}
+
+/**
+ * Codex-style "Thinking…" gate. True when the session is running and the
+ * assistant hasn't produced any visible output yet for the current turn —
+ * i.e. walking the transcript backwards over lifecycle meta activities, the
+ * first real item is a user message (or the transcript is empty).
+ *
+ * Once an assistant text message or a tool call lands, this flips to false
+ * and the indicator hides, matching Codex's behaviour.
+ */
+export function isAwaitingAssistantText(
+  status: "idle" | "running" | "failed",
+  transcript: readonly TranscriptMessage[],
+): boolean {
+  if (status !== "running") {
+    return false;
+  }
+  for (let i = transcript.length - 1; i >= 0; i -= 1) {
+    const item = transcript[i]!;
+    if (isMetaActivity(item)) {
+      continue;
+    }
+    return item.kind === "message" && item.role === "user";
+  }
+  return true;
 }
 
 export function latestSessionActivityAt(updatedAt: string, transcript: readonly TranscriptMessage[]): string {
