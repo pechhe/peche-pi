@@ -244,6 +244,42 @@ export function loopMarkerIteration(entries: readonly unknown[]): number | undef
   return undefined;
 }
 
+const RALPH_PATH = /(^|\/)\.ralph\//;
+
+/**
+ * Whether a session's persisted entries contain a tool call that touched the
+ * `.ralph/` bundle — i.e. this is the chat where the Ralph plan was written.
+ * Scans `message` entries' assistant `toolCall` blocks for any string argument
+ * referencing a `.ralph/` path. Pure (no IO) so it can be unit tested.
+ */
+export function entriesEditedRalphPlan(entries: readonly unknown[]): boolean {
+  for (const entry of entries) {
+    if (!isRecord(entry) || entry.type !== "message") {
+      continue;
+    }
+    const message = (entry as { message?: unknown }).message;
+    const content = isRecord(message) ? (message as { content?: unknown }).content : undefined;
+    if (!Array.isArray(content)) {
+      continue;
+    }
+    for (const block of content) {
+      if (!isRecord(block) || block.type !== "toolCall") {
+        continue;
+      }
+      const args = (block as { arguments?: unknown }).arguments;
+      if (!isRecord(args)) {
+        continue;
+      }
+      for (const value of Object.values(args)) {
+        if (typeof value === "string" && RALPH_PATH.test(value)) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
 /** Project persisted message entries into the loose message shape transcriptFromMessages expects. */
 function messagesFromEntries(entries: readonly unknown[]): unknown[] {
   const messages: unknown[] = [];

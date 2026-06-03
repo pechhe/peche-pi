@@ -1,6 +1,37 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { collectLoopIterations, loopMarkerIteration } from "../src/session-supervisor-utils.ts";
+import {
+  collectLoopIterations,
+  entriesEditedRalphPlan,
+  loopMarkerIteration,
+} from "../src/session-supervisor-utils.ts";
+
+function toolCallMsg(id: string, name: string, args: Record<string, unknown>) {
+  return {
+    type: "message",
+    id,
+    timestamp: "2026-06-03T00:00:02.000Z",
+    message: { role: "assistant", content: [{ type: "toolCall", id: "c1", name, arguments: args }] },
+  };
+}
+
+test("entriesEditedRalphPlan detects a tool call touching .ralph/", () => {
+  assert.equal(
+    entriesEditedRalphPlan([userMsg("u", "write the plan"), toolCallMsg("a", "Write", { path: ".ralph/plan.md" })]),
+    true,
+  );
+  // absolute path under .ralph/ also matches
+  assert.equal(
+    entriesEditedRalphPlan([toolCallMsg("a", "Edit", { path: "/repo/.ralph/items.json" })]),
+    true,
+  );
+});
+
+test("entriesEditedRalphPlan is false without a .ralph/ tool call", () => {
+  assert.equal(entriesEditedRalphPlan([userMsg("u", "talk about .ralph/ in text only")]), false);
+  assert.equal(entriesEditedRalphPlan([toolCallMsg("a", "Edit", { path: "src/index.ts" })]), false);
+  assert.equal(entriesEditedRalphPlan([]), false);
+});
 
 function marker(iteration: number) {
   return { type: "custom", customType: "ralph_loop", data: { iteration } };

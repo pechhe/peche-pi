@@ -163,6 +163,10 @@ export class PiSdkDriver implements SessionDriver {
     return this.supervisor.getLoopIterations(sessionRef);
   }
 
+  sessionEditedRalphPlan(sessionRef: SessionRef) {
+    return this.supervisor.sessionEditedRalphPlan(sessionRef);
+  }
+
   generateThreadTitle(workspace: WorkspaceRef, options: GenerateThreadTitleOptions): Promise<string | null> {
     if (this.generateThreadTitleOverride) {
       return Promise.resolve(this.generateThreadTitleOverride(workspace, options)).then((override) =>

@@ -56,6 +56,7 @@ import { normalizeRuntimeCommandName, skillCommandName } from "./runtime-command
 import {
   buildSnapshot,
   collectLoopIterations,
+  entriesEditedRalphPlan,
   createWorkspaceRef,
   deriveSessionConfig,
   deriveWorkspaceTitle,
@@ -322,6 +323,22 @@ export class SessionSupervisor {
       })),
       readEntries: (path) => SessionManager.open(path).getEntries(),
     });
+  }
+
+  /**
+   * Whether this session is the chat where a Ralph plan was written, i.e. its
+   * entries contain a tool call touching the `.ralph/` bundle. Used to scope
+   * the "Begin Ralph loop" banner to the creating chat rather than every chat
+   * in a workspace that happens to have a `.ralph/` plan on disk.
+   */
+  async sessionEditedRalphPlan(sessionRef: SessionRef): Promise<boolean> {
+    const record = await this.ensureRecord(sessionRef);
+    const entries = record.session
+      ? record.session.sessionManager.getEntries()
+      : record.sessionFile
+        ? SessionManager.open(record.sessionFile).getEntries()
+        : [];
+    return entriesEditedRalphPlan(entries);
   }
 
   async getSessionCommands(sessionRef: SessionRef): Promise<readonly RuntimeCommandRecord[]> {
