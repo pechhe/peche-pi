@@ -54,6 +54,7 @@ import { useWorkspaceMenu } from "./hooks/use-workspace-menu";
 import { useNavigationHistory } from "./hooks/use-navigation-history";
 import { useSidebarWidth } from "./hooks/use-sidebar-width";
 import { ExtensionDialog } from "./extension-session-ui";
+import { RalphLaunchDialog } from "./ralph-launch-dialog";
 import { TreeModal } from "./tree-modal";
 import { ImageLightbox } from "./image-lightbox";
 import { Agentation } from "agentation";
@@ -336,6 +337,13 @@ export default function App() {
   const [newThreadRootWorkspaceId, setNewThreadRootWorkspaceId] = useState("");
   const [newThreadIsChat, setNewThreadIsChat] = useState(false);
   const [newThreadEnvironment, setNewThreadEnvironment] = useState<NewThreadEnvironment>("local");
+  const [ralphLaunch, setRalphLaunch] = useState<{
+    plan: RalphPlanSummary;
+    provider: string | undefined;
+    modelId: string | undefined;
+    thinkingLevel: string | undefined;
+    maxIterations: number;
+  } | null>(null);
   // Per-project draft text + attachments. Keyed by rootWorkspaceId so each
   // project remembers what the user typed while navigating elsewhere.
   const [newThreadPromptByWorkspace, setNewThreadPromptByWorkspace] = useState<Record<string, string>>({});
@@ -2145,26 +2153,38 @@ export default function App() {
     !loopControl && selectedSession && snapshot?.selectedSessionCreatedRalphPlan
       ? selectedWorkspace?.ralphPlans?.[0]
       : undefined;
-  const handleBeginRalphLoop = (plan: RalphPlanSummary) => {
+  const beginRalphLoop = selectedRalphPlan
+    ? {
+        planTitle: selectedRalphPlan.title,
+        onBegin: () =>
+          setRalphLaunch({
+            plan: selectedRalphPlan,
+            provider: resolvedSessionProvider,
+            modelId: resolvedSessionModelId,
+            thinkingLevel: resolvedSessionThinkingLevel,
+            maxIterations: selectedRalphPlan.defaultMaxIterations,
+          }),
+      }
+    : undefined;
+  const runRalphLoop = () => {
+    const launch = ralphLaunch;
     const workspaceId = selectedWorkspace?.id;
-    if (!workspaceId) {
+    if (!launch || !workspaceId) {
       return;
     }
+    setRalphLaunch(null);
     void updateSnapshot(api, setSnapshot, () =>
       api.startThread({
         rootWorkspaceId: workspaceId,
         environment: "local",
-        provider: resolvedSessionProvider,
-        modelId: resolvedSessionModelId,
-        thinkingLevel: resolvedSessionThinkingLevel,
+        provider: launch.provider,
+        modelId: launch.modelId,
+        thinkingLevel: launch.thinkingLevel,
       }),
     ).then(() => {
-      void api.submitComposer(`/ralph-loop "${plan.promptRef}"`);
+      void api.submitComposer(`/ralph-loop "${launch.plan.promptRef}" --max-iterations=${launch.maxIterations}`);
     });
   };
-  const beginRalphLoop = selectedRalphPlan
-    ? { planTitle: selectedRalphPlan.title, onBegin: () => handleBeginRalphLoop(selectedRalphPlan) }
-    : undefined;
 
   const handleSetDefaultModel = (provider: string, modelId: string) => {
     if (!settingsWorkspace) {
@@ -3194,6 +3214,27 @@ export default function App() {
             )}
             {activeExtensionDialog ? (
               <ExtensionDialog dialog={activeExtensionDialog} onRespond={handleRespondToExtensionDialog} />
+            ) : null}
+            {ralphLaunch ? (
+              <RalphLaunchDialog
+                planTitle={ralphLaunch.plan.title}
+                runtime={selectedModelRuntime}
+                provider={ralphLaunch.provider}
+                modelId={ralphLaunch.modelId}
+                thinkingLevel={ralphLaunch.thinkingLevel}
+                maxIterations={ralphLaunch.maxIterations}
+                onSetModel={(provider, modelId) =>
+                  setRalphLaunch((prev) => (prev ? { ...prev, provider, modelId } : prev))
+                }
+                onSetThinking={(thinkingLevel) =>
+                  setRalphLaunch((prev) => (prev ? { ...prev, thinkingLevel } : prev))
+                }
+                onSetMaxIterations={(maxIterations) =>
+                  setRalphLaunch((prev) => (prev ? { ...prev, maxIterations } : prev))
+                }
+                onCancel={() => setRalphLaunch(null)}
+                onRun={runRalphLoop}
+              />
             ) : null}
             {treeModalState.open ? (
               <TreeModal

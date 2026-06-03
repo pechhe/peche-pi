@@ -6369,6 +6369,30 @@ mark.thread-find-active {
   background: #e2e8ff;
 }
 
+/* Ralph loop launch dialog fields. */
+.ralph-launch__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 12px 0;
+}
+
+.ralph-launch__label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.ralph-launch__input {
+  width: 120px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border, #cfd7ea);
+  background: var(--surface, #fff);
+  color: var(--text-strong);
+  font-size: 13px;
+}
+
 /* "Begin Ralph loop" banner above the composer when a plan is ready. */
 .composer__begin-loop {
   display: flex;
