@@ -12,6 +12,7 @@ import type {
   WorkspaceSessionTarget,
 } from "../src/desktop-state";
 import { isMetaActivity } from "../src/timeline-grouping";
+import { listRalphPlans } from "./ralph-plans";
 
 export const LEGACY_TRANSCRIPT_HISTORY_LIMIT = 180;
 
@@ -45,6 +46,7 @@ export function buildWorkspaceRecords(
             branchName: linkedWorktreeBranchName(workspace, worktrees, rootWorkspaceId),
           }
         : {}),
+      ralphPlans: listRalphPlans(workspace.path),
       sessions: sessions
         .filter((session) => session.workspaceId === workspace.workspaceId)
         .map((session) =>
@@ -500,7 +502,7 @@ function normalizeComposerAttachment(value: Record<string, unknown>): ComposerAt
 
 export function makeActivityItem(
   label: string,
-  options: Pick<Extract<TranscriptMessage, { kind: "activity" }>, "detail" | "metadata" | "tone"> = {},
+  options: Pick<Extract<TranscriptMessage, { kind: "activity" }>, "detail" | "metadata" | "tone" | "noise"> = {},
 ): TranscriptMessage {
   return {
     kind: "activity",
@@ -522,6 +524,15 @@ export function makeSummaryItem(
     label,
     presentation: options.presentation ?? "inline",
     ...(options.metadata ? { metadata: options.metadata } : {}),
+  };
+}
+
+export function makeReasoningItem(text: string): TranscriptMessage {
+  return {
+    kind: "reasoning",
+    id: randomUUID(),
+    text,
+    createdAt: new Date().toISOString(),
   };
 }
 

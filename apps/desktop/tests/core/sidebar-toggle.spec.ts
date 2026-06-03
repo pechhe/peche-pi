@@ -74,16 +74,20 @@ test("toggles and persists the primary sidebar from the button and keyboard shor
     await expect(window.getByTestId("sidebar-toggle")).toHaveCount(0);
     await window.keyboard.press(desktopShortcut("B"));
     await expect.poll(async () => (await getDesktopState(window)).sidebarCollapsed).toBe(false);
-    await window.getByRole("button", { name: "Back to app", exact: true }).click();
 
+    // Skills and Extensions surfaces have no "Back to app" button; navigation
+    // between secondary surfaces is via the persistent sidebar nav.
     await restoreSidebarIfNeeded(window);
     await window.getByRole("button", { name: "Extensions", exact: true }).click();
     await expect(window.getByTestId("extensions-surface")).toBeVisible();
     await expect(window.getByTestId("sidebar-toggle")).toHaveCount(0);
     await window.keyboard.press(desktopShortcut("B"));
     await expect.poll(async () => (await getDesktopState(window)).sidebarCollapsed).toBe(false);
-    await window.getByRole("button", { name: "Back to app", exact: true }).click();
 
+    // Return to the main app via the new-thread shortcut, where the floating
+    // sidebar toggle is available again.
+    await window.keyboard.press(desktopShortcut("Shift+O"));
+    await expect(window.getByTestId("new-thread-composer")).toBeVisible();
     await restoreSidebarIfNeeded(window);
     await window.getByTestId("sidebar-toggle").click();
     await expectSidebarCollapsed(window, true);

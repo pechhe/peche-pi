@@ -146,8 +146,20 @@ export class PiSdkDriver implements SessionDriver {
     return this.supervisor.removeWorkspace(workspaceId);
   }
 
+  async getProviderApiKey(providerId: string): Promise<string | undefined> {
+    return this.authStorage.getApiKey(providerId);
+  }
+
   getTranscript(sessionRef: SessionRef) {
     return this.supervisor.getTranscript(sessionRef);
+  }
+
+  getLoopIterations(sessionRef: SessionRef) {
+    return this.supervisor.getLoopIterations(sessionRef);
+  }
+
+  sessionEditedRalphPlan(sessionRef: SessionRef) {
+    return this.supervisor.sessionEditedRalphPlan(sessionRef);
   }
 
   generateThreadTitle(workspace: WorkspaceRef, options: GenerateThreadTitleOptions): Promise<string | null> {

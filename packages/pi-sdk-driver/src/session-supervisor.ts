@@ -54,6 +54,8 @@ import {
 import { normalizeRuntimeCommandName, skillCommandName } from "./runtime-command-utils.js";
 import {
   buildSnapshot,
+  collectLoopIterations,
+  entriesEditedRalphPlan,
   createWorkspaceRef,
   deriveSessionConfig,
   deriveWorkspaceTitle,
@@ -69,7 +71,7 @@ import {
   truncate,
   workspaceToRef,
 } from "./session-supervisor-utils.js";
-import type { SessionTranscriptMessage } from "./transcript.js";
+import type { LoopIterationTranscript, SessionTranscriptMessage } from "./transcript.js";
 import { createAgentSessionRuntimeWithNpmFallback } from "./npm-package-fallback.js";
 import {
   cloneQueuedMessage,
@@ -157,7 +159,6 @@ export class SessionSupervisor {
   private readonly createAgentSessionRuntimeImpl: (options?: CreateAgentSessionOptions) => Promise<AgentSessionRuntime>;
   private readonly modelRegistry: ModelRegistry | undefined;
   private readonly records = new Map<string, ManagedSessionRecord>();
-
   constructor(options: PiSdkDriverOptions = {}) {
     this.catalogs = options.catalogFilePath
       ? new JsonCatalogStore({ catalogFilePath: options.catalogFilePath })
@@ -283,6 +284,53 @@ export class SessionSupervisor {
   async getTranscript(sessionRef: SessionRef): Promise<SessionTranscriptMessage[]> {
     const record = await this.ensureRecord(sessionRef);
     return transcriptFromMessages(record.session?.messages ?? [], record.updatedAt);
+  }
+
+  /**
+   * Reconstruct a loop's iterations from the active session's `parentSession`
+   * ancestry chain. Returns `null` when the active session is not a loop
+   * iteration (no `ralph_loop` marker), so callers can fall back to a plain
+   * transcript. Otherwise returns the iterations root-first, with the live
+   * session last. Each prior iteration is read from its persisted session file;
+   * the live iteration uses in-memory messages so streaming stays current.
+   */
+  async getLoopIterations(sessionRef: SessionRef): Promise<LoopIterationTranscript[] | null> {
+    const record = await this.ensureRecord(sessionRef);
+    const session = record.session;
+    if (!session) {
+      return null;
+    }
+    const infos = await SessionManager.list(record.workspace.path);
+    return collectLoopIterations({
+      leafEntries: session.sessionManager.getEntries(),
+      leafSessionId: session.sessionId,
+      leafMessages: session.messages ?? [],
+      leafUpdatedAt: record.updatedAt,
+      leafSessionFile: record.sessionFile,
+      sessions: infos.map((info) => ({
+        path: info.path,
+        id: info.id,
+        parentSessionPath: info.parentSessionPath,
+        modifiedIso: info.modified.toISOString(),
+      })),
+      readEntries: (path) => SessionManager.open(path).getEntries(),
+    });
+  }
+
+  /**
+   * Whether this session is the chat where a Ralph plan was written, i.e. its
+   * entries contain a tool call touching the `.ralph/` bundle. Used to scope
+   * the "Begin Ralph loop" banner to the creating chat rather than every chat
+   * in a workspace that happens to have a `.ralph/` plan on disk.
+   */
+  async sessionEditedRalphPlan(sessionRef: SessionRef): Promise<boolean> {
+    const record = await this.ensureRecord(sessionRef);
+    const entries = record.session
+      ? record.session.sessionManager.getEntries()
+      : record.sessionFile
+        ? SessionManager.open(record.sessionFile).getEntries()
+        : [];
+    return entriesEditedRalphPlan(entries);
   }
 
   async getSessionCommands(sessionRef: SessionRef): Promise<readonly RuntimeCommandRecord[]> {
@@ -1349,6 +1397,14 @@ export class SessionSupervisor {
         if (event.message.role === "assistant" && event.assistantMessageEvent.type === "text_delta") {
           return toDriverEvents({
             type: "assistantDelta" as const,
+            sessionRef: record.ref,
+            timestamp,
+            text: event.assistantMessageEvent.delta ?? "",
+          }, record);
+        }
+        if (event.message.role === "assistant" && event.assistantMessageEvent.type === "thinking_delta") {
+          return toDriverEvents({
+            type: "reasoningDelta" as const,
             sessionRef: record.ref,
             timestamp,
             text: event.assistantMessageEvent.delta ?? "",

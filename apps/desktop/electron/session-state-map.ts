@@ -42,6 +42,7 @@ export class SessionStateMap {
   readonly sessionErrorsBySession = new Map<string, string>();
   readonly sessionSubscriptions = new Map<string, () => void>();
   readonly activeAssistantMessageBySession = new Map<string, string>();
+  readonly activeReasoningMessageBySession = new Map<string, string>();
   readonly runningSinceBySession = new Map<string, string>();
   readonly runMetricsBySession = new Map<string, RunMetrics>();
   readonly sessionCommandsBySession = new Map<string, RuntimeCommandRecord[]>();
@@ -67,6 +68,7 @@ export class SessionStateMap {
     const pendingAutoTitle = this.pendingAutoTitleBySession.get(key);
     this.sessionSubscriptions.delete(key);
     this.activeAssistantMessageBySession.delete(key);
+    this.activeReasoningMessageBySession.delete(key);
     this.runningSinceBySession.delete(key);
     this.runMetricsBySession.delete(key);
     this.composerDraftsBySession.delete(key);

@@ -10,7 +10,7 @@ export type WorktreeStatus = "ready" | "missing" | "error";
 export type NewThreadEnvironment = "local" | "worktree";
 export type ThemeMode = "system" | "light" | "dark" | "dracula";
 
-export type ComposerDeviceMode = "off" | "screen" | "modular";
+export type ComposerDeviceMode = "off" | "screen" | "modular" | "screen-neon";
 export type ModelSettingsScopeMode = "app-global" | "per-repo";
 export type ComposerDraftSyncSource =
   | "state"
@@ -20,10 +20,64 @@ export type ComposerDraftSyncSource =
   | "extension-editor-text"
   | "queued-message-edit";
 
+export type ChatStatus = "idle" | "running" | "failed";
+
+export interface ChatConfig {
+  readonly provider?: string;
+  readonly modelId?: string;
+  readonly thinkingLevel?: string;
+}
+
+export interface ChatContextUsage {
+  readonly tokenCount?: number;
+  readonly percentUsed?: number;
+}
+
+export interface ChatRecord {
+  readonly id: string;
+  readonly title: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly archivedAt?: string;
+  readonly preview: string;
+  readonly status: ChatStatus;
+  readonly runningSince?: string;
+  readonly hasUnseenUpdate: boolean;
+  readonly isAwaitingAssistantText: boolean;
+  readonly config?: ChatConfig;
+  readonly contextUsage?: ChatContextUsage;
+  readonly chatWorkspaceId?: string;
+}
+
 export interface NotificationPreferences {
   readonly backgroundCompletion: boolean;
   readonly backgroundFailure: boolean;
   readonly attentionNeeded: boolean;
+}
+
+export interface SubagentSettingsRecord {
+  readonly orchestratorMode: boolean;
+  readonly disableCoordinatorOnlyTurn: boolean;
+  readonly disableChildContextBoundary: boolean;
+  readonly disableSessionTitles: boolean;
+  readonly mux: "auto" | "cmux" | "tmux" | "zellij" | "wezterm";
+  readonly piCommandOverride: string;
+}
+
+export interface SubagentAgentRecord {
+  readonly id: string;
+  readonly name: string;
+  readonly description?: string;
+  readonly model?: string;
+  readonly thinking?: string;
+  readonly mode?: "interactive" | "background";
+  readonly async?: boolean;
+  readonly autoExit?: boolean;
+  readonly sessionMode?: "standalone" | "lineage-only" | "fork";
+  readonly allowModelOverride?: boolean;
+  readonly filePath: string;
+  readonly scope: "project" | "global";
+  readonly raw: string;
 }
 
 export interface ComposerImageAttachment {
@@ -59,6 +113,36 @@ export interface QueuedComposerMessage {
 export interface SessionContextUsage {
   readonly usedTokens: number;
   readonly contextWindow: number;
+}
+
+/**
+ * A runnable, incomplete Ralph plan (a `.ralph/` bundle) discovered in a
+ * workspace. Surfaced in the new-thread Ralph picker so a plan can be launched
+ * as a loop.
+ */
+export interface RalphPlanSummary {
+  /** Human title taken from `.ralph/plan.md`'s first heading. */
+  readonly title: string;
+  readonly totalItems: number;
+  readonly doneItems: number;
+  /** Prompt reference passed to `/ralph-loop` bundle mode. */
+  readonly promptRef: string;
+  /** Pre-filled max-iterations (from a prior loop run, else the ralph default). */
+  readonly defaultMaxIterations: number;
+}
+
+/**
+ * Status of a Ralph loop owning the selected workspace, read from
+ * `.ralph/loop.md`. Drives the loop thread's locked composer + control bar.
+ */
+export interface RalphLoopStatus {
+  readonly running: boolean;
+  readonly iteration: number;
+  readonly maxIterations: number;
+  readonly stopReason?: string;
+  readonly sessionId?: string;
+  /** True when the selected session is the loop's current active iteration. */
+  readonly isSelectedSessionActive: boolean;
 }
 
 export interface SessionRecord {
@@ -137,6 +221,8 @@ export interface WorkspaceRecord {
   readonly rootWorkspaceId?: string;
   readonly branchName?: string;
   readonly sessions: readonly SessionRecord[];
+  /** Incomplete Ralph plans found in this workspace, launchable as loops. */
+  readonly ralphPlans?: readonly RalphPlanSummary[];
 }
 
 export interface CreateWorktreeInput {
@@ -148,6 +234,14 @@ export interface CreateWorktreeInput {
 export type StartThreadInput = {
   readonly rootWorkspaceId: string;
   readonly environment: NewThreadEnvironment;
+  readonly prompt?: string;
+  readonly attachments?: readonly ComposerAttachment[];
+  readonly provider?: string;
+  readonly modelId?: string;
+  readonly thinkingLevel?: string;
+};
+
+export type StartChatInput = {
   readonly prompt?: string;
   readonly attachments?: readonly ComposerAttachment[];
   readonly provider?: string;
@@ -177,16 +271,27 @@ export interface DesktopAppState {
   readonly sessionExtensionUiBySession: Readonly<Record<string, SessionExtensionUiStateRecord>>;
   readonly extensionCommandCompatibilityByWorkspace: Readonly<Record<string, readonly ExtensionCommandCompatibilityRecord[]>>;
   readonly notificationPreferences: NotificationPreferences;
+  readonly subagentSettings: SubagentSettingsRecord;
+  readonly subagentAgentsByWorkspace: Record<string, readonly SubagentAgentRecord[]>;
   readonly integratedTerminalShell: string;
+  readonly externalTerminalApp: string;
   readonly lastViewedAtBySession: Readonly<Record<string, string>>;
   readonly workspaceOrder: readonly string[];
   readonly modelSettingsScopeMode: ModelSettingsScopeMode;
   readonly globalModelSettings: ModelSettingsSnapshot;
   readonly sidebarCollapsed: boolean;
   readonly enableTransparency: boolean;
+  readonly transcriptVerbose: boolean;
+  readonly autoAcceptVisionProxy: boolean;
   readonly composerDeviceMode: ComposerDeviceMode;
   readonly themeMode: ThemeMode;
   readonly commitPushModel?: string;
+  readonly chats: readonly ChatRecord[];
+  readonly selectedChatId: string;
+  readonly selectedLoopStatus?: RalphLoopStatus;
+  // True when the selected chat is the one that wrote the workspace's Ralph
+  // plan; scopes the "Begin Ralph loop" banner to the creating chat.
+  readonly selectedSessionCreatedRalphPlan?: boolean;
   readonly revision: number;
   readonly lastError?: string;
 }
@@ -222,7 +327,17 @@ export function createEmptyDesktopAppState(): DesktopAppState {
       backgroundFailure: true,
       attentionNeeded: true,
     },
+    subagentSettings: {
+      orchestratorMode: false,
+      disableCoordinatorOnlyTurn: false,
+      disableChildContextBoundary: false,
+      disableSessionTitles: false,
+      mux: "auto",
+      piCommandOverride: "",
+    },
+    subagentAgentsByWorkspace: {},
     integratedTerminalShell: "",
+    externalTerminalApp: "",
     lastViewedAtBySession: {},
     workspaceOrder: [],
     modelSettingsScopeMode: "app-global",
@@ -231,9 +346,13 @@ export function createEmptyDesktopAppState(): DesktopAppState {
     },
     sidebarCollapsed: false,
     enableTransparency: false,
+    transcriptVerbose: false,
+    autoAcceptVisionProxy: false,
     composerDeviceMode: "off",
     themeMode: "system",
     commitPushModel: undefined,
+    chats: [],
+    selectedChatId: "",
     revision: 0,
   };
 }

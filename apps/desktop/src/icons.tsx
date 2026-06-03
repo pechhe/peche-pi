@@ -27,6 +27,15 @@ export function TerminalIcon() {
   );
 }
 
+export function ExternalTerminalIcon() {
+  return (
+    <Icon>
+      <path d="M9.4 4.1H5.3a2 2 0 0 0-2 2v8.5a2 2 0 0 0 2 2h8.5a2 2 0 0 0 2-2v-4.1" stroke="currentColor" strokeLinecap="round" strokeWidth="1.35" />
+      <path d="M11.3 4.1h4.6v4.6M15.6 4.4 9.7 10.3" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.35" />
+    </Icon>
+  );
+}
+
 export function SidebarToggleIcon() {
   return (
     <Icon>
@@ -326,6 +335,16 @@ export function GripIcon() {
       <circle cx="12" cy="10" r="1.2" fill="currentColor" />
       <circle cx="8" cy="13" r="1.2" fill="currentColor" />
       <circle cx="12" cy="13" r="1.2" fill="currentColor" />
+    </Icon>
+  );
+}
+
+export function EditedFilesIcon() {
+  // Square containing a ± glyph — Codex-style "edited files" summary affordance.
+  return (
+    <Icon>
+      <rect x="3.5" y="3.5" width="13" height="13" rx="3" stroke="currentColor" strokeWidth="1.3" fill="none" />
+      <path d="M10 6.5v4M8 8.5h4M8 13.5h4" stroke="currentColor" strokeLinecap="round" strokeWidth="1.3" />
     </Icon>
   );
 }

@@ -13,13 +13,13 @@ import {
 } from "@dnd-kit/core";
 import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { AppView, SessionRecord, WorkspaceRecord, WorktreeRecord } from "./desktop-state";
+import type { AppView, ChatRecord, SessionRecord, WorkspaceRecord, WorktreeRecord } from "./desktop-state";
 import { ArchiveIcon, ChevronDownIcon, ChevronRightIcon, ComposeIcon, ExtensionIcon, FolderIcon, RestoreIcon, SettingsIcon, SkillIcon, WorktreeIcon } from "./icons";
 import { WorkingSpinner } from "./working-label";
 import type { PiDesktopApi } from "./ipc";
 import { formatRelativeTime } from "./string-utils";
 import type { WorkspaceMenuState } from "./hooks/use-workspace-menu";
-import type { ThreadGroup, ThreadListEntry } from "./thread-groups";
+import { PENDING_THREAD_SESSION_ID, type ThreadGroup, type ThreadListEntry } from "./thread-groups";
 import type { Dispatch, SetStateAction } from "react";
 import type { DesktopAppState } from "./desktop-state";
 import type { SidebarResize } from "./hooks/use-sidebar-width";
@@ -29,6 +29,7 @@ interface SidebarProps {
   readonly activeView: AppView;
   readonly selectedWorkspace: WorkspaceRecord | undefined;
   readonly selectedSession: SessionRecord | undefined;
+  readonly chats: readonly ChatRecord[];
   readonly visibleWorkspaces: readonly WorkspaceRecord[];
   readonly threadGroups: readonly ThreadGroup[];
   readonly linkedWorktreeByWorkspaceId: Map<string, WorktreeRecord>;
@@ -46,8 +47,14 @@ interface SidebarProps {
   readonly onOpenExtensions: (workspaceId?: string) => void;
   readonly onOpenSettings: (workspaceId?: string) => void;
   readonly onArchiveSession: (target: { workspaceId: string; sessionId: string }) => void;
+  readonly onArchiveAllNonRunningSessions: (workspaceId: string, olderThanMs?: number) => void;
   readonly onSelectSession: (target: { workspaceId: string; sessionId: string }) => void;
   readonly onUnarchiveSession: (target: { workspaceId: string; sessionId: string }) => void;
+  readonly onCreateChat: () => void;
+  readonly onSelectChat: (chatId: string) => void;
+  readonly onArchiveChat: (chatId: string) => void;
+  readonly onUnarchiveChat: (chatId: string) => void;
+  readonly onRemoveChat: (chatId: string) => void;
 }
 
 export function Sidebar(props: SidebarProps) {
@@ -56,6 +63,7 @@ export function Sidebar(props: SidebarProps) {
     activeView,
     selectedWorkspace,
     selectedSession,
+    chats,
     visibleWorkspaces,
     threadGroups,
     linkedWorktreeByWorkspaceId,
@@ -69,8 +77,14 @@ export function Sidebar(props: SidebarProps) {
     onOpenExtensions,
     onOpenSettings,
     onArchiveSession,
+    onArchiveAllNonRunningSessions,
     onSelectSession,
     onUnarchiveSession,
+    onCreateChat,
+    onSelectChat,
+    onArchiveChat,
+    onUnarchiveChat,
+    onRemoveChat,
   } = props;
 
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -206,6 +220,7 @@ export function Sidebar(props: SidebarProps) {
                     wsMenu={wsMenu}
                     api={api}
                     onArchiveSession={onArchiveSession}
+                    onArchiveAllNonRunningSessions={onArchiveAllNonRunningSessions}
                     onSelectSession={onSelectSession}
                     onUnarchiveSession={onUnarchiveSession}
                     onNewThreadForWorkspace={onNewThreadForWorkspace}
@@ -223,6 +238,7 @@ export function Sidebar(props: SidebarProps) {
                     wsMenu={wsMenu}
                     api={api}
                     onArchiveSession={onArchiveSession}
+                    onArchiveAllNonRunningSessions={onArchiveAllNonRunningSessions}
                     onSelectSession={onSelectSession}
                     onUnarchiveSession={onUnarchiveSession}
                     onNewThreadForWorkspace={onNewThreadForWorkspace}
@@ -243,6 +259,7 @@ export function Sidebar(props: SidebarProps) {
                     wsMenu={wsMenu}
                     api={api}
                     onArchiveSession={onArchiveSession}
+                    onArchiveAllNonRunningSessions={onArchiveAllNonRunningSessions}
                     onSelectSession={onSelectSession}
                     onUnarchiveSession={onUnarchiveSession}
                     onNewThreadForWorkspace={onNewThreadForWorkspace}
@@ -251,6 +268,42 @@ export function Sidebar(props: SidebarProps) {
               ) : null}
             </DragOverlay>
           </DndContext>
+        )}
+      </div>
+      <div className="sidebar__section sidebar__chats">
+        <div className="section__head">
+          <span>Chats</span>
+          <div className="section__tools">
+            <button
+              aria-label="New chat"
+              className="icon-button"
+              type="button"
+              onClick={onCreateChat}
+            >
+              <ComposeIcon />
+            </button>
+          </div>
+        </div>
+        {chats.length === 0 ? (
+          <div className="sidebar__chats-empty">
+            <p>No chats yet.</p>
+            <button
+              className="button button--primary"
+              type="button"
+              onClick={onCreateChat}
+            >
+              New chat
+            </button>
+          </div>
+        ) : (
+          <SidebarChatsList
+            chats={chats}
+            selectedWorkspaceId={selectedWorkspace?.id ?? ""}
+            onSelectChat={onSelectChat}
+            onArchiveChat={onArchiveChat}
+            onUnarchiveChat={onUnarchiveChat}
+            onRemoveChat={onRemoveChat}
+          />
         )}
       </div>
     </aside>
@@ -269,6 +322,7 @@ interface WorkspaceGroupProps {
   readonly wsMenu: WorkspaceMenuState;
   readonly api: PiDesktopApi;
   readonly onArchiveSession: (target: { workspaceId: string; sessionId: string }) => void;
+  readonly onArchiveAllNonRunningSessions: (workspaceId: string, olderThanMs?: number) => void;
   readonly onSelectSession: (target: { workspaceId: string; sessionId: string }) => void;
   readonly onUnarchiveSession: (target: { workspaceId: string; sessionId: string }) => void;
   readonly onNewThreadForWorkspace: (rootWorkspaceId: string) => void;
@@ -321,6 +375,7 @@ function WorkspaceGroupContent(
     wsMenu,
     api,
     onArchiveSession,
+    onArchiveAllNonRunningSessions,
     onSelectSession,
     onUnarchiveSession,
     onNewThreadForWorkspace,
@@ -416,6 +471,32 @@ function WorkspaceGroupContent(
               >
                 Edit name
               </button>
+              {threads.some((t) => t.session.status !== "running") ? (
+                <button
+                  className="workspace-menu__item"
+                  type="button"
+                  onClick={(event) =>
+                    wsMenu.runWorkspaceMenuAction(event, () =>
+                      onArchiveAllNonRunningSessions(rootWorkspace.id),
+                    )
+                  }
+                >
+                  Archive all non‑running threads
+                </button>
+              ) : null}
+              {threads.some((t) => t.session.status !== "running" && Date.now() - new Date(t.session.updatedAt).getTime() >= 3_600_000) ? (
+                <button
+                  className="workspace-menu__item"
+                  type="button"
+                  onClick={(event) =>
+                    wsMenu.runWorkspaceMenuAction(event, () =>
+                      onArchiveAllNonRunningSessions(rootWorkspace.id, 3_600_000),
+                    )
+                  }
+                >
+                  Archive inactive &gt; 1 hour
+                </button>
+              ) : null}
               <button
                 className="workspace-menu__item workspace-menu__item--danger"
                 type="button"
@@ -466,9 +547,10 @@ function WorkspaceGroupContent(
           <div className="session-list">
             {threads.map((thread) => {
               const active =
-                activeView === "threads" &&
-                thread.workspaceId === selectedWorkspace?.id &&
-                thread.session.id === selectedSession?.id;
+                thread.session.id === PENDING_THREAD_SESSION_ID ||
+                (activeView === "threads" &&
+                  thread.workspaceId === selectedWorkspace?.id &&
+                  thread.session.id === selectedSession?.id);
               return (
                 <ThreadSessionRow
                   key={`${thread.workspaceId}:${thread.session.id}`}
@@ -603,6 +685,170 @@ function ThreadSessionRow({
         >
           {archived ? <RestoreIcon /> : <ArchiveIcon />}
         </button>
+      </span>
+    </div>
+  );
+}
+
+/* ── Chats list ───────────────────────────────────────────── */
+
+function SidebarChatsList({
+  chats,
+  selectedWorkspaceId,
+  onSelectChat,
+  onArchiveChat,
+  onUnarchiveChat,
+  onRemoveChat,
+}: {
+  readonly chats: readonly ChatRecord[];
+  readonly selectedWorkspaceId: string;
+  readonly onSelectChat: (chatId: string) => void;
+  readonly onArchiveChat: (chatId: string) => void;
+  readonly onUnarchiveChat: (chatId: string) => void;
+  readonly onRemoveChat: (chatId: string) => void;
+}) {
+  const activeChats = chats.filter((c) => !c.archivedAt);
+  const archivedChats = chats.filter((c) => c.archivedAt);
+  const [showArchived, setShowArchived] = useState(false);
+
+  return (
+    <>
+      <div className="session-list">
+        {activeChats.map((chat) => {
+          const isActive = Boolean(chat.chatWorkspaceId) && chat.chatWorkspaceId === selectedWorkspaceId;
+          return (
+            <ChatRow
+              key={chat.id}
+              chat={chat}
+              isActive={isActive}
+              onSelect={() => onSelectChat(chat.id)}
+              onArchive={() => onArchiveChat(chat.id)}
+            />
+          );
+        })}
+      </div>
+      {archivedChats.length > 0 ? (
+        <div className="archived-thread-group">
+          <button
+            aria-expanded={showArchived}
+            className="archived-thread-group__toggle"
+            type="button"
+            onClick={() => setShowArchived((prev) => !prev)}
+          >
+            <span
+              aria-hidden="true"
+              className={`archived-thread-group__chevron ${showArchived ? "archived-thread-group__chevron--open" : ""}`}
+            >
+              <ChevronDownIcon />
+            </span>
+            <span>Archived</span>
+            <span className="archived-thread-group__count">{archivedChats.length}</span>
+          </button>
+          {showArchived ? (
+            <div className="session-list session-list--archived">
+              {archivedChats.map((chat) => {
+                const isActive = Boolean(chat.chatWorkspaceId) && chat.chatWorkspaceId === selectedWorkspaceId;
+                return (
+                  <ChatRow
+                    key={chat.id}
+                    chat={chat}
+                    isActive={isActive}
+                    archived
+                    onSelect={() => onSelectChat(chat.id)}
+                    onUnarchive={() => onUnarchiveChat(chat.id)}
+                    onRemove={() => onRemoveChat(chat.id)}
+                  />
+                );
+              })}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+function ChatRow({
+  chat,
+  isActive,
+  archived = false,
+  onSelect,
+  onArchive,
+  onUnarchive,
+  onRemove,
+}: {
+  readonly chat: ChatRecord;
+  readonly isActive: boolean;
+  readonly archived?: boolean;
+  readonly onSelect: () => void;
+  readonly onArchive?: () => void;
+  readonly onUnarchive?: () => void;
+  readonly onRemove?: () => void;
+}) {
+  const indicatorVariant: "running" | "unseen" | "none" =
+    chat.status === "running" ? "running" : chat.hasUnseenUpdate ? "unseen" : "none";
+
+  return (
+    <div
+      className={`session-row ${isActive ? "session-row--active" : ""}`}
+      data-sidebar-indicator={indicatorVariant}
+      data-session-id={chat.id}
+      onClick={onSelect}
+    >
+      <button className="session-row__select" onClick={onSelect} type="button">
+        <span className="session-row__leading" aria-hidden="true">
+          {indicatorVariant === "running" ? (
+            <WorkingSpinner className="session-row__status session-row__status--running" title="Thinking…" />
+          ) : null}
+          {indicatorVariant === "unseen" ? <span className="session-row__status session-row__status--unseen" /> : null}
+        </span>
+        <span className="session-row__body">
+          <span className="session-row__title-line">
+            <span className="session-row__title">{chat.title}</span>
+          </span>
+        </span>
+      </button>
+      <span className="session-row__trailing">
+        <span className="session-row__time">{formatRelativeTime(chat.updatedAt)}</span>
+        {archived ? (
+          <>
+            <button
+              aria-label={`Restore ${chat.title}`}
+              className="icon-button session-row__action"
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                onUnarchive?.();
+              }}
+            >
+              <RestoreIcon />
+            </button>
+            <button
+              aria-label={`Delete ${chat.title}`}
+              className="icon-button session-row__action"
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                onRemove?.();
+              }}
+              style={{ right: "36px" }}
+            >
+              <span aria-hidden="true">×</span>
+            </button>
+          </>
+        ) : (
+          <button
+            aria-label={`Archive ${chat.title}`}
+            className="icon-button session-row__action"
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onArchive?.();
+            }}
+          >
+            <ArchiveIcon />
+          </button>
+        )}
       </span>
     </div>
   );

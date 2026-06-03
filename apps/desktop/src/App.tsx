@@ -10,13 +10,14 @@ import {
   type DesktopAppState,
   type NewThreadEnvironment,
   type SelectedTranscriptRecord,
+  type StartChatInput,
+  type RalphPlanSummary,
   type StartThreadInput,
   type TranscriptMessage,
   type WorktreeRecord,
   type WorkspaceRecord,
 } from "./desktop-state";
-import { formatRelativeTime } from "./string-utils";
-import { ComposerPanel } from "./composer-panel";
+import { ComposerPanel, type LoopControlProps } from "./composer-panel";
 import { buildPlanModePrompt, type ComposerMode } from "./composer-mode";
 import { DiffPanel, type DiffPanelFileRequest } from "./diff-panel";
 import { buildModelOptions, THINKING_OPTIONS } from "./composer-commands";
@@ -28,6 +29,7 @@ import {
   type DesktopNotificationPermissionStatus,
   type PiDesktopCommand,
   type CavemanLevel,
+  type UndoEditOp,
 } from "./ipc";
 import { deriveModelOnboardingState } from "./model-onboarding";
 import { type ModelSelectorHandle } from "./model-selector";
@@ -35,13 +37,15 @@ import { SkillsView } from "./skills-view";
 import { ExtensionsView } from "./extensions-view";
 import { SettingsView, type SettingsSection } from "./settings-view";
 import { NewThreadView } from "./new-thread-view";
-import { PendingThreadView } from "./pending-thread-view";
-import { buildThreadGroups } from "./thread-groups";
+import { PendingComposer } from "./pending-thread-view";
+import { buildThreadGroups, PENDING_THREAD_SESSION_ID, type ThreadListEntry } from "./thread-groups";
+import { markUserMessagesAnimated } from "./timeline-item";
 import { Sidebar } from "./sidebar";
 import { SidebarToggleButton } from "./sidebar-toggle-button";
 import { Topbar } from "./topbar";
 import { TerminalPanel } from "./terminal-panel";
 import { ConversationTimeline, VIRTUALIZATION_THRESHOLD } from "./conversation-timeline";
+import LoadingBar from "./loading-bar";
 import { useSlashMenu } from "./hooks/use-slash-menu";
 import { useMentionMenu } from "./hooks/use-mention-menu";
 import { useThreadSearch } from "./hooks/use-thread-search";
@@ -49,9 +53,12 @@ import { useWorkspaceMenu } from "./hooks/use-workspace-menu";
 import { useNavigationHistory } from "./hooks/use-navigation-history";
 import { useSidebarWidth } from "./hooks/use-sidebar-width";
 import { ExtensionDialog } from "./extension-session-ui";
+import { RalphLaunchDialog } from "./ralph-launch-dialog";
+import { SubagentLiveProvider } from "./subagent-live";
 import { TreeModal } from "./tree-modal";
 import { ImageLightbox } from "./image-lightbox";
-import { ToastHost } from "./toast";
+import { Agentation } from "agentation";
+import { ToastHost, showToast } from "./toast";
 import { getEffectiveModelRuntime } from "./model-settings";
 import { resolveRepoWorkspaceId } from "./workspace-roots";
 import {
@@ -68,6 +75,62 @@ import {
 // unmounted (the "black screen on thread switch" symptom).
 const EMPTY_TRANSCRIPT: readonly TranscriptMessage[] = Object.freeze([]) as readonly TranscriptMessage[];
 
+// Title for the optimistic sidebar row, derived from the prompt the user just
+// sent. Mirrors how the live thread reads before its auto-title resolves.
+// Stable id for the optimistic user-message row shown in the timeline while a
+// new thread is being created. Lets the placeholder transcript and the live
+// transcript share one ConversationTimeline so going live reconciles instead
+// of remounting.
+const PENDING_USER_MESSAGE_ID = "__pending_user_message__";
+
+// Slide the thread composer from where the centered new-thread composer was
+// down to the footer (a FLIP transform): capture the old rect, let the new
+// composer mount at its final spot, then animate transform from the old
+// position to identity. Only the composer moves — nothing zooms or cross-fades.
+const COMPOSER_SLIDE_EASING = "cubic-bezier(0.22, 1, 0.36, 1)";
+const COMPOSER_SLIDE_MS = 280;
+
+function runComposerSlide(fromRect: DOMRect): void {
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    return;
+  }
+  const el = document.querySelector("footer.composer") as HTMLElement | null;
+  if (!el) {
+    return;
+  }
+  const toRect = el.getBoundingClientRect();
+  const dx = fromRect.left + fromRect.width / 2 - (toRect.left + toRect.width / 2);
+  const dy = fromRect.top - toRect.top;
+  if (Math.abs(dx) < 1 && Math.abs(dy) < 1) {
+    return;
+  }
+  el.style.transition = "none";
+  el.style.transform = `translate(${dx}px, ${dy}px)`;
+  // Force a reflow so the starting transform is committed before we animate.
+  void el.offsetHeight;
+  requestAnimationFrame(() => {
+    el.style.transition = `transform ${COMPOSER_SLIDE_MS}ms ${COMPOSER_SLIDE_EASING}`;
+    el.style.transform = "translate(0px, 0px)";
+    const cleanup = (event: TransitionEvent) => {
+      if (event.propertyName !== "transform") {
+        return;
+      }
+      el.style.transition = "";
+      el.style.transform = "";
+      el.removeEventListener("transitionend", cleanup);
+    };
+    el.addEventListener("transitionend", cleanup);
+  });
+}
+
+function deriveThreadTitle(prompt: string): string {
+  const firstLine = prompt.split("\n").map((line) => line.trim()).find(Boolean) ?? "";
+  if (!firstLine) {
+    return "New thread";
+  }
+  return firstLine.length > 60 ? `${firstLine.slice(0, 57)}\u2026` : firstLine;
+}
+
 function useDesktopAppState() {
   const [snapshot, setSnapshot] = useState<DesktopAppState | null>(null);
   const [selectedTranscript, setSelectedTranscript] = useState<SelectedTranscriptRecord | null>(null);
@@ -79,13 +142,39 @@ function useDesktopAppState() {
       return undefined;
     }
 
-    void Promise.all([api.getState(), api.getSelectedTranscript()]).then(([state, transcript]) => {
-      if (!active) {
-        return;
-      }
-      setSnapshot(state);
-      setSelectedTranscript(transcript);
-    });
+    void Promise.all([api.getState(), api.getSelectedTranscript()])
+      .then(([state, transcript]) => {
+        if (!active) return;
+        setSnapshot(state);
+        lastAppliedSessionKey = transcript ? `${transcript.workspaceId}::${transcript.sessionId}` : null;
+        setSelectedTranscript(transcript);
+        // If a session is selected but transcript came back null, retry.
+        if (!transcript && state.selectedSessionId) {
+          void api.getSelectedTranscript().then((retried) => {
+            if (active && retried) {
+              lastAppliedSessionKey = `${retried.workspaceId}::${retried.sessionId}`;
+              setSelectedTranscript(retried);
+            }
+          });
+        }
+      })
+      .catch(() => {
+        // Promise.all rejected (likely getSelectedTranscript threw).
+        // Retry each call individually so state at least populates.
+        if (!active) return;
+        void api.getState().then((state) => {
+          if (!active) return;
+          setSnapshot(state);
+          if (state.selectedSessionId) {
+            void api.getSelectedTranscript().then((transcript) => {
+              if (active && transcript) {
+                lastAppliedSessionKey = `${transcript.workspaceId}::${transcript.sessionId}`;
+                setSelectedTranscript(transcript);
+              }
+            });
+          }
+        });
+      });
 
     const unsubscribeState = api.onStateChanged((state) => {
       if (active) {
@@ -105,10 +194,22 @@ function useDesktopAppState() {
     // session's view.
     let pendingTranscript: SelectedTranscriptRecord | null | undefined = undefined;
     let rafHandle: number | null = null;
+    let coalesceTimer: ReturnType<typeof setTimeout> | null = null;
     let lastAppliedSessionKey: string | null = null;
 
+    const clearCoalesce = () => {
+      if (rafHandle !== null) {
+        cancelAnimationFrame(rafHandle);
+        rafHandle = null;
+      }
+      if (coalesceTimer !== null) {
+        clearTimeout(coalesceTimer);
+        coalesceTimer = null;
+      }
+    };
+
     const flushTranscript = () => {
-      rafHandle = null;
+      clearCoalesce();
       if (!active || pendingTranscript === undefined) {
         pendingTranscript = undefined;
         return;
@@ -120,10 +221,7 @@ function useDesktopAppState() {
     };
 
     const applyTranscriptImmediately = (payload: SelectedTranscriptRecord | null) => {
-      if (rafHandle !== null) {
-        cancelAnimationFrame(rafHandle);
-        rafHandle = null;
-      }
+      clearCoalesce();
       pendingTranscript = undefined;
       lastAppliedSessionKey = payload ? `${payload.workspaceId}::${payload.sessionId}` : null;
       setSelectedTranscript(payload);
@@ -141,23 +239,27 @@ function useDesktopAppState() {
         return;
       }
       pendingTranscript = payload;
+      // Throttle streaming deltas to one flush per frame via rAF, but back it
+      // with a timeout: requestAnimationFrame is paused while the window is
+      // backgrounded/occluded, which would otherwise strand this payload (the
+      // "thread stuck blank until you switch away and back" bug).
       if (rafHandle === null) {
         rafHandle = requestAnimationFrame(flushTranscript);
+      }
+      if (coalesceTimer === null) {
+        coalesceTimer = setTimeout(flushTranscript, 250);
       }
     });
 
     return () => {
       active = false;
-      if (rafHandle !== null) {
-        cancelAnimationFrame(rafHandle);
-        rafHandle = null;
-      }
+      clearCoalesce();
       unsubscribeState();
       unsubscribeTranscript();
     };
   }, []);
 
-  return [snapshot, setSnapshot, selectedTranscript] as const;
+  return [snapshot, setSnapshot, selectedTranscript, setSelectedTranscript] as const;
 }
 
 function updateSnapshot(
@@ -218,7 +320,7 @@ function formatRunningLabel(startedAt: string | undefined): string {
 }
 
 export default function App() {
-  const [snapshot, setSnapshot, selectedTranscript] = useDesktopAppState();
+  const [snapshot, setSnapshot, selectedTranscript, setSelectedTranscript] = useDesktopAppState();
   const [composerDraft, setComposerDraft] = useState("");
   const [composerMode, setComposerMode] = useState<ComposerMode>("build");
   const [newThreadComposerMode, setNewThreadComposerMode] = useState<ComposerMode>("build");
@@ -233,7 +335,15 @@ export default function App() {
   const [extensionsWorkspaceId, setExtensionsWorkspaceId] = useState("");
   const [pendingNewThreadWorkspaceId, setPendingNewThreadWorkspaceId] = useState("");
   const [newThreadRootWorkspaceId, setNewThreadRootWorkspaceId] = useState("");
+  const [newThreadIsChat, setNewThreadIsChat] = useState(false);
   const [newThreadEnvironment, setNewThreadEnvironment] = useState<NewThreadEnvironment>("local");
+  const [ralphLaunch, setRalphLaunch] = useState<{
+    plan: RalphPlanSummary;
+    provider: string | undefined;
+    modelId: string | undefined;
+    thinkingLevel: string | undefined;
+    maxIterations: number;
+  } | null>(null);
   // Per-project draft text + attachments. Keyed by rootWorkspaceId so each
   // project remembers what the user typed while navigating elsewhere.
   const [newThreadPromptByWorkspace, setNewThreadPromptByWorkspace] = useState<Record<string, string>>({});
@@ -280,11 +390,26 @@ export default function App() {
   // while the main process spins up the agent runtime. Cleared when
   // startThread resolves and the real snapshot takes over.
   const [pendingThreadStart, setPendingThreadStart] = useState<{
-    readonly workspaceId: string;
-    readonly workspaceName: string;
-    readonly environment: NewThreadEnvironment;
+    // Target root workspace for the optimistic sidebar row. Empty for chats
+    // (chats render in their own list, not the threads sidebar).
+    readonly rootWorkspaceId: string;
+    readonly title: string;
+    // Set once the main process resolves startThread/startChat: the real
+    // session the placeholder is standing in for. While undefined we are still
+    // in flight (show the optimistic sidebar row); once set we hold the
+    // placeholder until that session's transcript arrives.
+    readonly sessionId?: string;
+    readonly workspaceId?: string;
+    // Timestamp captured at send, kept stable across placeholder updates so the
+    // optimistic bubble plays its send animation exactly once.
+    readonly createdAt: string;
     readonly prompt: string;
     readonly attachments: readonly ComposerAttachment[];
+    readonly provider: string | undefined;
+    readonly modelId: string | undefined;
+    readonly thinkingLevel: string | undefined;
+    readonly cavemanLevel: CavemanLevel;
+    readonly composerMode: ComposerMode;
   } | null>(null);
   const [themeMode, setThemeMode] = useState<"system" | "light" | "dark" | "dracula">("system");
   const [notificationPermissionStatus, setNotificationPermissionStatus] =
@@ -304,6 +429,9 @@ export default function App() {
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const newThreadComposerRef = useRef<HTMLTextAreaElement | null>(null);
   const timelinePaneRef = useRef<HTMLDivElement | null>(null);
+  // Rect of the centered new-thread composer captured at send, used to slide
+  // the thread composer down from that spot once it mounts.
+  const composerFlipFromRef = useRef<DOMRect | null>(null);
   const lastTranscriptMarkerRef = useRef("");
   const pinnedToBottomRef = useRef(true);
   const previousTimelinePaneSizeRef = useRef<{ width: number; height: number } | null>(null);
@@ -316,12 +444,14 @@ export default function App() {
   const previousActiveViewRef = useRef<AppView | null>(null);
   const hydratedComposerSessionKeyRef = useRef("");
   const handledComposerSyncNonceRef = useRef(0);
+  const lastAbortToastKeyRef = useRef("");
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
   const [showDiffPanel, setShowDiffPanel] = useState(false);
   const [openTerminalSessionKey, setOpenTerminalSessionKey] = useState("");
   const [takeoverTerminalSessionKey, setTakeoverTerminalSessionKey] = useState("");
   const [terminalHeight, setTerminalHeight] = useState(340);
   const [diffFileRequest, setDiffFileRequest] = useState<DiffPanelFileRequest | null>(null);
+  const [diffRefreshNonce, setDiffRefreshNonce] = useState(0);
   const [timelinePaneMountVersion, setTimelinePaneMountVersion] = useState(0);
   const [disableTimelineVirtualization, setDisableTimelineVirtualization] = useState(true);
   const [timelineMetaEvents, setTimelineMetaEvents] = useState<
@@ -379,8 +509,9 @@ export default function App() {
     const root = document.documentElement;
     const mode = snapshot.composerDeviceMode;
     root.classList.toggle("composer-device", mode !== "off");
-    root.classList.toggle("composer-device--screen", mode === "screen");
+    root.classList.toggle("composer-device--screen", mode === "screen" || mode === "screen-neon");
     root.classList.toggle("composer-device--modular", mode === "modular");
+    root.classList.toggle("composer-device--neon", mode === "screen-neon");
   }, [snapshot?.composerDeviceMode]);
 
   useEffect(() => {
@@ -416,6 +547,7 @@ export default function App() {
 
   const selectedWorkspace = snapshot ? (getSelectedWorkspace(snapshot) ?? snapshot.workspaces[0]) : undefined;
   const selectedSession = snapshot ? (getSelectedSession(snapshot) ?? selectedWorkspace?.sessions[0]) : undefined;
+  const chats = snapshot?.chats ?? [];
   // Sidebar-facing derivations depend only on workspaces/worktrees, not selection.
   // Keeping them off `selectedWorkspace` lets the memoized Sidebar skip re-renders
   // when the user just switches between sessions.
@@ -429,20 +561,29 @@ export default function App() {
     }
 
     const workspacesById = new Map(snapshot.workspaces.map((workspace) => [workspace.id, workspace] as const));
-    const primaryWorkspaces = snapshot.workspaces.filter((workspace) => workspace.kind === "primary");
-    const orphanWorkspaces = snapshot.workspaces.filter(
+    const chatWorkspaceIds = new Set(
+      snapshot.chats.map((chat) => chat.chatWorkspaceId).filter((id): id is string => Boolean(id)),
+    );
+    // Chat workspaces live under a "/chats/" directory in app support. Filter by
+    // both the known chat ids and the path shape so leaked/unmigrated chat
+    // workspaces never appear in the Threads list.
+    const isChatWorkspace = (workspace: WorkspaceRecord): boolean =>
+      chatWorkspaceIds.has(workspace.id) || /[/\\]chats[/\\][^/\\]+[/\\]?$/.test(workspace.path);
+    const nonChatWorkspaces = snapshot.workspaces.filter((workspace) => !isChatWorkspace(workspace));
+    const primaryWorkspaces = nonChatWorkspaces.filter((workspace) => workspace.kind === "primary");
+    const orphanWorkspaces = nonChatWorkspaces.filter(
       (workspace) => workspace.kind === "worktree" && !workspacesById.has(workspace.rootWorkspaceId ?? ""),
     );
     const nextVisibleWorkspaces =
-      primaryWorkspaces.length > 0 ? [...primaryWorkspaces, ...orphanWorkspaces] : snapshot.workspaces;
+      primaryWorkspaces.length > 0 ? [...primaryWorkspaces, ...orphanWorkspaces] : nonChatWorkspaces;
     const nextLinkedWorktreeByWorkspaceId = new Map(
       Object.values(snapshot.worktreesByWorkspace)
         .flat()
         .filter((worktree) => Boolean(worktree.linkedWorkspaceId))
         .map((worktree) => [worktree.linkedWorkspaceId as string, worktree] as const),
     );
-    const nextRootWorkspaceOptions = [...new Set(snapshot.workspaces.map((workspace) => resolveRepoWorkspaceId(snapshot.workspaces, workspace.id) ?? workspace.id))]
-      .map((workspaceId) => snapshot.workspaces.find((workspace) => workspace.id === workspaceId))
+    const nextRootWorkspaceOptions = [...new Set(nonChatWorkspaces.map((workspace) => resolveRepoWorkspaceId(nonChatWorkspaces, workspace.id) ?? workspace.id))]
+      .map((workspaceId) => nonChatWorkspaces.find((workspace) => workspace.id === workspaceId))
       .filter((workspace): workspace is WorkspaceRecord => Boolean(workspace));
 
     return {
@@ -509,7 +650,14 @@ export default function App() {
     selectedSession?.config?.thinkingLevel ?? selectedModelRuntime?.settings.defaultThinkingLevel;
   const resolvedNewThreadProvider = newThreadProvider ?? (newThreadDefaultEnabled ? newThreadRuntime?.settings.defaultProvider : undefined);
   const resolvedNewThreadModelId = newThreadModelId ?? (newThreadDefaultEnabled ? newThreadRuntime?.settings.defaultModelId : undefined);
-  const resolvedNewThreadThinkingLevel = newThreadThinkingLevel ?? newThreadRuntime?.settings.defaultThinkingLevel;
+  // New threads default to medium reasoning so the model emits thinking_delta
+  // events the timeline can render as a collapsed "Thought" disclosure.
+  // Per-model clamping (clampThinkingLevel in pi-sdk-driver) falls back to
+  // whatever level the model actually supports, including "off", so this is
+  // safe to apply universally. Users can still pick a different level in the
+  // composer or override the default in settings.
+  const resolvedNewThreadThinkingLevel =
+    newThreadThinkingLevel ?? newThreadRuntime?.settings.defaultThinkingLevel ?? "medium";
   const selectedSessionModelOnboarding = deriveModelOnboardingState(selectedModelRuntime, {
     provider: resolvedSessionProvider,
     modelId: resolvedSessionModelId,
@@ -536,6 +684,8 @@ export default function App() {
   const editingQueuedMessageId = snapshot?.editingQueuedMessageId;
   const runningLabel = useRunningLabel(selectedSession?.status === "running" ? selectedSession.runningSince : undefined);
   const selectedSessionKey = selectedWorkspace && selectedSession ? `${selectedWorkspace.id}:${selectedSession.id}` : "";
+  const snapshotLastError = snapshot?.lastError;
+  const composerLastError = isRequestAbortedError(snapshotLastError) ? undefined : snapshotLastError;
   const isTerminalVisibleForSelectedThread = Boolean(selectedSessionKey) && openTerminalSessionKey === selectedSessionKey;
   const isTerminalTakeoverForSelectedThread = Boolean(selectedSessionKey) && takeoverTerminalSessionKey === selectedSessionKey;
   const activeTranscript =
@@ -546,11 +696,142 @@ export default function App() {
     selectedTranscript.sessionId === selectedSession.id
       ? selectedTranscript.transcript
       : EMPTY_TRANSCRIPT;
+  // In clean mode (default), hide noise-tagged activities (extension chatter
+  // like blackhole OM progress and cymbal nudges). Verbose mode shows them.
+  const transcriptVerbose = snapshot?.transcriptVerbose ?? false;
+  const visibleTranscript = useMemo(
+    () =>
+      transcriptVerbose
+        ? activeTranscript
+        : activeTranscript.filter((item) => !(item.kind === "activity" && item.noise)),
+    [activeTranscript, transcriptVerbose],
+  );
   const isTranscriptLoading = Boolean(selectedSession) && activeTranscript.length === 0 && (
     !selectedTranscript ||
     selectedTranscript.workspaceId !== selectedWorkspace?.id ||
     selectedTranscript.sessionId !== selectedSession?.id
   );
+  // Optimistic transcript shown in the timeline while a thread is being
+  // created: a single user bubble built from what the user just sent. Lets the
+  // placeholder and the live session share one ConversationTimeline, so going
+  // live is a transcript/label swap rather than a full remount.
+  const pendingOptimisticTranscript = useMemo<readonly TranscriptMessage[] | null>(() => {
+    if (!pendingThreadStart) {
+      return null;
+    }
+    const attachments = pendingThreadStart.attachments.map((attachment) =>
+      attachment.kind === "image"
+        ? { kind: "image" as const, mimeType: attachment.mimeType, data: attachment.data, name: attachment.name }
+        : {
+            kind: "file" as const,
+            name: attachment.name,
+            mimeType: attachment.mimeType,
+            fsPath: attachment.fsPath,
+            ...(attachment.sizeBytes != null ? { sizeBytes: attachment.sizeBytes } : {}),
+          },
+    );
+    return [
+      {
+        kind: "message" as const,
+        role: "user" as const,
+        id: PENDING_USER_MESSAGE_ID,
+        createdAt: pendingThreadStart.createdAt,
+        text: pendingThreadStart.prompt,
+        ...(attachments.length > 0 ? { attachments } : {}),
+      },
+    ];
+  }, [pendingThreadStart]);
+  const threadViewTranscript =
+    pendingThreadStart && pendingOptimisticTranscript ? pendingOptimisticTranscript : visibleTranscript;
+  const threadViewIsRunning = pendingThreadStart ? true : selectedSession?.status === "running";
+  // Self-heal: if a session is selected but its transcript never arrived (a
+  // main-side publish can be dropped if it fires before the renderer's IPC
+  // listener is attached, or coalesced and stranded), re-request it directly
+  // instead of staying stuck on the loading bar until the user switches
+  // threads and back.
+  const selfHealWorkspaceId = selectedWorkspace?.id;
+  const selfHealSessionId = selectedSession?.id;
+  useEffect(() => {
+    if (!isTranscriptLoading || !selfHealWorkspaceId || !selfHealSessionId) {
+      return undefined;
+    }
+    const api = window.piApp;
+    if (!api) {
+      return undefined;
+    }
+    let cancelled = false;
+    const refetch = () => {
+      void api.getSelectedTranscript().then((transcript) => {
+        if (
+          cancelled ||
+          !transcript ||
+          transcript.workspaceId !== selfHealWorkspaceId ||
+          transcript.sessionId !== selfHealSessionId
+        ) {
+          return;
+        }
+        setSelectedTranscript(transcript);
+      });
+    };
+    // First attempt shortly after detecting the stuck state, then a backstop
+    // retry in case hydration is still in flight on the main side.
+    const first = window.setTimeout(refetch, 200);
+    const second = window.setTimeout(refetch, 1000);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(first);
+      window.clearTimeout(second);
+    };
+  }, [isTranscriptLoading, selfHealWorkspaceId, selfHealSessionId, setSelectedTranscript]);
+  // Hold the "Preparing your thread…" placeholder until the new session's
+  // transcript actually contains the user message, then mark that message as
+  // already-animated (the send animation played on the placeholder) and clear
+  // the placeholder. This turns going-live into a seamless label swap
+  // ("Preparing your thread…" → "Thinking…") instead of a flash through an
+  // empty/loading transcript with a replayed send animation.
+  const pendingSessionId = pendingThreadStart?.sessionId;
+  const pendingWorkspaceId = pendingThreadStart?.workspaceId;
+  useEffect(() => {
+    if (!pendingSessionId || !pendingWorkspaceId || !selectedTranscript) {
+      return;
+    }
+    if (
+      selectedTranscript.workspaceId !== pendingWorkspaceId ||
+      selectedTranscript.sessionId !== pendingSessionId
+    ) {
+      return;
+    }
+    const userMessageIds = selectedTranscript.transcript
+      .filter((item) => item.kind === "message" && item.role === "user")
+      .map((item) => item.id);
+    if (userMessageIds.length === 0) {
+      return;
+    }
+    markUserMessagesAnimated(userMessageIds);
+    setPendingThreadStart(null);
+    focusComposer();
+  }, [pendingSessionId, pendingWorkspaceId, selectedTranscript]);
+  // Safety net: if the transcript never arrives, don't hang on the placeholder.
+  useEffect(() => {
+    if (!pendingSessionId) {
+      return undefined;
+    }
+    const timer = window.setTimeout(() => setPendingThreadStart(null), 6000);
+    return () => window.clearTimeout(timer);
+  }, [pendingSessionId]);
+  // Slide the composer down from the new-thread position once the thread
+  // composer first mounts (runs before paint so there's no jump to the footer).
+  const pendingThreadActive = Boolean(pendingThreadStart);
+  useLayoutEffect(() => {
+    if (!pendingThreadActive) {
+      return;
+    }
+    const fromRect = composerFlipFromRef.current;
+    composerFlipFromRef.current = null;
+    if (fromRect) {
+      runComposerSlide(fromRect);
+    }
+  }, [pendingThreadActive]);
   const selectedSessionCommands = selectedSession ? snapshot?.sessionCommandsBySession[selectedSessionKey] ?? [] : [];
   const blackholeAvailable = selectedSessionCommands.some((command) => command.name === "blackhole");
   const selectedExtensionUi = selectedSession ? snapshot?.sessionExtensionUiBySession[selectedSessionKey] : undefined;
@@ -564,6 +845,17 @@ export default function App() {
     }
   }, [snapshot]);
   useEffect(() => {
+    if (!snapshotLastError || !isRequestAbortedError(snapshotLastError)) {
+      return;
+    }
+    const toastKey = `${selectedSessionKey}:${snapshotLastError}`;
+    if (lastAbortToastKeyRef.current === toastKey) {
+      return;
+    }
+    lastAbortToastKeyRef.current = toastKey;
+    showToast({ variant: "error", message: snapshotLastError, autoDismissMs: 4000 });
+  }, [selectedSessionKey, snapshotLastError]);
+  useEffect(() => {
     setOpenTerminalSessionKey("");
     setTakeoverTerminalSessionKey("");
   }, [selectedSessionKey]);
@@ -571,8 +863,36 @@ export default function App() {
   const activeExtensionDialog = selectedExtensionUi?.pendingDialogs[0];
   const persistedComposerDraft = snapshot?.composerDraft ?? "";
   const threadGroups = useMemo(
-    () => (snapshot ? buildThreadGroups(snapshot) : []),
-    [snapshot?.workspaces, snapshot?.worktreesByWorkspace, snapshot?.workspaceOrder],
+    () => {
+      const groups = snapshot ? buildThreadGroups(snapshot) : [];
+      // Optimistic sidebar row: while a new thread is still being created (no
+      // real session id yet), show a running placeholder in its workspace so
+      // the thread appears immediately rather than after it goes live. Once
+      // the real session exists it is already in `groups`, so we stop
+      // injecting the placeholder.
+      if (!pendingThreadStart || pendingThreadStart.sessionId || !pendingThreadStart.rootWorkspaceId) {
+        return groups;
+      }
+      const optimistic: ThreadListEntry = {
+        workspaceId: pendingThreadStart.rootWorkspaceId,
+        session: {
+          id: PENDING_THREAD_SESSION_ID,
+          title: pendingThreadStart.title,
+          updatedAt: new Date().toISOString(),
+          preview: "",
+          status: "running",
+          hasUnseenUpdate: false,
+          isAwaitingAssistantText: true,
+        },
+        environment: { kind: "local", label: "Local" },
+      };
+      return groups.map((group) =>
+        group.rootWorkspace.id === pendingThreadStart.rootWorkspaceId
+          ? { ...group, threads: [optimistic, ...group.threads] }
+          : group,
+      );
+    },
+    [snapshot?.workspaces, snapshot?.worktreesByWorkspace, snapshot?.workspaceOrder, snapshot?.chats, pendingThreadStart],
   );
   const focusComposer = () => {
     window.requestAnimationFrame(() => {
@@ -590,6 +910,12 @@ export default function App() {
     }
     setOpenTerminalSessionKey(selectedSessionKey);
   }, [openTerminalSessionKey, selectedSessionKey]);
+  const openExternalTerminal = useCallback(() => {
+    if (!api) {
+      return;
+    }
+    void updateSnapshot(api, setSnapshot, () => api.openSessionInDefaultTerminal());
+  }, [api, setSnapshot]);
   const focusNewThreadComposer = () => {
     window.requestAnimationFrame(() => {
       newThreadComposerRef.current?.focus();
@@ -792,6 +1118,32 @@ export default function App() {
     setShowDiffPanel(true);
     setDiffFileRequest({ path, nonce: Date.now() });
   }, []);
+
+  const handleUndoEdits = useCallback(
+    async (ops: readonly UndoEditOp[]) => {
+      const workspaceId = selectedWorkspaceRef.current?.id;
+      if (!api || !workspaceId) {
+        return { reverted: [], failed: [] };
+      }
+      const result = await api.undoEdits(workspaceId, ops);
+      setDiffRefreshNonce((nonce) => nonce + 1);
+      return result;
+    },
+    [api],
+  );
+
+  const handleRedoEdits = useCallback(
+    async (ops: readonly UndoEditOp[]) => {
+      const workspaceId = selectedWorkspaceRef.current?.id;
+      if (!api || !workspaceId) {
+        return { reverted: [], failed: [] };
+      }
+      const result = await api.redoEdits(workspaceId, ops);
+      setDiffRefreshNonce((nonce) => nonce + 1);
+      return result;
+    },
+    [api],
+  );
 
   const toggleDiffPanel = useCallback(() => {
     const pane = timelinePaneRef.current;
@@ -1354,7 +1706,7 @@ export default function App() {
       : pinnedToBottomRef.current || preserveBottomOnNextPaneResizeRef.current;
 
     composer.style.height = "0px";
-    composer.style.height = `${Math.min(composer.scrollHeight, 220)}px`;
+    composer.style.height = `${Math.min(composer.scrollHeight, 400)}px`;
 
     const nextHeight = composer.getBoundingClientRect().height;
     if (Math.abs(nextHeight - previousHeight) >= 1 && shouldPreserveBottom) {
@@ -1538,8 +1890,22 @@ export default function App() {
 
   const openNewThreadSurface = (workspaceId?: string) => {
     setPendingNewThreadWorkspaceId("");
+    setNewThreadIsChat(false);
     resetNewThreadSurface(workspaceId);
     setActiveView("new-thread");
+  };
+
+  const openNewChatSurface = () => {
+    setPendingNewThreadWorkspaceId("");
+    setNewThreadIsChat(true);
+    setNewThreadEnvironment("local");
+    setNewThreadProvider(undefined);
+    setNewThreadModelId(undefined);
+    setNewThreadThinkingLevel(undefined);
+    setNewThreadComposerMode("build");
+    setNewThreadComposerError(undefined);
+    setActiveView("new-thread");
+    focusNewThreadComposer();
   };
 
   const handleSelectNewThreadWorkspace = (workspaceId: string) => {
@@ -1764,6 +2130,62 @@ export default function App() {
     }
   };
 
+  // When the selected thread is the active iteration of a Ralph loop, replace
+  // the composer with a locked control bar so the loop cannot be interrupted.
+  const selectedLoopStatus = snapshot?.selectedLoopStatus;
+  const sendLoopCommand = (command: string) =>
+    void updateSnapshot(api, setSnapshot, () => api.submitComposer(command));
+  const loopControl: LoopControlProps | undefined =
+    selectedLoopStatus && selectedLoopStatus.isSelectedSessionActive
+      ? {
+          status: selectedLoopStatus,
+          onStop: () => sendLoopCommand("/ralph-stop"),
+          onResume: () => sendLoopCommand("/ralph-resume"),
+          onRestart: () => sendLoopCommand("/ralph-restart"),
+        }
+      : undefined;
+
+  // Once a Ralph plan has been written, the plan's workspace exposes it on
+  // `ralphPlans`. Surface a "Begin Ralph loop" banner on the chat composer
+  // (hidden while a loop already owns the thread). Beginning starts a fresh
+  // thread — the special loop thread — and runs the bundle-mode loop there.
+  const selectedRalphPlan: RalphPlanSummary | undefined =
+    !loopControl && selectedSession && snapshot?.selectedSessionCreatedRalphPlan
+      ? selectedWorkspace?.ralphPlans?.[0]
+      : undefined;
+  const beginRalphLoop = selectedRalphPlan
+    ? {
+        planTitle: selectedRalphPlan.title,
+        onBegin: () =>
+          setRalphLaunch({
+            plan: selectedRalphPlan,
+            provider: resolvedSessionProvider,
+            modelId: resolvedSessionModelId,
+            thinkingLevel: resolvedSessionThinkingLevel,
+            maxIterations: selectedRalphPlan.defaultMaxIterations,
+          }),
+      }
+    : undefined;
+  const runRalphLoop = () => {
+    const launch = ralphLaunch;
+    const workspaceId = selectedWorkspace?.id;
+    if (!launch || !workspaceId) {
+      return;
+    }
+    setRalphLaunch(null);
+    void updateSnapshot(api, setSnapshot, () =>
+      api.startThread({
+        rootWorkspaceId: workspaceId,
+        environment: "local",
+        provider: launch.provider,
+        modelId: launch.modelId,
+        thinkingLevel: launch.thinkingLevel,
+      }),
+    ).then(() => {
+      void api.submitComposer(`/ralph-loop "${launch.plan.promptRef}" --max-iterations=${launch.maxIterations}`);
+    });
+  };
+
   const handleSetDefaultModel = (provider: string, modelId: string) => {
     if (!settingsWorkspace) {
       return;
@@ -1913,6 +2335,30 @@ export default function App() {
     void updateSnapshot(api, setSnapshot, () => api.setIntegratedTerminalShell(shellPath));
   };
 
+  const handleSetSubagentSettings = (settings: Partial<DesktopAppState["subagentSettings"]>) => {
+    void updateSnapshot(api, setSnapshot, () => api.setSubagentSettings(settings));
+  };
+
+  const handleRefreshSubagentAgents = (workspaceId: string) => {
+    void updateSnapshot(api, setSnapshot, () => api.refreshSubagentAgents(workspaceId));
+  };
+
+  const handleSaveSubagentAgent = (workspaceId: string, input: { readonly name: string; readonly raw: string; readonly scope?: "project" | "global" }) => {
+    void updateSnapshot(api, setSnapshot, () => api.saveSubagentAgent(workspaceId, input));
+  };
+
+  const handleDeleteSubagentAgent = (workspaceId: string, name: string, scope?: "project" | "global") => {
+    void updateSnapshot(api, setSnapshot, () => api.deleteSubagentAgent(workspaceId, name, scope));
+  };
+
+  const handleChooseExternalTerminalApp = () => {
+    void updateSnapshot(api, setSnapshot, () => api.chooseExternalTerminalApp());
+  };
+
+  const handleClearExternalTerminalApp = () => {
+    void updateSnapshot(api, setSnapshot, () => api.clearExternalTerminalApp());
+  };
+
   const handleRequestNotificationPermission = () => {
     if (!api?.requestNotificationPermission) {
       return;
@@ -1944,7 +2390,15 @@ export default function App() {
     void updateSnapshot(api, setSnapshot, () => api.archiveSession(target));
   };
 
+  const handleArchiveAllNonRunningSessions = (workspaceId: string, olderThanMs?: number) => {
+    void updateSnapshot(api, setSnapshot, () => api.archiveAllNonRunningSessions(workspaceId, olderThanMs));
+  };
+
   const handleSelectSession = (target: { workspaceId: string; sessionId: string }) => {
+    // The optimistic placeholder row isn't a real session yet — ignore clicks.
+    if (target.sessionId === PENDING_THREAD_SESSION_ID) {
+      return;
+    }
     setOpenTerminalSessionKey("");
     setTakeoverTerminalSessionKey("");
     // Don't double-setSnapshot: the main process already pushes state via
@@ -1978,7 +2432,101 @@ export default function App() {
     void updateSnapshot(api, setSnapshot, () => api.unarchiveSession(target));
   };
 
+  const handleCreateChat = () => {
+    openNewChatSurface();
+  };
+
+  const handleSelectChat = (chatId: string) => {
+    void updateSnapshot(api, setSnapshot, () => api.selectChat(chatId)).then(() => {
+      focusComposer();
+    });
+  };
+
+  const handleArchiveChat = (chatId: string) => {
+    void updateSnapshot(api, setSnapshot, () => api.archiveChat(chatId));
+  };
+
+  const handleUnarchiveChat = (chatId: string) => {
+    void updateSnapshot(api, setSnapshot, () => api.unarchiveChat(chatId));
+  };
+
+  const handleRemoveChat = (chatId: string) => {
+    void updateSnapshot(api, setSnapshot, () => api.removeChat(chatId));
+  };
+
+  const handleStartChat = () => {
+    if (!newThreadPrompt.trim() && newThreadAttachments.length === 0) {
+      return;
+    }
+    if (newThreadModelOnboarding.requiresModelSelection) {
+      return;
+    }
+    const treeCommand = parseTreeComposerCommand(newThreadPrompt);
+    if (treeCommand?.type === "error") {
+      setNewThreadComposerError(treeCommand.message);
+      return;
+    }
+    if (treeCommand?.type === "tree") {
+      setNewThreadComposerError("/tree is only available inside an existing session.");
+      return;
+    }
+    const input: StartChatInput = {
+      prompt: newThreadComposerMode === "plan" ? buildPlanModePrompt(newThreadPrompt) : newThreadPrompt,
+      attachments: newThreadAttachments,
+      provider: resolvedNewThreadProvider,
+      modelId: resolvedNewThreadModelId,
+      thinkingLevel: resolvedNewThreadThinkingLevel,
+    };
+    const capturedPrompt = newThreadPrompt;
+    const capturedAttachments = newThreadAttachments;
+    composerFlipFromRef.current =
+      document.querySelector(".new-thread__composer")?.getBoundingClientRect() ?? null;
+    setPendingThreadStart({
+      rootWorkspaceId: "",
+      title: deriveThreadTitle(capturedPrompt),
+      createdAt: new Date().toISOString(),
+      prompt: capturedPrompt,
+      attachments: capturedAttachments,
+      provider: resolvedNewThreadProvider,
+      modelId: resolvedNewThreadModelId,
+      thinkingLevel: resolvedNewThreadThinkingLevel,
+      cavemanLevel,
+      composerMode: newThreadComposerMode,
+    });
+    setNewThreadPrompt("");
+    setNewThreadAttachments([]);
+    setNewThreadProvider(undefined);
+    setNewThreadModelId(undefined);
+    setNewThreadThinkingLevel(undefined);
+    setNewThreadComposerMode("build");
+    setNewThreadIsChat(false);
+    void updateSnapshot(api, setSnapshot, () => api.startChat(input))
+      .then((state) => {
+        // Don't clear the placeholder yet — hold it until the new session's
+        // transcript arrives so the live view doesn't flash an empty/loading
+        // state. The hold effect clears pendingThreadStart once ready.
+        setPendingThreadStart((prev) =>
+          prev
+            ? { ...prev, sessionId: state.selectedSessionId, workspaceId: state.selectedWorkspaceId }
+            : prev,
+        );
+      })
+      .catch((error: unknown) => {
+        setPendingThreadStart(null);
+        setNewThreadIsChat(true);
+        setNewThreadPrompt(capturedPrompt);
+        setNewThreadAttachments(capturedAttachments);
+        setNewThreadComposerError(
+          error instanceof Error ? error.message : "Failed to start chat.",
+        );
+      });
+  };
+
   const handleStartThread = () => {
+    if (newThreadIsChat) {
+      handleStartChat();
+      return;
+    }
     if (!newThreadRootWorkspaceId || (!newThreadPrompt.trim() && newThreadAttachments.length === 0)) {
       return;
     }
@@ -2012,12 +2560,19 @@ export default function App() {
     // the runtime. We clear the composer state up front (rather than in
     // the .then) so the new-thread surface won't briefly reappear with
     // stale text if startThread resolves slowly.
+    composerFlipFromRef.current =
+      document.querySelector(".new-thread__composer")?.getBoundingClientRect() ?? null;
     setPendingThreadStart({
-      workspaceId: newThreadRootWorkspaceId,
-      workspaceName: newThreadWorkspace?.name ?? "New thread",
-      environment: newThreadEnvironment,
+      rootWorkspaceId: newThreadRootWorkspaceId,
+      title: deriveThreadTitle(newThreadPrompt),
+      createdAt: new Date().toISOString(),
       prompt: newThreadPrompt,
       attachments: newThreadAttachments,
+      provider: resolvedNewThreadProvider,
+      modelId: resolvedNewThreadModelId,
+      thinkingLevel: resolvedNewThreadThinkingLevel,
+      cavemanLevel,
+      composerMode: newThreadComposerMode,
     });
     setNewThreadPrompt("");
     setNewThreadAttachments([]);
@@ -2028,8 +2583,26 @@ export default function App() {
     setNewThreadEnvironment("local");
     void updateSnapshot(api, setSnapshot, () =>
       api.startThread(input),
-    ).then(() => {
+    ).then((state) => {
+      // Hold the placeholder until the new session's transcript arrives (see
+      // the hold effect) so going live is a seamless label swap rather than a
+      // flash through an empty/loading transcript.
+      setPendingThreadStart((prev) =>
+        prev
+          ? { ...prev, sessionId: state.selectedSessionId, workspaceId: state.selectedWorkspaceId }
+          : prev,
+      );
+    }).catch((error: unknown) => {
+      // startThread can reject if the main process fails to register/handle
+      // the IPC (e.g. a runtime spin-up error). Without this the pending
+      // "Preparing your thread…" view would hang forever with no feedback.
+      // Clear the placeholder, restore the composer input, and surface the error.
       setPendingThreadStart(null);
+      setNewThreadPrompt(newThreadPrompt);
+      setNewThreadAttachments(newThreadAttachments);
+      setNewThreadComposerError(
+        error instanceof Error ? error.message : "Failed to start thread.",
+      );
     });
   };
 
@@ -2148,6 +2721,7 @@ export default function App() {
             activeView={snapshot.activeView}
             selectedWorkspace={selectedWorkspace}
             selectedSession={selectedSession}
+            chats={chats}
             visibleWorkspaces={visibleWorkspaces}
             threadGroups={threadGroups}
             linkedWorktreeByWorkspaceId={linkedWorktreeByWorkspaceId}
@@ -2161,8 +2735,14 @@ export default function App() {
             onOpenExtensions={openExtensions}
             onOpenSettings={openSettings}
             onArchiveSession={handleArchiveSession}
+            onArchiveAllNonRunningSessions={handleArchiveAllNonRunningSessions}
             onSelectSession={handleSelectSession}
             onUnarchiveSession={handleUnarchiveSession}
+            onCreateChat={handleCreateChat}
+            onSelectChat={handleSelectChat}
+            onArchiveChat={handleArchiveChat}
+            onUnarchiveChat={handleUnarchiveChat}
+            onRemoveChat={handleRemoveChat}
           />
         ) : null}
         <main className="main main--skills">
@@ -2195,9 +2775,13 @@ export default function App() {
             notificationPermissionPending={notificationPermissionPending}
             modelSettingsScopeMode={snapshot.modelSettingsScopeMode}
             integratedTerminalShell={snapshot.integratedTerminalShell}
+            externalTerminalApp={snapshot.externalTerminalApp}
             themeMode={themeMode}
             enableTransparency={snapshot.enableTransparency}
+            transcriptVerbose={snapshot.transcriptVerbose}
             composerDeviceMode={snapshot.composerDeviceMode}
+            subagentSettings={snapshot.subagentSettings}
+            subagentAgents={settingsWorkspace ? snapshot.subagentAgentsByWorkspace[settingsWorkspace.id] ?? [] : []}
             onLoginProvider={handleLoginProvider}
             onLogoutProvider={handleLogoutProvider}
             onSetProviderApiKey={handleSetProviderApiKey}
@@ -2206,6 +2790,12 @@ export default function App() {
             onSetDefaultModel={handleSetDefaultModel}
             onSetNotificationPreferences={handleSetNotificationPreferences}
             onSetIntegratedTerminalShell={handleSetIntegratedTerminalShell}
+            onSetSubagentSettings={handleSetSubagentSettings}
+            onRefreshSubagentAgents={handleRefreshSubagentAgents}
+            onSaveSubagentAgent={handleSaveSubagentAgent}
+            onDeleteSubagentAgent={handleDeleteSubagentAgent}
+            onChooseExternalTerminalApp={handleChooseExternalTerminalApp}
+            onClearExternalTerminalApp={handleClearExternalTerminalApp}
             onRequestNotificationPermission={handleRequestNotificationPermission}
             onOpenSystemNotificationSettings={handleOpenSystemNotificationSettings}
             onSetScopedModelPatterns={handleSetScopedModelPatterns}
@@ -2215,11 +2805,15 @@ export default function App() {
             onSetEnableTransparency={(enabled) => {
               void updateSnapshot(api, setSnapshot, () => api.setEnableTransparency(enabled));
             }}
+            onSetTranscriptVerbose={(enabled) => {
+              void updateSnapshot(api, setSnapshot, () => api.setTranscriptVerbose(enabled));
+            }}
             onSetComposerDeviceMode={(enabled) => {
               void updateSnapshot(api, setSnapshot, () => api.setComposerDeviceMode(enabled));
             }}
           />
         </main>
+        {import.meta.env.DEV && <Agentation />}
       </div>
     );
   }
@@ -2255,6 +2849,7 @@ export default function App() {
             activeView={snapshot.activeView}
             selectedWorkspace={selectedWorkspace}
             selectedSession={selectedSession}
+            chats={chats}
             visibleWorkspaces={visibleWorkspaces}
             threadGroups={threadGroups}
             linkedWorktreeByWorkspaceId={linkedWorktreeByWorkspaceId}
@@ -2268,8 +2863,14 @@ export default function App() {
             onOpenExtensions={openExtensions}
             onOpenSettings={openSettings}
             onArchiveSession={handleArchiveSession}
+            onArchiveAllNonRunningSessions={handleArchiveAllNonRunningSessions}
             onSelectSession={handleSelectSession}
             onUnarchiveSession={handleUnarchiveSession}
+            onCreateChat={handleCreateChat}
+            onSelectChat={handleSelectChat}
+            onArchiveChat={handleArchiveChat}
+            onUnarchiveChat={handleUnarchiveChat}
+            onRemoveChat={handleRemoveChat}
           />
         ) : null}
         <main className="main main--skills">
@@ -2318,6 +2919,7 @@ export default function App() {
             }
           />
         </main>
+        {import.meta.env.DEV && <Agentation />}
       </div>
     );
   }
@@ -2342,6 +2944,7 @@ export default function App() {
             activeView={snapshot.activeView}
             selectedWorkspace={selectedWorkspace}
             selectedSession={selectedSession}
+            chats={chats}
             visibleWorkspaces={visibleWorkspaces}
             threadGroups={threadGroups}
             linkedWorktreeByWorkspaceId={linkedWorktreeByWorkspaceId}
@@ -2355,27 +2958,17 @@ export default function App() {
             onOpenExtensions={openExtensions}
             onOpenSettings={openSettings}
             onArchiveSession={handleArchiveSession}
+            onArchiveAllNonRunningSessions={handleArchiveAllNonRunningSessions}
             onSelectSession={handleSelectSession}
             onUnarchiveSession={handleUnarchiveSession}
+            onCreateChat={handleCreateChat}
+            onSelectChat={handleSelectChat}
+            onArchiveChat={handleArchiveChat}
+            onUnarchiveChat={handleUnarchiveChat}
+            onRemoveChat={handleRemoveChat}
           />
         ) : null}
         <main className="main main--skills">
-          <div className="surface-toolbar">
-            <button className="button button--secondary" type="button" onClick={() => setActiveView("threads")}>Back to app</button>
-            <label className="surface-toolbar__field">
-              <span>Workspace</span>
-              <select
-                value={extensionsWorkspace?.id ?? ""}
-                onChange={(event) => setExtensionsWorkspaceId(event.target.value)}
-              >
-                {rootWorkspaceOptions.map((workspace) => (
-                  <option key={workspace.id} value={workspace.id}>
-                    {workspace.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
           <ExtensionsView
             workspace={extensionsWorkspace}
             runtime={extensionsRuntime}
@@ -2391,6 +2984,7 @@ export default function App() {
             onDeleteExtension={handleDeleteExtension}
           />
         </main>
+        {import.meta.env.DEV && <Agentation />}
       </div>
     );
   }
@@ -2415,6 +3009,7 @@ export default function App() {
           activeView={snapshot.activeView}
           selectedWorkspace={selectedWorkspace}
           selectedSession={selectedSession}
+          chats={chats}
           visibleWorkspaces={visibleWorkspaces}
           threadGroups={threadGroups}
           linkedWorktreeByWorkspaceId={linkedWorktreeByWorkspaceId}
@@ -2428,8 +3023,14 @@ export default function App() {
           onOpenExtensions={openExtensions}
           onOpenSettings={openSettings}
           onArchiveSession={handleArchiveSession}
+            onArchiveAllNonRunningSessions={handleArchiveAllNonRunningSessions}
           onSelectSession={handleSelectSession}
           onUnarchiveSession={handleUnarchiveSession}
+          onCreateChat={handleCreateChat}
+          onSelectChat={handleSelectChat}
+          onArchiveChat={handleArchiveChat}
+          onUnarchiveChat={handleUnarchiveChat}
+          onRemoveChat={handleRemoveChat}
         />
       ) : null}
 
@@ -2450,6 +3051,8 @@ export default function App() {
           terminalAvailable={Boolean(selectedSessionKey)}
           terminalVisible={isTerminalVisibleForSelectedThread}
           onToggleTerminal={toggleTerminal}
+          externalTerminalAvailable={Boolean(selectedSessionKey) && selectedSession?.status !== "running"}
+          onOpenExternalTerminal={openExternalTerminal}
           showDiffPanel={showDiffPanel}
           onToggleDiffPanel={toggleDiffPanel}
           selectedRuntime={rootRuntime}
@@ -2460,16 +3063,10 @@ export default function App() {
           terminalPanel
         ) : (
           <>
-        {pendingThreadStart ? (
-          <PendingThreadView
-            workspaceName={pendingThreadStart.workspaceName}
-            prompt={pendingThreadStart.prompt}
-            attachments={pendingThreadStart.attachments}
-            environment={pendingThreadStart.environment}
-          />
-        ) : snapshot.activeView === "new-thread" ? (
-          rootWorkspaceOptions.length > 0 ? (
+        {snapshot.activeView === "new-thread" && !pendingThreadStart ? (
+          newThreadIsChat || rootWorkspaceOptions.length > 0 ? (
             <NewThreadView
+              isChat={newThreadIsChat}
               workspaces={rootWorkspaceOptions}
               selectedWorkspaceId={newThreadRootWorkspaceId || rootWorkspaceOptions[0]?.id || ""}
               runtime={newThreadRuntime}
@@ -2528,27 +3125,15 @@ export default function App() {
               </div>
             </section>
           )
-        ) : selectedWorkspace && selectedSession ? (
+        ) : pendingThreadStart || (selectedWorkspace && selectedSession) ? (
           <>
             <section className="canvas canvas--thread">
+              <LoadingBar loading={pendingThreadStart ? false : isTranscriptLoading} />
               <div className="conversation conversation--thread">
-                <div className="chat-header">
-                  <div className="chat-header__eyebrow">
-                    {selectedWorkspace.kind === "worktree"
-                      ? `${rootWorkspace?.name ?? selectedWorkspace.name} · ${selectedWorktree?.name ?? selectedWorkspace.branchName ?? "Worktree"}`
-                      : `${selectedWorkspace.name} · Local`}
-                  </div>
-                  <div className="chat-header__row">
-                    <h1 className="chat-header__title">{displayedSessionTitle}</h1>
-                    <div className="chat-header__status">
-                      {selectedSession.status === "running" ? null : formatRelativeTime(selectedSession.updatedAt)}
-                    </div>
-                  </div>
-                </div>
-
+                <SubagentLiveProvider widgets={selectedExtensionUi?.widgets ?? []}>
                 <ConversationTimeline
-                  transcript={activeTranscript}
-                  isTranscriptLoading={isTranscriptLoading}
+                  transcript={threadViewTranscript}
+                  isTranscriptLoading={pendingThreadStart ? false : isTranscriptLoading}
                   timelinePaneRef={timelinePaneRef}
                   timelinePaneElementRef={setTimelinePaneElement}
                   disableVirtualization={disableTimelineVirtualization}
@@ -2559,13 +3144,20 @@ export default function App() {
                   onJumpToLatest={jumpToLatest}
                   onContentHeightChange={handleTimelineContentHeightChange}
                   onViewFileInDiff={handleViewFileInDiff}
+                  onUndoEdits={handleUndoEdits}
+                  onRedoEdits={handleRedoEdits}
                   onMetaEventsChange={setTimelineMetaEvents}
-                  isRunning={selectedSession.status === "running"}
+                  isRunning={threadViewIsRunning}
+                  workingLabel={pendingThreadStart ? "Preparing your thread…" : undefined}
                 />
+                </SubagentLiveProvider>
               </div>
             </section>
+            {selectedWorkspace && selectedSession ? (
             <ComposerPanel
               key={selectedSessionKey}
+              loopControl={loopControl}
+              beginRalphLoop={beginRalphLoop}
               activeSlashCommand={slashMenu.activeSlashFlow?.command}
               activeSlashCommandMeta={slashMenu.activeSlashFlow?.command?.description}
               attachments={composerAttachments}
@@ -2608,7 +3200,7 @@ export default function App() {
               onSubmit={submitComposerDraft}
               runningLabel={runningLabel}
               selectedSession={selectedSession}
-              lastError={snapshot.lastError}
+              lastError={composerLastError}
               selectedSlashCommand={slashMenu.activeSlashOptionCommand ?? slashMenu.selectedSlashCommand}
               selectedSlashOption={slashMenu.selectedSlashOption}
               slashOptionEmptyState={slashMenu.slashOptionEmptyState}
@@ -2622,8 +3214,39 @@ export default function App() {
               selectedMentionIndex={mentionMenu.selectedIndex}
               onSelectMention={mentionMenu.insertMention}
             />
+            ) : (
+              <PendingComposer
+                runtime={rootRuntime}
+                provider={pendingThreadStart?.provider}
+                modelId={pendingThreadStart?.modelId}
+                thinkingLevel={pendingThreadStart?.thinkingLevel}
+                cavemanLevel={pendingThreadStart?.cavemanLevel ?? cavemanLevel}
+                composerMode={pendingThreadStart?.composerMode ?? "build"}
+              />
+            )}
             {activeExtensionDialog ? (
               <ExtensionDialog dialog={activeExtensionDialog} onRespond={handleRespondToExtensionDialog} />
+            ) : null}
+            {ralphLaunch ? (
+              <RalphLaunchDialog
+                planTitle={ralphLaunch.plan.title}
+                runtime={selectedModelRuntime}
+                provider={ralphLaunch.provider}
+                modelId={ralphLaunch.modelId}
+                thinkingLevel={ralphLaunch.thinkingLevel}
+                maxIterations={ralphLaunch.maxIterations}
+                onSetModel={(provider, modelId) =>
+                  setRalphLaunch((prev) => (prev ? { ...prev, provider, modelId } : prev))
+                }
+                onSetThinking={(thinkingLevel) =>
+                  setRalphLaunch((prev) => (prev ? { ...prev, thinkingLevel } : prev))
+                }
+                onSetMaxIterations={(maxIterations) =>
+                  setRalphLaunch((prev) => (prev ? { ...prev, maxIterations } : prev))
+                }
+                onCancel={() => setRalphLaunch(null)}
+                onRun={runRalphLoop}
+              />
             ) : null}
             {treeModalState.open ? (
               <TreeModal
@@ -2673,11 +3296,13 @@ export default function App() {
             api={api}
             sessionStatus={selectedSession.status}
             fileRequest={diffFileRequest}
+            refreshNonce={diffRefreshNonce}
           />
         ) : null}
       </main>
       <ImageLightbox />
       <ToastHost />
+      {import.meta.env.DEV && <Agentation />}
     </div>
   );
 }
@@ -2690,4 +3315,8 @@ function buildTranscriptChangeMarker(sessionKey: string, transcript: SelectedTra
 function isNearBottom(element: HTMLDivElement): boolean {
   const remaining = element.scrollHeight - element.scrollTop - element.clientHeight;
   return remaining < 32;
+}
+
+function isRequestAbortedError(message: string | undefined): boolean {
+  return Boolean(message && /\brequest\s+(?:was\s+)?aborted\b/i.test(message));
 }

@@ -31,6 +31,10 @@
   grid-column: 1;
 }
 
+.main--skills {
+  overflow: hidden auto;
+}
+
 .main--with-terminal {
   grid-template-rows: auto minmax(0, 1fr) auto auto;
 }
@@ -239,6 +243,7 @@
 }
 
 .canvas--thread {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -249,18 +254,6 @@
    * recreated inside .timeline-pane--thread / .chat-header. */
   padding-left: 0;
   padding-right: 0;
-}
-
-.canvas--pending .timeline-pane--pending {
-  flex: 1 1 auto;
-  overflow: hidden;
-}
-
-.pending-thread__waiting {
-  display: flex;
-  justify-content: flex-start;
-  padding: 18px 4px 4px;
-  opacity: 0.85;
 }
 
 .conversation {
@@ -299,6 +292,11 @@
 .conversation--thread .timeline-pane--thread {
   padding-left: 28px;
   padding-right: 28px;
+  /* Reserve scroll space below the last item so it can clear the
+   * composer, which overlaps the pane bottom by ~20px (margin-top: -20px
+   * on .composer). Without this the final content sits flush at the pane
+   * bottom and is hidden behind the composer surface at max scroll. */
+  padding-bottom: 48px;
 }
 
 .conversation--thread > .chat-header {
@@ -323,10 +321,85 @@
   pointer-events: none;
 }
 
+/* Docked slash panel: its own surface above the composer device, in normal
+   flow so it pushes the composer down instead of floating as an overlay
+   (which the CRT screen's overflow:hidden would clip). */
+.composer__slash-panel {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+  position: relative;
+  z-index: 3;
+  pointer-events: auto;
+}
+
 .chat-header {
   display: grid;
   gap: 4px;
   margin-bottom: 18px;
+}
+
+/* YouTube/Dia-style progressive loading bar pinned to the top of the thread
+ * canvas — the divider between the topbar title and the page content.
+ * Driven by JS progress state via scaleX + transition. */
+.canvas__loading-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  z-index: 2;
+  overflow: visible;
+  background: color-mix(in srgb, var(--text-strong) 8%, transparent);
+}
+
+.canvas__loading-bar-indicator {
+  display: block;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(
+    to right,
+    color-mix(in srgb, var(--accent, var(--text-strong)) 55%, transparent),
+    var(--accent, var(--text-strong))
+  );
+  transform-origin: left center;
+  transform: scaleX(0);
+  will-change: transform;
+}
+
+/* Blooming point at the leading edge of the bar. Lives at the right edge of
+ * the indicator and counter-scales (inline) so it stays round. */
+.canvas__loading-bar-bloom {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 6px;
+  height: 5px;
+  border-radius: 999px;
+  transform-origin: right top;
+  background: var(--accent, var(--text-strong));
+  box-shadow: 0 0 4px 0 color-mix(in srgb, var(--accent, var(--text-strong)) 70%, transparent);
+  translate: 50% -1px;
+  animation: canvas-loading-bloom-pulse 1100ms ease-in-out infinite;
+}
+
+@keyframes canvas-loading-bloom-pulse {
+  0%,
+  100% {
+    opacity: 0.85;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .canvas__loading-bar-bloom {
+    animation: none;
+  }
 }
 
 .chat-header__eyebrow {
@@ -479,7 +552,6 @@
   max-width: min(620px, 100%);
   padding: 13px 17px;
   border-radius: 16px;
-  border: 1px solid var(--line);
   background: var(--main);
   transform-origin: bottom right;
 }
@@ -577,6 +649,338 @@
   font-size: 13px;
 }
 
+.timeline-reasoning {
+  display: grid;
+  gap: 4px;
+  max-width: 760px;
+  color: var(--muted-soft);
+}
+
+.timeline-reasoning__header {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: 13px;
+  color: var(--muted-soft);
+  cursor: pointer;
+  align-self: start;
+  font-style: italic;
+}
+
+.timeline-reasoning__header:hover {
+  color: var(--ink);
+}
+
+.timeline-reasoning__chevron {
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+  color: var(--muted-soft);
+}
+
+.timeline-reasoning__chevron svg {
+  width: 14px;
+  height: 14px;
+}
+
+.timeline-reasoning__chevron--expanded {
+  transform: rotate(90deg);
+}
+
+.timeline-reasoning__label {
+  color: inherit;
+}
+
+.timeline-reasoning--streaming .timeline-reasoning__label {
+  background-image: linear-gradient(
+    100deg,
+    currentColor 0%,
+    currentColor 40%,
+    color-mix(in srgb, currentColor 12%, white 88%) 50%,
+    currentColor 60%,
+    currentColor 100%
+  );
+  background-size: 220% 100%;
+  background-position: 100% 0;
+  background-repeat: no-repeat;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: working-label-shimmer 2.2s linear infinite;
+}
+
+.timeline-reasoning__body {
+  margin-left: 18px;
+  padding-left: 12px;
+  border-left: 2px solid var(--border);
+  color: var(--muted-strong);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.timeline-reasoning__body :is(p, li, code) {
+  color: var(--muted-strong);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .timeline-reasoning--streaming .timeline-reasoning__label {
+    animation: none;
+    -webkit-text-fill-color: currentColor;
+    background: none;
+  }
+}
+
+/* Codex-style thinking section: reasoning + tools, live while running, then
+   collapsed into a "Thought for Ns" disclosure. */
+.timeline-thinking {
+  display: grid;
+  gap: 6px;
+  max-width: 760px;
+  color: var(--muted-soft);
+}
+
+.timeline-thinking__header {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: 13px;
+  font-style: italic;
+  color: var(--muted-soft);
+  cursor: pointer;
+  align-self: start;
+}
+
+.timeline-thinking__header:hover:not(:disabled) {
+  color: var(--ink);
+}
+
+.timeline-thinking__header:disabled {
+  cursor: default;
+}
+
+.timeline-thinking__chevron {
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+  color: var(--muted-soft);
+}
+
+.timeline-thinking__chevron svg {
+  width: 14px;
+  height: 14px;
+}
+
+.timeline-thinking__chevron--expanded {
+  transform: rotate(90deg);
+}
+
+/* Collapse/expand animation: animate grid rows from 1fr to 0fr so the body
+   slides closed without measuring pixel heights in JS (which would fight the
+   virtualizer's ResizeObserver). */
+.timeline-thinking__collapse {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 240ms ease;
+}
+
+.timeline-thinking__collapse[data-open="false"] {
+  grid-template-rows: 0fr;
+}
+
+.timeline-thinking__collapse-inner {
+  overflow: hidden;
+  min-height: 0;
+  opacity: 1;
+  transition: opacity 200ms ease;
+}
+
+.timeline-thinking__collapse[data-open="false"] .timeline-thinking__collapse-inner {
+  opacity: 0;
+}
+
+.timeline-thinking__body {
+  display: grid;
+  gap: 8px;
+  margin-left: 18px;
+  padding-left: 12px;
+  border-left: 2px solid var(--border);
+}
+
+/* Reasoning text: muted, smaller, italic — quiet supporting context, not the
+   headline answer. */
+.timeline-thinking__reasoning {
+  color: var(--muted-strong);
+  font-size: 12.5px;
+  font-style: italic;
+  line-height: 1.65;
+}
+
+.timeline-thinking__reasoning :is(p, li, code, strong, em) {
+  color: var(--muted-strong);
+  font-weight: 400;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .timeline-thinking__collapse,
+  .timeline-thinking__collapse-inner {
+    transition: none;
+  }
+}
+
+/* Codex-style edited-files box: the actionable artifact of an assistant turn,
+   brought out below the reply while the inline edits stay quiet single lines. */
+.timeline-edited-files {
+  display: grid;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--surface-muted) 72%, transparent);
+}
+
+.timeline-edited-files__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+}
+
+.timeline-edited-files__icon {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  background: var(--main);
+  color: var(--muted-strong);
+}
+
+.timeline-edited-files__icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.timeline-edited-files__heading {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.timeline-edited-files__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.timeline-edited-files__stats {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.timeline-edited-files__actions {
+  margin-left: auto;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.timeline-edited-files__note {
+  font-size: 12px;
+  color: var(--muted-soft);
+}
+
+.timeline-edited-files__review,
+.timeline-edited-files__undo {
+  flex-shrink: 0;
+  padding: 5px 14px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-strong);
+  font-size: 13px;
+  font-weight: 560;
+  cursor: pointer;
+}
+
+.timeline-edited-files__review:hover,
+.timeline-edited-files__undo:hover:not(:disabled) {
+  background: var(--main);
+}
+
+.timeline-edited-files__undo:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.timeline-edited-files--undone {
+  opacity: 0.72;
+}
+
+.timeline-edited-files--undone .timeline-edited-files__list {
+  display: none;
+}
+
+.timeline-edited-files--undone .timeline-edited-files__title {
+  color: var(--muted-strong);
+}
+
+.timeline-edited-files__list {
+  display: grid;
+  border-top: 1px solid var(--border);
+}
+
+.timeline-edited-files__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.timeline-edited-files__row:not(:last-child) {
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+}
+
+.timeline-edited-files__row:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--main) 60%, transparent);
+}
+
+.timeline-edited-files__row:disabled {
+  cursor: default;
+}
+
+.timeline-edited-files__path {
+  color: var(--text-strong);
+  font-size: 14px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timeline-edited-files__row .timeline-edited-files__stats {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
 .timeline-activity--error {
   color: var(--error-ink);
 }
@@ -619,11 +1023,31 @@
   padding: 0;
 }
 
-.timeline-tool--running .timeline-tool__label {
+.timeline-tool--running .timeline-tool__label,
+.timeline-tool--running .timeline-tool__icon {
   color: var(--muted-strong);
 }
 
-.timeline-tool--error .timeline-tool__label {
+.timeline-tool--running .timeline-tool__label {
+  background-image: linear-gradient(
+    100deg,
+    currentColor 0%,
+    currentColor 40%,
+    color-mix(in srgb, currentColor 12%, white 88%) 50%,
+    currentColor 60%,
+    currentColor 100%
+  );
+  background-size: 220% 100%;
+  background-position: 100% 0;
+  background-repeat: no-repeat;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: working-label-shimmer 2.2s linear infinite;
+}
+
+.timeline-tool--error .timeline-tool__label,
+.timeline-tool--error .timeline-tool__icon {
   color: var(--error-ink);
 }
 
@@ -676,8 +1100,21 @@
   transform: rotate(90deg);
 }
 
+.timeline-tool__icon {
+  display: inline-flex;
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  color: var(--muted-soft);
+}
+
+.timeline-tool__icon svg {
+  width: 15px;
+  height: 15px;
+}
+
 .timeline-tool__label {
-  color: var(--muted-strong);
+  color: var(--muted-soft);
   font-size: 13px;
   line-height: 1.45;
 }
@@ -794,15 +1231,30 @@
   border-color: var(--muted-soft);
 }
 
-.timeline-tool-burst--error .timeline-tool-burst__header {
+.timeline-tool-burst--has-error .timeline-tool-burst__label,
+.timeline-tool-burst--has-error .timeline-tool-burst__icon {
   color: var(--error-ink);
-  border-color: var(--error-ink);
 }
 
+.timeline-tool-burst--error .timeline-tool-burst__header {
+  border-color: color-mix(in srgb, var(--error-ink) 55%, var(--border));
+}
+
+.timeline-tool-burst__icon,
 .timeline-tool-burst__chevron {
   display: inline-flex;
   width: 14px;
   height: 14px;
+  flex-shrink: 0;
+}
+
+.timeline-tool-burst__icon svg,
+.timeline-tool-burst__chevron svg {
+  width: 14px;
+  height: 14px;
+}
+
+.timeline-tool-burst__chevron {
   transition: transform 0.15s ease;
 }
 
@@ -1226,6 +1678,40 @@
   line-height: 1.65;
 }
 
+/* Streaming variant: raw text + inline caret, so we override the grid
+   layout used for parsed markdown blocks. Falls back to block flow so the
+   caret stays on the last line of text instead of dropping to a new grid
+   row. The wrapping <div> also has white-space: pre-wrap inline (set in
+   StreamingMessageText) so newlines from the model are preserved. */
+.message__content--streaming {
+  display: block;
+}
+
+.streaming-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1.05em;
+  margin-left: 1px;
+  vertical-align: text-bottom;
+  background-color: currentColor;
+  opacity: 0.75;
+  border-radius: 1px;
+  animation: streaming-caret-blink 1.05s steps(2, start) infinite;
+}
+
+@keyframes streaming-caret-blink {
+  to {
+    visibility: hidden;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .streaming-caret {
+    animation: none;
+    opacity: 0.6;
+  }
+}
+
 .message__content > :first-child {
   margin-top: 0;
 }
@@ -1300,13 +1786,21 @@
 }
 
 .composer {
-  padding: 18px 28px 24px;
+  padding: 0 28px 24px;
+  position: relative;
+  z-index: 2;
+  /* Overlap the conversation by the surface corner radius so conversation
+     content scrolls up behind the composer. The opaque surface covers
+     content over its solid body, and where the surface's rounded top
+     corners curve away the content behind shows through — filling the
+     otherwise-empty corner gap instead of being clipped flat. */
+  margin-top: -20px;
 }
 
 .composer__surface {
   position: relative;
   border-radius: 18px;
-  padding: 12px 14px 11px;
+  padding: 30px 14px 11px;
   border: 1px solid var(--line);
   background: var(--surface);
   width: 100%;
@@ -1398,7 +1892,7 @@
   line-height: 1.5;
   font-size: 15px;
   min-height: 24px;
-  max-height: 220px;
+  max-height: 400px;
 }
 
 
@@ -2166,11 +2660,19 @@
   gap: 8px;
 }
 
+.composer__attachment-shelf {
+  width: min(920px, 100%);
+  margin: 0 auto 12px;
+}
+
 .composer__attachments {
   display: flex;
   flex-wrap: wrap;
+  align-items: flex-end;
   gap: 10px;
-  margin-bottom: 10px;
+  max-height: 120px;
+  margin: 0;
+  overflow-y: auto;
 }
 
 .queued-composer-messages {
@@ -2316,6 +2818,71 @@
   border-radius: 8px;
   object-fit: cover;
   background: #e8ecf5;
+}
+
+.composer-attachment--tile {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  max-width: none;
+  gap: 0;
+}
+
+.composer-attachment__tile {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  flex-shrink: 0;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: #e8ecf5;
+}
+
+.composer-attachment__tile .composer-attachment__preview-button {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  border-radius: 12px;
+  cursor: zoom-in;
+}
+
+.composer-attachment__tile .composer-attachment__preview {
+  width: 100%;
+  height: 100%;
+  border-radius: 12px;
+  object-fit: cover;
+  background: transparent;
+}
+
+.composer-attachment__tile .composer-attachment__remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #fff;
+  font-size: 16px;
+  line-height: 1;
+  text-shadow: 0 0 4px rgba(0, 0, 0, 0.65);
+  cursor: pointer;
+  transition: transform 120ms ease;
+}
+
+.composer-attachment__tile .composer-attachment__remove:hover {
+  transform: scale(1.1);
+}
+
+.composer-attachment__tile .composer-attachment__remove:focus-visible {
+  outline: 2px solid var(--accent, #4f8cff);
+  outline-offset: 2px;
 }
 
 .composer-attachment__icon {
@@ -2771,17 +3338,46 @@
 }
 
 .new-thread__composer {
-  width: min(820px, 100%);
-  margin: 0 auto;
-}
-
-.new-thread__composer.composer {
-  padding: 0;
-  background: transparent;
-}
-
-.new-thread__composer .conversation--composer {
   width: 100%;
+}
+
+/* Special new-thread-only controls, in their own row below the composer so the
+   composer itself is identical to the in-thread one (and unmounts cleanly on
+   send without resizing the composer). Centered to the same 920px column as
+   the composer surface. */
+.new-thread__options {
+  width: min(920px, 100%);
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
+  padding: 0 16px;
+}
+
+.new-thread__option {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.new-thread__option-label {
+  color: var(--muted-soft);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.new-thread__project-select {
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text-strong);
+  font-size: 13px;
+  font-weight: 560;
+  cursor: pointer;
 }
 
 .new-thread__environment-group {
@@ -2804,33 +3400,6 @@
   background: #eef2ff;
   color: var(--text-strong);
 }
-
-.new-thread__textarea {
-  min-height: 120px;
-  resize: vertical;
-  border: none;
-  background: transparent;
-  color: var(--text-strong);
-  font: inherit;
-  font-size: 18px;
-  line-height: 1.6;
-}
-
-.new-thread__textarea:focus {
-  outline: none;
-}
-
-.new-thread__hint {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.new-thread__hint-separator {
-  color: var(--muted-soft);
-}
-
 
 .settings-disclosure {
   border-top: 1px solid var(--line);
@@ -2899,6 +3468,50 @@
   padding-bottom: 24px;
   width: min(1120px, 100%);
   margin: 0 auto;
+}
+
+.settings-view {
+  display: flex;
+  gap: 48px;
+  padding-top: 36px;
+}
+
+.settings-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 180px;
+  flex-shrink: 0;
+  padding-top: 4px;
+}
+
+.settings-sidebar__item {
+  display: flex;
+  align-items: center;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--muted-strong);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background 120ms;
+}
+
+.settings-sidebar__item:hover {
+  background: var(--chrome-hover);
+}
+
+.settings-sidebar__item--active {
+  color: var(--text-strong);
+  background: var(--chrome-highlight);
+}
+
+.settings-content {
+  flex: 1;
+  min-width: 0;
 }
 
 .settings-grid {
@@ -3209,6 +3822,25 @@
 }
 
 .skills-rail__footer-dot {
+  color: var(--muted-subtle);
+}
+
+.skills-rail__group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.skills-rail__group + .skills-rail__group {
+  margin-top: 12px;
+}
+
+.skills-rail__group-label {
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   color: var(--muted-subtle);
 }
 
@@ -4215,7 +4847,6 @@ mark.thread-find-active {
 }
 
 :root.dark .timeline-item__bubble {
-  border-color: var(--line);
   background: var(--surface);
 }
 
@@ -4311,6 +4942,14 @@ mark.thread-find-active {
 :root.dark .composer-attachment__icon,
 :root.dark .composer-attachment__preview {
   background: var(--surface);
+}
+
+:root.dark .composer-attachment__tile {
+  background: var(--surface);
+}
+
+:root.dark .composer-attachment--tile {
+  background: transparent;
 }
 
 :root.dark .slash-menu {
@@ -4612,25 +5251,29 @@ mark.thread-find-active {
 }
 
 .working-label__text {
-  /* Shimmer: animate a bright band across the text by sliding a
-   * gradient background that is masked to glyph shape via
-   * background-clip:text. Falls back gracefully to the base color. */
-  color: inherit;
+  /* Shimmer: purple base with a white highlight sweeping across.
+   * Use --accent for the base so the text stays readable (matches the
+   * spinner colour) instead of fading into the muted-soft grey of the
+   * surrounding row. Tile the gradient (repeat-x) so the base colour
+   * always covers every glyph — otherwise the no-repeat band sweeps off
+   * one edge and the uncovered text renders transparent. */
+  color: var(--accent);
   background-image: linear-gradient(
     100deg,
     currentColor 0%,
-    currentColor 38%,
-    color-mix(in srgb, currentColor 35%, var(--text-strong) 65%) 50%,
-    currentColor 62%,
+    currentColor 45%,
+    color-mix(in srgb, currentColor 12%, white 88%) 50%,
+    currentColor 55%,
     currentColor 100%
   );
-  background-size: 220% 100%;
+  background-size: 300% 100%;
   background-position: 100% 0;
   background-repeat: no-repeat;
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
   animation: working-label-shimmer 2.2s linear infinite;
+  will-change: background-position;
 }
 
 @keyframes working-label-shimmer {
@@ -4638,12 +5281,13 @@ mark.thread-find-active {
     background-position: 100% 0;
   }
   to {
-    background-position: -100% 0;
+    background-position: 0% 0;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .working-label__text {
+  .working-label__text,
+  .timeline-tool--running .timeline-tool__label {
     animation: none;
     -webkit-text-fill-color: currentColor;
     background: none;
@@ -4753,6 +5397,8 @@ mark.thread-find-active {
 /* ================================================================ */
 
 .composer-device {
+  /* Unified frame + controls-strip grey */
+  --crt-frame: oklch(0.185 0.005 250);
   /* CRT phosphor */
   --crt-phosphor: 140 240 165;
   --crt-bright: rgb(var(--crt-phosphor));
@@ -4852,28 +5498,23 @@ mark.thread-find-active {
 /* surface. The chassis is the device. The CRT screen + chip row     */
 /* sit inside it.                                                    */
 
-.composer-device .composer__surface {
+:root.composer-device .composer__surface {
   position: relative;
-  background: linear-gradient(
-    180deg,
-    var(--crt-body-top) 0%,
-    var(--crt-body) 38%,
-    var(--crt-body-bottom) 100%
-  );
+  /* Single flat darker-grey frame: identical to the controls strip so the
+     whole composer reads as one grey box with the screen inset into it
+     (no separate lighter/lavender chassis layer). */
+  background: var(--crt-frame);
   border: 0;
   border-radius: 20px;
-  padding: 22px 26px 24px;
+  padding: 14px 16px 16px;
+  /* Flat darker grey frame (no bright raised edges) so it reads as the
+     same box as the controls strip, surrounding the screen. */
   box-shadow:
-    /* Top edge: bright highlight (light catches the rim) */
-    0 1px 0 var(--crt-edge-highlight) inset,
-    /* Left edge: subtle highlight */
-    1px 0 0 oklch(0.48 0.006 250 / 0.75) inset,
-    /* Right edge: dark shadow */
-    -1px 0 0 oklch(0.08 0 0 / 0.75) inset,
-    /* Bottom edge: deepest shadow */
+    /* Edges: subtle dark definition only */
+    -1px 0 0 oklch(0.08 0 0 / 0.6) inset,
     0 -1px 0 oklch(0.06 0 0) inset,
-    /* Outer bezel hairline */
-    0 0 0 1px oklch(0.32 0.005 250 / 0.5),
+    /* Outer bezel hairline (dark) */
+    0 0 0 1px oklch(0.14 0.005 250 / 0.8),
     /* Drop shadows */
     0 24px 60px -20px oklch(0 0 0 / 0.7),
     0 8px 20px -8px oklch(0 0 0 / 0.5);
@@ -4881,7 +5522,7 @@ mark.thread-find-active {
   overflow: visible;
 }
 
-/* Overhead light from top-left (chassis sheen) */
+/* Faint brushed-metal pinstripe only (no raised top-left highlight). */
 .composer-device .composer__surface::before {
   content: "";
   position: absolute;
@@ -4889,55 +5530,22 @@ mark.thread-find-active {
   pointer-events: none;
   z-index: 0;
   border-radius: inherit;
-  background:
-    /* Brushed pinstripe */
-    repeating-linear-gradient(
-      90deg,
-      oklch(1 0 0 / 0.012) 0px,
-      oklch(1 0 0 / 0.012) 1px,
-      transparent 1px,
-      transparent 3px
-    ),
-    /* Top-left highlight */
-    radial-gradient(
-      ellipse at 25% -10%,
-      oklch(0.34 0.006 250 / 0.55) 0%,
-      transparent 55%
-    );
+  background: repeating-linear-gradient(
+    90deg,
+    oklch(1 0 0 / 0.012) 0px,
+    oklch(1 0 0 / 0.012) 1px,
+    transparent 1px,
+    transparent 3px
+  );
   opacity: 0.85;
 }
 
-/* Four corner screws. Each is a small radial gradient — light from
-   top-left to dark on the rim, mimicking a sunken Phillips head. */
-.composer-device .composer__surface::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 5;
-  border-radius: inherit;
-  --screw: radial-gradient(
-    circle at 35% 35%,
-    oklch(0.55 0.005 250) 0%,
-    oklch(0.32 0.005 250) 38%,
-    oklch(0.12 0.005 250) 82%,
-    transparent 100%
-  );
-  background-image: var(--screw), var(--screw), var(--screw), var(--screw);
-  background-repeat: no-repeat;
-  background-size: 9px 9px;
-  background-position:
-    10px 10px,
-    calc(100% - 10px) 10px,
-    10px calc(100% - 10px),
-    calc(100% - 10px) calc(100% - 10px);
-}
+/* Corner screws removed — the chassis now reads as a plain grey frame. */
 
 /* Keep all composer interior children above the chassis ::before/::after. */
 .composer-device .composer__editor,
 .composer-device .composer__bar,
 .composer-device .composer__slash-intent,
-.composer-device .composer__attachments,
 .composer-device .composer__menus,
 .composer-device .composer__drop-indicator,
 .composer-device .composer__error {
@@ -4954,14 +5562,31 @@ mark.thread-find-active {
 
 .composer-device .composer__editor {
   isolation: isolate;
-  border-radius: 10px;
+  padding: 0;
+  overflow: visible;
+}
+
+.composer-device .composer__screen {
+  position: relative;
+  display: grid;
+  gap: 10px;
+  isolation: isolate;
+  border: 3px solid oklch(0.065 0.005 250);
+  border-top-color: oklch(0.035 0.005 250);
+  border-left-color: oklch(0.045 0.005 250);
+  border-right-color: oklch(0.12 0.005 250);
+  border-bottom-color: oklch(0.14 0.005 250);
+  border-radius: 12px;
   background: var(--crt-screen-bg-deep);
-  /* Screen window cut into the chassis: outer dark shadow simulates
-     the chassis edge casting shadow into the recessed screen well. */
+  /* Screen window cut into the chassis: dark lip + inset shadows make the
+     glass read as sitting slightly below the device face. */
   box-shadow:
-    inset 0 1px 2px oklch(0 0 0 / 0.85),
-    inset 0 -1px 0 oklch(0.28 0.005 250 / 0.25),
-    inset 0 0 0 1px oklch(0 0 0 / 0.7),
+    0 -1px 0 oklch(0 0 0 / 0.55),
+    0 1px 0 oklch(0.35 0.005 250 / 0.18),
+    inset 0 2px 5px oklch(0 0 0 / 0.9),
+    inset 2px 0 4px oklch(0 0 0 / 0.55),
+    inset -1px -1px 0 oklch(0.28 0.005 250 / 0.25),
+    inset 0 0 0 1px oklch(0 0 0 / 0.72),
     inset 0 0 32px rgb(140 240 165 / 0.05);
   padding: 14px 16px;
   overflow: hidden;
@@ -4992,7 +5617,7 @@ mark.thread-find-active {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .composer-device .composer__editor::after {
+  .composer-device .composer__screen::after {
     animation: none !important;
     mask-position: 0 50% !important;
     -webkit-mask-position: 0 50% !important;
@@ -5004,19 +5629,29 @@ mark.thread-find-active {
 /* for the parts that live on the screen).                          */
 /* ---------------------------------------------------------------- */
 
+/* Retro segmented (blocky) meter: dim phosphor blocks for the track,
+   bright phosphor blocks for the filled portion, aligned to the same
+   grid so it reads like a digital bar-graph readout. */
 .composer-device .composer__context-track {
-  background: rgb(var(--crt-phosphor) / 0.10);
-  box-shadow: inset 0 0 0 1px oklch(0 0 0 / 0.4);
-  height: 3px;
+  --crt-seg: 9px;
+  --crt-seg-gap: 3px;
+  height: 8px;
+  border-radius: 1px;
+  box-shadow: none;
+  background: repeating-linear-gradient(
+    90deg,
+    rgb(var(--crt-phosphor) / 0.14) 0 var(--crt-seg),
+    transparent var(--crt-seg) calc(var(--crt-seg) + var(--crt-seg-gap))
+  );
 }
 
 .composer-device .composer__context-fill {
-  background: linear-gradient(
+  background: repeating-linear-gradient(
     90deg,
-    rgb(var(--crt-phosphor) / 0.55),
-    color-mix(in srgb, rgb(var(--crt-phosphor)) 60%, oklch(0.74 0.19 55) 40%)
+    rgb(var(--crt-phosphor) / 0.85) 0 var(--crt-seg, 9px),
+    transparent var(--crt-seg, 9px) calc(var(--crt-seg, 9px) + var(--crt-seg-gap, 3px))
   );
-  box-shadow: 0 0 6px rgb(var(--crt-phosphor) / 0.25);
+  box-shadow: 0 0 6px rgb(var(--crt-phosphor) / 0.3);
 }
 
 .composer-device .composer__context-compact-tick {
@@ -5042,7 +5677,7 @@ mark.thread-find-active {
 /* including the footer. Chips stay as on-screen phosphor text.     */
 /* The send button protrudes through the screen bottom-right.       */
 
-.composer-device--screen .composer__editor::before {
+.composer-device--screen .composer__screen::before {
   content: "";
   position: absolute;
   inset: 0;
@@ -5060,7 +5695,7 @@ mark.thread-find-active {
   background-size: 100% var(--crt-px);
 }
 
-.composer-device--screen .composer__editor::after {
+.composer-device--screen .composer__screen::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -5178,12 +5813,24 @@ mark.thread-find-active {
 /* above the strip so they don't bleed through. */
 
 .composer-device--modular .composer__editor {
-  padding: 14px 14px 0;
+  padding: 0;
   overflow: visible;
 }
 
-/* Fade scanline grid (::before) above the controls strip */
-.composer-device--modular .composer__editor::before {
+.composer-device--modular .composer__screen {
+  display: flex;
+  min-height: 90px;
+  flex-direction: column;
+}
+
+.composer-device--modular .composer textarea {
+  flex: 0 0 auto;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+/* Scanlines live only on the recessed screen, not the controls strip. */
+.composer-device--modular .composer__screen::before {
   content: "";
   position: absolute;
   inset: 0;
@@ -5199,14 +5846,9 @@ mark.thread-find-active {
     var(--crt-grid-bg) var(--crt-px)
   );
   background-size: 100% var(--crt-px);
-  --modular-screen-cutoff: calc(100% - var(--crt-modular-controls-h, 56px) - 16px);
-  mask-image: linear-gradient(to bottom, #000 0, #000 var(--modular-screen-cutoff), transparent var(--modular-screen-cutoff));
-  -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 var(--modular-screen-cutoff), transparent var(--modular-screen-cutoff));
 }
 
-/* Fade scanbeam (::after) using composited dual mask: scanbeam stripe
-   AND bottom cutoff. */
-.composer-device--modular .composer__editor::after {
+.composer-device--modular .composer__screen::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -5214,69 +5856,64 @@ mark.thread-find-active {
   z-index: 4;
   border-radius: inherit;
   background: radial-gradient(ellipse at 50% 40%, transparent 50%, oklch(0 0 0 / 0.48) 100%);
-  --modular-screen-cutoff: calc(100% - var(--crt-modular-controls-h, 56px) - 16px);
-  mask-image:
-    linear-gradient(
-      to bottom,
-      transparent 45%,
-      rgba(0, 0, 0, 0.12) 49%,
-      rgba(0, 0, 0, 0.12) 51%,
-      transparent 55%
-    ),
-    linear-gradient(to bottom, #000 0, #000 var(--modular-screen-cutoff), transparent var(--modular-screen-cutoff));
-  -webkit-mask-image:
-    linear-gradient(
-      to bottom,
-      transparent 45%,
-      rgba(0, 0, 0, 0.12) 49%,
-      rgba(0, 0, 0, 0.12) 51%,
-      transparent 55%
-    ),
-    linear-gradient(to bottom, #000 0, #000 var(--modular-screen-cutoff), transparent var(--modular-screen-cutoff));
-  mask-size: 100% 6%, 100% 100%;
-  -webkit-mask-size: 100% 6%, 100% 100%;
-  mask-composite: intersect;
-  -webkit-mask-composite: source-in;
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 45%,
+    rgba(0, 0, 0, 0.12) 49%,
+    rgba(0, 0, 0, 0.12) 51%,
+    transparent 55%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 45%,
+    rgba(0, 0, 0, 0.12) 49%,
+    rgba(0, 0, 0, 0.12) 51%,
+    transparent 55%
+  );
+  mask-size: 100% 6%;
+  -webkit-mask-size: 100% 6%;
   animation: composer-crt-scanbeam 17ms linear infinite;
 }
 
 /* The bar wraps context bar + footer-row. Give it a small top gap. */
 .composer-device--modular .composer__bar {
-  margin-top: 12px;
+  margin-top: 2px;
 }
 
-/* Context bar stays on the screen (phosphor green) */
+/* The base device surface reserves a 16px bottom bezel (padding-bottom)
+   painted in the same grey as the controls strip. In modular mode the
+   footer-row already IS the bottom strip, so that extra bezel just adds
+   dead grey below the keys and makes them read as sitting high. Trim it
+   to ~2px so the strip's own height defines the box the keys center in. */
+:root.composer-device--modular .composer__surface {
+  padding: 8px 8px 2px;
+}
+
+/* Context/compaction readout lives inside the same recessed screen as typing. */
 .composer-device--modular .composer__context {
   color: rgb(var(--crt-phosphor) / 0.78);
   font-family: ui-monospace, "SF Mono", Menlo, "Roboto Mono", monospace;
   font-size: 11px;
   letter-spacing: 0.02em;
-  padding-bottom: 14px;
+  margin-top: auto;
+  padding-top: 14px;
+  padding-bottom: 2px;
 }
 
-/* Footer-row = controls strip. Paints its own chassis-toned background
-   over the bottom of the screen and extends edge-to-edge by negative-
-   margining left/right to cancel .composer__editor's horizontal padding. */
+/* Footer-row = controls strip. */
 .composer-device--modular .composer__footer-row {
   --crt-modular-controls-h: 56px;
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: 14px;
-  min-height: var(--crt-modular-controls-h);
-  margin: 0 -16px -2px;
-  padding: 12px 18px;
-  background: linear-gradient(
-    180deg,
-    var(--crt-body) 0%,
-    var(--crt-body-bottom) 100%
-  );
-  box-shadow:
-    inset 0 1px 0 oklch(0 0 0 / 0.5),
-    inset 0 2px 0 var(--crt-edge-highlight),
-    inset 0 0 0 1px oklch(0 0 0 / 0.0);
-  border-radius: 0 0 6px 6px;
+  min-height: 52px;
+  margin: 0;
+  padding: 4px 0;
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
 }
 
 /* In modular mode the .composer__hint contains two siblings:
@@ -5290,18 +5927,7 @@ mark.thread-find-active {
 }
 
 .composer-device--modular .composer__hint-prose {
-  grid-column: 1;
-  align-self: center;
-  color: var(--crt-ink-muted);
-  font-family: ui-monospace, "SF Mono", Menlo, "Roboto Mono", monospace;
-  font-size: 10px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  opacity: 0.65;
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  display: none;
 }
 
 /* Hide the inline-prose bullet separators in modular mode */
@@ -5309,15 +5935,33 @@ mark.thread-find-active {
   display: none;
 }
 
-/* Controls cluster: middle grid column, row of physical keys */
+/* Controls cluster: left grid column, row of physical keys */
 .composer-device--modular .composer__controls {
-  grid-column: 2;
+  grid-column: 1;
+  align-self: center;
   display: inline-flex;
   align-items: center;
   gap: 10px;
   font-size: 11px;
   line-height: 1;
   white-space: nowrap;
+}
+
+/* Langlink-style recessed mount: dark cavity, keycap sits inside. */
+.composer-device--modular .composer__key-mount {
+  display: inline-flex;
+  align-items: stretch;
+  padding: 2px 3px 3px 2px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, oklch(0.05 0.005 250) 0%, oklch(0.075 0.005 250) 100%);
+  box-shadow:
+    inset 1px 1px 1.5px oklch(0 0 0 / 0.6),
+    inset -1px -1px 1px oklch(0.3 0.005 250 / 0.16),
+    inset 0 0 0 1px oklch(0 0 0 / 0.45);
+}
+
+.composer-device--modular .composer__key-mount--send {
+  border-radius: 999px;
 }
 
 /* The .model-selector wrapper holds TWO badges (model + thinking).
@@ -5337,9 +5981,17 @@ mark.thread-find-active {
 /* Send button: right grid column */
 .composer-device--modular .composer__actions {
   grid-column: 3;
+  align-self: center;
   display: flex;
   align-items: center;
   justify-self: end;
+}
+
+/* Slightly larger send button in modular mode */
+.composer-device--modular .composer__send {
+  width: 52px;
+  min-width: 52px;
+  height: 52px;
 }
 
 /* ---------------------------------------------------------------- */
@@ -5350,7 +6002,8 @@ mark.thread-find-active {
 
 .composer-device--modular .composer-mode,
 .composer-device--modular .caveman-selector__select,
-.composer-device--modular .model-selector__badge {
+.composer-device--modular .model-selector__badge,
+.composer-device--modular .new-thread__environment {
   position: relative;
   display: inline-flex;
   align-items: center;
@@ -5358,7 +6011,10 @@ mark.thread-find-active {
   gap: 6px;
   border: 0;
   border-radius: 8px;
-  padding: 9px 14px;
+  box-sizing: border-box;
+  height: 40px;
+  padding: 0 16px;
+  align-self: center;
   font-family: ui-monospace, "SF Mono", Menlo, "Roboto Mono", monospace;
   font-size: 11px;
   font-weight: 700;
@@ -5368,7 +6024,7 @@ mark.thread-find-active {
   cursor: pointer;
   overflow: hidden;
   background: var(--crt-key-bg);
-  box-shadow: var(--crt-key-shadow), var(--crt-key-socket);
+  box-shadow: var(--crt-key-shadow);
   transition:
     transform 80ms ease,
     box-shadow 80ms ease,
@@ -5377,18 +6033,19 @@ mark.thread-find-active {
 
 .composer-device--modular .composer-mode:hover:not(:disabled),
 .composer-device--modular .caveman-selector__select:hover:not(:disabled),
-.composer-device--modular .model-selector__badge:hover:not(:disabled) {
+.composer-device--modular .model-selector__badge:hover:not(:disabled),
+.composer-device--modular .new-thread__environment:hover:not(:disabled) {
   filter: brightness(1.08);
 }
 
 .composer-device--modular .composer-mode:active:not(:disabled),
 .composer-device--modular .caveman-selector__select:active:not(:disabled),
-.composer-device--modular .model-selector__badge:active:not(:disabled) {
+.composer-device--modular .model-selector__badge:active:not(:disabled),
+.composer-device--modular .new-thread__environment:active:not(:disabled) {
   transform: translateY(1px);
   box-shadow:
     inset 1px 1px 2px oklch(0 0 0 / 0.45),
-    inset -1px -1px 0 oklch(0.4 0.005 250 / 0.25),
-    var(--crt-key-socket);
+    inset -1px -1px 0 oklch(0.4 0.005 250 / 0.25);
 }
 
 .composer-device--modular .composer-mode:disabled,
@@ -5397,6 +6054,22 @@ mark.thread-find-active {
   cursor: not-allowed;
   opacity: 0.5;
   filter: saturate(0.5);
+}
+
+/* New-thread environment toggle: selected key reads as pressed-in purple. */
+.composer-device--modular .new-thread__environment--active {
+  transform: translateY(1px);
+  background: linear-gradient(
+    160deg,
+    oklch(0.30 0.10 295) 0%,
+    oklch(0.22 0.11 295) 55%,
+    oklch(0.18 0.10 295) 100%
+  );
+  color: oklch(0.88 0.10 295);
+  box-shadow:
+    inset 1px 1px 2px oklch(0 0 0 / 0.55),
+    inset 0 0 0 1px oklch(0.42 0.13 295 / 0.85),
+    0 0 18px oklch(0.62 0.18 295 / 0.22);
 }
 
 /* Build/Plan: pressed-in purple state when plan is active */
@@ -5412,7 +6085,6 @@ mark.thread-find-active {
   box-shadow:
     inset 1px 1px 2px oklch(0 0 0 / 0.55),
     inset 0 0 0 1px oklch(0.42 0.13 295 / 0.85),
-    var(--crt-key-socket),
     0 0 18px oklch(0.62 0.18 295 / 0.22);
 }
 
@@ -5449,11 +6121,7 @@ mark.thread-find-active {
 .composer-device--modular .caveman-selector__select {
   appearance: none;
   -webkit-appearance: none;
-  padding-right: 28px;
-  background:
-    linear-gradient(45deg, transparent 50%, var(--crt-ink-muted) 50%) calc(100% - 14px) 50% / 4px 4px no-repeat,
-    linear-gradient(135deg, var(--crt-ink-muted) 50%, transparent 50%) calc(100% - 10px) 50% / 4px 4px no-repeat,
-    var(--crt-key-bg);
+  background: var(--crt-key-bg);
 }
 
 /* Hide the model feature badges in modular mode — they add too much
@@ -5461,6 +6129,25 @@ mark.thread-find-active {
    the model key if needed (popover lives elsewhere). */
 .composer-device--modular .model-feature-badge {
   display: none;
+}
+
+/* Reasoning (thinking-level) key: match the other keycaps exactly so the
+   bottom row reads as one consistent set of physical buttons. */
+.composer-device--modular .reasoning-meter {
+  gap: 6px;
+}
+
+/* Keep the reasoning ring from adding inline descender height so the
+   thinking key matches the other keycaps exactly. */
+.composer-device--modular .reasoning-meter svg {
+  display: block;
+}
+
+.composer-device--modular .reasoning-meter__label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--crt-ink);
 }
 
 /* ---------------------------------------------------------------- */
@@ -5514,10 +6201,6 @@ mark.thread-find-active {
   z-index: 2;
 }
 
-.composer-device .composer__send:hover:not(:disabled) {
-  filter: brightness(1.06);
-}
-
 .composer-device .composer__send:active:not(:disabled) {
   transform: translateY(1px);
   box-shadow:
@@ -5531,4 +6214,535 @@ mark.thread-find-active {
   cursor: not-allowed;
   opacity: 0.5;
   filter: saturate(0.55);
+}
+
+/* ================================================================ */
+/* Screen mode: drop the hint prose and make every control a        */
+/* uniform purple phosphor pill (matching Build / Caveman).         */
+/* ================================================================ */
+
+.composer-device--screen .composer__hint-prose {
+  display: none;
+}
+
+/* With the prose gone, hide the leading " · " separator. */
+.composer-device--screen .composer__controls > .composer__controls-sep:first-child {
+  display: none;
+}
+
+/* New-thread environment toggle → phosphor pills matching the other keys. */
+.composer-device--screen .new-thread__environment {
+  border: 1px solid rgb(198 178 255 / 0.32);
+  border-radius: 999px;
+  padding: 3px 10px;
+  background: rgb(198 178 255 / 0.10);
+  color: rgb(198 178 255);
+  text-shadow: 0 0 6px rgb(198 178 255 / 0.32);
+  font-family: ui-monospace, "SF Mono", Menlo, "Roboto Mono", monospace;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.composer-device--screen .new-thread__environment:hover {
+  background: rgb(198 178 255 / 0.16);
+  border-color: rgb(198 178 255 / 0.48);
+  color: rgb(198 178 255);
+}
+.composer-device--screen .new-thread__environment--active {
+  background: rgb(198 178 255 / 0.22);
+  border-color: rgb(198 178 255 / 0.6);
+  box-shadow: inset 0 0 0 1px rgb(198 178 255 / 0.4);
+}
+
+/* Model + thinking badges → same pill as Build / Caveman. */
+.composer-device--screen .model-selector {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  vertical-align: middle;
+}
+
+.composer-device--screen .model-selector__anchor {
+  display: inline-flex;
+  align-items: center;
+}
+
+.composer-device--screen .model-selector__badge {
+  border: 1px solid rgb(198 178 255 / 0.32);
+  border-radius: 999px;
+  padding: 3px 8px;
+  background: rgb(198 178 255 / 0.10);
+  color: rgb(198 178 255);
+  text-shadow: 0 0 6px rgb(198 178 255 / 0.32);
+  font-weight: 600;
+}
+
+.composer-device--screen .model-selector__badge:hover:not(:disabled) {
+  background: rgb(198 178 255 / 0.16);
+  border-color: rgb(198 178 255 / 0.48);
+  color: rgb(198 178 255);
+}
+
+/* Reasoning meter inside its pill: recolor to the shared phosphor purple. */
+.composer-device--screen .reasoning-meter__label {
+  color: rgb(198 178 255);
+}
+
+.composer-device--screen .reasoning-meter svg circle {
+  stroke: rgb(198 178 255);
+}
+
+/* ================================================================ */
+/* Screen / Screen (Neon): no chassis — the CRT screen IS the box.  */
+/* ================================================================ */
+
+:root.composer-device--screen .composer__surface {
+  background: none;
+  padding: 0;
+  box-shadow: none;
+  border-radius: 14px;
+}
+
+.composer-device--screen .composer__surface::before,
+.composer-device--screen .composer__surface::after {
+  display: none;
+}
+
+.composer-device--screen .composer__editor {
+  border-radius: 14px;
+  box-shadow:
+    inset 0 0 0 1px rgb(var(--crt-phosphor) / 0.12),
+    0 0 0 1px oklch(0 0 0 / 0.7),
+    inset 0 1px 2px oklch(0 0 0 / 0.85),
+    inset 0 0 36px rgb(140 240 165 / 0.05);
+}
+
+/* ================================================================ */
+/* Screen (Neon): purple glowing rounded-square send key.           */
+/* ================================================================ */
+
+.composer-device--neon .composer__send {
+  width: 52px;
+  min-width: 52px;
+  height: 58px;
+  border-radius: 16px;
+  color: rgb(206 188 255);
+  background: linear-gradient(180deg, oklch(0.17 0.04 292) 0%, oklch(0.11 0.03 292) 100%);
+  box-shadow:
+    0 0 0 1px rgb(150 120 255 / 0.35),
+    0 0 18px rgb(150 110 255 / 0.45),
+    0 0 34px rgb(140 100 255 / 0.22),
+    inset 0 1px 0 rgb(206 188 255 / 0.15);
+}
+
+.composer-device--neon .composer__send::before {
+  background: radial-gradient(ellipse 80% 55% at 50% 0%, rgb(206 188 255 / 0.18), transparent 70%);
+}
+
+.composer-device--neon .composer__send::after {
+  inset: 6px;
+  border-radius: 11px;
+  box-shadow:
+    0 0 0 1.5px rgb(202 178 255 / 0.95),
+    0 0 10px rgb(170 130 255 / 0.6),
+    inset 0 0 10px rgb(170 130 255 / 0.22);
+}
+
+.composer-device--neon .composer__send svg {
+  filter: drop-shadow(0 0 4px rgb(180 140 255 / 0.85));
+}
+
+.composer-device--neon .composer__send:hover:not(:disabled) {
+  filter: brightness(1.15);
+  box-shadow:
+    0 0 0 1px rgb(160 130 255 / 0.45),
+    0 0 22px rgb(160 120 255 / 0.6),
+    0 0 40px rgb(150 110 255 / 0.32),
+    inset 0 1px 0 rgb(206 188 255 / 0.2);
+}
+
+.composer-device--neon .composer__send:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow:
+    0 0 0 1px rgb(150 120 255 / 0.35),
+    0 0 14px rgb(150 110 255 / 0.5),
+    inset 0 0 12px rgb(120 90 255 / 0.4);
+}
+
+/* Locked Ralph loop thread: control bar replacing the composer. */
+.composer--loop {
+  padding: 12px 16px;
+}
+
+.loop-control-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid #dfe4ee;
+  background: #f8f9fc;
+}
+
+.loop-control-bar__status {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.loop-control-bar__title {
+  font-size: 13px;
+  font-weight: 640;
+  color: var(--text-strong);
+}
+
+.loop-control-bar__detail {
+  font-size: 13px;
+  color: var(--muted-strong);
+}
+
+.loop-control-bar__hint {
+  font-size: 12px;
+  color: var(--muted-soft);
+}
+
+.loop-control-bar__actions {
+  display: inline-flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.loop-control-bar__button {
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid #cfd7ea;
+  background: #eef2ff;
+  color: var(--text-strong);
+  font-size: 13px;
+  font-weight: 560;
+  cursor: pointer;
+}
+
+.loop-control-bar__button:hover {
+  background: #e2e8ff;
+}
+
+/* Ralph loop launch dialog fields. */
+.ralph-launch__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 12px 0;
+}
+
+.ralph-launch__label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.ralph-launch__input {
+  width: 120px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border, #cfd7ea);
+  background: var(--surface, #fff);
+  color: var(--text-strong);
+  font-size: 13px;
+}
+
+/* "Begin Ralph loop" banner above the composer when a plan is ready. */
+.composer__begin-loop {
+  display: flex;
+  justify-content: center;
+  margin: 0 0 10px;
+}
+
+.composer__begin-loop-button {
+  padding: 8px 18px;
+  border-radius: 999px;
+  border: none;
+  background: var(--accent, #4f46e5);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.composer__begin-loop-button:hover {
+  filter: brightness(1.05);
+}
+
+/* ── pi-subagents: inline tool cards (B) ───────────────────────────── */
+.subagent-card {
+  max-width: 760px;
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
+  border-left: 2px solid var(--accent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface));
+}
+
+.subagent-card__heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.subagent-card__heading-icon {
+  font-size: 11px;
+}
+
+.subagent-card__rows {
+  display: grid;
+  gap: 4px;
+}
+
+.subagent-card__row {
+  display: grid;
+  gap: 4px;
+}
+
+.subagent-card__row-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 2px 0;
+  background: none;
+  border: none;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.subagent-card__row-head:disabled {
+  cursor: default;
+}
+
+.subagent-card__chevron,
+.subagent-card__chevron-spacer {
+  display: inline-flex;
+  width: 12px;
+  flex: 0 0 12px;
+  color: var(--muted);
+  transition: transform 0.12s ease;
+}
+
+.subagent-card__chevron--expanded {
+  transform: rotate(90deg);
+}
+
+.subagent-card__name {
+  font-weight: 600;
+  color: var(--ink-strong);
+  white-space: nowrap;
+}
+
+.subagent-card__agent {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.subagent-card__title {
+  color: var(--muted-strong);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.subagent-card__status {
+  margin-left: auto;
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  white-space: nowrap;
+  text-transform: lowercase;
+}
+
+.subagent-card__status--started,
+.subagent-card__status--running,
+.subagent-card__status--batch {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+}
+
+.subagent-card__status--completed {
+  background: color-mix(in srgb, #18a058 18%, transparent);
+  color: #18a058;
+}
+
+.subagent-card__status--failed,
+.subagent-card__status--cancelled {
+  background: color-mix(in srgb, var(--error) 18%, transparent);
+  color: var(--error-ink);
+}
+
+.subagent-card__elapsed {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.subagent-card__body {
+  display: grid;
+  gap: 6px;
+  padding-left: 18px;
+}
+
+.subagent-card__section-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+
+/* ── pi-subagents: live state inside the card ──────────────────────── */
+.subagent-card__row--live {
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  border-radius: 6px;
+  padding: 2px 4px;
+  margin: -2px -4px;
+}
+
+.subagent-card__spinner {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
+  font-size: 11px;
+  line-height: 12px;
+  text-align: center;
+  color: var(--accent);
+}
+
+@keyframes subagent-card-spin {
+  to { transform: rotate(360deg); }
+}
+
+.subagent-card__live {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-left: 18px;
+  font-size: 12px;
+}
+
+.subagent-card__activity {
+  color: var(--muted-strong);
+  font-style: italic;
+}
+
+.subagent-card__stat {
+  color: var(--muted);
+}
+
+.subagent-card__stat::before {
+  content: "· ";
+}
+
+/* ── Settings: subagents ───────────────────────────────────────────── */
+.settings-input,
+.settings-textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  padding: 8px 10px;
+}
+
+.settings-textarea {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  resize: vertical;
+}
+
+.settings-row--stacked {
+  display: grid;
+  gap: 8px;
+}
+
+.settings-inline-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.button--danger {
+  color: var(--error-ink);
+  border-color: color-mix(in srgb, var(--error) 50%, var(--line));
+}
+
+.subagent-settings-list {
+  display: grid;
+  gap: 10px;
+}
+
+.subagent-settings-agent {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+  background: var(--surface);
+}
+
+.subagent-settings-agent summary {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.subagent-settings-agent__name {
+  font-weight: 600;
+  color: var(--ink-strong);
+}
+
+.subagent-settings-agent__description {
+  color: var(--muted-strong);
+}
+
+.subagent-settings-agent__raw {
+  margin-top: 10px;
+}
+
+.subagent-settings-agent__controls {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(180px, 0.6fr);
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.subagent-settings-agent__controls label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted-strong);
+  font-size: 12px;
+}
+
+.subagent-settings-agent__toggle {
+  grid-column: 1 / -1;
+  display: flex !important;
+  grid-template-columns: none !important;
+  flex-direction: row;
+  align-items: center;
 }

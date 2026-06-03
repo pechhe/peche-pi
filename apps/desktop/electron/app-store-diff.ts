@@ -1,5 +1,7 @@
 import { execFile } from "node:child_process";
+import { readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import type { UndoEditOp, UndoEditsResult } from "../src/ipc";
 
 function validateFilePath(workspacePath: string, filePath: string): string {
   const resolved = path.resolve(workspacePath, filePath);
@@ -143,6 +145,109 @@ export function stageFile(workspacePath: string, filePath: string): Promise<void
       },
     );
   });
+}
+
+function isUntracked(workspacePath: string, filePath: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    execFile(
+      "git",
+      ["status", "--porcelain", "--", filePath],
+      { cwd: workspacePath },
+      (error, stdout) => {
+        if (error) {
+          resolve(false);
+          return;
+        }
+        resolve(stdout.startsWith("??"));
+      },
+    );
+  });
+}
+
+async function applyEditReplacements(
+  workspacePath: string,
+  op: UndoEditOp,
+  reverse: boolean,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const replacements = op.replacements ?? [];
+  if (replacements.length === 0) {
+    return { ok: false, reason: "No recorded edits to apply." };
+  }
+  const absolute = path.resolve(workspacePath, op.path);
+  let content = await readFile(absolute, "utf8");
+  // Undo unwinds in reverse order (newText -> oldText); redo replays forward
+  // (oldText -> newText). Both match on the first occurrence, mirroring how the
+  // edit tool applied each replacement.
+  const ordered = reverse ? [...replacements].reverse() : replacements;
+  for (const { oldText, newText } of ordered) {
+    const [from, to] = reverse ? [newText, oldText] : [oldText, newText];
+    const idx = content.indexOf(from);
+    if (idx < 0) {
+      return { ok: false, reason: "File changed since the edit; can't apply cleanly." };
+    }
+    content = content.slice(0, idx) + to + content.slice(idx + from.length);
+  }
+  await writeFile(absolute, content, "utf8");
+  return { ok: true };
+}
+
+/**
+ * Undo a turn's edits by reverse-applying the recorded edit-tool inputs.
+ * `edit` ops are reversed exactly (newText -> oldText, last applied first),
+ * which is robust to line-number drift. New files written this turn (untracked)
+ * are deleted. Overwrites of tracked files cannot be reversed from the recorded
+ * input alone and are reported as failures rather than discarded destructively.
+ */
+export async function undoEdits(workspacePath: string, ops: readonly UndoEditOp[]): Promise<UndoEditsResult> {
+  const reverted: string[] = [];
+  const failed: { path: string; reason: string }[] = [];
+  // Reverse-apply in reverse turn order so later edits unwind before earlier ones.
+  for (const op of [...ops].reverse()) {
+    try {
+      // No workspace-escape guard here: edits may target files anywhere the pi
+      // runtime wrote them. Writes are content-matched (the recorded text must
+      // be present), so undo can't blind-overwrite an arbitrary path.
+      if (op.kind === "write") {
+        if (await isUntracked(workspacePath, op.path)) {
+          await rm(path.resolve(workspacePath, op.path), { force: true });
+          reverted.push(op.path);
+        } else {
+          failed.push({ path: op.path, reason: "Full-file write to a tracked file can't be undone automatically." });
+        }
+        continue;
+      }
+      const result = await applyEditReplacements(workspacePath, op, true);
+      if (result.ok) reverted.push(op.path);
+      else failed.push({ path: op.path, reason: result.reason });
+    } catch (error) {
+      failed.push({ path: op.path, reason: error instanceof Error ? error.message : String(error) });
+    }
+  }
+  return { reverted, failed };
+}
+
+/**
+ * Redo a previously-undone turn by replaying the recorded edits forward
+ * (oldText -> newText, in original order). `write` ops can't be replayed because
+ * the written content isn't recorded, so they're reported as failures.
+ */
+export async function redoEdits(workspacePath: string, ops: readonly UndoEditOp[]): Promise<UndoEditsResult> {
+  const reverted: string[] = [];
+  const failed: { path: string; reason: string }[] = [];
+  for (const op of ops) {
+    try {
+      if (op.kind === "write") {
+        failed.push({ path: op.path, reason: "Full-file write can't be redone automatically." });
+        continue;
+      }
+      const result = await applyEditReplacements(workspacePath, op, false);
+      if (result.ok) reverted.push(op.path);
+      else failed.push({ path: op.path, reason: result.reason });
+    } catch (error) {
+      failed.push({ path: op.path, reason: error instanceof Error ? error.message : String(error) });
+    }
+  }
+  return { reverted, failed };
 }
 
 function parseStatus(xy: string): ChangedFileEntry["status"] {

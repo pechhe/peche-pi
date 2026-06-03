@@ -1,4 +1,4 @@
-import { useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type ReactNode, type RefObject } from "react";
+import { useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from "react";
 import type { ComposerAttachment } from "./desktop-state";
 import type {
   ComposerSlashCommand,
@@ -48,7 +48,73 @@ interface ComposerSurfaceProps {
   readonly textareaTestId: string;
   readonly textareaPlaceholder: string;
   readonly textareaClassName?: string;
+  readonly screenFooter?: ReactNode;
   readonly footer: ReactNode;
+}
+
+export function ComposerAttachments({
+  attachments,
+  onRemoveAttachment,
+}: {
+  readonly attachments: readonly ComposerAttachment[];
+  readonly onRemoveAttachment: (attachmentId: string) => void;
+}) {
+  if (attachments.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="composer__attachments">
+      {attachments.map((attachment) => (
+        <div className={`composer-attachment composer-attachment--${attachment.kind} ${attachment.kind === "image" ? "composer-attachment--tile" : ""}`} key={attachment.id}>
+          {attachment.kind === "image" ? (
+            <div className="composer-attachment__tile">
+              <button
+                type="button"
+                className="composer-attachment__preview-button"
+                aria-label={`View ${attachment.name}`}
+                onClick={() =>
+                  openImageLightbox({
+                    src: `data:${attachment.mimeType};base64,${attachment.data}`,
+                    alt: attachment.name,
+                  })
+                }
+              >
+                <img
+                  alt={attachment.name}
+                  className="composer-attachment__preview"
+                  src={`data:${attachment.mimeType};base64,${attachment.data}`}
+                />
+              </button>
+              <button
+                aria-label={`Remove ${attachment.name}`}
+                className="composer-attachment__remove"
+                type="button"
+                onClick={() => onRemoveAttachment(attachment.id)}
+              >
+                ×
+              </button>
+            </div>
+          ) : (
+            <>
+              <span className="composer-attachment__icon" aria-hidden="true">
+                <FileIcon />
+              </span>
+              <span className="composer-attachment__name">{attachment.name}</span>
+              <button
+                aria-label={`Remove ${attachment.name}`}
+                className="composer-attachment__remove"
+                type="button"
+                onClick={() => onRemoveAttachment(attachment.id)}
+              >
+                ×
+              </button>
+            </>
+          )}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export function ComposerSurface({
@@ -88,6 +154,7 @@ export function ComposerSurface({
   textareaTestId,
   textareaPlaceholder,
   textareaClassName,
+  screenFooter,
   footer,
 }: ComposerSurfaceProps) {
   const [isDragActive, setIsDragActive] = useState(false);
@@ -131,6 +198,24 @@ export function ComposerSurface({
   const handleDrop = (event: DragEvent<HTMLDivElement>) => {
     clearDragState();
     onComposerDrop(event);
+  };
+
+  // Clicking anywhere in the empty screen area (the gap below the text,
+  // above the controls) should land the cursor in the textarea. Without
+  // this, clicks on the editor padding/gap do nothing.
+  const handleEditorMouseDown = (event: MouseEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement;
+    if (target.closest("button, a, input, select, textarea, .composer__bar")) {
+      return;
+    }
+    const textarea = composerRef.current;
+    if (!textarea) {
+      return;
+    }
+    event.preventDefault();
+    textarea.focus();
+    const caret = textarea.value.length;
+    textarea.setSelectionRange(caret, caret);
   };
 
   return (
@@ -177,55 +262,94 @@ export function ComposerSurface({
         onRemoveMessage={onRemoveQueuedMessage}
         onSteerMessage={onSteerQueuedMessage}
       />
-      {attachments.length > 0 ? (
-        <div className="composer__attachments">
-          {attachments.map((attachment) => (
-            <div className={`composer-attachment composer-attachment--${attachment.kind}`} key={attachment.id}>
-              {attachment.kind === "image" ? (
-                <button
-                  type="button"
-                  className="composer-attachment__preview-button"
-                  aria-label={`View ${attachment.name}`}
-                  onClick={() =>
-                    openImageLightbox({
-                      src: `data:${attachment.mimeType};base64,${attachment.data}`,
-                      alt: attachment.name,
-                    })
-                  }
-                >
-                  <img
-                    alt={attachment.name}
-                    className="composer-attachment__preview"
-                    src={`data:${attachment.mimeType};base64,${attachment.data}`}
-                  />
-                </button>
-              ) : (
-                <span className="composer-attachment__icon" aria-hidden="true">
-                  <FileIcon />
-                </span>
-              )}
-              <span className="composer-attachment__name">{attachment.name}</span>
-              <button
-                aria-label={`Remove ${attachment.name}`}
-                className="composer-attachment__remove"
-                type="button"
-                onClick={() => onRemoveAttachment(attachment.id)}
-              >
-                ×
-              </button>
-            </div>
-          ))}
-        </div>
-      ) : null}
       {lastError ? (
         <div className="composer__error error-banner" data-testid="composer-error-banner">
           {lastError}
         </div>
       ) : null}
-      <div className="composer__editor">
-        {topNotice}
-        {showMentionMenu ? (
-          <div className="composer__menus">
+      {showSlashMenu || (showSlashOptionMenu && selectedSlashCommand) ? (
+        <div className="composer__slash-panel" data-testid="composer-slash-panel" onWheel={(event) => event.stopPropagation()}>
+          {showSlashMenu ? (
+            <div className="slash-menu" data-testid="slash-menu">
+              {slashSections.map((section) => (
+                <div className="slash-menu__section" key={section.id}>
+                  {section.title ? (
+                    <div className={`slash-menu__section-title slash-menu__section-title--${section.id}`}>
+                      <span className="slash-menu__section-icon" aria-hidden="true">
+                        {section.id === "runtime" ? <SparkIcon /> : <SettingsIcon />}
+                      </span>
+                      <span>{section.title}</span>
+                    </div>
+                  ) : null}
+                  {section.items.map((command) => (
+                    <button
+                      className={`slash-menu__item ${command.section === "runtime" ? "slash-menu__item--skill" : ""} ${selectedSlashCommand?.id === command.id ? "slash-menu__item--active" : ""}`}
+                      key={command.id}
+                      type="button"
+                      onClick={() => onSelectSlashCommand(command)}
+                    >
+                      <span className="slash-menu__icon" aria-hidden="true">
+                        <SlashCommandIcon command={command} />
+                      </span>
+                      {command.section === "runtime" ? (
+                        <span className="slash-menu__content slash-menu__content--skill">
+                          <span className="slash-menu__line">
+                            <span className="slash-menu__title">{command.title}</span>
+                            {command.sourceLabel ? <span className="slash-menu__skill-badge">{command.sourceLabel}</span> : null}
+                            {command.compatibility?.status === "terminal-only" ? (
+                              <span className="slash-menu__skill-badge slash-menu__skill-badge--warning">Terminal-only</span>
+                            ) : null}
+                          </span>
+                          <span className="slash-menu__description">{command.description}</span>
+                          <span className="slash-menu__meta">
+                            <span className="slash-menu__command slash-menu__command--skill">{command.command}</span>
+                          </span>
+                        </span>
+                      ) : (
+                        <span className="slash-menu__content">
+                          <span className="slash-menu__line">
+                            <span className="slash-menu__title">{command.title}</span>
+                            <span className="slash-menu__command">{command.command}</span>
+                          </span>
+                          <span className="slash-menu__description">{command.description}</span>
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {showSlashOptionMenu && selectedSlashCommand ? (
+            <div className="slash-menu slash-menu--options" data-testid="slash-options-menu">
+              <div className="slash-menu__search">{selectedSlashCommand.title}</div>
+              {slashOptions.length > 0
+                ? slashOptions.map((option) => (
+                    <button
+                      className={`slash-menu__option ${selectedSlashOption?.value === option.value ? "slash-menu__option--active" : ""}`}
+                      key={option.value}
+                      type="button"
+                      onClick={() => onSelectSlashOption(option)}
+                    >
+                      <span className="slash-menu__option-title">{option.label}</span>
+                      <span className="slash-menu__option-description">{option.description}</span>
+                    </button>
+                  ))
+                : slashOptionEmptyState ? (
+                    <div className="slash-menu__empty">
+                      <div className="slash-menu__empty-title">{slashOptionEmptyState.title}</div>
+                      <div className="slash-menu__empty-description">{slashOptionEmptyState.description}</div>
+                    </div>
+                  ) : null}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+      <div className="composer__editor" onMouseDown={handleEditorMouseDown}>
+        <div className="composer__screen">
+          {topNotice}
+          {showMentionMenu ? (
+            <div className="composer__menus">
             <div className="mention-menu" data-testid="mention-menu" onWheel={(event) => event.stopPropagation()}>
               {mentionOptions.map((filePath, index) => {
                 const lastSlash = filePath.lastIndexOf("/");
@@ -246,96 +370,20 @@ export function ComposerSurface({
             </div>
           </div>
         ) : null}
-        {showSlashMenu || (showSlashOptionMenu && selectedSlashCommand) ? (
-          <div className="composer__menus">
-            {showSlashMenu ? (
-              <div className="slash-menu" data-testid="slash-menu" onWheel={(event) => event.stopPropagation()}>
-                {slashSections.map((section) => (
-                  <div className="slash-menu__section" key={section.id}>
-                    {section.title ? (
-                      <div className={`slash-menu__section-title slash-menu__section-title--${section.id}`}>
-                        <span className="slash-menu__section-icon" aria-hidden="true">
-                          {section.id === "runtime" ? <SparkIcon /> : <SettingsIcon />}
-                        </span>
-                        <span>{section.title}</span>
-                      </div>
-                    ) : null}
-                    {section.items.map((command) => (
-                      <button
-                        className={`slash-menu__item ${command.section === "runtime" ? "slash-menu__item--skill" : ""} ${selectedSlashCommand?.id === command.id ? "slash-menu__item--active" : ""}`}
-                        key={command.id}
-                        type="button"
-                        onClick={() => onSelectSlashCommand(command)}
-                      >
-                        <span className="slash-menu__icon" aria-hidden="true">
-                          <SlashCommandIcon command={command} />
-                        </span>
-                        {command.section === "runtime" ? (
-                          <span className="slash-menu__content slash-menu__content--skill">
-                            <span className="slash-menu__line">
-                              <span className="slash-menu__title">{command.title}</span>
-                              {command.sourceLabel ? <span className="slash-menu__skill-badge">{command.sourceLabel}</span> : null}
-                              {command.compatibility?.status === "terminal-only" ? (
-                                <span className="slash-menu__skill-badge slash-menu__skill-badge--warning">Terminal-only</span>
-                              ) : null}
-                            </span>
-                            <span className="slash-menu__description">{command.description}</span>
-                            <span className="slash-menu__meta">
-                              <span className="slash-menu__command slash-menu__command--skill">{command.command}</span>
-                            </span>
-                          </span>
-                        ) : (
-                          <span className="slash-menu__content">
-                            <span className="slash-menu__line">
-                              <span className="slash-menu__title">{command.title}</span>
-                              <span className="slash-menu__command">{command.command}</span>
-                            </span>
-                            <span className="slash-menu__description">{command.description}</span>
-                          </span>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                ))}
-              </div>
-            ) : null}
-            {showSlashOptionMenu && selectedSlashCommand ? (
-              <div className="slash-menu slash-menu--options" data-testid="slash-options-menu" onWheel={(event) => event.stopPropagation()}>
-                <div className="slash-menu__search">{selectedSlashCommand.title}</div>
-                {slashOptions.length > 0
-                  ? slashOptions.map((option) => (
-                      <button
-                        className={`slash-menu__option ${selectedSlashOption?.value === option.value ? "slash-menu__option--active" : ""}`}
-                        key={option.value}
-                        type="button"
-                        onClick={() => onSelectSlashOption(option)}
-                      >
-                        <span className="slash-menu__option-title">{option.label}</span>
-                        <span className="slash-menu__option-description">{option.description}</span>
-                      </button>
-                    ))
-                  : slashOptionEmptyState ? (
-                      <div className="slash-menu__empty">
-                        <div className="slash-menu__empty-title">{slashOptionEmptyState.title}</div>
-                        <div className="slash-menu__empty-description">{slashOptionEmptyState.description}</div>
-                      </div>
-                    ) : null}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-        <textarea
-          aria-label={textareaLabel}
-          className={textareaClassName}
-          data-testid={textareaTestId}
-          ref={composerRef}
-          value={composerDraft}
-          onChange={(event) => {
-            setComposerDraft(event.target.value);
-          }}
-          onKeyDown={onComposerKeyDown}
-          placeholder={textareaPlaceholder}
-        />
+          <textarea
+            aria-label={textareaLabel}
+            className={textareaClassName}
+            data-testid={textareaTestId}
+            ref={composerRef}
+            value={composerDraft}
+            onChange={(event) => {
+              setComposerDraft(event.target.value);
+            }}
+            onKeyDown={onComposerKeyDown}
+            placeholder={textareaPlaceholder}
+          />
+          {screenFooter}
+        </div>
         <div className="composer__bar">{footer}</div>
       </div>
     </div>

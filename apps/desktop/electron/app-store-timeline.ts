@@ -4,6 +4,7 @@ import type { TranscriptMessage } from "../src/desktop-state";
 import {
   appendAssistantDeltaToTimeline,
   appendQueuedUserMessageToTimeline,
+  appendReasoningDeltaToTimeline,
   appendUserMessageToTimeline,
   applySessionEventToTimeline,
   type RunMetrics,
@@ -12,6 +13,7 @@ import {
 } from "../src/timeline-model";
 import {
   makeActivityItem,
+  makeReasoningItem,
   makeSummaryItem,
   makeToolItem,
   makeTranscriptMessage,
@@ -24,6 +26,7 @@ interface TimelineRuntimeState {
   readonly runMetricsBySession: Map<string, RunMetrics>;
   readonly runningSinceBySession: Map<string, string>;
   readonly activeAssistantMessageBySession: Map<string, string>;
+  readonly activeReasoningMessageBySession: Map<string, string>;
 }
 
 const timelineItemFactory: TimelineItemFactory = {
@@ -32,6 +35,7 @@ const timelineItemFactory: TimelineItemFactory = {
   activity: makeActivityItem,
   summary: makeSummaryItem,
   tool: makeToolItem,
+  reasoning: makeReasoningItem,
 };
 
 export function appendUserMessage(
@@ -58,18 +62,43 @@ export function appendQueuedUserMessage(
 export function appendAssistantDelta(
   transcriptCache: Map<string, TranscriptMessage[]>,
   activeAssistantMessageBySession: Map<string, string>,
+  activeReasoningMessageBySession: Map<string, string>,
   sessionRef: SessionRef,
   text: string,
 ): void {
   const key = sessionKey(sessionRef);
   const runtime: SessionTimelineRuntimeState = {
     activeAssistantMessageId: activeAssistantMessageBySession.get(key),
+    activeReasoningMessageId: activeReasoningMessageBySession.get(key),
   };
   const transcript = appendAssistantDeltaToTimeline(transcriptCache.get(key) ?? [], runtime, text, timelineItemFactory);
   syncSessionRuntimeState(key, runtime, {
     runMetricsBySession: new Map(),
     runningSinceBySession: new Map(),
     activeAssistantMessageBySession,
+    activeReasoningMessageBySession,
+  });
+  transcriptCache.set(key, transcript);
+}
+
+export function appendReasoningDelta(
+  transcriptCache: Map<string, TranscriptMessage[]>,
+  activeAssistantMessageBySession: Map<string, string>,
+  activeReasoningMessageBySession: Map<string, string>,
+  sessionRef: SessionRef,
+  text: string,
+): void {
+  const key = sessionKey(sessionRef);
+  const runtime: SessionTimelineRuntimeState = {
+    activeAssistantMessageId: activeAssistantMessageBySession.get(key),
+    activeReasoningMessageId: activeReasoningMessageBySession.get(key),
+  };
+  const transcript = appendReasoningDeltaToTimeline(transcriptCache.get(key) ?? [], runtime, text, timelineItemFactory);
+  syncSessionRuntimeState(key, runtime, {
+    runMetricsBySession: new Map(),
+    runningSinceBySession: new Map(),
+    activeAssistantMessageBySession,
+    activeReasoningMessageBySession,
   });
   transcriptCache.set(key, transcript);
 }
@@ -98,6 +127,7 @@ function readSessionRuntimeState(key: string, state: TimelineRuntimeState): Sess
     runMetrics: state.runMetricsBySession.get(key),
     runningSince: state.runningSinceBySession.get(key),
     activeAssistantMessageId: state.activeAssistantMessageBySession.get(key),
+    activeReasoningMessageId: state.activeReasoningMessageBySession.get(key),
   };
 }
 
@@ -118,5 +148,11 @@ function syncSessionRuntimeState(key: string, runtime: SessionTimelineRuntimeSta
     state.activeAssistantMessageBySession.set(key, runtime.activeAssistantMessageId);
   } else {
     state.activeAssistantMessageBySession.delete(key);
+  }
+
+  if (runtime.activeReasoningMessageId) {
+    state.activeReasoningMessageBySession.set(key, runtime.activeReasoningMessageId);
+  } else {
+    state.activeReasoningMessageBySession.delete(key);
   }
 }

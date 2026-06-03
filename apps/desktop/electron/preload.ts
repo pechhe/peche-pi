@@ -12,6 +12,8 @@ import {
   type TerminalExitEvent,
   type TerminalPanelSnapshot,
   type TerminalSize,
+  type UndoEditOp,
+  type UndoEditsResult,
   type WorkspacePrInfo,
 } from "../src/ipc";
 import type { ComposerMode } from "../src/composer-mode";
@@ -34,6 +36,7 @@ import type {
   NotificationPreferences,
   RemoveWorktreeInput,
   SelectedTranscriptRecord,
+  StartChatInput,
   StartThreadInput,
   WorkspaceSessionTarget,
 } from "../src/desktop-state";
@@ -146,11 +149,19 @@ contextBridge.exposeInMainWorld("piApp", {
     ipcRenderer.invoke(desktopIpc.archiveSession, target) as Promise<DesktopAppState>,
   unarchiveSession: (target: WorkspaceSessionTarget) =>
     ipcRenderer.invoke(desktopIpc.unarchiveSession, target) as Promise<DesktopAppState>,
+  archiveAllNonRunningSessions: (workspaceId: string) =>
+    ipcRenderer.invoke(desktopIpc.archiveAllNonRunningSessions, workspaceId) as Promise<DesktopAppState>,
   createSession: (input: CreateSessionInput) =>
     ipcRenderer.invoke(desktopIpc.createSession, input) as Promise<DesktopAppState>,
   startThread: (input: StartThreadInput) =>
     ipcRenderer.invoke(desktopIpc.startThread, input) as Promise<DesktopAppState>,
   cancelCurrentRun: () => ipcRenderer.invoke(desktopIpc.cancelCurrentRun) as Promise<DesktopAppState>,
+  openSessionInDefaultTerminal: () =>
+    ipcRenderer.invoke(desktopIpc.openSessionInDefaultTerminal) as Promise<DesktopAppState>,
+  chooseExternalTerminalApp: () =>
+    ipcRenderer.invoke(desktopIpc.chooseExternalTerminalApp) as Promise<DesktopAppState>,
+  clearExternalTerminalApp: () =>
+    ipcRenderer.invoke(desktopIpc.clearExternalTerminalApp) as Promise<DesktopAppState>,
   setActiveView: (view: AppView) =>
     ipcRenderer.invoke(desktopIpc.setActiveView, view) as Promise<DesktopAppState>,
   setSidebarCollapsed: (collapsed: boolean) =>
@@ -192,9 +203,19 @@ contextBridge.exposeInMainWorld("piApp", {
     ipcRenderer.invoke(desktopIpc.setNotificationPreferences, preferences) as Promise<DesktopAppState>,
   setIntegratedTerminalShell: (shellPath: string) =>
     ipcRenderer.invoke(desktopIpc.setIntegratedTerminalShell, shellPath) as Promise<DesktopAppState>,
+  setSubagentSettings: (settings: Partial<import("../src/desktop-state").SubagentSettingsRecord>) =>
+    ipcRenderer.invoke(desktopIpc.setSubagentSettings, settings) as Promise<DesktopAppState>,
+  refreshSubagentAgents: (workspaceId: string) =>
+    ipcRenderer.invoke(desktopIpc.refreshSubagentAgents, workspaceId) as Promise<DesktopAppState>,
+  saveSubagentAgent: (workspaceId: string, input: { readonly name: string; readonly raw: string; readonly scope?: "project" | "global" }) =>
+    ipcRenderer.invoke(desktopIpc.saveSubagentAgent, workspaceId, input) as Promise<DesktopAppState>,
+  deleteSubagentAgent: (workspaceId: string, name: string, scope?: "project" | "global") =>
+    ipcRenderer.invoke(desktopIpc.deleteSubagentAgent, workspaceId, name, scope) as Promise<DesktopAppState>,
   setEnableTransparency: (enabled: boolean) =>
     ipcRenderer.invoke(desktopIpc.setEnableTransparency, enabled) as Promise<DesktopAppState>,
-  setComposerDeviceMode: (mode: "off" | "screen" | "modular") =>
+  setTranscriptVerbose: (enabled: boolean) =>
+    ipcRenderer.invoke(desktopIpc.setTranscriptVerbose, enabled) as Promise<DesktopAppState>,
+  setComposerDeviceMode: (mode: "off" | "screen" | "modular" | "screen-neon") =>
     ipcRenderer.invoke(desktopIpc.setComposerDeviceMode, mode) as Promise<DesktopAppState>,
   ensureTerminalPanel: (workspaceId: string, terminalScopeId: string, size?: Partial<TerminalSize>) =>
     ipcRenderer.invoke(desktopIpc.terminalEnsurePanel, workspaceId, terminalScopeId, size) as Promise<TerminalPanelSnapshot>,
@@ -270,6 +291,10 @@ contextBridge.exposeInMainWorld("piApp", {
     ipcRenderer.invoke(desktopIpc.getFileDiff, workspaceId, filePath) as Promise<string>,
   stageFile: (workspaceId: string, filePath: string) =>
     ipcRenderer.invoke(desktopIpc.stageFile, workspaceId, filePath) as Promise<void>,
+  undoEdits: (workspaceId: string, ops: readonly UndoEditOp[]) =>
+    ipcRenderer.invoke(desktopIpc.undoEdits, workspaceId, ops) as Promise<UndoEditsResult>,
+  redoEdits: (workspaceId: string, ops: readonly UndoEditOp[]) =>
+    ipcRenderer.invoke(desktopIpc.redoEdits, workspaceId, ops) as Promise<UndoEditsResult>,
   commitPushExecute: (workspaceId: string) =>
     ipcRenderer.invoke(desktopIpc.commitPushExecute, workspaceId) as Promise<{ readonly success: boolean; readonly message: string; readonly commitMessage?: string }>,
   setCommitPushModel: (workspaceId: string, model: string) =>
@@ -281,6 +306,22 @@ contextBridge.exposeInMainWorld("piApp", {
   prCreate: (workspaceId: string, input: CreatePrInput) =>
     ipcRenderer.invoke(desktopIpc.prCreate, workspaceId, input) as Promise<CreatePrResult>,
   toggleWindowMaximize: () => ipcRenderer.invoke(desktopIpc.toggleWindowMaximize) as Promise<void>,
+  startChat: (input: StartChatInput) =>
+    ipcRenderer.invoke(desktopIpc.startChat, input) as Promise<DesktopAppState>,
+  selectChat: (chatId: string) =>
+    ipcRenderer.invoke(desktopIpc.selectChat, chatId) as Promise<DesktopAppState>,
+  archiveChat: (chatId: string) =>
+    ipcRenderer.invoke(desktopIpc.archiveChat, chatId) as Promise<DesktopAppState>,
+  unarchiveChat: (chatId: string) =>
+    ipcRenderer.invoke(desktopIpc.unarchiveChat, chatId) as Promise<DesktopAppState>,
+  removeChat: (chatId: string) =>
+    ipcRenderer.invoke(desktopIpc.removeChat, chatId) as Promise<DesktopAppState>,
+  renameChat: (chatId: string, title: string) =>
+    ipcRenderer.invoke(desktopIpc.renameChat, chatId, title) as Promise<DesktopAppState>,
+  getChatAgentsMd: (chatId: string) =>
+    ipcRenderer.invoke(desktopIpc.getChatAgentsMd, chatId) as Promise<string>,
+  writeChatAgentsMd: (chatId: string, content: string) =>
+    ipcRenderer.invoke(desktopIpc.writeChatAgentsMd, chatId, content) as Promise<void>,
   openExternal: (url: string) => ipcRenderer.invoke(desktopIpc.openExternal, url) as Promise<void>,
   getThemeMode: () => ipcRenderer.invoke(desktopIpc.getThemeMode) as Promise<"system" | "light" | "dark" | "dracula">,
   getResolvedTheme: () => ipcRenderer.invoke(desktopIpc.getResolvedTheme) as Promise<"light" | "dark">,

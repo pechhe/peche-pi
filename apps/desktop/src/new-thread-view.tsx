@@ -13,7 +13,7 @@ import {
   type ComposerSlashOption,
   type ComposerSlashOptionEmptyState,
 } from "./composer-commands";
-import { ComposerSurface } from "./composer-surface";
+import { ComposerAttachments, ComposerSurface } from "./composer-surface";
 import { ModelOnboardingNoticeBanner } from "./model-onboarding-notice";
 import type { ModelOnboardingState, ModelOnboardingSettingsSection } from "./model-onboarding";
 import { ModelSelector } from "./model-selector";
@@ -21,6 +21,7 @@ import type { ModelSelectorHandle } from "./model-selector";
 import type { CavemanLevel } from "./ipc";
 
 interface NewThreadViewProps {
+  readonly isChat?: boolean;
   readonly workspaces: readonly WorkspaceRecord[];
   readonly selectedWorkspaceId: string;
   readonly runtime?: RuntimeSnapshot;
@@ -68,6 +69,7 @@ interface NewThreadViewProps {
 }
 
 export function NewThreadView({
+  isChat = false,
   workspaces,
   selectedWorkspaceId,
   runtime,
@@ -126,10 +128,10 @@ export function NewThreadView({
     }
 
     composer.style.height = "0px";
-    composer.style.height = `${Math.min(composer.scrollHeight, 260)}px`;
+    composer.style.height = `${Math.min(composer.scrollHeight, 400)}px`;
   }, [composerRef, prompt]);
 
-  if (!workspace) {
+  if (!isChat && !workspace) {
     return (
       <section className="canvas canvas--empty">
         <div className="empty-panel">
@@ -148,11 +150,16 @@ export function NewThreadView({
           <div className="new-thread__logo" data-testid="new-thread-logo">
             <PiLogoMark />
           </div>
-          <div className="new-thread__eyebrow">New thread</div>
-          <h1 className="new-thread__title">Let&apos;s build</h1>
+          <div className="new-thread__eyebrow">{isChat ? "New chat" : "New thread"}</div>
+          <h1 className="new-thread__title">{isChat ? "What\u2019s up?" : "Let\u2019s build"}</h1>
         </div>
 
         <div className="new-thread__composer composer">
+          {attachments.length > 0 ? (
+            <div className="composer__attachment-shelf">
+              <ComposerAttachments attachments={attachments} onRemoveAttachment={onRemoveAttachment} />
+            </div>
+          ) : null}
           <div className="conversation conversation--composer">
             <ComposerSurface
               lastError={lastError}
@@ -190,12 +197,18 @@ export function NewThreadView({
               onSelectMention={onSelectMention}
               textareaLabel="New thread prompt"
               textareaTestId="new-thread-composer"
-              textareaClassName="new-thread__textarea"
               textareaPlaceholder={composerMode === "plan" ? "Describe what you want to plan. Pi will grill you, write a PRD, then prepare Ralph." : "message the clanker"}
+              screenFooter={(
+                <div className="composer__context" aria-label="Context usage unavailable">
+                  <div className="composer__context-track">
+                    <div className="composer__context-fill" style={{ width: "0%" }} />
+                  </div>
+                  <span className="composer__context-label">Context —</span>
+                </div>
+              )}
               footer={(
                 <NewThreadComposerFooter
                   runtime={runtime}
-                  environment={environment}
                   provider={provider}
                   modelId={modelId}
                   thinkingLevel={thinkingLevel}
@@ -204,7 +217,6 @@ export function NewThreadView({
                   modelOnboarding={modelOnboarding}
                   hasContent={Boolean(prompt.trim() || attachments.length > 0)}
                   modelSelectorRef={modelSelectorRef}
-                  onSelectEnvironment={onSelectEnvironment}
                   onSetModel={onSetModel}
                   onSetThinking={onSetThinking}
                   onSetCavemanLevel={onSetCavemanLevel}
@@ -215,6 +227,44 @@ export function NewThreadView({
             />
           </div>
         </div>
+        {!isChat ? (
+          <div className="new-thread__options">
+            <div className="new-thread__option">
+              <span className="new-thread__option-label">Project</span>
+              <select
+                className="new-thread__project-select"
+                aria-label="Project"
+                value={selectedWorkspaceId}
+                onChange={(event) => onSelectWorkspace(event.target.value)}
+              >
+                {workspaces.map((entry) => (
+                  <option key={entry.id} value={entry.id}>
+                    {entry.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="new-thread__option">
+              <span className="new-thread__option-label">Environment</span>
+              <span className="new-thread__environment-group">
+                <button
+                  className={`new-thread__environment ${environment === "local" ? "new-thread__environment--active" : ""}`}
+                  type="button"
+                  onClick={() => onSelectEnvironment("local")}
+                >
+                  <span>Local</span>
+                </button>
+                <button
+                  className={`new-thread__environment ${environment === "worktree" ? "new-thread__environment--active" : ""}`}
+                  type="button"
+                  onClick={() => onSelectEnvironment("worktree")}
+                >
+                  <span>Worktree</span>
+                </button>
+              </span>
+            </div>
+          </div>
+        ) : null}
       </div>
     </section>
   );
@@ -222,7 +272,6 @@ export function NewThreadView({
 
 interface NewThreadComposerFooterProps {
   readonly runtime?: RuntimeSnapshot;
-  readonly environment: NewThreadEnvironment;
   readonly provider: string | undefined;
   readonly modelId: string | undefined;
   readonly thinkingLevel: string | undefined;
@@ -231,7 +280,6 @@ interface NewThreadComposerFooterProps {
   readonly modelOnboarding: ModelOnboardingState;
   readonly hasContent: boolean;
   readonly modelSelectorRef: RefObject<ModelSelectorHandle | null>;
-  readonly onSelectEnvironment: (environment: NewThreadEnvironment) => void;
   readonly onSetModel: (provider: string, modelId: string) => void;
   readonly onSetThinking: (level: string) => void;
   readonly onSetCavemanLevel: (level: CavemanLevel) => void;
@@ -241,7 +289,6 @@ interface NewThreadComposerFooterProps {
 
 function NewThreadComposerFooter({
   runtime,
-  environment,
   provider,
   modelId,
   thinkingLevel,
@@ -250,7 +297,6 @@ function NewThreadComposerFooter({
   modelOnboarding,
   hasContent,
   modelSelectorRef,
-  onSelectEnvironment,
   onSetModel,
   onSetThinking,
   onSetCavemanLevel,
@@ -262,54 +308,43 @@ function NewThreadComposerFooter({
       <div className="composer__footer">
         <div className="composer__footer-row">
           <div className="composer__hint new-thread__hint">
-            <div className="new-thread__environment-group">
-              <button
-                className={`new-thread__environment ${environment === "local" ? "new-thread__environment--active" : ""}`}
-                type="button"
-                onClick={() => onSelectEnvironment("local")}
-              >
-                <span>Local</span>
-              </button>
-              <button
-                className={`new-thread__environment ${environment === "worktree" ? "new-thread__environment--active" : ""}`}
-                type="button"
-                onClick={() => onSelectEnvironment("worktree")}
-              >
-                <span>Worktree</span>
-              </button>
-            </div>
-            <span className="new-thread__hint-separator">·</span>
-            <ComposerModeSelector mode={composerMode} onSetMode={onSetComposerMode} />
-            <span className="new-thread__hint-separator">·</span>
-            <CavemanSelector level={cavemanLevel} onSetLevel={onSetCavemanLevel} />
-            <ModelFeatureBadges runtime={runtime} provider={provider} modelId={modelId} />
-            <span className="new-thread__hint-separator">·</span>
-            <ModelSelector
-              ref={modelSelectorRef}
-              runtime={runtime}
-              provider={provider}
-              modelId={modelId}
-              thinkingLevel={thinkingLevel}
-              dropdownPlacement="below"
-              showEmptyModelControl
-              unselectedModelLabel={modelOnboarding.unselectedModelLabel}
-              emptyModelLabel={MODEL_OPTIONS_EMPTY_TITLE}
-              emptyModelTitle={modelOnboarding.emptyModelTitle}
-              onSetModel={onSetModel}
-              onSetThinking={onSetThinking}
-            />
+            <span className="composer__hint-prose">Enter to send · Shift+Enter for newline</span>
+            <span className="composer__controls">
+              <span className="composer__controls-sep">{" \u00b7 "}</span>
+              <ComposerModeSelector mode={composerMode} onSetMode={onSetComposerMode} />
+              <span className="composer__controls-sep">{" \u00b7 "}</span>
+              <ModelSelector
+                ref={modelSelectorRef}
+                runtime={runtime}
+                provider={provider}
+                modelId={modelId}
+                thinkingLevel={thinkingLevel}
+                dropdownPlacement="below"
+                showEmptyModelControl
+                unselectedModelLabel={modelOnboarding.unselectedModelLabel}
+                emptyModelLabel={MODEL_OPTIONS_EMPTY_TITLE}
+                emptyModelTitle={modelOnboarding.emptyModelTitle}
+                onSetModel={onSetModel}
+                onSetThinking={onSetThinking}
+              />
+              <span className="composer__controls-sep">{" \u00b7 "}</span>
+              <CavemanSelector level={cavemanLevel} onSetLevel={onSetCavemanLevel} />
+              <ModelFeatureBadges runtime={runtime} provider={provider} modelId={modelId} />
+            </span>
           </div>
 
           <div className="composer__actions">
-            <button
-              aria-label="Start thread"
-              className="button button--primary button--cta-icon composer__send"
-              type="button"
-              disabled={!hasContent || modelOnboarding.requiresModelSelection}
-              onClick={onSubmit}
-            >
-              <ArrowUpIcon />
-            </button>
+            <span className="composer__key-mount composer__key-mount--send">
+              <button
+                aria-label="Start thread"
+                className="button button--primary button--cta-icon composer__send"
+                type="button"
+                disabled={!hasContent || modelOnboarding.requiresModelSelection}
+                onClick={onSubmit}
+              >
+                <ArrowUpIcon />
+              </button>
+            </span>
           </div>
         </div>
       </div>

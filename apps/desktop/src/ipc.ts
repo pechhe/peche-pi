@@ -16,6 +16,7 @@ import type {
   NotificationPreferences,
   RemoveWorktreeInput,
   SelectedTranscriptRecord,
+  StartChatInput,
   StartThreadInput,
   WorkspaceSessionTarget,
 } from "./desktop-state";
@@ -58,9 +59,13 @@ export const desktopIpc = {
   selectSession: "pi-gui:select-session",
   archiveSession: "pi-gui:archive-session",
   unarchiveSession: "pi-gui:unarchive-session",
+  archiveAllNonRunningSessions: "pi-gui:archive-all-non-running-sessions",
   createSession: "pi-gui:create-session",
   startThread: "pi-gui:start-thread",
   cancelCurrentRun: "pi-gui:cancel-current-run",
+  openSessionInDefaultTerminal: "pi-gui:open-session-in-default-terminal",
+  chooseExternalTerminalApp: "pi-gui:choose-external-terminal-app",
+  clearExternalTerminalApp: "pi-gui:clear-external-terminal-app",
   setActiveView: "pi-gui:set-active-view",
   setSidebarCollapsed: "pi-gui:set-sidebar-collapsed",
   refreshRuntime: "pi-gui:refresh-runtime",
@@ -82,7 +87,12 @@ export const desktopIpc = {
   respondToHostUiRequest: "pi-gui:respond-to-host-ui-request",
   setNotificationPreferences: "pi-gui:set-notification-preferences",
   setIntegratedTerminalShell: "pi-gui:set-integrated-terminal-shell",
+  setSubagentSettings: "pi-gui:set-subagent-settings",
+  refreshSubagentAgents: "pi-gui:refresh-subagent-agents",
+  saveSubagentAgent: "pi-gui:save-subagent-agent",
+  deleteSubagentAgent: "pi-gui:delete-subagent-agent",
   setEnableTransparency: "pi-gui:set-enable-transparency",
+  setTranscriptVerbose: "pi-gui:set-transcript-verbose",
   setComposerDeviceMode: "pi-gui:set-composer-device-mode",
   terminalEnsurePanel: "pi-gui:terminal-ensure-panel",
   terminalCreateSession: "pi-gui:terminal-create-session",
@@ -118,9 +128,19 @@ export const desktopIpc = {
   getWorkspaceGitInfo: "pi-gui:get-workspace-git-info",
   getFileDiff: "pi-gui:get-file-diff",
   stageFile: "pi-gui:stage-file",
+  undoEdits: "pi-gui:undo-edits",
+  redoEdits: "pi-gui:redo-edits",
   commitPushExecute: "pi-gui:commit-push-execute",
   setCommitPushModel: "pi-gui:set-commit-push-model",
   getWorkspacePrInfo: "pi-gui:get-workspace-pr-info",
+  startChat: "pi-gui:start-chat",
+  selectChat: "pi-gui:select-chat",
+  archiveChat: "pi-gui:archive-chat",
+  unarchiveChat: "pi-gui:unarchive-chat",
+  removeChat: "pi-gui:remove-chat",
+  renameChat: "pi-gui:rename-chat",
+  getChatAgentsMd: "pi-gui:get-chat-agents-md",
+  writeChatAgentsMd: "pi-gui:write-chat-agents-md",
   generatePrDraft: "pi-gui:generate-pr-draft",
   prCreate: "pi-gui:pr-create",
   getThemeMode: "pi-gui:get-theme-mode",
@@ -169,9 +189,13 @@ export const piDesktopApiIpcBridge = {
   selectSession: { kind: "invoke", channel: desktopIpc.selectSession },
   archiveSession: { kind: "invoke", channel: desktopIpc.archiveSession },
   unarchiveSession: { kind: "invoke", channel: desktopIpc.unarchiveSession },
+  archiveAllNonRunningSessions: { kind: "invoke", channel: desktopIpc.archiveAllNonRunningSessions },
   createSession: { kind: "invoke", channel: desktopIpc.createSession },
   startThread: { kind: "invoke", channel: desktopIpc.startThread },
   cancelCurrentRun: { kind: "invoke", channel: desktopIpc.cancelCurrentRun },
+  openSessionInDefaultTerminal: { kind: "invoke", channel: desktopIpc.openSessionInDefaultTerminal },
+  chooseExternalTerminalApp: { kind: "invoke", channel: desktopIpc.chooseExternalTerminalApp },
+  clearExternalTerminalApp: { kind: "invoke", channel: desktopIpc.clearExternalTerminalApp },
   setActiveView: { kind: "invoke", channel: desktopIpc.setActiveView },
   setSidebarCollapsed: { kind: "invoke", channel: desktopIpc.setSidebarCollapsed },
   refreshRuntime: { kind: "invoke", channel: desktopIpc.refreshRuntime },
@@ -193,7 +217,12 @@ export const piDesktopApiIpcBridge = {
   respondToHostUiRequest: { kind: "invoke", channel: desktopIpc.respondToHostUiRequest },
   setNotificationPreferences: { kind: "invoke", channel: desktopIpc.setNotificationPreferences },
   setIntegratedTerminalShell: { kind: "invoke", channel: desktopIpc.setIntegratedTerminalShell },
+  setSubagentSettings: { kind: "invoke", channel: desktopIpc.setSubagentSettings },
+  refreshSubagentAgents: { kind: "invoke", channel: desktopIpc.refreshSubagentAgents },
+  saveSubagentAgent: { kind: "invoke", channel: desktopIpc.saveSubagentAgent },
+  deleteSubagentAgent: { kind: "invoke", channel: desktopIpc.deleteSubagentAgent },
   setEnableTransparency: { kind: "invoke", channel: desktopIpc.setEnableTransparency },
+  setTranscriptVerbose: { kind: "invoke", channel: desktopIpc.setTranscriptVerbose },
   setComposerDeviceMode: { kind: "invoke", channel: desktopIpc.setComposerDeviceMode },
   ensureTerminalPanel: { kind: "invoke", channel: desktopIpc.terminalEnsurePanel },
   createTerminalSession: { kind: "invoke", channel: desktopIpc.terminalCreateSession },
@@ -228,12 +257,22 @@ export const piDesktopApiIpcBridge = {
   getWorkspaceGitInfo: { kind: "invoke", channel: desktopIpc.getWorkspaceGitInfo },
   getFileDiff: { kind: "invoke", channel: desktopIpc.getFileDiff },
   stageFile: { kind: "invoke", channel: desktopIpc.stageFile },
+  undoEdits: { kind: "invoke", channel: desktopIpc.undoEdits },
+  redoEdits: { kind: "invoke", channel: desktopIpc.redoEdits },
   commitPushExecute: { kind: "invoke", channel: desktopIpc.commitPushExecute },
   setCommitPushModel: { kind: "invoke", channel: desktopIpc.setCommitPushModel },
   getWorkspacePrInfo: { kind: "invoke", channel: desktopIpc.getWorkspacePrInfo },
   generatePrDraft: { kind: "invoke", channel: desktopIpc.generatePrDraft },
   prCreate: { kind: "invoke", channel: desktopIpc.prCreate },
   toggleWindowMaximize: { kind: "invoke", channel: desktopIpc.toggleWindowMaximize },
+  startChat: { kind: "invoke", channel: desktopIpc.startChat },
+  selectChat: { kind: "invoke", channel: desktopIpc.selectChat },
+  archiveChat: { kind: "invoke", channel: desktopIpc.archiveChat },
+  unarchiveChat: { kind: "invoke", channel: desktopIpc.unarchiveChat },
+  removeChat: { kind: "invoke", channel: desktopIpc.removeChat },
+  renameChat: { kind: "invoke", channel: desktopIpc.renameChat },
+  getChatAgentsMd: { kind: "invoke", channel: desktopIpc.getChatAgentsMd },
+  writeChatAgentsMd: { kind: "invoke", channel: desktopIpc.writeChatAgentsMd },
   openExternal: { kind: "invoke", channel: desktopIpc.openExternal },
   getThemeMode: { kind: "invoke", channel: desktopIpc.getThemeMode },
   getResolvedTheme: { kind: "invoke", channel: desktopIpc.getResolvedTheme },
@@ -355,6 +394,22 @@ export interface PrDraftResult {
   readonly message?: string;
 }
 
+export interface UndoEditReplacement {
+  readonly oldText: string;
+  readonly newText: string;
+}
+
+export interface UndoEditOp {
+  readonly kind: "edit" | "write";
+  readonly path: string;
+  readonly replacements?: readonly UndoEditReplacement[];
+}
+
+export interface UndoEditsResult {
+  readonly reverted: string[];
+  readonly failed: { path: string; reason: string }[];
+}
+
 export interface CreatePrInput {
   readonly title: string;
   readonly body: string;
@@ -396,9 +451,13 @@ export interface PiDesktopApi {
   selectSession(target: WorkspaceSessionTarget): Promise<DesktopAppState>;
   archiveSession(target: WorkspaceSessionTarget): Promise<DesktopAppState>;
   unarchiveSession(target: WorkspaceSessionTarget): Promise<DesktopAppState>;
+  archiveAllNonRunningSessions(workspaceId: string, olderThanMs?: number): Promise<DesktopAppState>;
   createSession(input: CreateSessionInput): Promise<DesktopAppState>;
   startThread(input: StartThreadInput): Promise<DesktopAppState>;
   cancelCurrentRun(): Promise<DesktopAppState>;
+  openSessionInDefaultTerminal(): Promise<DesktopAppState>;
+  chooseExternalTerminalApp(): Promise<DesktopAppState>;
+  clearExternalTerminalApp(): Promise<DesktopAppState>;
   setActiveView(view: AppView): Promise<DesktopAppState>;
   setSidebarCollapsed(collapsed: boolean): Promise<DesktopAppState>;
   refreshRuntime(workspaceId?: string): Promise<DesktopAppState>;
@@ -440,7 +499,12 @@ export interface PiDesktopApi {
   ): Promise<DesktopAppState>;
   setNotificationPreferences(preferences: Partial<NotificationPreferences>): Promise<DesktopAppState>;
   setIntegratedTerminalShell(shell: string): Promise<DesktopAppState>;
+  setSubagentSettings(settings: Partial<import("./desktop-state").SubagentSettingsRecord>): Promise<DesktopAppState>;
+  refreshSubagentAgents(workspaceId: string): Promise<DesktopAppState>;
+  saveSubagentAgent(workspaceId: string, input: { readonly name: string; readonly raw: string; readonly scope?: "project" | "global" }): Promise<DesktopAppState>;
+  deleteSubagentAgent(workspaceId: string, name: string, scope?: "project" | "global"): Promise<DesktopAppState>;
   setEnableTransparency(enabled: boolean): Promise<DesktopAppState>;
+  setTranscriptVerbose(enabled: boolean): Promise<DesktopAppState>;
   setComposerDeviceMode(mode: ComposerDeviceMode): Promise<DesktopAppState>;
   ensureTerminalPanel(
     workspaceId: string,
@@ -493,9 +557,19 @@ export interface PiDesktopApi {
   getWorkspaceGitInfo(workspaceId: string): Promise<{ readonly isGitRepo: boolean; readonly changedCount: number }>;
   getFileDiff(workspaceId: string, filePath: string): Promise<string>;
   stageFile(workspaceId: string, filePath: string): Promise<void>;
+  undoEdits(workspaceId: string, ops: readonly UndoEditOp[]): Promise<UndoEditsResult>;
+  redoEdits(workspaceId: string, ops: readonly UndoEditOp[]): Promise<UndoEditsResult>;
   commitPushExecute(workspaceId: string): Promise<{ readonly success: boolean; readonly message: string; readonly commitMessage?: string }>;
   setCommitPushModel(workspaceId: string, model: string): Promise<DesktopAppState>;
   getWorkspacePrInfo(workspaceId: string): Promise<WorkspacePrInfo>;
+  startChat(input: StartChatInput): Promise<DesktopAppState>;
+  selectChat(chatId: string): Promise<DesktopAppState>;
+  archiveChat(chatId: string): Promise<DesktopAppState>;
+  unarchiveChat(chatId: string): Promise<DesktopAppState>;
+  removeChat(chatId: string): Promise<DesktopAppState>;
+  renameChat(chatId: string, title: string): Promise<DesktopAppState>;
+  getChatAgentsMd(chatId: string): Promise<string>;
+  writeChatAgentsMd(chatId: string, content: string): Promise<void>;
   generatePrDraft(workspaceId: string, baseBranch?: string): Promise<PrDraftResult>;
   prCreate(workspaceId: string, input: CreatePrInput): Promise<CreatePrResult>;
   toggleWindowMaximize(): Promise<void>;

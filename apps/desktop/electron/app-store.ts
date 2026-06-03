@@ -1,6 +1,7 @@
 import type { BrowserWindow } from "electron";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { basename, dirname, join } from "node:path";
 import {
   applyHostUiRequestToExtensionUiState,
   type GenerateThreadTitleOptions,
@@ -35,6 +36,7 @@ import type {
 } from "@pi-gui/session-driver/runtime-types";
 import {
   type AppView,
+  type ChatRecord,
   type ComposerAttachment,
   type ComposerDraftSyncSource,
   type ExtensionCommandCompatibilityRecord,
@@ -49,14 +51,20 @@ import {
   type QueuedComposerMessage,
   type RemoveWorktreeInput,
   type SelectedTranscriptRecord,
+  type RalphLoopStatus,
+  type StartChatInput,
   type StartThreadInput,
+  type SubagentAgentRecord,
+  type SubagentSettingsRecord,
   type TranscriptMessage,
+  type WorkspaceRecord,
   type WorkspaceSessionTarget,
 } from "../src/desktop-state";
 import type { ComposerMode } from "../src/composer-mode";
 import {
   applyTimelineEvent,
   appendAssistantDelta,
+  appendReasoningDelta,
   clearActiveAssistantMessage,
 } from "./app-store-timeline";
 import { applySessionEventState, updateSessionRecord } from "./app-store-session-state";
@@ -98,6 +106,22 @@ import * as workspace from "./app-store-workspace";
 import * as worktree from "./app-store-worktree";
 import * as composer from "./app-store-composer";
 import { isSessionActivelyViewed } from "./session-visibility";
+import { readRalphLoopStatus } from "./ralph-loop-status";
+import { launchSessionInDefaultTerminal } from "./external-terminal";
+
+const DEFAULT_CHAT_AGENTS_MD = `# Chat Agent
+
+You are a general-purpose agentic assistant operating inside a standalone chat.
+This chat has no associated coding project or workspace.
+
+## Rules
+
+- These chats are for general agentic tasks — research, writing, advice, browsing, and similar non-code-project work.
+- You do not inherit any project-level AGENTS.md. Ignore any global agent instructions that assume a coding project context.
+- You may write files into your chat's scratch directory, but you should not modify files outside it unless the user explicitly directs you to.
+- Keep responses helpful and grounded. Ask clarifying questions when the task is ambiguous.
+- The user can view and edit this AGENTS.md per chat to customize your behaviour.
+`;
 
 type StateListener = (state: DesktopAppState) => void;
 type SelectedTranscriptListener = (payload: SelectedTranscriptRecord | null) => void;
@@ -105,6 +129,67 @@ type SessionEventListener = (event: SessionDriverEvent, state: DesktopAppState) 
 type TranscriptMessageRow = Extract<TranscriptMessage, { kind: "message" }>;
 
 const LEGACY_TRANSCRIPT_HISTORY_LIMIT = 180;
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+function defaultSubagentPiCommand(): string {
+  try {
+    const packageJson = require.resolve("@earendil-works/pi-coding-agent/package.json");
+    const cliPath = join(dirname(packageJson), "dist/cli.js");
+    return `/usr/bin/env ELECTRON_RUN_AS_NODE=1 ${shellQuote(process.execPath)} ${shellQuote(cliPath)}`;
+  } catch {
+    return "pi";
+  }
+}
+
+function applySubagentEnvironment(settings: SubagentSettingsRecord): void {
+  process.env.PI_SUBAGENT_PI_COMMAND = settings.piCommandOverride.trim() || defaultSubagentPiCommand();
+  setOptionalEnv("PI_ORCHESTRATOR_MODE", settings.orchestratorMode);
+  setOptionalEnv("PI_SUBAGENT_DISABLE_COORDINATOR_ONLY_TURN", settings.disableCoordinatorOnlyTurn);
+  setOptionalEnv("PI_SUBAGENT_DISABLE_CHILD_CONTEXT_BOUNDARY", settings.disableChildContextBoundary);
+  setOptionalEnv("PI_SUBAGENT_DISABLE_SESSION_TITLES", settings.disableSessionTitles);
+  if (settings.mux === "auto") delete process.env.PI_SUBAGENT_MUX;
+  else process.env.PI_SUBAGENT_MUX = settings.mux;
+}
+
+function setOptionalEnv(name: string, enabled: boolean): void {
+  if (enabled) process.env[name] = "1";
+  else delete process.env[name];
+}
+
+function getSubagentGlobalAgentsDir(): string {
+  return join(process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent"), "agents");
+}
+
+function parseSubagentAgentFile(filePath: string, raw: string, scope: "project" | "global"): SubagentAgentRecord {
+  const nameFromFile = basename(filePath, ".md");
+  const frontmatter = raw.match(/^---\n([\s\S]*?)\n---\n?/);
+  const fields = new Map<string, string>();
+  if (frontmatter) {
+    for (const line of frontmatter[1]?.split(/\r?\n/) ?? []) {
+      const match = line.match(/^([a-zA-Z0-9_-]+):\s*(.*)$/);
+      if (match?.[1]) fields.set(match[1], (match[2] ?? "").trim().replace(/^['\"]|['\"]$/g, ""));
+    }
+  }
+  const mode = fields.get("mode");
+  const sessionMode = fields.get("session-mode");
+  return {
+    id: filePath,
+    name: fields.get("name") || nameFromFile,
+    ...(fields.get("description") ? { description: fields.get("description") } : {}),
+    ...(fields.get("model") ? { model: fields.get("model") } : {}),
+    ...(fields.get("thinking") ? { thinking: fields.get("thinking") } : {}),
+    ...(mode === "interactive" || mode === "background" ? { mode } : {}),
+    ...(fields.get("async") === "true" ? { async: true } : fields.get("async") === "false" ? { async: false } : {}),
+    ...(fields.get("auto-exit") === "true" ? { autoExit: true } : fields.get("auto-exit") === "false" ? { autoExit: false } : {}),
+    ...(sessionMode === "standalone" || sessionMode === "lineage-only" || sessionMode === "fork" ? { sessionMode } : {}),
+    ...(fields.get("allow-model-override") === "true" ? { allowModelOverride: true } : fields.get("allow-model-override") === "false" ? { allowModelOverride: false } : {}),
+    filePath,
+    scope,
+    raw,
+  };
+}
 
 interface PersistedTranscriptRecord {
   readonly version: 1;
@@ -190,13 +275,17 @@ export class DesktopAppStore implements AppStoreInternals {
   }
 
   async getSelectedTranscript(): Promise<SelectedTranscriptRecord | null> {
-    await this.initialize();
-    const sessionRef = this.selectedSessionRef();
-    if (!sessionRef) {
+    try {
+      await this.initialize();
+      const sessionRef = this.selectedSessionRef();
+      if (!sessionRef) {
+        return null;
+      }
+      await this.ensureTranscriptLoaded(sessionRef);
+      return this.buildSelectedTranscriptRecord(sessionRef);
+    } catch {
       return null;
     }
-    await this.ensureTranscriptLoaded(sessionRef);
-    return this.buildSelectedTranscriptRecord(sessionRef);
   }
 
   async flushPersistence(): Promise<void> {
@@ -256,6 +345,11 @@ export class DesktopAppStore implements AppStoreInternals {
 
   getWorkspacePath(workspaceId: string): string | undefined {
     return this.state.workspaces.find((w) => w.id === workspaceId)?.path;
+  }
+
+  async getProviderApiKey(providerId: string): Promise<string | undefined> {
+    await this.initialize();
+    return this.driver.getProviderApiKey(providerId);
   }
 
   getSkillFilePath(workspaceId: string, filePath: string): string | undefined {
@@ -330,6 +424,10 @@ export class DesktopAppStore implements AppStoreInternals {
     return workspace.unarchiveSession(this, target);
   }
 
+  async archiveAllNonRunningSessions(workspaceId: string, olderThanMs?: number): Promise<DesktopAppState> {
+    return workspace.archiveAllNonRunningSessions(this, workspaceId, olderThanMs);
+  }
+
   async syncCurrentWorkspace(): Promise<DesktopAppState> {
     return workspace.syncCurrentWorkspace(this);
   }
@@ -383,6 +481,65 @@ export class DesktopAppStore implements AppStoreInternals {
 
   async cancelCurrentRun(): Promise<DesktopAppState> {
     return composer.cancelCurrentRun(this);
+  }
+
+  async setExternalTerminalApp(externalTerminalApp: string): Promise<DesktopAppState> {
+    await this.initialize();
+    const next = reduce(this.state, {
+      type: "settings/setExternalTerminalApp",
+      externalTerminalApp: externalTerminalApp.trim(),
+    });
+    if (next === this.state) {
+      return this.emit();
+    }
+    this.state = next;
+    await this.persistUiState();
+    return this.emit();
+  }
+
+  async openSessionInDefaultTerminal(
+    promptForTerminalApp: () => Promise<string | undefined>,
+  ): Promise<DesktopAppState> {
+    await this.initialize();
+    const sessionRef = this.selectedSessionRef();
+    if (!sessionRef) {
+      return this.emit();
+    }
+    const session = this.sessionFromState(sessionRef);
+    if (session?.status === "running") {
+      return this.withError("Stop the running model before opening this session in a terminal.");
+    }
+    const cwd = this.getWorkspacePath(sessionRef.workspaceId);
+    if (!cwd) {
+      return this.withError("Cannot resolve the workspace folder for this session.");
+    }
+
+    let terminalApp = this.state.externalTerminalApp.trim();
+    if (!terminalApp) {
+      const picked = (await promptForTerminalApp())?.trim();
+      if (!picked) {
+        // User cancelled the picker; abort without error.
+        return this.emit();
+      }
+      await this.setExternalTerminalApp(picked);
+      terminalApp = picked;
+    }
+
+    return this.withErrorHandling(async () => {
+      const catalog = await this.driver.listSessions(sessionRef.workspaceId);
+      const sessionFilePath = catalog.sessions.find(
+        (entry) => entry.sessionRef.sessionId === sessionRef.sessionId,
+      )?.sessionFilePath;
+      if (!sessionFilePath) {
+        return this.withError("This session has no saved file to resume.");
+      }
+      await launchSessionInDefaultTerminal({ cwd, sessionFilePath, terminalApp });
+      // Hand off ownership: drop the in-memory runtime so the external pi
+      // process is the sole writer of the session file.
+      await this.driver.closeSession(sessionRef);
+      await this.reloadSessionsForWorkspace(sessionRef.workspaceId);
+      return this.refreshState({ clearLastError: true });
+    });
   }
 
   async getSessionTree(target: WorkspaceSessionTarget): Promise<SessionTreeSnapshot> {
@@ -480,6 +637,57 @@ export class DesktopAppStore implements AppStoreInternals {
     return this.emit();
   }
 
+  async setSubagentSettings(settings: Partial<SubagentSettingsRecord>): Promise<DesktopAppState> {
+    await this.initialize();
+    this.state = {
+      ...this.state,
+      subagentSettings: {
+        ...this.state.subagentSettings,
+        ...settings,
+        piCommandOverride: settings.piCommandOverride?.trim() ?? this.state.subagentSettings.piCommandOverride,
+      },
+    };
+    applySubagentEnvironment(this.state.subagentSettings);
+    await this.persistUiState();
+    return this.emit();
+  }
+
+  async refreshSubagentAgents(workspaceId: string): Promise<DesktopAppState> {
+    await this.initialize();
+    await this.reloadSubagentAgentsForWorkspace(workspaceId);
+    return this.emit();
+  }
+
+  async saveSubagentAgent(workspaceId: string, input: { readonly name: string; readonly raw: string; readonly scope?: "project" | "global" }): Promise<DesktopAppState> {
+    await this.initialize();
+    const workspace = this.state.workspaces.find((entry) => entry.id === workspaceId);
+    if (!workspace) return this.withError(`Unknown workspace: ${workspaceId}`);
+    const name = input.name.trim();
+    if (!/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(name)) return this.withError("Agent name must be lower-kebab-case.");
+    const scope = input.scope ?? "project";
+    const agentPath = scope === "global"
+      ? join(getSubagentGlobalAgentsDir(), `${name}.md`)
+      : join(workspace.path, ".pi", "agents", `${name}.md`);
+    await mkdir(dirname(agentPath), { recursive: true });
+    await writeFile(agentPath, input.raw, "utf8");
+    await this.reloadSubagentAgentsForWorkspace(workspaceId);
+    await this.refreshRuntime(workspaceId);
+    return this.emit();
+  }
+
+  async deleteSubagentAgent(workspaceId: string, name: string, scope: "project" | "global" = "project"): Promise<DesktopAppState> {
+    await this.initialize();
+    const workspace = this.state.workspaces.find((entry) => entry.id === workspaceId);
+    if (!workspace) return this.withError(`Unknown workspace: ${workspaceId}`);
+    const agentPath = scope === "global"
+      ? join(getSubagentGlobalAgentsDir(), `${name}.md`)
+      : join(workspace.path, ".pi", "agents", `${name}.md`);
+    await rm(agentPath, { force: true });
+    await this.reloadSubagentAgentsForWorkspace(workspaceId);
+    await this.refreshRuntime(workspaceId);
+    return this.emit();
+  }
+
   async setCommitPushModel(workspaceId: string, model: string): Promise<DesktopAppState> {
     await this.initialize();
     const next = reduce(this.state, { type: "settings/setCommitPushModel", commitPushModel: model });
@@ -494,6 +702,17 @@ export class DesktopAppStore implements AppStoreInternals {
   async setEnableTransparency(enabled: boolean): Promise<DesktopAppState> {
     await this.initialize();
     const next = reduce(this.state, { type: "settings/setEnableTransparency", enableTransparency: enabled });
+    if (next === this.state) {
+      return structuredClone(this.state);
+    }
+    this.state = next;
+    await this.persistUiState();
+    return this.emit();
+  }
+
+  async setTranscriptVerbose(enabled: boolean): Promise<DesktopAppState> {
+    await this.initialize();
+    const next = reduce(this.state, { type: "settings/setTranscriptVerbose", transcriptVerbose: enabled });
     if (next === this.state) {
       return structuredClone(this.state);
     }
@@ -778,15 +997,24 @@ export class DesktopAppStore implements AppStoreInternals {
           ...this.state.notificationPreferences,
           ...persisted.notificationPreferences,
         },
+        subagentSettings: {
+          ...this.state.subagentSettings,
+          ...persisted.subagentSettings,
+        },
         integratedTerminalShell: persisted.integratedTerminalShell ?? this.state.integratedTerminalShell,
+        externalTerminalApp: persisted.externalTerminalApp ?? this.state.externalTerminalApp,
         lastViewedAtBySession: persisted.lastViewedAtBySession ?? {},
         workspaceOrder: persisted.workspaceOrder ?? [],
         sidebarCollapsed: persisted.sidebarCollapsed ?? this.state.sidebarCollapsed,
         enableTransparency: persisted.enableTransparency ?? this.state.enableTransparency,
+        transcriptVerbose: persisted.transcriptVerbose ?? this.state.transcriptVerbose,
         composerDeviceMode: persisted.composerDeviceMode ?? this.state.composerDeviceMode,
         themeMode: persisted.themeMode ?? this.state.themeMode,
         commitPushModel: persisted.commitPushModel ?? this.state.commitPushModel,
+        chats: persisted.chats ?? [],
+        selectedChatId: persisted.selectedChatId ?? "",
       };
+      applySubagentEnvironment(this.state.subagentSettings);
       await this.migrateLegacyPersistence(persisted);
       this.sessionState.lastViewedAtBySession.clear();
       for (const [key, viewedAt] of Object.entries(persisted.lastViewedAtBySession ?? {})) {
@@ -842,10 +1070,13 @@ export class DesktopAppStore implements AppStoreInternals {
       this.state = {
         ...createEmptyDesktopAppState(),
         enableTransparency: persisted.enableTransparency ?? false,
+        transcriptVerbose: persisted.transcriptVerbose ?? false,
         composerDeviceMode: persisted.composerDeviceMode ?? "off",
         themeMode: persisted.themeMode ?? "system",
         lastError: error instanceof Error ? error.message : String(error),
         commitPushModel: persisted.commitPushModel,
+        chats: persisted.chats ?? [],
+        selectedChatId: persisted.selectedChatId ?? "",
         revision: 1,
       };
       await this.persistUiState();
@@ -980,11 +1211,23 @@ export class DesktopAppStore implements AppStoreInternals {
           ? await this.loadScopedModelSettingsByWorkspace(workspaces, workspacesSnapshot.workspaces, globalModelSettings)
           : undefined;
       const runtimeByWorkspace = this.serializeEffectiveRuntimeState(workspaces, scopedModelSettingsByWorkspace);
+      for (const workspace of workspaces) {
+        await this.reloadSubagentAgentsForWorkspace(workspace.id, workspace.path);
+      }
 
       const activeView = options.activeView ?? this.state.activeView;
       const composerDraftSync = this.resolveComposerDraftSync(selectedWorkspaceId, selectedSessionId, options);
+      const selectedLoopStatus = this.resolveSelectedLoopStatus(workspaces, selectedWorkspaceId, selectedSessionId);
+      const selectedSessionCreatedRalphPlan = await this.resolveSelectedSessionCreatedRalphPlan(
+        workspaces,
+        selectedWorkspaceId,
+        selectedSessionId,
+        selectedLoopStatus,
+      );
       this.state = {
         ...this.state,
+        selectedLoopStatus,
+        selectedSessionCreatedRalphPlan,
         workspaces,
         worktreesByWorkspace,
         selectedWorkspaceId,
@@ -1014,8 +1257,18 @@ export class DesktopAppStore implements AppStoreInternals {
 
       await this.persistUiState();
       const snapshot = this.emit();
+      // Only publish a transcript once it is actually loaded. Publishing here
+      // when hydrateSelectedSession === false (e.g. session restore on launch)
+      // pushes an EMPTY transcript and pins the renderer's coalescing key to
+      // the selected session, so the later hydration publish gets coalesced
+      // behind a requestAnimationFrame that can starve while the window is
+      // backgrounded — leaving the thread stuck blank until the user switches
+      // away and back.
       if (this.currentSelectedSessionKey() !== previousSelectedKey) {
-        this.publishSelectedTranscript();
+        const selectedRef = this.selectedSessionRef();
+        if (selectedRef && this.sessionState.loadedTranscriptKeys.has(sessionKey(selectedRef))) {
+          this.publishSelectedTranscript();
+        }
       }
       return snapshot;
     } finally {
@@ -1058,6 +1311,80 @@ export class DesktopAppStore implements AppStoreInternals {
     await this.ensureSessionSubscribed(sessionRef);
   }
 
+  /**
+   * Build a composite transcript for a loop thread by stitching the
+   * parentSession iteration chain, inserting a divider before each iteration.
+   * Returns null when the session is not a loop iteration, so callers fall
+   * back to a plain transcript.
+   */
+  private async loadLoopTranscript(sessionRef: SessionRef): Promise<TranscriptMessage[] | null> {
+    const iterations = await this.driver.getLoopIterations(sessionRef);
+    if (!iterations) {
+      return null;
+    }
+    const rows: TranscriptMessage[] = [];
+    for (const iteration of iterations) {
+      rows.push({
+        kind: "summary",
+        id: `loop-divider-${iteration.sessionId}`,
+        createdAt: iteration.messages[0]?.createdAt ?? new Date().toISOString(),
+        label: iteration.label,
+        presentation: "divider",
+      });
+      rows.push(...iteration.messages);
+    }
+    return rows;
+  }
+
+  /**
+   * Read the Ralph loop status (if any) for the selected workspace so the
+   * renderer can lock the loop thread's composer and surface loop controls.
+   * Returns undefined when no `.ralph/loop.md` exists.
+   */
+  private resolveSelectedLoopStatus(
+    workspaces: readonly { id: string; path: string }[],
+    selectedWorkspaceId: string,
+    selectedSessionId: string,
+  ): RalphLoopStatus | undefined {
+    if (!selectedWorkspaceId || !selectedSessionId) {
+      return undefined;
+    }
+    const workspace = workspaces.find((entry) => entry.id === selectedWorkspaceId);
+    if (!workspace) {
+      return undefined;
+    }
+    return readRalphLoopStatus(workspace.path, selectedSessionId) ?? undefined;
+  }
+
+  /**
+   * Whether the selected chat is the one that wrote the workspace's Ralph plan,
+   * so the "Begin Ralph loop" banner shows only there. Gated to avoid scanning
+   * session entries unless there is actually a plan to run and the thread is
+   * not already a loop thread.
+   */
+  private async resolveSelectedSessionCreatedRalphPlan(
+    workspaces: readonly WorkspaceRecord[],
+    selectedWorkspaceId: string,
+    selectedSessionId: string,
+    selectedLoopStatus: RalphLoopStatus | undefined,
+  ): Promise<boolean> {
+    if (!selectedWorkspaceId || !selectedSessionId || selectedLoopStatus?.isSelectedSessionActive) {
+      return false;
+    }
+    const workspace = workspaces.find((entry) => entry.id === selectedWorkspaceId);
+    if (!workspace?.ralphPlans?.length) {
+      return false;
+    }
+    try {
+      return await this.driver.sessionEditedRalphPlan({
+        workspaceId: selectedWorkspaceId,
+        sessionId: selectedSessionId,
+      });
+    } catch {
+      return false;
+    }
+  }
+
   private async ensureTranscriptLoaded(sessionRef: SessionRef): Promise<void> {
     const key = sessionKey(sessionRef);
     if (this.sessionState.loadedTranscriptKeys.has(key)) {
@@ -1067,7 +1394,7 @@ export class DesktopAppStore implements AppStoreInternals {
     const cachedTranscript = await this.readPersistedTranscript(key);
     const transcript = cachedTranscript
       ? await this.resolveLoadedTranscript(sessionRef, cachedTranscript)
-      : await this.driver.getTranscript(sessionRef);
+      : (await this.loadLoopTranscript(sessionRef)) ?? (await this.driver.getTranscript(sessionRef));
 
     if (!cachedTranscript || cachedTranscript.format === "legacy") {
       await this.writePersistedTranscript(key, transcript);
@@ -1079,7 +1406,8 @@ export class DesktopAppStore implements AppStoreInternals {
 
   async reloadTranscriptFromDriver(sessionRef: SessionRef): Promise<void> {
     const key = sessionKey(sessionRef);
-    const transcript = await this.driver.getTranscript(sessionRef);
+    const transcript =
+      (await this.loadLoopTranscript(sessionRef)) ?? (await this.driver.getTranscript(sessionRef));
     this.sessionState.loadedTranscriptKeys.add(key);
     this.sessionState.transcriptCache.set(key, transcript);
     void this.writePersistedTranscript(key, transcript);
@@ -1254,6 +1582,45 @@ export class DesktopAppStore implements AppStoreInternals {
     await Promise.all(sessionRefs.map((sessionRef) => this.driver.reloadSession(sessionRef)));
   }
 
+  private async reloadSubagentAgentsForWorkspace(workspaceId: string, workspacePath?: string): Promise<void> {
+    const workspace = this.state.workspaces.find((entry) => entry.id === workspaceId);
+    const path = workspacePath ?? workspace?.path;
+    if (!path) return;
+    const agents = new Map<string, SubagentAgentRecord>();
+    await this.readSubagentAgentsFromDir(getSubagentGlobalAgentsDir(), "global", agents);
+    await this.readSubagentAgentsFromDir(join(path, ".pi", "agents"), "project", agents);
+    this.state = {
+      ...this.state,
+      subagentAgentsByWorkspace: {
+        ...this.state.subagentAgentsByWorkspace,
+        [workspaceId]: [...agents.values()].sort((a, b) => a.name.localeCompare(b.name)),
+      },
+    };
+  }
+
+  private async readSubagentAgentsFromDir(
+    dir: string,
+    scope: "project" | "global",
+    agents: Map<string, SubagentAgentRecord>,
+  ): Promise<void> {
+    let files: string[] = [];
+    try {
+      files = (await readdir(dir)).filter((file) => file.endsWith(".md"));
+    } catch {
+      return;
+    }
+    for (const file of files.sort()) {
+      const filePath = join(dir, file);
+      try {
+        const raw = await readFile(filePath, "utf8");
+        const agent = parseSubagentAgentFile(filePath, raw, scope);
+        agents.set(agent.name, agent);
+      } catch {
+        // Skip unreadable agent files but keep settings surface usable.
+      }
+    }
+  }
+
   private clearExtensionUiForWorkspace(workspaceId: string): void {
     for (const sessionRef of this.sessionRefsForWorkspace(workspaceId)) {
       this.clearExtensionUiForSession(sessionRef);
@@ -1393,7 +1760,22 @@ export class DesktopAppStore implements AppStoreInternals {
 
     switch (event.type) {
       case "assistantDelta":
-        appendAssistantDelta(this.sessionState.transcriptCache, this.sessionState.activeAssistantMessageBySession, event.sessionRef, event.text);
+        appendAssistantDelta(
+          this.sessionState.transcriptCache,
+          this.sessionState.activeAssistantMessageBySession,
+          this.sessionState.activeReasoningMessageBySession,
+          event.sessionRef,
+          event.text,
+        );
+        break;
+      case "reasoningDelta":
+        appendReasoningDelta(
+          this.sessionState.transcriptCache,
+          this.sessionState.activeAssistantMessageBySession,
+          this.sessionState.activeReasoningMessageBySession,
+          event.sessionRef,
+          event.text,
+        );
         break;
       case "sessionOpened":
       case "runCompleted":
@@ -1409,10 +1791,8 @@ export class DesktopAppStore implements AppStoreInternals {
         }
         break;
       case "runFailed":
-        this.state = {
-          ...this.state,
-          lastError: event.error.message,
-        };
+        // runFailed errors already render in the transcript as activity items.
+        // Don't also set lastError (avoid double display as banner + timeline).
         await this.refreshSessionCommands(event.sessionRef);
         break;
       case "extensionCompatibilityIssue":
@@ -1453,6 +1833,7 @@ export class DesktopAppStore implements AppStoreInternals {
       runMetricsBySession: this.sessionState.runMetricsBySession,
       runningSinceBySession: this.sessionState.runningSinceBySession,
       activeAssistantMessageBySession: this.sessionState.activeAssistantMessageBySession,
+      activeReasoningMessageBySession: this.sessionState.activeReasoningMessageBySession,
     });
     this.state = applySessionEventState(
       this.state,
@@ -1714,6 +2095,154 @@ export class DesktopAppStore implements AppStoreInternals {
     }
   }
 
+  async startChat(input: StartChatInput): Promise<DesktopAppState> {
+    return worktree.startChat(this, input);
+  }
+
+  async selectChat(chatId: string): Promise<DesktopAppState> {
+    await this.initialize();
+    const chat = this.state.chats.find((c) => c.id === chatId);
+    if (!chat) {
+      return this.emit();
+    }
+    this.state = reduce(this.state, { type: "chats/select", chatId });
+
+    return this.withErrorHandling(async () => {
+      const workspace = await this.ensureChatWorkspace(chat);
+      const synced = await this.driver.syncWorkspace(workspace.path, chat.title);
+      let sessionId = synced.sessions[0]?.sessionRef.sessionId ?? "";
+      if (!sessionId) {
+        const createOptions = await this.buildCreateSessionOptions(workspace.workspaceId);
+        const snapshot = await this.driver.createSession(synced.workspace, {
+          ...createOptions,
+          title: chat.title,
+        });
+        const key = sessionKey(snapshot.ref);
+        this.sessionState.transcriptCache.set(key, []);
+        this.sessionState.loadedTranscriptKeys.add(key);
+        this.updateSessionConfig(snapshot.ref, snapshot.config);
+        sessionId = snapshot.ref.sessionId;
+      }
+      return this.refreshState({
+        selectedWorkspaceId: workspace.workspaceId,
+        selectedSessionId: sessionId,
+        composerDraft: "",
+        clearLastError: true,
+        activeView: "threads",
+      });
+    });
+  }
+
+  // A chat is a normal session rooted in its own directory. Ensure the chat
+  // directory exists with our AGENTS.md and is synced as a driver workspace.
+  // Stores the resolved workspace id on the chat record so it converges with
+  // older chat records that predate this shape.
+  async ensureChatWorkspace(chat: ChatRecord): Promise<WorkspaceRef> {
+    const chatDir = this.getChatDir(chat.id);
+    await this.ensureChatTemplateAgentsMd();
+    await mkdir(chatDir, { recursive: true });
+    try {
+      await readFile(join(chatDir, "AGENTS.md"), "utf8");
+    } catch {
+      try {
+        const template = await readFile(join(this.getChatsRootDir(), "_template", "AGENTS.md"), "utf8");
+        await writeFile(join(chatDir, "AGENTS.md"), template, "utf8");
+      } catch {
+        await writeFile(join(chatDir, "AGENTS.md"), DEFAULT_CHAT_AGENTS_MD, "utf8");
+      }
+    }
+    const synced = await this.driver.syncWorkspace(chatDir, chat.title);
+    const workspaceId = synced.workspace.workspaceId;
+    if (workspaceId !== chat.chatWorkspaceId) {
+      this.state = {
+        ...this.state,
+        chats: this.state.chats.map((c) => (c.id === chat.id ? { ...c, chatWorkspaceId: workspaceId } : c)),
+      };
+    }
+    return synced.workspace;
+  }
+
+  async archiveChat(chatId: string): Promise<DesktopAppState> {
+    await this.initialize();
+    this.state = reduce(this.state, {
+      type: "chats/archive",
+      chatId,
+      archivedAt: new Date().toISOString(),
+    });
+    await this.persistUiState();
+    this.emit();
+    return this.getState();
+  }
+
+  async unarchiveChat(chatId: string): Promise<DesktopAppState> {
+    await this.initialize();
+    this.state = reduce(this.state, { type: "chats/unarchive", chatId });
+    await this.persistUiState();
+    this.emit();
+    return this.getState();
+  }
+
+  async removeChat(chatId: string): Promise<DesktopAppState> {
+    await this.initialize();
+    const chat = this.state.chats.find((c) => c.id === chatId);
+    if (chat?.chatWorkspaceId) {
+      try {
+        await this.driver.removeWorkspace(chat.chatWorkspaceId);
+      } catch {
+        // Best-effort: continue removing the chat record even if the driver
+        // no longer knows about the workspace.
+      }
+    }
+    this.state = reduce(this.state, { type: "chats/remove", chatId });
+    await this.persistUiState();
+    return this.refreshState({
+      selectedWorkspaceId: this.state.selectedWorkspaceId,
+      selectedSessionId: this.state.selectedSessionId,
+      clearLastError: true,
+    });
+  }
+
+  async renameChat(chatId: string, title: string): Promise<DesktopAppState> {
+    await this.initialize();
+    this.state = reduce(this.state, { type: "chats/rename", chatId, title });
+    await this.persistUiState();
+    this.emit();
+    return this.getState();
+  }
+
+  private getChatsRootDir(): string {
+    return join(dirname(this.uiStateFilePath), "chats");
+  }
+
+  private getChatDir(chatId: string): string {
+    return join(this.getChatsRootDir(), chatId);
+  }
+
+  private async ensureChatTemplateAgentsMd(): Promise<void> {
+    const templateDir = join(this.getChatsRootDir(), "_template");
+    const templatePath = join(templateDir, "AGENTS.md");
+    try {
+      await readFile(templatePath, "utf8");
+    } catch {
+      await mkdir(templateDir, { recursive: true });
+      await writeFile(templatePath, DEFAULT_CHAT_AGENTS_MD, "utf8");
+    }
+  }
+
+  async getChatAgentsMd(chatId: string): Promise<string> {
+    try {
+      return await readFile(join(this.getChatDir(chatId), "AGENTS.md"), "utf8");
+    } catch {
+      return "";
+    }
+  }
+
+  async writeChatAgentsMd(chatId: string, content: string): Promise<void> {
+    const chatDir = this.getChatDir(chatId);
+    await mkdir(chatDir, { recursive: true });
+    await writeFile(join(chatDir, "AGENTS.md"), content, "utf8");
+  }
+
   private async readUiState(): Promise<LegacyPersistedUiState> {
     return readPersistedUiState(this.uiStateFilePath);
   }
@@ -1731,15 +2260,20 @@ export class DesktopAppStore implements AppStoreInternals {
       composerDraftsBySession: mapToRecord(this.sessionState.composerDraftsBySession),
       extensionCommandCompatibilityByWorkspace: serializeCompatibilityByWorkspace(this.extensionCommandCompatibilityByWorkspace),
       notificationPreferences: this.state.notificationPreferences,
+      subagentSettings: this.state.subagentSettings,
       integratedTerminalShell: this.state.integratedTerminalShell || undefined,
+      externalTerminalApp: this.state.externalTerminalApp || undefined,
       lastViewedAtBySession: mapToRecord(this.sessionState.lastViewedAtBySession),
       workspaceOrder: this.state.workspaceOrder.length > 0 ? this.state.workspaceOrder : undefined,
       modelSettingsScopeMode: this.state.modelSettingsScopeMode,
       appGlobalModelSettings: hasStoredModelSettings(this.state.globalModelSettings) ? this.state.globalModelSettings : undefined,
       sidebarCollapsed: this.state.sidebarCollapsed || undefined,
       enableTransparency: this.state.enableTransparency,
+      transcriptVerbose: this.state.transcriptVerbose,
       composerDeviceMode: this.state.composerDeviceMode,
       themeMode: this.state.themeMode,
+      chats: this.state.chats.length > 0 ? this.state.chats : undefined,
+      selectedChatId: this.state.selectedChatId || undefined,
     };
 
     await writePersistedUiState(this.uiStateFilePath, payload);

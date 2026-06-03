@@ -1,12 +1,13 @@
 import type { RuntimeSettingsSnapshot, RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
-import type { ModelSettingsScopeMode, NotificationPreferences, WorkspaceRecord } from "./desktop-state";
+import type { ModelSettingsScopeMode, NotificationPreferences, SubagentAgentRecord, SubagentSettingsRecord, WorkspaceRecord } from "./desktop-state";
 import type { DesktopNotificationPermissionStatus } from "./ipc";
 import { SettingsAppearanceSection } from "./settings-appearance-section";
 import { SettingsGeneralSection } from "./settings-general-section";
 import { SettingsModelsSection } from "./settings-models-section";
 import { SettingsNotificationsSection } from "./settings-notifications-section";
 import { SettingsProvidersSection } from "./settings-providers-section";
-import { type SettingsSection, sectionTitle, sectionDescription } from "./settings-utils";
+import { SettingsSubagentsSection } from "./settings-subagents-section";
+import { type SettingsSection, sectionTitle } from "./settings-utils";
 
 export type { SettingsSection } from "./settings-utils";
 
@@ -21,9 +22,13 @@ interface SettingsViewProps {
   readonly notificationPermissionPending: boolean;
   readonly modelSettingsScopeMode: ModelSettingsScopeMode;
   readonly integratedTerminalShell: string;
+  readonly externalTerminalApp: string;
   readonly themeMode: import("./desktop-state").ThemeMode;
   readonly enableTransparency: boolean;
+  readonly transcriptVerbose: boolean;
   readonly composerDeviceMode: import("./desktop-state").ComposerDeviceMode;
+  readonly subagentSettings: SubagentSettingsRecord;
+  readonly subagentAgents: readonly SubagentAgentRecord[];
   readonly onSetModelSettingsScopeMode: (mode: ModelSettingsScopeMode) => void;
   readonly onSetDefaultModel: (provider: string, modelId: string) => void;
   readonly onSetThinkingLevel: (thinkingLevel: RuntimeSettingsSnapshot["defaultThinkingLevel"]) => void;
@@ -35,11 +40,18 @@ interface SettingsViewProps {
   readonly onRemoveProviderApiKey: (providerId: string) => Promise<string | undefined>;
   readonly onSetNotificationPreferences: (preferences: Partial<NotificationPreferences>) => void;
   readonly onSetIntegratedTerminalShell: (shellPath: string) => void;
+  readonly onChooseExternalTerminalApp: () => void;
+  readonly onClearExternalTerminalApp: () => void;
   readonly onRequestNotificationPermission: () => void;
   readonly onOpenSystemNotificationSettings: () => void;
   readonly onSetThemeMode: (mode: import("./desktop-state").ThemeMode) => void;
   readonly onSetEnableTransparency: (enabled: boolean) => void;
+  readonly onSetTranscriptVerbose: (enabled: boolean) => void;
   readonly onSetComposerDeviceMode: (mode: import("./desktop-state").ComposerDeviceMode) => void;
+  readonly onSetSubagentSettings: (settings: Partial<SubagentSettingsRecord>) => void;
+  readonly onRefreshSubagentAgents: (workspaceId: string) => void;
+  readonly onSaveSubagentAgent: (workspaceId: string, input: { readonly name: string; readonly raw: string }) => void;
+  readonly onDeleteSubagentAgent: (workspaceId: string, name: string) => void;
 }
 
 export function SettingsView({
@@ -53,9 +65,13 @@ export function SettingsView({
   notificationPermissionPending,
   modelSettingsScopeMode,
   integratedTerminalShell,
+  externalTerminalApp,
   themeMode,
   enableTransparency,
+  transcriptVerbose,
   composerDeviceMode,
+  subagentSettings,
+  subagentAgents,
   onSetModelSettingsScopeMode,
   onSetDefaultModel,
   onSetThinkingLevel,
@@ -67,11 +83,18 @@ export function SettingsView({
   onRemoveProviderApiKey,
   onSetNotificationPreferences,
   onSetIntegratedTerminalShell,
+  onChooseExternalTerminalApp,
+  onClearExternalTerminalApp,
   onRequestNotificationPermission,
   onOpenSystemNotificationSettings,
   onSetThemeMode,
   onSetEnableTransparency,
+  onSetTranscriptVerbose,
   onSetComposerDeviceMode,
+  onSetSubagentSettings,
+  onRefreshSubagentAgents,
+  onSaveSubagentAgent,
+  onDeleteSubagentAgent,
 }: SettingsViewProps) {
   if (!workspace && section !== "general" && section !== "notifications" && section !== "appearance") {
     return (
@@ -85,37 +108,30 @@ export function SettingsView({
 
   return (
     <div className="settings-view">
-      <header className="view-header">
-        <div>
-          <div className="chat-header__eyebrow">Settings</div>
-          <h1 className="view-header__title">{sectionTitle(section)}</h1>
-          <p className="view-header__body">
-            {sectionDescription(section, workspace?.name ?? "this workspace")}
-          </p>
-        </div>
-      </header>
-
-      <div className="settings-section-menu">
-        <button className="settings-section-menu__back" type="button" onClick={onBack}>Back to app</button>
+      <nav className="settings-sidebar">
         {(["appearance", "general", "providers", "models", "notifications"] as const).map((item) => (
           <button
             key={item}
-            className={`settings-section-menu__item${section === item ? " settings-section-menu__item--active" : ""}`}
+            className={`settings-sidebar__item${section === item ? " settings-sidebar__item--active" : ""}`}
             type="button"
             onClick={() => onSelectSection(item)}
           >
             {sectionTitle(item)}
           </button>
         ))}
-      </div>
+      </nav>
 
-      <div className="settings-grid">
+      <div className="settings-content">
+        <h1 className="view-header__title">{sectionTitle(section)}</h1>
+        <div className="settings-grid">
           {section === "appearance" ? (
             <SettingsAppearanceSection
               themeMode={themeMode}
               onSetThemeMode={onSetThemeMode}
               enableTransparency={enableTransparency}
               onSetEnableTransparency={onSetEnableTransparency}
+              transcriptVerbose={transcriptVerbose}
+              onSetTranscriptVerbose={onSetTranscriptVerbose}
               composerDeviceMode={composerDeviceMode}
               onSetComposerDeviceMode={onSetComposerDeviceMode}
             />
@@ -126,8 +142,11 @@ export function SettingsView({
               runtime={runtime}
               modelSettingsScopeMode={modelSettingsScopeMode}
               integratedTerminalShell={integratedTerminalShell}
+              externalTerminalApp={externalTerminalApp}
               onSetModelSettingsScopeMode={onSetModelSettingsScopeMode}
               onSetIntegratedTerminalShell={onSetIntegratedTerminalShell}
+              onChooseExternalTerminalApp={onChooseExternalTerminalApp}
+              onClearExternalTerminalApp={onClearExternalTerminalApp}
               onToggleSkillCommands={onToggleSkillCommands}
             />
           ) : null}
@@ -143,12 +162,24 @@ export function SettingsView({
           ) : null}
 
           {section === "models" ? (
-            <SettingsModelsSection
-              runtime={runtime}
-              onSetDefaultModel={onSetDefaultModel}
-              onSetScopedModelPatterns={onSetScopedModelPatterns}
-              onSetThinkingLevel={onSetThinkingLevel}
-            />
+            <>
+              <SettingsModelsSection
+                runtime={runtime}
+                onSetDefaultModel={onSetDefaultModel}
+                onSetScopedModelPatterns={onSetScopedModelPatterns}
+                onSetThinkingLevel={onSetThinkingLevel}
+              />
+              <SettingsSubagentsSection
+                workspace={workspace}
+                settings={subagentSettings}
+                agents={subagentAgents}
+                runtime={runtime}
+                onSetSettings={onSetSubagentSettings}
+                onRefreshAgents={onRefreshSubagentAgents}
+                onSaveAgent={onSaveSubagentAgent}
+                onDeleteAgent={onDeleteSubagentAgent}
+              />
+            </>
           ) : null}
 
           {section === "notifications" ? (
@@ -161,6 +192,7 @@ export function SettingsView({
               onOpenSystemNotificationSettings={onOpenSystemNotificationSettings}
             />
           ) : null}
+        </div>
       </div>
     </div>
   );

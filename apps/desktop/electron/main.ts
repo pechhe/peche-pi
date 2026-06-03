@@ -16,7 +16,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { DesktopAppStore } from "./app-store";
-import { getChangedFiles, getFileDiff, getWorkspaceGitInfo, stageFile } from "./app-store-diff";
+import { getChangedFiles, getFileDiff, getWorkspaceGitInfo, redoEdits, stageFile, undoEdits } from "./app-store-diff";
 import { configureCommitPushLogDir, executeCommitPush } from "./commit-push-service";
 import {
   configurePrLogDir,
@@ -35,7 +35,7 @@ import { ThemeManager } from "./theme-manager";
 import { TerminalService } from "./terminal-service";
 import type { DesktopAppState, ThemeMode } from "../src/desktop-state";
 import type { ComposerMode } from "../src/composer-mode";
-import { desktopIpc, getDesktopCommandFromShortcut, type CavemanConfigSnapshot, type CavemanLevel } from "../src/ipc";
+import { desktopIpc, getDesktopCommandFromShortcut, type CavemanConfigSnapshot, type CavemanLevel, type UndoEditOp } from "../src/ipc";
 import { SUPPORTED_COMPOSER_IMAGE_TYPES } from "../src/composer-attachments";
 import type {
   ComposerAttachment,
@@ -44,6 +44,7 @@ import type {
   CreateSessionInput,
   CreateWorktreeInput,
   RemoveWorktreeInput,
+  StartChatInput,
   StartThreadInput,
   WorkspaceSessionTarget,
 } from "../src/desktop-state";
@@ -297,6 +298,28 @@ async function pickWorkspaceViaDialog(): Promise<DesktopAppState> {
   return newThreadState;
 }
 
+async function pickTerminalAppViaDialog(): Promise<string | undefined> {
+  // Tests exercise the picker branch without blocking on a native dialog.
+  if (process.env.PI_APP_TEST_MODE) {
+    return process.env.PI_APP_TEST_TERMINAL_APP || "/System/Applications/Utilities/Terminal.app";
+  }
+  const window = mainWindow && canPublishToWindow(mainWindow) ? mainWindow : undefined;
+  const dialogOptions = {
+    properties: ["openFile"] as Array<"openFile">,
+    defaultPath: "/Applications",
+    title: "Choose a terminal app",
+    message: "Pick the terminal application to open pi sessions in (e.g. Terminal, iTerm, Ghostty).",
+    filters: [{ name: "Applications", extensions: ["app"] }],
+  };
+  const result = window
+    ? await dialog.showOpenDialog(window, dialogOptions)
+    : await dialog.showOpenDialog(dialogOptions);
+  if (result.canceled || result.filePaths.length === 0) {
+    return undefined;
+  }
+  return result.filePaths[0];
+}
+
 async function runManualUpdateCheck(): Promise<void> {
   const window = mainWindow && canPublishToWindow(mainWindow) ? mainWindow : undefined;
   const result = await checkForUpdate();
@@ -545,7 +568,9 @@ app.whenReady().then(async () => {
     return shell.openExternal(url);
   });
   ipcMain.handle(desktopIpc.stateRequest, () => store.getState());
-  ipcMain.handle(desktopIpc.selectedTranscriptRequest, () => store.getSelectedTranscript());
+  ipcMain.handle(desktopIpc.selectedTranscriptRequest, () =>
+    store.getSelectedTranscript().catch(() => null),
+  );
   ipcMain.handle(desktopIpc.addWorkspacePath, (_event, workspacePath: string) => store.addWorkspace(workspacePath));
   ipcMain.handle(desktopIpc.pickWorkspace, () => pickWorkspaceViaDialog());
   ipcMain.handle(desktopIpc.selectWorkspace, (_event, workspaceId: string) => store.selectWorkspace(workspaceId));
@@ -576,6 +601,9 @@ app.whenReady().then(async () => {
   );
   ipcMain.handle(desktopIpc.unarchiveSession, (_event, target: WorkspaceSessionTarget) =>
     store.unarchiveSession(target),
+  );
+  ipcMain.handle(desktopIpc.archiveAllNonRunningSessions, (_event, workspaceId: string, olderThanMs?: number) =>
+    store.archiveAllNonRunningSessions(workspaceId, olderThanMs),
   );
   ipcMain.handle(desktopIpc.setActiveView, (_event, activeView) => store.setActiveView(activeView));
   ipcMain.handle(desktopIpc.setSidebarCollapsed, (_event, collapsed: boolean) =>
@@ -614,6 +642,10 @@ app.whenReady().then(async () => {
   ipcMain.handle(desktopIpc.setProviderApiKey, (_event, workspaceId: string, providerId: string, apiKey: string) =>
     store.setProviderApiKey(workspaceId, providerId, apiKey),
   );
+  ipcMain.handle(desktopIpc.setSubagentSettings, (_event, settings) => store.setSubagentSettings(settings));
+  ipcMain.handle(desktopIpc.refreshSubagentAgents, (_event, workspaceId: string) => store.refreshSubagentAgents(workspaceId));
+  ipcMain.handle(desktopIpc.saveSubagentAgent, (_event, workspaceId: string, input) => store.saveSubagentAgent(workspaceId, input));
+  ipcMain.handle(desktopIpc.deleteSubagentAgent, (_event, workspaceId: string, name: string, scope) => store.deleteSubagentAgent(workspaceId, name, scope));
   ipcMain.handle(desktopIpc.setEnableSkillCommands, (_event, workspaceId: string, enabled: boolean) =>
     store.setEnableSkillCommands(workspaceId, enabled),
   );
@@ -647,8 +679,35 @@ app.whenReady().then(async () => {
     }
     return nextState;
   });
-  ipcMain.handle(desktopIpc.setComposerDeviceMode, async (_event, mode: "off" | "screen" | "modular") => {
+  ipcMain.handle(desktopIpc.setTranscriptVerbose, async (_event, enabled: boolean) => {
+    return store.setTranscriptVerbose(enabled);
+  });
+  ipcMain.handle(desktopIpc.setComposerDeviceMode, async (_event, mode: "off" | "screen" | "modular" | "screen-neon") => {
     return store.setComposerDeviceMode(mode);
+  });
+  ipcMain.handle(desktopIpc.startChat, async (_event, input: StartChatInput) => {
+    return store.startChat(input);
+  });
+  ipcMain.handle(desktopIpc.selectChat, async (_event, chatId: string) => {
+    return store.selectChat(chatId);
+  });
+  ipcMain.handle(desktopIpc.archiveChat, async (_event, chatId: string) => {
+    return store.archiveChat(chatId);
+  });
+  ipcMain.handle(desktopIpc.unarchiveChat, async (_event, chatId: string) => {
+    return store.unarchiveChat(chatId);
+  });
+  ipcMain.handle(desktopIpc.removeChat, async (_event, chatId: string) => {
+    return store.removeChat(chatId);
+  });
+  ipcMain.handle(desktopIpc.renameChat, async (_event, chatId: string, title: string) => {
+    return store.renameChat(chatId, title);
+  });
+  ipcMain.handle(desktopIpc.getChatAgentsMd, async (_event, chatId: string) => {
+    return store.getChatAgentsMd(chatId);
+  });
+  ipcMain.handle(desktopIpc.writeChatAgentsMd, async (_event, chatId: string, content: string) => {
+    await store.writeChatAgentsMd(chatId, content);
   });
   ipcMain.handle(desktopIpc.terminalEnsurePanel, (event, workspaceId: string, terminalScopeId: string, size) => {
     return getTerminalService().ensurePanel(event.sender, workspaceId, terminalScopeId, size);
@@ -709,6 +768,14 @@ app.whenReady().then(async () => {
     await shell.openPath(path.dirname(resolved));
   });
   ipcMain.handle(desktopIpc.cancelCurrentRun, () => store.cancelCurrentRun());
+  ipcMain.handle(desktopIpc.openSessionInDefaultTerminal, () =>
+    store.openSessionInDefaultTerminal(pickTerminalAppViaDialog),
+  );
+  ipcMain.handle(desktopIpc.chooseExternalTerminalApp, async () => {
+    const app = await pickTerminalAppViaDialog();
+    return app ? store.setExternalTerminalApp(app) : store.getState();
+  });
+  ipcMain.handle(desktopIpc.clearExternalTerminalApp, () => store.setExternalTerminalApp(""));
   ipcMain.handle(desktopIpc.pickComposerAttachments, async () => {
     const result = await dialog.showOpenDialog({
       properties: ["openFile", "multiSelections"],
@@ -792,6 +859,20 @@ app.whenReady().then(async () => {
     }
     await stageFile(workspacePath, filePath);
   });
+  ipcMain.handle(desktopIpc.undoEdits, async (_event, workspaceId: string, ops: readonly UndoEditOp[]) => {
+    const workspacePath = store.getWorkspacePath(workspaceId);
+    if (!workspacePath) {
+      throw new Error(`Unknown workspace: ${workspaceId}`);
+    }
+    return undoEdits(workspacePath, ops);
+  });
+  ipcMain.handle(desktopIpc.redoEdits, async (_event, workspaceId: string, ops: readonly UndoEditOp[]) => {
+    const workspacePath = store.getWorkspacePath(workspaceId);
+    if (!workspacePath) {
+      throw new Error(`Unknown workspace: ${workspaceId}`);
+    }
+    return redoEdits(workspacePath, ops);
+  });
   ipcMain.handle(desktopIpc.setCommitPushModel, (_event, workspaceId: string, model: string) =>
     store.setCommitPushModel(workspaceId, model),
   );
@@ -816,7 +897,8 @@ app.whenReady().then(async () => {
       effectiveModel: modelString,
       usingDefault: !configuredModel,
     }));
-    return executeCommitPush(workspacePath, modelString);
+    const getApiKey = (providerId: string) => store.getProviderApiKey(providerId);
+    return executeCommitPush(workspacePath, modelString, getApiKey);
   });
   ipcMain.handle(desktopIpc.getWorkspacePrInfo, async (_event, workspaceId: string) => {
     const workspacePath = store.getWorkspacePath(workspaceId);
@@ -831,7 +913,8 @@ app.whenReady().then(async () => {
       throw new Error(`Unknown workspace: ${workspaceId}`);
     }
     const modelString = store.state.commitPushModel ?? "deepseek:deepseek-chat";
-    return generatePrDraft(workspacePath, modelString, baseBranch);
+    const getApiKey = (providerId: string) => store.getProviderApiKey(providerId);
+    return generatePrDraft(workspacePath, modelString, baseBranch, getApiKey);
   });
   ipcMain.handle(
     desktopIpc.prCreate,

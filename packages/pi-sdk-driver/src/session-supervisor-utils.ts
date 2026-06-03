@@ -11,7 +11,7 @@ import type {
   WorkspaceRef,
 } from "@pi-gui/session-driver";
 import type { SessionQueuedMessage } from "@pi-gui/session-driver/types";
-import type { SessionTranscriptAttachment, SessionTranscriptMessage } from "./transcript.js";
+import type { LoopIterationTranscript, SessionTranscriptAttachment, SessionTranscriptMessage } from "./transcript.js";
 
 const FILE_ATTACHMENT_BLOCK_START = "<pi-gui-file-attachments>";
 const FILE_ATTACHMENT_BLOCK_END = "</pi-gui-file-attachments>";
@@ -220,6 +220,146 @@ export function injectFileAttachmentPreamble(
   });
   const block = `${FILE_ATTACHMENT_BLOCK_START}${payload}${FILE_ATTACHMENT_BLOCK_END}`;
   return text ? `${block}\n${text}` : block;
+}
+
+/**
+ * Iteration number from a `ralph_loop` custom marker entry, or `undefined`
+ * when the session carries no such marker. Used both to detect loop iteration
+ * sessions and to label them.
+ */
+export function loopMarkerIteration(entries: readonly unknown[]): number | undefined {
+  for (const entry of entries) {
+    if (
+      typeof entry === "object" &&
+      entry !== null &&
+      (entry as { type?: unknown }).type === "custom" &&
+      (entry as { customType?: unknown }).customType === "ralph_loop"
+    ) {
+      const data = (entry as { data?: unknown }).data;
+      const iteration =
+        typeof data === "object" && data !== null ? (data as { iteration?: unknown }).iteration : undefined;
+      return typeof iteration === "number" ? iteration : undefined;
+    }
+  }
+  return undefined;
+}
+
+const RALPH_PATH = /\.ralph\//;
+
+/**
+ * Whether a session's persisted entries contain a tool call that touched the
+ * `.ralph/` bundle — i.e. this is the chat where the Ralph plan was written.
+ * Scans `message` entries' assistant `toolCall` blocks and matches a `.ralph/`
+ * path anywhere in the tool arguments (single- or multi-file edits nest paths
+ * differently, so we match the serialized arguments rather than a fixed field).
+ * Pure (no IO) so it can be unit tested.
+ */
+export function entriesEditedRalphPlan(entries: readonly unknown[]): boolean {
+  for (const entry of entries) {
+    if (!isRecord(entry) || entry.type !== "message") {
+      continue;
+    }
+    const message = (entry as { message?: unknown }).message;
+    const content = isRecord(message) ? (message as { content?: unknown }).content : undefined;
+    if (!Array.isArray(content)) {
+      continue;
+    }
+    for (const block of content) {
+      if (!isRecord(block) || block.type !== "toolCall") {
+        continue;
+      }
+      const args = (block as { arguments?: unknown }).arguments;
+      if (args !== undefined && RALPH_PATH.test(JSON.stringify(args))) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/** Project persisted message entries into the loose message shape transcriptFromMessages expects. */
+function messagesFromEntries(entries: readonly unknown[]): unknown[] {
+  const messages: unknown[] = [];
+  for (const entry of entries) {
+    if (typeof entry !== "object" || entry === null || (entry as { type?: unknown }).type !== "message") {
+      continue;
+    }
+    const message = (entry as { message?: unknown }).message;
+    if (typeof message !== "object" || message === null) {
+      continue;
+    }
+    messages.push({
+      ...(message as Record<string, unknown>),
+      id: (entry as { id?: unknown }).id,
+      createdAt: (entry as { timestamp?: unknown }).timestamp,
+    });
+  }
+  return messages;
+}
+
+export interface LoopSessionInfo {
+  readonly path: string;
+  readonly id: string;
+  readonly parentSessionPath?: string | undefined;
+  readonly modifiedIso: string;
+}
+
+export interface CollectLoopIterationsParams {
+  readonly leafEntries: readonly unknown[];
+  readonly leafSessionId: string;
+  readonly leafMessages: readonly unknown[];
+  readonly leafUpdatedAt: string;
+  readonly leafSessionFile: string | undefined;
+  readonly sessions: readonly LoopSessionInfo[];
+  readonly readEntries: (path: string) => readonly unknown[];
+}
+
+/**
+ * Reconstruct a loop's iterations from a leaf session and its `parentSession`
+ * ancestry. Returns `null` when the leaf is not a loop iteration (no
+ * `ralph_loop` marker). Otherwise returns iterations root-first with the live
+ * leaf last; prior iterations are read from their persisted session files via
+ * `readEntries`, the live iteration from in-memory `leafMessages`.
+ *
+ * Pure and file-IO-free (IO is injected via `readEntries`) so it can be unit
+ * tested without standing up a live session runtime.
+ */
+export function collectLoopIterations(params: CollectLoopIterationsParams): LoopIterationTranscript[] | null {
+  if (loopMarkerIteration(params.leafEntries) === undefined) {
+    return null;
+  }
+
+  const byPath = new Map(params.sessions.map((info) => [info.path, info] as const));
+
+  // Walk the parentSession chain leaf-first, then reverse to root-first.
+  const ancestors: LoopSessionInfo[] = [];
+  const seen = new Set<string>();
+  let parentPath = params.leafSessionFile ? byPath.get(params.leafSessionFile)?.parentSessionPath : undefined;
+  while (parentPath && byPath.has(parentPath) && !seen.has(parentPath)) {
+    seen.add(parentPath);
+    const info = byPath.get(parentPath)!;
+    ancestors.push(info);
+    parentPath = info.parentSessionPath;
+  }
+  ancestors.reverse();
+
+  const iterations: LoopIterationTranscript[] = ancestors.map((info, index) => {
+    const entries = params.readEntries(info.path);
+    const iteration = loopMarkerIteration(entries) ?? index + 1;
+    return {
+      label: `Iteration ${iteration}`,
+      sessionId: info.id,
+      messages: transcriptFromMessages(messagesFromEntries(entries), info.modifiedIso),
+    };
+  });
+
+  const leafIteration = loopMarkerIteration(params.leafEntries) ?? ancestors.length + 1;
+  iterations.push({
+    label: `Iteration ${leafIteration}`,
+    sessionId: params.leafSessionId,
+    messages: transcriptFromMessages(params.leafMessages, params.leafUpdatedAt),
+  });
+  return iterations;
 }
 
 export function transcriptFromMessages(messages: readonly unknown[], fallbackTimestamp = nowIso()): SessionTranscriptMessage[] {

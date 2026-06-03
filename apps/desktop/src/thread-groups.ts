@@ -1,5 +1,12 @@
 import type { DesktopAppState, SessionRecord, WorkspaceRecord } from "./desktop-state";
 
+/**
+ * Sentinel session id for the optimistic sidebar row shown while a new thread
+ * is still being created on the main process (before the real session id
+ * exists). Special-cased as active in the sidebar and ignored by selection.
+ */
+export const PENDING_THREAD_SESSION_ID = "__pending_thread__";
+
 export interface ThreadEnvironmentMeta {
   readonly kind: "local" | "worktree";
   readonly label: string;
@@ -20,8 +27,18 @@ export interface ThreadGroup {
 }
 
 export function buildThreadGroups(state: DesktopAppState): readonly ThreadGroup[] {
+  const chatWorkspaceIds = new Set(
+    state.chats.map((chat) => chat.chatWorkspaceId).filter((id): id is string => Boolean(id)),
+  );
+  // Chat workspaces are sessions rooted under a "/chats/" directory in app
+  // support. They surface in the dedicated Chats section, never the Threads
+  // list — exclude them here so they don't leak in as primary workspaces.
+  const isChatWorkspace = (workspace: WorkspaceRecord): boolean =>
+    chatWorkspaceIds.has(workspace.id) || /[/\\]chats[/\\][^/\\]+[/\\]?$/.test(workspace.path);
   const workspacesById = new Map(state.workspaces.map((workspace) => [workspace.id, workspace] as const));
-  const rootWorkspaces = state.workspaces.filter((workspace) => workspace.kind === "primary");
+  const rootWorkspaces = state.workspaces.filter(
+    (workspace) => workspace.kind === "primary" && !isChatWorkspace(workspace),
+  );
   const orphanWorktrees = state.workspaces.filter(
     (workspace) => workspace.kind === "worktree" && !workspacesById.has(workspace.rootWorkspaceId ?? ""),
   );

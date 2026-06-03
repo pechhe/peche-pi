@@ -1,62 +1,57 @@
-You are executing a Ralph loop iteration in this repository. Work on exactly one unfinished item, prove it, update durable Ralph state, commit, and stop.
+# Ralph Loop: Add test.txt
 
-Start every invocation by reading these files in order:
+## How to work
 
-1. `.ralph/plan.md`
-2. `.ralph/items.json`
-3. `.ralph/progress.md`
+You are in a Ralph Wiggum loop. One item per iteration. Read the durable state first, then work on exactly one unfinished item, verify it, update state, commit, and emit a promise tag.
 
-Ignore PRD/SPEC source files unless `runtime_contract.source_docs` in `.ralph/items.json` lists paths. This bundle is distilled-only, so source docs should be empty. If a source doc is listed in a future revision, treat it as protected secondary evidence and read it only when the selected item needs clarification.
+## Start
 
-Then inspect recent git history and current repo state. Preserve unrelated working-tree changes. Stage only files needed for the selected Ralph item and required `.ralph/items.json` / `.ralph/progress.md` updates. Do not stage `.ralph/loop.md`.
+Read these files:
+- `.ralph/plan.md` — scope, constraints, completion definition
+- `.ralph/items.json` — the item list and runtime contract
+- `.ralph/progress.md` — previous iteration handoffs
 
-Choose one unfinished item from `.ralph/items.json` using `.ralph/plan.md` Prioritization Strategy. Treat `.ralph/items.json` as the only authoritative Ralph item list. Ignore secondary task sources, issue queues, TODO files, planner state, chat memory, and harness-local task trackers when choosing Ralph work. You may use a secondary planner or harness-local task tracker only for the already-selected item and never to choose or start another item.
+Inspect the current repo state and git log.
 
-Before editing, revalidate these startup facts when relevant to the selected item:
+## Choose one item
 
-- The workspace uses pnpm from `package.json`.
-- ADR-0002 makes Electron Desktop the only Desktop App. Do not reintroduce SvelteKit/Tauri, Sidecar, Desktop Protocol, or platform-adapter packages.
-- Desktop App code under `apps/desktop` must preserve the main/preload/renderer seam. Do not expose broad filesystem/process APIs through preload.
-- `packages/pi-sdk-driver` must stay thin over `pi-mono`; reuse pi runtime behavior instead of reimplementing it.
-- Desktop UI behavior must be verified on the right Electron surface when the selected item changes visible Desktop App behavior.
+Pick one unfinished item from `.ralph/items.json`. Use `.ralph/plan.md` prioritization. Ignore any other task list or planner state.
 
-Work only on the selected item. Do not implement a second item. If you finish the selected item early, finalize the same iteration only.
+## Work
 
-Follow these implementation constraints:
+Do only the work for that item. Follow the item's `steps`.
 
-- Use the architectural vocabulary from the plan when documenting decisions: Module, Interface, Implementation, Depth, Seam, Adapter, Leverage, Locality.
-- Keep changes surgical. Do not refactor adjacent code that is not needed for the selected item.
-- Preserve current Codex-style Desktop App behavior unless the selected item explicitly requires a behavior change.
-- Do not delete user session history, cached transcripts, screenshots, temp artifacts, or unrelated user changes.
-- Do not revive abandoned SvelteKit/Tauri architecture. Removing residue is allowed when proven unused.
-- Add or update tests at the same Interface callers use. Do not test private Implementation details unless they are the selected internal seam.
+## Verify
 
-Run every command in `runtime_contract.verification_gates` from `.ralph/items.json` after implementing the selected item. Also run any item-specific tests or smoke commands needed by that item's `steps`. Do not skip checks, weaken tests, use `--no-verify`, append `|| true`, suppress failures, delete tests, or claim success without command evidence.
+Run every verification gate listed in `runtime_contract.verification_gates`. Do not skip, weaken, or suppress failures.
 
-After verification:
+## Update state
 
-1. Update `.ralph/items.json` only by changing `passes` and `regression_notes` for the selected item when appropriate. Do not edit item descriptions or steps. Do not delete items.
-2. Append one entry to `.ralph/progress.md` with:
-   - selected item description
-   - why this item was chosen
-   - changed files
-   - verification commands and results
-   - decisions made
-   - next-iteration notes
-3. If `runtime_contract.require_commit` is true, commit after verification and Ralph state updates. If no git repo exists, initialize git in the Ralph workspace root during the first iteration before committing. This repository already has git, so use the existing repository.
-4. End with exactly one promise tag on the last non-empty line.
+- Set `passes: true` for the completed item in `.ralph/items.json`
+- Append one handoff entry to `.ralph/progress.md` with: item description, decisions, changed files, verification results, notes
 
-Promise rules:
+## Commit
 
-- Emit `<promise>NEXT</promise>` only after exactly one item moved from `passes:false` to `passes:true`, all required checks passed, progress was appended, protected source docs stayed clean when listed, and the commit requirement was satisfied.
-- Emit `<promise>COMPLETE</promise>` only after every item passes and all required checks pass. If COMPLETE only verifies an already-finished bundle, it does not need to append progress.
+Since `require_commit: true`:
 
-Terminal boundary rules:
+- If no git repo exists, init one: `git init`
+- Stage only the files needed for this item plus `.ralph/items.json` and `.ralph/progress.md`
+- Do not stage `.ralph/loop.md`
+- Commit
 
-- Treat a valid promise tag as handoff to the loop harness, not as a progress report.
-- As soon as the selected item is marked passing in the current invocation, stop implementation work. From that point, only finalize the same iteration.
-- Finalizing the same iteration means only: run required verification gates, update `.ralph/items.json`, append `.ralph/progress.md`, satisfy `runtime_contract.require_commit`, verify the commit state when commits are required, and emit the promise tag.
-- While finalizing, do not choose another item, plan another item, inspect files for another item, edit source files for another item, update any secondary task tracker for another item, or explain what comes next.
-- The final response for a successful one-item iteration must be exactly one promise tag on the last non-empty line.
+## Promise
 
-Use plain execution prose in progress entries. Avoid marketing copy, rhetorical setups, formulaic contrasts, and vague project claims.
+After all checks pass, progress appended, and commit done:
+
+- If this item was the last unfinished item: emit `<promise>COMPLETE</promise>` on its own line
+- Otherwise: emit `<promise>NEXT</promise>` on its own line
+
+When the promise tag is emitted, stop. Do not choose or start the next item. Do not plan future work. Do not explain what comes next.
+
+## Boundaries
+
+- Do not edit `.ralph/items.json` `description` or `steps` fields
+- Do not delete items
+- Do not touch source files outside the scope of the selected item
+- Do not run long-running or watcher commands
+- Do not use `|| true`, `--no-verify`, output suppression, or anything that masks failures
