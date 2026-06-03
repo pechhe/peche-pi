@@ -12,7 +12,7 @@ import type {
   ComposerSlashOption,
   ComposerSlashOptionEmptyState,
 } from "./composer-commands";
-import { ComposerSurface } from "./composer-surface";
+import { ComposerAttachments, ComposerSurface } from "./composer-surface";
 import { ModelOnboardingNoticeBanner } from "./model-onboarding-notice";
 import type { ModelOnboardingState, ModelOnboardingSettingsSection } from "./model-onboarding";
 import { ModelSelector } from "./model-selector";
@@ -210,6 +210,11 @@ export function ComposerPanel({
           </button>
         </div>
       ) : null}
+      {attachments.length > 0 ? (
+        <div className="composer__attachment-shelf">
+          <ComposerAttachments attachments={attachments} onRemoveAttachment={onRemoveAttachment} />
+        </div>
+      ) : null}
       <div className="conversation conversation--composer">
         <ComposerSurface
           lastError={lastError}
@@ -249,59 +254,61 @@ export function ComposerPanel({
           textareaLabel="Composer"
           textareaTestId="composer"
           textareaPlaceholder="message the clanker"
+          screenFooter={(
+            <div
+              className="composer__context"
+              aria-label={
+                contextUsage
+                  ? `Context usage ${formatTokenCount(contextUsage.usedTokens)} of ${formatTokenCount(contextUsage.contextWindow)} tokens`
+                  : "Context usage unavailable"
+              }
+            >
+              <div className="composer__context-track">
+                {blackholeAvailable && contextUsage ? (
+                  <div className="composer__context-compact-tick" style={{ left: `${compactThresholdPercent}%` }} />
+                ) : null}
+                <div className="composer__context-fill" style={{ width: `${contextPercent}%` }} />
+              </div>
+              <span className="composer__context-label">
+                {contextUsage
+                  ? `${formatTokenCount(contextUsage.usedTokens)} / ${formatTokenCount(contextUsage.contextWindow)}`
+                  : "Context —"}
+                {blackholeAvailable && contextUsage && compactTokensRemaining !== undefined ? (
+                  <span className="composer__context-compact-label">
+                    {compactTokensRemaining > 0
+                      ? `Blackhole in ${formatTokenCount(compactTokensRemaining)}`
+                      : "Blackhole ready"}
+                  </span>
+                ) : null}
+                {metaEvents && metaEvents.length > 0 ? (
+                  <span className="composer__context-meta-count">{`· ${metaEvents.length} event${metaEvents.length === 1 ? "" : "s"}`}</span>
+                ) : null}
+              </span>
+              <div className="composer__context-popover" role="tooltip">
+                <div className="composer__context-popover-section">
+                  <div className="composer__context-popover-title">Context</div>
+                  {contextUsage
+                    ? <div className="composer__context-popover-detail">{`${formatTokenCount(contextUsage.usedTokens)} / ${formatTokenCount(contextUsage.contextWindow)} tokens`}</div>
+                    : <div className="composer__context-popover-detail">Unavailable until a model-backed turn runs</div>}
+                </div>
+                {metaEvents && metaEvents.length > 0 ? (
+                  <div className="composer__context-popover-section">
+                    <div className="composer__context-popover-title">Recent session events</div>
+                    <ul className="composer__context-popover-list">
+                      {metaEvents.slice(-20).reverse().map((event) => (
+                        <li key={event.id} className="composer__context-popover-item">
+                          <span className="composer__context-popover-label">{event.label}</span>
+                          {event.metadata ? <span className="composer__context-popover-meta">{event.metadata}</span> : null}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          )}
           footer={(
             <div className="composer__footer">
-              <div
-                className="composer__context"
-                aria-label={
-                  contextUsage
-                    ? `Context usage ${formatTokenCount(contextUsage.usedTokens)} of ${formatTokenCount(contextUsage.contextWindow)} tokens`
-                    : "Context usage unavailable"
-                }
-              >
-                <div className="composer__context-track">
-                  {blackholeAvailable && contextUsage ? (
-                    <div className="composer__context-compact-tick" style={{ left: `${compactThresholdPercent}%` }} />
-                  ) : null}
-                  <div className="composer__context-fill" style={{ width: `${contextPercent}%` }} />
-                </div>
-                <span className="composer__context-label">
-                  {contextUsage
-                    ? `${formatTokenCount(contextUsage.usedTokens)} / ${formatTokenCount(contextUsage.contextWindow)}`
-                    : "Context —"}
-                  {blackholeAvailable && contextUsage && compactTokensRemaining !== undefined ? (
-                    <span className="composer__context-compact-label">
-                      {compactTokensRemaining > 0
-                        ? `Blackhole in ${formatTokenCount(compactTokensRemaining)}`
-                        : "Blackhole ready"}
-                    </span>
-                  ) : null}
-                  {metaEvents && metaEvents.length > 0 ? (
-                    <span className="composer__context-meta-count">{`· ${metaEvents.length} event${metaEvents.length === 1 ? "" : "s"}`}</span>
-                  ) : null}
-                </span>
-                <div className="composer__context-popover" role="tooltip">
-                  <div className="composer__context-popover-section">
-                    <div className="composer__context-popover-title">Context</div>
-                    {contextUsage
-                      ? <div className="composer__context-popover-detail">{`${formatTokenCount(contextUsage.usedTokens)} / ${formatTokenCount(contextUsage.contextWindow)} tokens`}</div>
-                      : <div className="composer__context-popover-detail">Unavailable until a model-backed turn runs</div>}
-                  </div>
-                  {metaEvents && metaEvents.length > 0 ? (
-                    <div className="composer__context-popover-section">
-                      <div className="composer__context-popover-title">Recent session events</div>
-                      <ul className="composer__context-popover-list">
-                        {metaEvents.slice(-20).reverse().map((event) => (
-                          <li key={event.id} className="composer__context-popover-item">
-                            <span className="composer__context-popover-label">{event.label}</span>
-                            {event.metadata ? <span className="composer__context-popover-meta">{event.metadata}</span> : null}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
-                </div>
-              </div>
               <div className="composer__footer-row">
                 <div className="composer__hint">
                   <span className="composer__hint-prose">
@@ -339,19 +346,21 @@ export function ComposerPanel({
                   </span>
                 </div>
                 <div className="composer__actions">
-                  <button
-                    aria-label={primaryActionIsStop ? "Stop run" : "Send message"}
-                    className="button button--primary button--cta-icon composer__send"
-                    data-testid="send"
-                    type="button"
-                    disabled={
-                      !primaryActionIsStop &&
-                      ((!composerDraft.trim() && attachments.length === 0) || modelOnboarding.requiresModelSelection)
-                    }
-                    onClick={onSubmit}
-                  >
-                    {primaryActionIsStop ? <StopSquareIcon /> : <ArrowUpIcon />}
-                  </button>
+                  <span className="composer__key-mount composer__key-mount--send">
+                    <button
+                      aria-label={primaryActionIsStop ? "Stop run" : "Send message"}
+                      className="button button--primary button--cta-icon composer__send"
+                      data-testid="send"
+                      type="button"
+                      disabled={
+                        !primaryActionIsStop &&
+                        ((!composerDraft.trim() && attachments.length === 0) || modelOnboarding.requiresModelSelection)
+                      }
+                      onClick={onSubmit}
+                    >
+                      {primaryActionIsStop ? <StopSquareIcon /> : <ArrowUpIcon />}
+                    </button>
+                  </span>
                 </div>
               </div>
             </div>

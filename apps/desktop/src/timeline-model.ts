@@ -248,13 +248,18 @@ export function applySessionEventToTimeline(
     case "runCompleted": {
       const metrics = runtime.runMetrics;
       clearRunState(runtime);
-      if (metrics) {
-        next.push(factory.summary(workedForLabel(metrics.startedAt, event.timestamp), { presentation: "divider" }));
-      } else {
-        next.push(factory.summary("Completed", {
-          presentation: "divider",
-          metadata: relativeDetail(event.timestamp),
-        }));
+      // Suppress the "Worked for" divider when a subagent is still running —
+      // the run ended because the main agent yielded to await the subagent,
+      // not because the turn is actually done.
+      if (!transcriptHasRunningSubagent(next)) {
+        if (metrics) {
+          next.push(factory.summary(workedForLabel(metrics.startedAt, event.timestamp), { presentation: "divider" }));
+        } else {
+          next.push(factory.summary("Completed", {
+            presentation: "divider",
+            metadata: relativeDetail(event.timestamp),
+          }));
+        }
       }
       break;
     }
@@ -297,6 +302,15 @@ export function applySessionEventToTimeline(
   }
 
   return next;
+}
+
+function transcriptHasRunningSubagent(transcript: readonly TranscriptMessage[]): boolean {
+  return transcript.some(
+    (item) =>
+      item.kind === "tool" &&
+      isSubagentToolName(item.toolName) &&
+      item.status === "running",
+  );
 }
 
 function clearActiveReasoningMessage(runtime: SessionTimelineRuntimeState): void {
@@ -493,6 +507,12 @@ export function isQuietTool(toolName: string): boolean {
   return QUIET_TOOL_PATTERNS.some((pattern) => pattern.test(toolName));
 }
 
+// Subagent launches are first-class events and must never be folded into a
+// collapsed tool burst or thinking section; they render as standalone cards.
+function isSubagentToolName(toolName: string): boolean {
+  return toolName === "subagent" || toolName === "subagent_resume";
+}
+
 export interface TimelineMetaEvent {
   readonly id: string;
   readonly label: string;
@@ -595,6 +615,16 @@ export function createTimelineViewModel(transcript: readonly TranscriptMessage[]
     while (i < displayItems.length) {
       const next = displayItems[i]!;
       if (next.kind === "tool") {
+        // A subagent tool breaks the block so it renders as its own card. If it
+        // is the first item, emit a singleton block; otherwise stop and let the
+        // next outer iteration handle it standalone.
+        if (isSubagentToolName((next as ToolItem).toolName)) {
+          if (block.length === 0) {
+            block.push(next as ToolItem);
+            i += 1;
+          }
+          break;
+        }
         block.push(next as ToolItem);
         i += 1;
         continue;

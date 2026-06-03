@@ -1,38 +1,35 @@
-# Execution Plan: Example Button Component
+# Execution Plan: Add a text file saying "test"
 
 ## Source Inputs
 
-No source docs. Synthetic plan for Ralph loop testing.
+User request: add one text file with content "test" to this repo.
 
 ## Objective
 
-Add a reusable `<TestButton>` React component to the desktop renderer, render it on the main page, and verify it appears in a Playwright test.
+Create a single file containing "test" in the workspace root. Init git so Ralph can commit.
 
 ## Scope In
 
-- New component file next to existing renderer components
-- Import and render on the main app page
-- One Playwright e2e test that asserts the button renders with correct text
+- Init git repo if not present
+- Write `test.txt` with content "test"
+- Commit the file
+- Verify file exists with correct content
 
 ## Scope Out
 
-- Styling beyond basic className
-- Click handlers or state
-- Other pages or routes
+- No app code changes, no package edits, no config changes
+- No build, test, or typecheck verification
+- No multi-file structure
 
 ## Constraints
 
-- Use existing React/TypeScript patterns from the renderer
-- Follow the desktop app's existing component conventions
-- Use Playwright e2e test suite
+- File content must be exactly "test" (no trailing newline unless unavoidable)
+- File must exist at workspace root
 
 ## Prioritization Strategy
 
-Only two items: component first, test second. Must complete component before test can reference it.
+One item. No ordering needed.
 
 ## Completion Definition
 
-- Component file exists and is imported in the main page
-- `pnpm test:e2e:core` passes (Playwright e2e)
-- Both items marked `passes: true` in `.ralph/items.json`
-- Commit with both changes
+All items in `.ralph/items.json` have `passes: true`.

@@ -55,6 +55,7 @@ import { useNavigationHistory } from "./hooks/use-navigation-history";
 import { useSidebarWidth } from "./hooks/use-sidebar-width";
 import { ExtensionDialog } from "./extension-session-ui";
 import { RalphLaunchDialog } from "./ralph-launch-dialog";
+import { SubagentLiveProvider } from "./subagent-live";
 import { TreeModal } from "./tree-modal";
 import { ImageLightbox } from "./image-lightbox";
 import { Agentation } from "agentation";
@@ -1706,7 +1707,7 @@ export default function App() {
       : pinnedToBottomRef.current || preserveBottomOnNextPaneResizeRef.current;
 
     composer.style.height = "0px";
-    composer.style.height = `${Math.min(composer.scrollHeight, 220)}px`;
+    composer.style.height = `${Math.min(composer.scrollHeight, 400)}px`;
 
     const nextHeight = composer.getBoundingClientRect().height;
     if (Math.abs(nextHeight - previousHeight) >= 1 && shouldPreserveBottom) {
@@ -2335,6 +2336,22 @@ export default function App() {
     void updateSnapshot(api, setSnapshot, () => api.setIntegratedTerminalShell(shellPath));
   };
 
+  const handleSetSubagentSettings = (settings: Partial<DesktopAppState["subagentSettings"]>) => {
+    void updateSnapshot(api, setSnapshot, () => api.setSubagentSettings(settings));
+  };
+
+  const handleRefreshSubagentAgents = (workspaceId: string) => {
+    void updateSnapshot(api, setSnapshot, () => api.refreshSubagentAgents(workspaceId));
+  };
+
+  const handleSaveSubagentAgent = (workspaceId: string, input: { readonly name: string; readonly raw: string; readonly scope?: "project" | "global" }) => {
+    void updateSnapshot(api, setSnapshot, () => api.saveSubagentAgent(workspaceId, input));
+  };
+
+  const handleDeleteSubagentAgent = (workspaceId: string, name: string, scope?: "project" | "global") => {
+    void updateSnapshot(api, setSnapshot, () => api.deleteSubagentAgent(workspaceId, name, scope));
+  };
+
   const handleChooseExternalTerminalApp = () => {
     void updateSnapshot(api, setSnapshot, () => api.chooseExternalTerminalApp());
   };
@@ -2764,6 +2781,8 @@ export default function App() {
             enableTransparency={snapshot.enableTransparency}
             transcriptVerbose={snapshot.transcriptVerbose}
             composerDeviceMode={snapshot.composerDeviceMode}
+            subagentSettings={snapshot.subagentSettings}
+            subagentAgents={settingsWorkspace ? snapshot.subagentAgentsByWorkspace[settingsWorkspace.id] ?? [] : []}
             onLoginProvider={handleLoginProvider}
             onLogoutProvider={handleLogoutProvider}
             onSetProviderApiKey={handleSetProviderApiKey}
@@ -2772,6 +2791,10 @@ export default function App() {
             onSetDefaultModel={handleSetDefaultModel}
             onSetNotificationPreferences={handleSetNotificationPreferences}
             onSetIntegratedTerminalShell={handleSetIntegratedTerminalShell}
+            onSetSubagentSettings={handleSetSubagentSettings}
+            onRefreshSubagentAgents={handleRefreshSubagentAgents}
+            onSaveSubagentAgent={handleSaveSubagentAgent}
+            onDeleteSubagentAgent={handleDeleteSubagentAgent}
             onChooseExternalTerminalApp={handleChooseExternalTerminalApp}
             onClearExternalTerminalApp={handleClearExternalTerminalApp}
             onRequestNotificationPermission={handleRequestNotificationPermission}
@@ -3037,6 +3060,8 @@ export default function App() {
           commitPushModel={snapshot.commitPushModel}
         />
 
+        <LoadingBar loading={pendingThreadStart ? false : isTranscriptLoading} />
+
         {showTerminalTakeover ? (
           terminalPanel
         ) : (
@@ -3106,7 +3131,6 @@ export default function App() {
         ) : pendingThreadStart || (selectedWorkspace && selectedSession) ? (
           <>
             <section className="canvas canvas--thread">
-              <LoadingBar loading={pendingThreadStart ? false : isTranscriptLoading} />
               {selectedWorkspace && selectedSession ? (
                 <SessionLockBanner
                   api={api}
@@ -3120,6 +3144,7 @@ export default function App() {
                 />
               ) : null}
               <div className="conversation conversation--thread">
+                <SubagentLiveProvider widgets={selectedExtensionUi?.widgets ?? []}>
                 <ConversationTimeline
                   transcript={threadViewTranscript}
                   isTranscriptLoading={pendingThreadStart ? false : isTranscriptLoading}
@@ -3139,6 +3164,7 @@ export default function App() {
                   isRunning={threadViewIsRunning}
                   workingLabel={pendingThreadStart ? "Preparing your thread…" : undefined}
                 />
+                </SubagentLiveProvider>
               </div>
             </section>
             {selectedWorkspace && selectedSession ? (

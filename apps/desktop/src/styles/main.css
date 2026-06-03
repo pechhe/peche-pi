@@ -31,6 +31,10 @@
   grid-column: 1;
 }
 
+.main--skills {
+  overflow: hidden auto;
+}
+
 .main--with-terminal {
   grid-template-rows: auto minmax(0, 1fr) auto auto;
 }
@@ -366,12 +370,12 @@
  * Driven by JS progress state via scaleX + transition. */
 .canvas__loading-bar {
   position: absolute;
-  top: 0;
+  top: 3px;
   left: 0;
   right: 0;
   height: 2px;
   z-index: 2;
-  overflow: hidden;
+  overflow: visible;
   background: color-mix(in srgb, var(--text-strong) 8%, transparent);
 }
 
@@ -382,9 +386,46 @@
   bottom: 0;
   left: 0;
   right: 0;
-  background: var(--accent, var(--text-strong));
+  background: linear-gradient(
+    to right,
+    color-mix(in srgb, var(--accent, var(--text-strong)) 55%, transparent),
+    var(--accent, var(--text-strong))
+  );
   transform-origin: left center;
   transform: scaleX(0);
+  will-change: transform;
+}
+
+/* Blooming point at the leading edge of the bar. Lives at the right edge of
+ * the indicator and counter-scales (inline) so it stays round. */
+.canvas__loading-bar-bloom {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  width: 6px;
+  height: 5px;
+  border-radius: 999px;
+  transform-origin: right center;
+  background: var(--accent, var(--text-strong));
+  box-shadow: 0 0 4px 0 color-mix(in srgb, var(--accent, var(--text-strong)) 70%, transparent);
+  translate: 50% -50%;
+  animation: canvas-loading-bloom-pulse 1100ms ease-in-out infinite;
+}
+
+@keyframes canvas-loading-bloom-pulse {
+  0%,
+  100% {
+    opacity: 0.85;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .canvas__loading-bar-bloom {
+    animation: none;
+  }
 }
 
 .chat-header__eyebrow {
@@ -1877,7 +1918,7 @@
   line-height: 1.5;
   font-size: 15px;
   min-height: 24px;
-  max-height: 220px;
+  max-height: 400px;
 }
 
 
@@ -2645,11 +2686,19 @@
   gap: 8px;
 }
 
+.composer__attachment-shelf {
+  width: min(920px, 100%);
+  margin: 0 auto 12px;
+}
+
 .composer__attachments {
   display: flex;
   flex-wrap: wrap;
+  align-items: flex-end;
   gap: 10px;
-  margin-bottom: 10px;
+  max-height: 120px;
+  margin: 0;
+  overflow-y: auto;
 }
 
 .queued-composer-messages {
@@ -3315,17 +3364,46 @@
 }
 
 .new-thread__composer {
-  width: min(820px, 100%);
-  margin: 0 auto;
-}
-
-.new-thread__composer.composer {
-  padding: 0;
-  background: transparent;
-}
-
-.new-thread__composer .conversation--composer {
   width: 100%;
+}
+
+/* Special new-thread-only controls, in their own row below the composer so the
+   composer itself is identical to the in-thread one (and unmounts cleanly on
+   send without resizing the composer). Centered to the same 920px column as
+   the composer surface. */
+.new-thread__options {
+  width: min(920px, 100%);
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
+  padding: 0 16px;
+}
+
+.new-thread__option {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.new-thread__option-label {
+  color: var(--muted-soft);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.new-thread__project-select {
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text-strong);
+  font-size: 13px;
+  font-weight: 560;
+  cursor: pointer;
 }
 
 .new-thread__environment-group {
@@ -3348,22 +3426,6 @@
   background: #eef2ff;
   color: var(--text-strong);
 }
-
-.new-thread__textarea {
-  min-height: 120px;
-  resize: vertical;
-  border: none;
-  background: transparent;
-  color: var(--text-strong);
-  font: inherit;
-  font-size: 18px;
-  line-height: 1.6;
-}
-
-.new-thread__textarea:focus {
-  outline: none;
-}
-
 
 .settings-disclosure {
   border-top: 1px solid var(--line);
@@ -5510,7 +5572,6 @@ mark.thread-find-active {
 .composer-device .composer__editor,
 .composer-device .composer__bar,
 .composer-device .composer__slash-intent,
-.composer-device .composer__attachments,
 .composer-device .composer__menus,
 .composer-device .composer__drop-indicator,
 .composer-device .composer__error {
@@ -5527,14 +5588,31 @@ mark.thread-find-active {
 
 .composer-device .composer__editor {
   isolation: isolate;
-  border-radius: 10px;
+  padding: 0;
+  overflow: visible;
+}
+
+.composer-device .composer__screen {
+  position: relative;
+  display: grid;
+  gap: 10px;
+  isolation: isolate;
+  border: 3px solid oklch(0.065 0.005 250);
+  border-top-color: oklch(0.035 0.005 250);
+  border-left-color: oklch(0.045 0.005 250);
+  border-right-color: oklch(0.12 0.005 250);
+  border-bottom-color: oklch(0.14 0.005 250);
+  border-radius: 12px;
   background: var(--crt-screen-bg-deep);
-  /* Screen window cut into the chassis: outer dark shadow simulates
-     the chassis edge casting shadow into the recessed screen well. */
+  /* Screen window cut into the chassis: dark lip + inset shadows make the
+     glass read as sitting slightly below the device face. */
   box-shadow:
-    inset 0 1px 2px oklch(0 0 0 / 0.85),
-    inset 0 -1px 0 oklch(0.28 0.005 250 / 0.25),
-    inset 0 0 0 1px oklch(0 0 0 / 0.7),
+    0 -1px 0 oklch(0 0 0 / 0.55),
+    0 1px 0 oklch(0.35 0.005 250 / 0.18),
+    inset 0 2px 5px oklch(0 0 0 / 0.9),
+    inset 2px 0 4px oklch(0 0 0 / 0.55),
+    inset -1px -1px 0 oklch(0.28 0.005 250 / 0.25),
+    inset 0 0 0 1px oklch(0 0 0 / 0.72),
     inset 0 0 32px rgb(140 240 165 / 0.05);
   padding: 14px 16px;
   overflow: hidden;
@@ -5565,7 +5643,7 @@ mark.thread-find-active {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .composer-device .composer__editor::after {
+  .composer-device .composer__screen::after {
     animation: none !important;
     mask-position: 0 50% !important;
     -webkit-mask-position: 0 50% !important;
@@ -5625,7 +5703,7 @@ mark.thread-find-active {
 /* including the footer. Chips stay as on-screen phosphor text.     */
 /* The send button protrudes through the screen bottom-right.       */
 
-.composer-device--screen .composer__editor::before {
+.composer-device--screen .composer__screen::before {
   content: "";
   position: absolute;
   inset: 0;
@@ -5643,7 +5721,7 @@ mark.thread-find-active {
   background-size: 100% var(--crt-px);
 }
 
-.composer-device--screen .composer__editor::after {
+.composer-device--screen .composer__screen::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -5761,12 +5839,24 @@ mark.thread-find-active {
 /* above the strip so they don't bleed through. */
 
 .composer-device--modular .composer__editor {
-  padding: 14px 14px 0;
+  padding: 0;
   overflow: visible;
 }
 
-/* Fade scanline grid (::before) above the controls strip */
-.composer-device--modular .composer__editor::before {
+.composer-device--modular .composer__screen {
+  display: flex;
+  min-height: 90px;
+  flex-direction: column;
+}
+
+.composer-device--modular .composer textarea {
+  flex: 0 0 auto;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+/* Scanlines live only on the recessed screen, not the controls strip. */
+.composer-device--modular .composer__screen::before {
   content: "";
   position: absolute;
   inset: 0;
@@ -5782,14 +5872,9 @@ mark.thread-find-active {
     var(--crt-grid-bg) var(--crt-px)
   );
   background-size: 100% var(--crt-px);
-  --modular-screen-cutoff: calc(100% - var(--crt-modular-controls-h, 56px) - 16px);
-  mask-image: linear-gradient(to bottom, #000 0, #000 var(--modular-screen-cutoff), transparent var(--modular-screen-cutoff));
-  -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 var(--modular-screen-cutoff), transparent var(--modular-screen-cutoff));
 }
 
-/* Fade scanbeam (::after) using composited dual mask: scanbeam stripe
-   AND bottom cutoff. */
-.composer-device--modular .composer__editor::after {
+.composer-device--modular .composer__screen::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -5797,35 +5882,28 @@ mark.thread-find-active {
   z-index: 4;
   border-radius: inherit;
   background: radial-gradient(ellipse at 50% 40%, transparent 50%, oklch(0 0 0 / 0.48) 100%);
-  --modular-screen-cutoff: calc(100% - var(--crt-modular-controls-h, 56px) - 16px);
-  mask-image:
-    linear-gradient(
-      to bottom,
-      transparent 45%,
-      rgba(0, 0, 0, 0.12) 49%,
-      rgba(0, 0, 0, 0.12) 51%,
-      transparent 55%
-    ),
-    linear-gradient(to bottom, #000 0, #000 var(--modular-screen-cutoff), transparent var(--modular-screen-cutoff));
-  -webkit-mask-image:
-    linear-gradient(
-      to bottom,
-      transparent 45%,
-      rgba(0, 0, 0, 0.12) 49%,
-      rgba(0, 0, 0, 0.12) 51%,
-      transparent 55%
-    ),
-    linear-gradient(to bottom, #000 0, #000 var(--modular-screen-cutoff), transparent var(--modular-screen-cutoff));
-  mask-size: 100% 6%, 100% 100%;
-  -webkit-mask-size: 100% 6%, 100% 100%;
-  mask-composite: intersect;
-  -webkit-mask-composite: source-in;
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 45%,
+    rgba(0, 0, 0, 0.12) 49%,
+    rgba(0, 0, 0, 0.12) 51%,
+    transparent 55%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 45%,
+    rgba(0, 0, 0, 0.12) 49%,
+    rgba(0, 0, 0, 0.12) 51%,
+    transparent 55%
+  );
+  mask-size: 100% 6%;
+  -webkit-mask-size: 100% 6%;
   animation: composer-crt-scanbeam 17ms linear infinite;
 }
 
 /* The bar wraps context bar + footer-row. Give it a small top gap. */
 .composer-device--modular .composer__bar {
-  margin-top: 18px;
+  margin-top: 2px;
 }
 
 /* The base device surface reserves a 16px bottom bezel (padding-bottom)
@@ -5834,23 +5912,21 @@ mark.thread-find-active {
    dead grey below the keys and makes them read as sitting high. Trim it
    to ~2px so the strip's own height defines the box the keys center in. */
 :root.composer-device--modular .composer__surface {
-  padding-bottom: 2px;
+  padding: 8px 8px 2px;
 }
 
-/* Context bar stays on the screen (phosphor green) */
+/* Context/compaction readout lives inside the same recessed screen as typing. */
 .composer-device--modular .composer__context {
   color: rgb(var(--crt-phosphor) / 0.78);
   font-family: ui-monospace, "SF Mono", Menlo, "Roboto Mono", monospace;
   font-size: 11px;
   letter-spacing: 0.02em;
-  /* Nudge the bar down toward the divider/strip and keep a small gap. */
-  margin-top: 6px;
-  padding-bottom: 8px;
+  margin-top: auto;
+  padding-top: 14px;
+  padding-bottom: 2px;
 }
 
-/* Footer-row = controls strip. Paints its own chassis-toned background
-   over the bottom of the screen and extends edge-to-edge by negative-
-   margining left/right to cancel .composer__editor's horizontal padding. */
+/* Footer-row = controls strip. */
 .composer-device--modular .composer__footer-row {
   --crt-modular-controls-h: 56px;
   position: relative;
@@ -5858,15 +5934,12 @@ mark.thread-find-active {
   grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: 14px;
-  min-height: var(--crt-modular-controls-h);
-  margin: 0 -16px -2px;
-  padding: 12px 18px;
-  background: var(--crt-frame);
-  box-shadow:
-    inset 0 1px 0 oklch(0 0 0 / 0.5),
-    inset 0 2px 0 var(--crt-edge-highlight),
-    inset 0 0 0 1px oklch(0 0 0 / 0.0);
-  border-radius: 0 0 6px 6px;
+  min-height: 52px;
+  margin: 0;
+  padding: 4px 0;
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
 }
 
 /* In modular mode the .composer__hint contains two siblings:
@@ -5898,6 +5971,23 @@ mark.thread-find-active {
   font-size: 11px;
   line-height: 1;
   white-space: nowrap;
+}
+
+/* Langlink-style recessed mount: dark cavity, keycap sits inside. */
+.composer-device--modular .composer__key-mount {
+  display: inline-flex;
+  align-items: stretch;
+  padding: 2px 3px 3px 2px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, oklch(0.05 0.005 250) 0%, oklch(0.075 0.005 250) 100%);
+  box-shadow:
+    inset 1px 1px 1.5px oklch(0 0 0 / 0.6),
+    inset -1px -1px 1px oklch(0.3 0.005 250 / 0.16),
+    inset 0 0 0 1px oklch(0 0 0 / 0.45);
+}
+
+.composer-device--modular .composer__key-mount--send {
+  border-radius: 999px;
 }
 
 /* The .model-selector wrapper holds TWO badges (model + thinking).
@@ -5960,7 +6050,7 @@ mark.thread-find-active {
   cursor: pointer;
   overflow: hidden;
   background: var(--crt-key-bg);
-  box-shadow: var(--crt-key-shadow), var(--crt-key-socket);
+  box-shadow: var(--crt-key-shadow);
   transition:
     transform 80ms ease,
     box-shadow 80ms ease,
@@ -5981,8 +6071,7 @@ mark.thread-find-active {
   transform: translateY(1px);
   box-shadow:
     inset 1px 1px 2px oklch(0 0 0 / 0.45),
-    inset -1px -1px 0 oklch(0.4 0.005 250 / 0.25),
-    var(--crt-key-socket);
+    inset -1px -1px 0 oklch(0.4 0.005 250 / 0.25);
 }
 
 .composer-device--modular .composer-mode:disabled,
@@ -6006,7 +6095,6 @@ mark.thread-find-active {
   box-shadow:
     inset 1px 1px 2px oklch(0 0 0 / 0.55),
     inset 0 0 0 1px oklch(0.42 0.13 295 / 0.85),
-    var(--crt-key-socket),
     0 0 18px oklch(0.62 0.18 295 / 0.22);
 }
 
@@ -6023,7 +6111,6 @@ mark.thread-find-active {
   box-shadow:
     inset 1px 1px 2px oklch(0 0 0 / 0.55),
     inset 0 0 0 1px oklch(0.42 0.13 295 / 0.85),
-    var(--crt-key-socket),
     0 0 18px oklch(0.62 0.18 295 / 0.22);
 }
 
@@ -6413,4 +6500,275 @@ mark.thread-find-active {
 
 .composer__begin-loop-button:hover {
   filter: brightness(1.05);
+}
+
+/* ── pi-subagents: inline tool cards (B) ───────────────────────────── */
+.subagent-card {
+  max-width: 760px;
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
+  border-left: 2px solid var(--accent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface));
+}
+
+.subagent-card__heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.subagent-card__heading-icon {
+  font-size: 11px;
+}
+
+.subagent-card__rows {
+  display: grid;
+  gap: 4px;
+}
+
+.subagent-card__row {
+  display: grid;
+  gap: 4px;
+}
+
+.subagent-card__row-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 2px 0;
+  background: none;
+  border: none;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.subagent-card__row-head:disabled {
+  cursor: default;
+}
+
+.subagent-card__chevron,
+.subagent-card__chevron-spacer {
+  display: inline-flex;
+  width: 12px;
+  flex: 0 0 12px;
+  color: var(--muted);
+  transition: transform 0.12s ease;
+}
+
+.subagent-card__chevron--expanded {
+  transform: rotate(90deg);
+}
+
+.subagent-card__name {
+  font-weight: 600;
+  color: var(--ink-strong);
+  white-space: nowrap;
+}
+
+.subagent-card__agent {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.subagent-card__title {
+  color: var(--muted-strong);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.subagent-card__status {
+  margin-left: auto;
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  white-space: nowrap;
+  text-transform: lowercase;
+}
+
+.subagent-card__status--started,
+.subagent-card__status--running,
+.subagent-card__status--batch {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+}
+
+.subagent-card__status--completed {
+  background: color-mix(in srgb, #18a058 18%, transparent);
+  color: #18a058;
+}
+
+.subagent-card__status--failed,
+.subagent-card__status--cancelled {
+  background: color-mix(in srgb, var(--error) 18%, transparent);
+  color: var(--error-ink);
+}
+
+.subagent-card__elapsed {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.subagent-card__body {
+  display: grid;
+  gap: 6px;
+  padding-left: 18px;
+}
+
+.subagent-card__section-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+
+/* ── pi-subagents: live state inside the card ──────────────────────── */
+.subagent-card__row--live {
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  border-radius: 6px;
+  padding: 2px 4px;
+  margin: -2px -4px;
+}
+
+.subagent-card__spinner {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
+  font-size: 11px;
+  line-height: 12px;
+  text-align: center;
+  color: var(--accent);
+}
+
+@keyframes subagent-card-spin {
+  to { transform: rotate(360deg); }
+}
+
+.subagent-card__live {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-left: 18px;
+  font-size: 12px;
+}
+
+.subagent-card__activity {
+  color: var(--muted-strong);
+  font-style: italic;
+}
+
+.subagent-card__stat {
+  color: var(--muted);
+}
+
+.subagent-card__stat::before {
+  content: "· ";
+}
+
+/* ── Settings: subagents ───────────────────────────────────────────── */
+.settings-input,
+.settings-textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  padding: 8px 10px;
+}
+
+.settings-textarea {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  resize: vertical;
+}
+
+.settings-row--stacked {
+  display: grid;
+  gap: 8px;
+}
+
+.settings-inline-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.button--danger {
+  color: var(--error-ink);
+  border-color: color-mix(in srgb, var(--error) 50%, var(--line));
+}
+
+.subagent-settings-list {
+  display: grid;
+  gap: 10px;
+}
+
+.subagent-settings-agent {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+  background: var(--surface);
+}
+
+.subagent-settings-agent summary {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.subagent-settings-agent__name {
+  font-weight: 600;
+  color: var(--ink-strong);
+}
+
+.subagent-settings-agent__description {
+  color: var(--muted-strong);
+}
+
+.subagent-settings-agent__raw {
+  margin-top: 10px;
+}
+
+.subagent-settings-agent__controls {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(180px, 0.6fr);
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.subagent-settings-agent__controls label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted-strong);
+  font-size: 12px;
+}
+
+.subagent-settings-agent__toggle {
+  grid-column: 1 / -1;
+  display: flex !important;
+  grid-template-columns: none !important;
+  flex-direction: row;
+  align-items: center;
 }

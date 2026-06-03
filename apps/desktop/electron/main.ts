@@ -642,6 +642,10 @@ app.whenReady().then(async () => {
   ipcMain.handle(desktopIpc.setProviderApiKey, (_event, workspaceId: string, providerId: string, apiKey: string) =>
     store.setProviderApiKey(workspaceId, providerId, apiKey),
   );
+  ipcMain.handle(desktopIpc.setSubagentSettings, (_event, settings) => store.setSubagentSettings(settings));
+  ipcMain.handle(desktopIpc.refreshSubagentAgents, (_event, workspaceId: string) => store.refreshSubagentAgents(workspaceId));
+  ipcMain.handle(desktopIpc.saveSubagentAgent, (_event, workspaceId: string, input) => store.saveSubagentAgent(workspaceId, input));
+  ipcMain.handle(desktopIpc.deleteSubagentAgent, (_event, workspaceId: string, name: string, scope) => store.deleteSubagentAgent(workspaceId, name, scope));
   ipcMain.handle(desktopIpc.setEnableSkillCommands, (_event, workspaceId: string, enabled: boolean) =>
     store.setEnableSkillCommands(workspaceId, enabled),
   );

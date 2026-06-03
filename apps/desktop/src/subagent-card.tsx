@@ -1,6 +1,8 @@
 import { useState } from "react";
 import type { TimelineToolCall } from "./timeline-types";
 import { ChevronRightIcon } from "./icons";
+import { useSubagentLive } from "./subagent-live";
+import { WorkingSpinner } from "./working-label";
 
 // Inline rendering for the pi-subagents `subagent` / `subagent_resume` tool
 // calls. Reads the launch params from `input` and the launch/completion result
@@ -132,11 +134,15 @@ const STATUS_LABEL: Record<SubagentStatus, string> = {
 
 function SubagentRowView({ row }: { readonly row: SubagentRow }) {
   const [expanded, setExpanded] = useState(false);
+  // While the launch is still running, this row becomes the live agent view:
+  // overlay the spinner, current activity and live stats from the widget feed.
+  const live = useSubagentLive(row.name);
+  const isLive = (row.status === "running" || row.status === "started") && live !== undefined;
   const elapsed = formatElapsed(row.elapsed);
   const hasBody = Boolean(row.task || row.summary);
 
   return (
-    <div className="subagent-card__row">
+    <div className={`subagent-card__row${isLive ? " subagent-card__row--live" : ""}`}>
       <button
         className="subagent-card__row-head"
         type="button"
@@ -151,6 +157,7 @@ function SubagentRowView({ row }: { readonly row: SubagentRow }) {
         ) : (
           <span className="subagent-card__chevron-spacer" />
         )}
+        {isLive ? <WorkingSpinner className="subagent-card__spinner" /> : null}
         <span className="subagent-card__name">{row.name}</span>
         {row.agent ? <span className="subagent-card__agent">{row.agent}</span> : null}
         {row.title ? <span className="subagent-card__title">{row.title}</span> : null}
@@ -159,6 +166,16 @@ function SubagentRowView({ row }: { readonly row: SubagentRow }) {
         </span>
         {elapsed ? <span className="subagent-card__elapsed">{elapsed}</span> : null}
       </button>
+      {isLive ? (
+        <div className="subagent-card__live">
+          {live?.activity ? <span className="subagent-card__activity">{live.activity}</span> : null}
+          {(live?.stats ?? []).map((stat, index) => (
+            <span className="subagent-card__stat" key={index}>
+              {stat}
+            </span>
+          ))}
+        </div>
+      ) : null}
       {expanded && hasBody ? (
         <div className="subagent-card__body">
           {row.task ? (

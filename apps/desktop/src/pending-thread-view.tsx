@@ -105,14 +105,16 @@ export function PendingComposer({
                     </span>
                   </div>
                   <div className="composer__actions">
-                    <button
-                      aria-label="Send message"
-                      className="button button--primary button--cta-icon composer__send"
-                      type="button"
-                      disabled
-                    >
-                      <ArrowUpIcon />
-                    </button>
+                    <span className="composer__key-mount composer__key-mount--send">
+                      <button
+                        aria-label="Send message"
+                        className="button button--primary button--cta-icon composer__send"
+                        type="button"
+                        disabled
+                      >
+                        <ArrowUpIcon />
+                      </button>
+                    </span>
                   </div>
                 </div>
               </div>

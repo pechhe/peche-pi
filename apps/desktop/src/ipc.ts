@@ -104,6 +104,10 @@ export const desktopIpc = {
   respondToHostUiRequest: "pi-gui:respond-to-host-ui-request",
   setNotificationPreferences: "pi-gui:set-notification-preferences",
   setIntegratedTerminalShell: "pi-gui:set-integrated-terminal-shell",
+  setSubagentSettings: "pi-gui:set-subagent-settings",
+  refreshSubagentAgents: "pi-gui:refresh-subagent-agents",
+  saveSubagentAgent: "pi-gui:save-subagent-agent",
+  deleteSubagentAgent: "pi-gui:delete-subagent-agent",
   setEnableTransparency: "pi-gui:set-enable-transparency",
   setTranscriptVerbose: "pi-gui:set-transcript-verbose",
   setComposerDeviceMode: "pi-gui:set-composer-device-mode",
@@ -232,6 +236,10 @@ export const piDesktopApiIpcBridge = {
   respondToHostUiRequest: { kind: "invoke", channel: desktopIpc.respondToHostUiRequest },
   setNotificationPreferences: { kind: "invoke", channel: desktopIpc.setNotificationPreferences },
   setIntegratedTerminalShell: { kind: "invoke", channel: desktopIpc.setIntegratedTerminalShell },
+  setSubagentSettings: { kind: "invoke", channel: desktopIpc.setSubagentSettings },
+  refreshSubagentAgents: { kind: "invoke", channel: desktopIpc.refreshSubagentAgents },
+  saveSubagentAgent: { kind: "invoke", channel: desktopIpc.saveSubagentAgent },
+  deleteSubagentAgent: { kind: "invoke", channel: desktopIpc.deleteSubagentAgent },
   setEnableTransparency: { kind: "invoke", channel: desktopIpc.setEnableTransparency },
   setTranscriptVerbose: { kind: "invoke", channel: desktopIpc.setTranscriptVerbose },
   setComposerDeviceMode: { kind: "invoke", channel: desktopIpc.setComposerDeviceMode },
@@ -512,6 +520,10 @@ export interface PiDesktopApi {
   ): Promise<DesktopAppState>;
   setNotificationPreferences(preferences: Partial<NotificationPreferences>): Promise<DesktopAppState>;
   setIntegratedTerminalShell(shell: string): Promise<DesktopAppState>;
+  setSubagentSettings(settings: Partial<import("./desktop-state").SubagentSettingsRecord>): Promise<DesktopAppState>;
+  refreshSubagentAgents(workspaceId: string): Promise<DesktopAppState>;
+  saveSubagentAgent(workspaceId: string, input: { readonly name: string; readonly raw: string; readonly scope?: "project" | "global" }): Promise<DesktopAppState>;
+  deleteSubagentAgent(workspaceId: string, name: string, scope?: "project" | "global"): Promise<DesktopAppState>;
   setEnableTransparency(enabled: boolean): Promise<DesktopAppState>;
   setTranscriptVerbose(enabled: boolean): Promise<DesktopAppState>;
   setComposerDeviceMode(mode: ComposerDeviceMode): Promise<DesktopAppState>;

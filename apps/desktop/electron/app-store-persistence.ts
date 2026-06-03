@@ -4,6 +4,7 @@ import type {
   ExtensionCommandCompatibilityRecord,
   ModelSettingsScopeMode,
   NotificationPreferences,
+  SubagentSettingsRecord,
   ThemeMode,
 } from "../src/desktop-state";
 import type { ModelSettingsSnapshot } from "@pi-gui/session-driver/runtime-types";
@@ -21,6 +22,7 @@ export interface PersistedUiState {
   readonly composerDraftsBySession?: Record<string, string>;
   readonly extensionCommandCompatibilityByWorkspace?: Record<string, readonly ExtensionCommandCompatibilityRecord[]>;
   readonly notificationPreferences?: NotificationPreferences;
+  readonly subagentSettings?: Partial<SubagentSettingsRecord>;
   readonly integratedTerminalShell?: string;
   readonly externalTerminalApp?: string;
   readonly lastViewedAtBySession?: Record<string, string>;
@@ -75,6 +77,7 @@ export async function readPersistedUiState(uiStateFilePath: string): Promise<Leg
       composerDraftsBySession: parsed.composerDraftsBySession,
       extensionCommandCompatibilityByWorkspace: parsed.extensionCommandCompatibilityByWorkspace,
       notificationPreferences: parsed.notificationPreferences,
+      subagentSettings: normalizeSubagentSettings(parsed.subagentSettings),
       integratedTerminalShell:
         typeof parsed.integratedTerminalShell === "string" ? parsed.integratedTerminalShell : undefined,
       externalTerminalApp:
@@ -154,6 +157,19 @@ export async function writePersistedUiState(
       }
     }
   });
+}
+
+function normalizeSubagentSettings(value: unknown): Partial<SubagentSettingsRecord> | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const candidate = value as Record<string, unknown>;
+  return {
+    ...(typeof candidate.orchestratorMode === "boolean" ? { orchestratorMode: candidate.orchestratorMode } : {}),
+    ...(typeof candidate.disableCoordinatorOnlyTurn === "boolean" ? { disableCoordinatorOnlyTurn: candidate.disableCoordinatorOnlyTurn } : {}),
+    ...(typeof candidate.disableChildContextBoundary === "boolean" ? { disableChildContextBoundary: candidate.disableChildContextBoundary } : {}),
+    ...(typeof candidate.disableSessionTitles === "boolean" ? { disableSessionTitles: candidate.disableSessionTitles } : {}),
+    ...(candidate.mux === "cmux" || candidate.mux === "tmux" || candidate.mux === "zellij" || candidate.mux === "wezterm" || candidate.mux === "auto" ? { mux: candidate.mux } : {}),
+    ...(typeof candidate.piCommandOverride === "string" ? { piCommandOverride: candidate.piCommandOverride } : {}),
+  };
 }
 
 function toPersistedModelSettingsSnapshot(value: unknown): ModelSettingsSnapshot | undefined {

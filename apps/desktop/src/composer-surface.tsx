@@ -48,7 +48,73 @@ interface ComposerSurfaceProps {
   readonly textareaTestId: string;
   readonly textareaPlaceholder: string;
   readonly textareaClassName?: string;
+  readonly screenFooter?: ReactNode;
   readonly footer: ReactNode;
+}
+
+export function ComposerAttachments({
+  attachments,
+  onRemoveAttachment,
+}: {
+  readonly attachments: readonly ComposerAttachment[];
+  readonly onRemoveAttachment: (attachmentId: string) => void;
+}) {
+  if (attachments.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="composer__attachments">
+      {attachments.map((attachment) => (
+        <div className={`composer-attachment composer-attachment--${attachment.kind} ${attachment.kind === "image" ? "composer-attachment--tile" : ""}`} key={attachment.id}>
+          {attachment.kind === "image" ? (
+            <div className="composer-attachment__tile">
+              <button
+                type="button"
+                className="composer-attachment__preview-button"
+                aria-label={`View ${attachment.name}`}
+                onClick={() =>
+                  openImageLightbox({
+                    src: `data:${attachment.mimeType};base64,${attachment.data}`,
+                    alt: attachment.name,
+                  })
+                }
+              >
+                <img
+                  alt={attachment.name}
+                  className="composer-attachment__preview"
+                  src={`data:${attachment.mimeType};base64,${attachment.data}`}
+                />
+              </button>
+              <button
+                aria-label={`Remove ${attachment.name}`}
+                className="composer-attachment__remove"
+                type="button"
+                onClick={() => onRemoveAttachment(attachment.id)}
+              >
+                ×
+              </button>
+            </div>
+          ) : (
+            <>
+              <span className="composer-attachment__icon" aria-hidden="true">
+                <FileIcon />
+              </span>
+              <span className="composer-attachment__name">{attachment.name}</span>
+              <button
+                aria-label={`Remove ${attachment.name}`}
+                className="composer-attachment__remove"
+                type="button"
+                onClick={() => onRemoveAttachment(attachment.id)}
+              >
+                ×
+              </button>
+            </>
+          )}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export function ComposerSurface({
@@ -88,6 +154,7 @@ export function ComposerSurface({
   textareaTestId,
   textareaPlaceholder,
   textareaClassName,
+  screenFooter,
   footer,
 }: ComposerSurfaceProps) {
   const [isDragActive, setIsDragActive] = useState(false);
@@ -195,67 +262,16 @@ export function ComposerSurface({
         onRemoveMessage={onRemoveQueuedMessage}
         onSteerMessage={onSteerQueuedMessage}
       />
-      {attachments.length > 0 ? (
-        <div className="composer__attachments">
-          {attachments.map((attachment) => (
-            <div className={`composer-attachment composer-attachment--${attachment.kind} ${attachment.kind === "image" ? "composer-attachment--tile" : ""}`} key={attachment.id}>
-              {attachment.kind === "image" ? (
-                <div className="composer-attachment__tile">
-                  <button
-                    type="button"
-                    className="composer-attachment__preview-button"
-                    aria-label={`View ${attachment.name}`}
-                    onClick={() =>
-                      openImageLightbox({
-                        src: `data:${attachment.mimeType};base64,${attachment.data}`,
-                        alt: attachment.name,
-                      })
-                    }
-                  >
-                    <img
-                      alt={attachment.name}
-                      className="composer-attachment__preview"
-                      src={`data:${attachment.mimeType};base64,${attachment.data}`}
-                    />
-                  </button>
-                  <button
-                    aria-label={`Remove ${attachment.name}`}
-                    className="composer-attachment__remove"
-                    type="button"
-                    onClick={() => onRemoveAttachment(attachment.id)}
-                  >
-                    ×
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <span className="composer-attachment__icon" aria-hidden="true">
-                    <FileIcon />
-                  </span>
-                  <span className="composer-attachment__name">{attachment.name}</span>
-                  <button
-                    aria-label={`Remove ${attachment.name}`}
-                    className="composer-attachment__remove"
-                    type="button"
-                    onClick={() => onRemoveAttachment(attachment.id)}
-                  >
-                    ×
-                  </button>
-                </>
-              )}
-            </div>
-          ))}
-        </div>
-      ) : null}
       {lastError ? (
         <div className="composer__error error-banner" data-testid="composer-error-banner">
           {lastError}
         </div>
       ) : null}
       <div className="composer__editor" onMouseDown={handleEditorMouseDown}>
-        {topNotice}
-        {showMentionMenu ? (
-          <div className="composer__menus">
+        <div className="composer__screen">
+          {topNotice}
+          {showMentionMenu ? (
+            <div className="composer__menus">
             <div className="mention-menu" data-testid="mention-menu" onWheel={(event) => event.stopPropagation()}>
               {mentionOptions.map((filePath, index) => {
                 const lastSlash = filePath.lastIndexOf("/");
@@ -354,18 +370,20 @@ export function ComposerSurface({
             ) : null}
           </div>
         ) : null}
-        <textarea
-          aria-label={textareaLabel}
-          className={textareaClassName}
-          data-testid={textareaTestId}
-          ref={composerRef}
-          value={composerDraft}
-          onChange={(event) => {
-            setComposerDraft(event.target.value);
-          }}
-          onKeyDown={onComposerKeyDown}
-          placeholder={textareaPlaceholder}
-        />
+          <textarea
+            aria-label={textareaLabel}
+            className={textareaClassName}
+            data-testid={textareaTestId}
+            ref={composerRef}
+            value={composerDraft}
+            onChange={(event) => {
+              setComposerDraft(event.target.value);
+            }}
+            onKeyDown={onComposerKeyDown}
+            placeholder={textareaPlaceholder}
+          />
+          {screenFooter}
+        </div>
         <div className="composer__bar">{footer}</div>
       </div>
     </div>

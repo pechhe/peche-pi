@@ -3,8 +3,7 @@
   "runtime_contract": {
     "source_docs": [],
     "verification_gates": [
-      { "name": "TypeScript typecheck", "command": "cd apps/desktop && npx tsc -p tsconfig.json --noEmit && npx tsc -p tsconfig.electron.json --noEmit" },
-      { "name": "Core e2e tests", "command": "cd apps/desktop && pnpm test:e2e:core" }
+      { "name": "verify file exists", "command": "test -f test.txt && grep -q '^test$' test.txt" }
     ],
     "require_progress_append": true,
     "require_one_item_per_iteration": true,
@@ -13,21 +12,12 @@
   "items": [
     {
       "category": "functional",
-      "description": "Create TestButton component and render it on the main page",
+      "description": "Create test.txt with content 'test' and commit it",
       "steps": [
-        "Create TestButton.tsx in apps/desktop/src/renderer/src/components/",
-        "Export a React component that renders a <button> with text 'Test Button'",
-        "Import and render <TestButton /> in the main app page"
-      ],
-      "passes": false,
-      "regression_notes": ""
-    },
-    {
-      "category": "testing",
-      "description": "Add Playwright e2e test that asserts TestButton renders with correct text",
-      "steps": [
-        "Add a test spec in apps/desktop/tests/e2e/core/ that navigates to the app and asserts the button with text 'Test Button' exists",
-        "Run pnpm test:e2e:core and confirm the test passes"
+        "Initialize git repo at workspace root if missing",
+        "Write test.txt containing exactly 'test'",
+        "Stage and commit test.txt",
+        "Verify file exists and content is correct"
       ],
       "passes": false,
       "regression_notes": ""

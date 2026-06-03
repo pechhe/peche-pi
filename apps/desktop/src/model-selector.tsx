@@ -174,14 +174,16 @@ export const ModelSelector = forwardRef<ModelSelectorHandle, ModelSelectorProps>
       <span className="model-selector" ref={containerRef}>
         {shouldRenderModelControl ? (
           <span className="model-selector__anchor">
-            <button
-              className="model-selector__badge"
-              type="button"
-              disabled={disabled}
-              onClick={() => setOpen(open === "model" ? "none" : "model")}
-            >
-              {modelBadgeLabel}
-            </button>
+            <span className="composer__key-mount">
+              <button
+                className="model-selector__badge"
+                type="button"
+                disabled={disabled}
+                onClick={() => setOpen(open === "model" ? "none" : "model")}
+              >
+                {modelBadgeLabel}
+              </button>
+            </span>
             {open === "model" ? (
               <div
                 className={`model-selector__dropdown ${dropdownPlacement === "below" ? "model-selector__dropdown--below" : ""}`}
@@ -272,15 +274,17 @@ export const ModelSelector = forwardRef<ModelSelectorHandle, ModelSelectorProps>
         ) : null}
         {thinkingLevel ? (
           <span className="model-selector__anchor">
-            <button
-              className="model-selector__badge"
-              type="button"
-              disabled={disabled}
-              title="Thinking level (click to cycle)"
-              onClick={() => onSetThinking(nextThinkingLevel(thinkingLevel))}
-            >
-              <ReasoningMeter level={thinkingLevel} size={12} />
-            </button>
+            <span className="composer__key-mount">
+              <button
+                className="model-selector__badge"
+                type="button"
+                disabled={disabled}
+                title="Thinking level (click to cycle)"
+                onClick={() => onSetThinking(nextThinkingLevel(thinkingLevel))}
+              >
+                <ReasoningMeter level={thinkingLevel} size={12} />
+              </button>
+            </span>
           </span>
         ) : null}
       </span>

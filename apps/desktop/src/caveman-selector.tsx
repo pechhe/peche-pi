@@ -37,15 +37,17 @@ export function CavemanSelector({ level, disabled = false, onSetLevel }: Caveman
     <span className="caveman-selector" title="Caveman output compression level (click to cycle: off → micro → ultra)">
       <span aria-hidden="true">🪨</span>
       <span className="sr-only">Caveman compression</span>
-      <button
-        aria-label={`Caveman compression: ${cavemanLabel(level)}`}
-        className="caveman-selector__select"
-        disabled={disabled}
-        type="button"
-        onClick={() => onSetLevel(nextCavemanLevel(level))}
-      >
-        {cavemanLabel(level)}
-      </button>
+      <span className="composer__key-mount">
+        <button
+          aria-label={`Caveman compression: ${cavemanLabel(level)}`}
+          className="caveman-selector__select"
+          disabled={disabled}
+          type="button"
+          onClick={() => onSetLevel(nextCavemanLevel(level))}
+        >
+          {cavemanLabel(level)}
+        </button>
+      </span>
     </span>
   );
 }

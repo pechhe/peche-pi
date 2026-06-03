@@ -1,11 +1,12 @@
 import type { RuntimeSettingsSnapshot, RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
-import type { ModelSettingsScopeMode, NotificationPreferences, WorkspaceRecord } from "./desktop-state";
+import type { ModelSettingsScopeMode, NotificationPreferences, SubagentAgentRecord, SubagentSettingsRecord, WorkspaceRecord } from "./desktop-state";
 import type { DesktopNotificationPermissionStatus } from "./ipc";
 import { SettingsAppearanceSection } from "./settings-appearance-section";
 import { SettingsGeneralSection } from "./settings-general-section";
 import { SettingsModelsSection } from "./settings-models-section";
 import { SettingsNotificationsSection } from "./settings-notifications-section";
 import { SettingsProvidersSection } from "./settings-providers-section";
+import { SettingsSubagentsSection } from "./settings-subagents-section";
 import { type SettingsSection, sectionTitle } from "./settings-utils";
 
 export type { SettingsSection } from "./settings-utils";
@@ -26,6 +27,8 @@ interface SettingsViewProps {
   readonly enableTransparency: boolean;
   readonly transcriptVerbose: boolean;
   readonly composerDeviceMode: import("./desktop-state").ComposerDeviceMode;
+  readonly subagentSettings: SubagentSettingsRecord;
+  readonly subagentAgents: readonly SubagentAgentRecord[];
   readonly onSetModelSettingsScopeMode: (mode: ModelSettingsScopeMode) => void;
   readonly onSetDefaultModel: (provider: string, modelId: string) => void;
   readonly onSetThinkingLevel: (thinkingLevel: RuntimeSettingsSnapshot["defaultThinkingLevel"]) => void;
@@ -45,6 +48,10 @@ interface SettingsViewProps {
   readonly onSetEnableTransparency: (enabled: boolean) => void;
   readonly onSetTranscriptVerbose: (enabled: boolean) => void;
   readonly onSetComposerDeviceMode: (mode: import("./desktop-state").ComposerDeviceMode) => void;
+  readonly onSetSubagentSettings: (settings: Partial<SubagentSettingsRecord>) => void;
+  readonly onRefreshSubagentAgents: (workspaceId: string) => void;
+  readonly onSaveSubagentAgent: (workspaceId: string, input: { readonly name: string; readonly raw: string }) => void;
+  readonly onDeleteSubagentAgent: (workspaceId: string, name: string) => void;
 }
 
 export function SettingsView({
@@ -63,6 +70,8 @@ export function SettingsView({
   enableTransparency,
   transcriptVerbose,
   composerDeviceMode,
+  subagentSettings,
+  subagentAgents,
   onSetModelSettingsScopeMode,
   onSetDefaultModel,
   onSetThinkingLevel,
@@ -82,6 +91,10 @@ export function SettingsView({
   onSetEnableTransparency,
   onSetTranscriptVerbose,
   onSetComposerDeviceMode,
+  onSetSubagentSettings,
+  onRefreshSubagentAgents,
+  onSaveSubagentAgent,
+  onDeleteSubagentAgent,
 }: SettingsViewProps) {
   if (!workspace && section !== "general" && section !== "notifications" && section !== "appearance") {
     return (
@@ -149,12 +162,24 @@ export function SettingsView({
           ) : null}
 
           {section === "models" ? (
-            <SettingsModelsSection
-              runtime={runtime}
-              onSetDefaultModel={onSetDefaultModel}
-              onSetScopedModelPatterns={onSetScopedModelPatterns}
-              onSetThinkingLevel={onSetThinkingLevel}
-            />
+            <>
+              <SettingsModelsSection
+                runtime={runtime}
+                onSetDefaultModel={onSetDefaultModel}
+                onSetScopedModelPatterns={onSetScopedModelPatterns}
+                onSetThinkingLevel={onSetThinkingLevel}
+              />
+              <SettingsSubagentsSection
+                workspace={workspace}
+                settings={subagentSettings}
+                agents={subagentAgents}
+                runtime={runtime}
+                onSetSettings={onSetSubagentSettings}
+                onRefreshAgents={onRefreshSubagentAgents}
+                onSaveAgent={onSaveSubagentAgent}
+                onDeleteAgent={onDeleteSubagentAgent}
+              />
+            </>
           ) : null}
 
           {section === "notifications" ? (

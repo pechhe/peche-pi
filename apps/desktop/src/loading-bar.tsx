@@ -9,12 +9,15 @@ type Phase = "idle" | "accelerating" | "creeping" | "finishing" | "done";
 const FAST_DURATION = 800; // ms: rapid acceleration to ~75%
 const CREEP_INCREMENT = 0.3; // % per tick when creeping
 const CREEP_INTERVAL = 200; // ms between creep ticks
-const FINISH_DURATION = 300; // ms: snap from current → 100%
+const FINISH_DURATION = 280; // ms: snap from current → 100%
+const FADE_DURATION = 220; // ms: fade out after reaching the end
 const HIDE_DELAY = 400; // ms: hide element after finishing
 
 export default function LoadingBar({ loading }: LoadingBarProps) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [progress, setProgress] = useState(0);
+  const [fading, setFading] = useState(false);
+  const fadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const creepTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const finishTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -74,19 +77,30 @@ export default function LoadingBar({ loading }: LoadingBarProps) {
   useEffect(() => {
     if (loading || phase === "idle" || phase === "done") return;
 
-    // Transition to finishing
+    // Transition to finishing: drive the bar fully to the right first,
+    // then fade it out once it has reached the end.
     setPhase("finishing");
+    setFading(false);
     setProgress(100);
+
+    fadeTimerRef.current = setTimeout(() => {
+      setFading(true);
+    }, FINISH_DURATION);
 
     finishTimerRef.current = setTimeout(() => {
       setPhase("done");
       setProgress(0);
-    }, FINISH_DURATION + HIDE_DELAY);
+      setFading(false);
+    }, FINISH_DURATION + FADE_DURATION + HIDE_DELAY);
 
     return () => {
       if (finishTimerRef.current) {
         clearTimeout(finishTimerRef.current);
         finishTimerRef.current = null;
+      }
+      if (fadeTimerRef.current) {
+        clearTimeout(fadeTimerRef.current);
+        fadeTimerRef.current = null;
       }
     };
   }, [loading, phase]);
@@ -96,6 +110,7 @@ export default function LoadingBar({ loading }: LoadingBarProps) {
     return () => {
       if (creepTimerRef.current) clearInterval(creepTimerRef.current);
       if (finishTimerRef.current) clearTimeout(finishTimerRef.current);
+      if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
     };
   }, []);
 
@@ -114,15 +129,25 @@ export default function LoadingBar({ loading }: LoadingBarProps) {
       role="progressbar"
       aria-label="Loading transcript"
       data-testid="transcript-loading-bar"
+      data-fading={fading ? "true" : undefined}
+      style={{ opacity: fading ? 0 : 1, transition: `opacity ${FADE_DURATION}ms ease-out` }}
     >
       <span
         className="canvas__loading-bar-indicator"
         style={{
           transform: `scaleX(${progress / 100})`,
           transition: `transform ${transitionDuration} ease-out`,
-          opacity: isFinishing ? 0 : 1,
         }}
-      />
+      >
+        <span
+          className="canvas__loading-bar-bloom"
+          aria-hidden="true"
+          style={{
+            // counter the parent's scaleX so the bloom stays round, not squished
+            transform: `scaleX(${progress > 0 ? 100 / progress : 1})`,
+          }}
+        />
+      </span>
     </div>
   );
 }

@@ -55,6 +55,31 @@ export interface NotificationPreferences {
   readonly attentionNeeded: boolean;
 }
 
+export interface SubagentSettingsRecord {
+  readonly orchestratorMode: boolean;
+  readonly disableCoordinatorOnlyTurn: boolean;
+  readonly disableChildContextBoundary: boolean;
+  readonly disableSessionTitles: boolean;
+  readonly mux: "auto" | "cmux" | "tmux" | "zellij" | "wezterm";
+  readonly piCommandOverride: string;
+}
+
+export interface SubagentAgentRecord {
+  readonly id: string;
+  readonly name: string;
+  readonly description?: string;
+  readonly model?: string;
+  readonly thinking?: string;
+  readonly mode?: "interactive" | "background";
+  readonly async?: boolean;
+  readonly autoExit?: boolean;
+  readonly sessionMode?: "standalone" | "lineage-only" | "fork";
+  readonly allowModelOverride?: boolean;
+  readonly filePath: string;
+  readonly scope: "project" | "global";
+  readonly raw: string;
+}
+
 export interface ComposerImageAttachment {
   readonly id: string;
   readonly kind: "image";
@@ -246,6 +271,8 @@ export interface DesktopAppState {
   readonly sessionExtensionUiBySession: Readonly<Record<string, SessionExtensionUiStateRecord>>;
   readonly extensionCommandCompatibilityByWorkspace: Readonly<Record<string, readonly ExtensionCommandCompatibilityRecord[]>>;
   readonly notificationPreferences: NotificationPreferences;
+  readonly subagentSettings: SubagentSettingsRecord;
+  readonly subagentAgentsByWorkspace: Record<string, readonly SubagentAgentRecord[]>;
   readonly integratedTerminalShell: string;
   readonly externalTerminalApp: string;
   readonly lastViewedAtBySession: Readonly<Record<string, string>>;
@@ -255,6 +282,7 @@ export interface DesktopAppState {
   readonly sidebarCollapsed: boolean;
   readonly enableTransparency: boolean;
   readonly transcriptVerbose: boolean;
+  readonly autoAcceptVisionProxy: boolean;
   readonly composerDeviceMode: ComposerDeviceMode;
   readonly themeMode: ThemeMode;
   readonly commitPushModel?: string;
@@ -299,6 +327,15 @@ export function createEmptyDesktopAppState(): DesktopAppState {
       backgroundFailure: true,
       attentionNeeded: true,
     },
+    subagentSettings: {
+      orchestratorMode: false,
+      disableCoordinatorOnlyTurn: false,
+      disableChildContextBoundary: false,
+      disableSessionTitles: false,
+      mux: "auto",
+      piCommandOverride: "",
+    },
+    subagentAgentsByWorkspace: {},
     integratedTerminalShell: "",
     externalTerminalApp: "",
     lastViewedAtBySession: {},
@@ -310,6 +347,7 @@ export function createEmptyDesktopAppState(): DesktopAppState {
     sidebarCollapsed: false,
     enableTransparency: false,
     transcriptVerbose: false,
+    autoAcceptVisionProxy: false,
     composerDeviceMode: "off",
     themeMode: "system",
     commitPushModel: undefined,

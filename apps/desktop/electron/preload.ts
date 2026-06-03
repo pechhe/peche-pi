@@ -205,6 +205,14 @@ contextBridge.exposeInMainWorld("piApp", {
     ipcRenderer.invoke(desktopIpc.setNotificationPreferences, preferences) as Promise<DesktopAppState>,
   setIntegratedTerminalShell: (shellPath: string) =>
     ipcRenderer.invoke(desktopIpc.setIntegratedTerminalShell, shellPath) as Promise<DesktopAppState>,
+  setSubagentSettings: (settings: Partial<import("../src/desktop-state").SubagentSettingsRecord>) =>
+    ipcRenderer.invoke(desktopIpc.setSubagentSettings, settings) as Promise<DesktopAppState>,
+  refreshSubagentAgents: (workspaceId: string) =>
+    ipcRenderer.invoke(desktopIpc.refreshSubagentAgents, workspaceId) as Promise<DesktopAppState>,
+  saveSubagentAgent: (workspaceId: string, input: { readonly name: string; readonly raw: string; readonly scope?: "project" | "global" }) =>
+    ipcRenderer.invoke(desktopIpc.saveSubagentAgent, workspaceId, input) as Promise<DesktopAppState>,
+  deleteSubagentAgent: (workspaceId: string, name: string, scope?: "project" | "global") =>
+    ipcRenderer.invoke(desktopIpc.deleteSubagentAgent, workspaceId, name, scope) as Promise<DesktopAppState>,
   setEnableTransparency: (enabled: boolean) =>
     ipcRenderer.invoke(desktopIpc.setEnableTransparency, enabled) as Promise<DesktopAppState>,
   setTranscriptVerbose: (enabled: boolean) =>

@@ -1,33 +1,57 @@
-You are an engineer running a Ralph Wiggum loop. Read `.ralph/plan.md`, `.ralph/items.json`, and `.ralph/progress.md` first.
+# Ralph Loop: Add test.txt
 
-This is a test/synthetic plan for validating the Ralph loop itself. Work exactly one item per iteration.
+## How to work
 
-## Rules
+You are in a Ralph Wiggum loop. One item per iteration. Read the durable state first, then work on exactly one unfinished item, verify it, update state, commit, and emit a promise tag.
 
-1. Read `.ralph/plan.md`, `.ralph/items.json`, and `.ralph/progress.md` — these are your only authoritative task sources. Ignore any secondary todo lists, issue queues, or planner state.
-2. Inspect recent git history and current repo state.
-3. Choose one unfinished item from `.ralph/items.json` using `.ralph/plan.md` prioritization.
-4. Work only on that item. Do not plan or start another item.
-5. After the item is implemented, run every verification gate listed in `verification_gates`.
-6. Update `.ralph/items.json` — change `passes` and `regression_notes` only. Do not change `description` or `steps`.
-7. Append one entry to `.ralph/progress.md` with: item chosen, rationale, files changed, verification results, and any notes for the next iteration.
-8. Commit after progress is appended. Stage only the files needed for this item plus `.ralph/items.json` and `.ralph/progress.md`. Do not stage `.ralph/loop.md`.
-9. End with exactly one promise tag on the last non-empty line:
-   - `<promise>NEXT</promise>` — one item passed, all gates green, progress appended, committed.
-   - `<promise>COMPLETE</promise>` — all items pass, all gates green.
+## Start
 
-## Prohibitions
+Read these files:
+- `.ralph/plan.md` — scope, constraints, completion definition
+- `.ralph/items.json` — the item list and runtime contract
+- `.ralph/progress.md` — previous iteration handoffs
 
-- No skipped checks, `|| true`, `--no-verify`, suppressed failures, deleted tests, or passing without command evidence.
-- Once the selected item is marked passing, stop implementation work. Only finalize: run gates, update items, append progress, commit, emit promise.
-- Do not choose another item, inspect files for another item, edit source files for another item, or explain what comes next.
-- The final response for a successful one-item iteration must be exactly one promise tag on the last non-empty line.
+Inspect the current repo state and git log.
 
-## Repo context
+## Choose one item
 
-- Monorepo with pnpm workspaces
-- Electron desktop app at `apps/desktop/`
-- Renderer React components live in `apps/desktop/src/renderer/src/`
-- TypeScript check: `cd apps/desktop && npx tsc -p tsconfig.json --noEmit && npx tsc -p tsconfig.electron.json --noEmit`
-- Core e2e tests: `cd apps/desktop && pnpm test:e2e:core`
-- Existing patterns: Look at existing renderer components for conventions
+Pick one unfinished item from `.ralph/items.json`. Use `.ralph/plan.md` prioritization. Ignore any other task list or planner state.
+
+## Work
+
+Do only the work for that item. Follow the item's `steps`.
+
+## Verify
+
+Run every verification gate listed in `runtime_contract.verification_gates`. Do not skip, weaken, or suppress failures.
+
+## Update state
+
+- Set `passes: true` for the completed item in `.ralph/items.json`
+- Append one handoff entry to `.ralph/progress.md` with: item description, decisions, changed files, verification results, notes
+
+## Commit
+
+Since `require_commit: true`:
+
+- If no git repo exists, init one: `git init`
+- Stage only the files needed for this item plus `.ralph/items.json` and `.ralph/progress.md`
+- Do not stage `.ralph/loop.md`
+- Commit
+
+## Promise
+
+After all checks pass, progress appended, and commit done:
+
+- If this item was the last unfinished item: emit `<promise>COMPLETE</promise>` on its own line
+- Otherwise: emit `<promise>NEXT</promise>` on its own line
+
+When the promise tag is emitted, stop. Do not choose or start the next item. Do not plan future work. Do not explain what comes next.
+
+## Boundaries
+
+- Do not edit `.ralph/items.json` `description` or `steps` fields
+- Do not delete items
+- Do not touch source files outside the scope of the selected item
+- Do not run long-running or watcher commands
+- Do not use `|| true`, `--no-verify`, output suppression, or anything that masks failures
