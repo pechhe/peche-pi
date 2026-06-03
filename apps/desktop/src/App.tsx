@@ -39,7 +39,7 @@ import { SettingsView, type SettingsSection } from "./settings-view";
 import { NewThreadView } from "./new-thread-view";
 import { PendingComposer } from "./pending-thread-view";
 import { buildThreadGroups, PENDING_THREAD_SESSION_ID, type ThreadListEntry } from "./thread-groups";
-import { markUserMessagesAnimated } from "./timeline-item";
+import { usePendingThreadGoLive, type PendingThreadStart } from "./hooks/use-pending-thread-go-live";
 import { Sidebar } from "./sidebar";
 import { SidebarToggleButton } from "./sidebar-toggle-button";
 import { Topbar } from "./topbar";
@@ -82,48 +82,6 @@ const EMPTY_TRANSCRIPT: readonly TranscriptMessage[] = Object.freeze([]) as read
 // new thread is being created. Lets the placeholder transcript and the live
 // transcript share one ConversationTimeline so going live reconciles instead
 // of remounting.
-const PENDING_USER_MESSAGE_ID = "__pending_user_message__";
-
-// Slide the thread composer from where the centered new-thread composer was
-// down to the footer (a FLIP transform): capture the old rect, let the new
-// composer mount at its final spot, then animate transform from the old
-// position to identity. Only the composer moves — nothing zooms or cross-fades.
-const COMPOSER_SLIDE_EASING = "cubic-bezier(0.22, 1, 0.36, 1)";
-const COMPOSER_SLIDE_MS = 280;
-
-function runComposerSlide(fromRect: DOMRect): void {
-  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-    return;
-  }
-  const el = document.querySelector("footer.composer") as HTMLElement | null;
-  if (!el) {
-    return;
-  }
-  const toRect = el.getBoundingClientRect();
-  const dx = fromRect.left + fromRect.width / 2 - (toRect.left + toRect.width / 2);
-  const dy = fromRect.top - toRect.top;
-  if (Math.abs(dx) < 1 && Math.abs(dy) < 1) {
-    return;
-  }
-  el.style.transition = "none";
-  el.style.transform = `translate(${dx}px, ${dy}px)`;
-  // Force a reflow so the starting transform is committed before we animate.
-  void el.offsetHeight;
-  requestAnimationFrame(() => {
-    el.style.transition = `transform ${COMPOSER_SLIDE_MS}ms ${COMPOSER_SLIDE_EASING}`;
-    el.style.transform = "translate(0px, 0px)";
-    const cleanup = (event: TransitionEvent) => {
-      if (event.propertyName !== "transform") {
-        return;
-      }
-      el.style.transition = "";
-      el.style.transform = "";
-      el.removeEventListener("transitionend", cleanup);
-    };
-    el.addEventListener("transitionend", cleanup);
-  });
-}
-
 function deriveThreadTitle(prompt: string): string {
   const firstLine = prompt.split("\n").map((line) => line.trim()).find(Boolean) ?? "";
   if (!firstLine) {
@@ -386,32 +344,6 @@ export default function App() {
   const [newThreadModelId, setNewThreadModelId] = useState<string | undefined>();
   const [newThreadThinkingLevel, setNewThreadThinkingLevel] = useState<string | undefined>();
   const [newThreadComposerError, setNewThreadComposerError] = useState<string | undefined>();
-  // Snapshot of the prompt + attachments captured when the user submits a
-  // new thread, used to render an immediate placeholder session surface
-  // while the main process spins up the agent runtime. Cleared when
-  // startThread resolves and the real snapshot takes over.
-  const [pendingThreadStart, setPendingThreadStart] = useState<{
-    // Target root workspace for the optimistic sidebar row. Empty for chats
-    // (chats render in their own list, not the threads sidebar).
-    readonly rootWorkspaceId: string;
-    readonly title: string;
-    // Set once the main process resolves startThread/startChat: the real
-    // session the placeholder is standing in for. While undefined we are still
-    // in flight (show the optimistic sidebar row); once set we hold the
-    // placeholder until that session's transcript arrives.
-    readonly sessionId?: string;
-    readonly workspaceId?: string;
-    // Timestamp captured at send, kept stable across placeholder updates so the
-    // optimistic bubble plays its send animation exactly once.
-    readonly createdAt: string;
-    readonly prompt: string;
-    readonly attachments: readonly ComposerAttachment[];
-    readonly provider: string | undefined;
-    readonly modelId: string | undefined;
-    readonly thinkingLevel: string | undefined;
-    readonly cavemanLevel: CavemanLevel;
-    readonly composerMode: ComposerMode;
-  } | null>(null);
   const [themeMode, setThemeMode] = useState<"system" | "light" | "dark" | "dracula">("system");
   const [notificationPermissionStatus, setNotificationPermissionStatus] =
     useState<DesktopNotificationPermissionStatus>("unknown");
@@ -430,9 +362,6 @@ export default function App() {
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const newThreadComposerRef = useRef<HTMLTextAreaElement | null>(null);
   const timelinePaneRef = useRef<HTMLDivElement | null>(null);
-  // Rect of the centered new-thread composer captured at send, used to slide
-  // the thread composer down from that spot once it mounts.
-  const composerFlipFromRef = useRef<DOMRect | null>(null);
   const lastTranscriptMarkerRef = useRef("");
   const pinnedToBottomRef = useRef(true);
   const previousTimelinePaneSizeRef = useRef<{ width: number; height: number } | null>(null);
@@ -712,89 +641,15 @@ export default function App() {
     selectedTranscript.workspaceId !== selectedWorkspace?.id ||
     selectedTranscript.sessionId !== selectedSession?.id
   );
-  // Optimistic transcript shown in the timeline while a thread is being
-  // created: a single user bubble built from what the user just sent. Lets the
-  // placeholder and the live session share one ConversationTimeline, so going
-  // live is a transcript/label swap rather than a full remount.
-  const pendingOptimisticTranscript = useMemo<readonly TranscriptMessage[] | null>(() => {
-    if (!pendingThreadStart) {
-      return null;
-    }
-    const attachments = pendingThreadStart.attachments.map((attachment) =>
-      attachment.kind === "image"
-        ? { kind: "image" as const, mimeType: attachment.mimeType, data: attachment.data, name: attachment.name }
-        : {
-            kind: "file" as const,
-            name: attachment.name,
-            mimeType: attachment.mimeType,
-            fsPath: attachment.fsPath,
-            ...(attachment.sizeBytes != null ? { sizeBytes: attachment.sizeBytes } : {}),
-          },
-    );
-    return [
-      {
-        kind: "message" as const,
-        role: "user" as const,
-        id: PENDING_USER_MESSAGE_ID,
-        createdAt: pendingThreadStart.createdAt,
-        text: pendingThreadStart.prompt,
-        ...(attachments.length > 0 ? { attachments } : {}),
-      },
-    ];
-  }, [pendingThreadStart]);
-  const threadViewTranscript =
-    pendingThreadStart && pendingOptimisticTranscript ? pendingOptimisticTranscript : visibleTranscript;
-  const threadViewIsRunning = pendingThreadStart ? true : selectedSession?.status === "running";
+  const {
+    pendingThreadStart,
+    setPendingThreadStart,
+    pendingOptimisticTranscript,
+    threadViewTranscript,
+    threadViewIsRunning,
+    composerFlipFromRef,
+  } = usePendingThreadGoLive(selectedTranscript, selectedSession, visibleTranscript, composerRef);
   useSelfHealTranscript(isTranscriptLoading, selectedWorkspace?.id, selectedSession?.id, setSelectedTranscript);
-  // Hold the "Preparing your thread…" placeholder until the new session's
-  // transcript actually contains the user message, then mark that message as
-  // already-animated (the send animation played on the placeholder) and clear
-  // the placeholder. This turns going-live into a seamless label swap
-  // ("Preparing your thread…" → "Thinking…") instead of a flash through an
-  // empty/loading transcript with a replayed send animation.
-  const pendingSessionId = pendingThreadStart?.sessionId;
-  const pendingWorkspaceId = pendingThreadStart?.workspaceId;
-  useEffect(() => {
-    if (!pendingSessionId || !pendingWorkspaceId || !selectedTranscript) {
-      return;
-    }
-    if (
-      selectedTranscript.workspaceId !== pendingWorkspaceId ||
-      selectedTranscript.sessionId !== pendingSessionId
-    ) {
-      return;
-    }
-    const userMessageIds = selectedTranscript.transcript
-      .filter((item) => item.kind === "message" && item.role === "user")
-      .map((item) => item.id);
-    if (userMessageIds.length === 0) {
-      return;
-    }
-    markUserMessagesAnimated(userMessageIds);
-    setPendingThreadStart(null);
-    focusComposer();
-  }, [pendingSessionId, pendingWorkspaceId, selectedTranscript]);
-  // Safety net: if the transcript never arrives, don't hang on the placeholder.
-  useEffect(() => {
-    if (!pendingSessionId) {
-      return undefined;
-    }
-    const timer = window.setTimeout(() => setPendingThreadStart(null), 6000);
-    return () => window.clearTimeout(timer);
-  }, [pendingSessionId]);
-  // Slide the composer down from the new-thread position once the thread
-  // composer first mounts (runs before paint so there's no jump to the footer).
-  const pendingThreadActive = Boolean(pendingThreadStart);
-  useLayoutEffect(() => {
-    if (!pendingThreadActive) {
-      return;
-    }
-    const fromRect = composerFlipFromRef.current;
-    composerFlipFromRef.current = null;
-    if (fromRect) {
-      runComposerSlide(fromRect);
-    }
-  }, [pendingThreadActive]);
   const selectedSessionCommands = selectedSession ? snapshot?.sessionCommandsBySession[selectedSessionKey] ?? [] : [];
   const blackholeAvailable = selectedSessionCommands.some((command) => command.name === "blackhole");
   const selectedExtensionUi = selectedSession ? snapshot?.sessionExtensionUiBySession[selectedSessionKey] : undefined;

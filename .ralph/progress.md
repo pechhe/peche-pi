@@ -93,3 +93,30 @@
 - `e2e core lane --grep=self-heal`: 1/1 PASS
 
 **Notes:** Behavior-preserving extraction. Self-heal test passes with sabotaged push subscription confirming recovery path intact.
+
+## Iteration 5: App.tsx — extract usePendingThreadGoLive hook
+
+**Item:** Extract pending-thread optimistic transcript, go-live hold, 6s safety-net, and composer-slide into hooks/use-pending-thread-go-live.ts.
+
+**Decisions:**
+- Wrote 3 characterization tests (go-live transition, navigation roundtrip, worktree threads) in `tests/core/pending-thread-go-live.spec.ts`.
+- Hook takes `selectedTranscript`, `selectedSession`, `visibleTranscript`, `composerRef`; returns `pendingThreadStart`, `setPendingThreadStart`, `pendingOptimisticTranscript`, `threadViewTranscript`, `threadViewIsRunning`, `composerFlipFromRef`.
+- Module-level constants (`PENDING_USER_MESSAGE_ID`, `COMPOSER_SLIDE_EASING`, `COMPOSER_SLIDE_MS`) and `runComposerSlide` function moved to the hook file.
+- Exported `PendingThreadStart` type for use by `handleStartThread`/`handleStartChat` in App.tsx.
+- `markUserMessagesAnimated` import removed from App.tsx (only used in extracted code).
+- Hook uses `composerRef` directly (via `RefObject<HTMLTextAreaElement | null>`) instead of `focusComposer` callback to avoid ordering issues with hook call position.
+- Preserved exact behavior: `focusComposer` equivalent is `window.requestAnimationFrame(() => composerRef.current?.focus())` in the go-live effect.
+
+**Changed files:**
+- `apps/desktop/src/hooks/use-pending-thread-go-live.ts` (new, 161 lines)
+- `apps/desktop/src/App.tsx` (3285 → ~3187 lines, -98)
+- `apps/desktop/tests/core/pending-thread-go-live.spec.ts` (new, 3 characterization tests)
+
+**Verification results:**
+- `typecheck renderer`: PASS
+- `typecheck electron`: PASS
+- `no new casts at seams`: PASS (zero casts in diff)
+- `e2e core lane --grep=pending-thread-go-live`: 3/3 PASS
+- `e2e core lane --grep=subagent`: 4/4 PASS
+
+**Notes:** Behavior-preserving extraction. All characterization tests pass with extracted hook. `openNewThread` helper has a pre-existing sidebar button issue (also fails in existing new-thread-composer spec), so tests use `startThreadViaIpc` + deferred title mode instead.

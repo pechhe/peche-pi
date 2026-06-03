@@ -78,8 +78,8 @@
         "Run all verification gates",
         "Commit"
       ],
-      "passes": false,
-      "regression_notes": ""
+      "passes": true,
+      "regression_notes": "Characterization tests (3 tests): go-live transition, navigation roundtrip, worktree threads. All pass."
     },
     {
       "category": "refactor",
