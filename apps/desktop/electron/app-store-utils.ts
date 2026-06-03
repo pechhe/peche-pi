@@ -12,7 +12,7 @@ import type {
   WorkspaceSessionTarget,
 } from "../src/desktop-state";
 import { isMetaActivity } from "../src/timeline-grouping";
-import { listIncompleteRalphPlans } from "./ralph-plans";
+import { listRalphPlans } from "./ralph-plans";
 
 export const LEGACY_TRANSCRIPT_HISTORY_LIMIT = 180;
 
@@ -46,7 +46,7 @@ export function buildWorkspaceRecords(
             branchName: linkedWorktreeBranchName(workspace, worktrees, rootWorkspaceId),
           }
         : {}),
-      ralphPlans: listIncompleteRalphPlans(workspace.path),
+      ralphPlans: listRalphPlans(workspace.path),
       sessions: sessions
         .filter((session) => session.workspaceId === workspace.workspaceId)
         .map((session) =>

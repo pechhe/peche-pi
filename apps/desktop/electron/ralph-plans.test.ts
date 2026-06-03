@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { listIncompleteRalphPlans } from "./ralph-plans.ts";
+import { listRalphPlans } from "./ralph-plans.ts";
 
 function withBundle(
   files: { items?: unknown; plan?: string; loop?: string } | null,
@@ -36,15 +36,15 @@ const INCOMPLETE_ITEMS = {
 
 test("returns empty when no .ralph bundle exists", () => {
   withBundle(null, (path) => {
-    assert.deepEqual(listIncompleteRalphPlans(path), []);
+    assert.deepEqual(listRalphPlans(path), []);
   });
 });
 
-test("lists an incomplete plan with title and item counts", () => {
+test("lists a plan with title and item counts", () => {
   withBundle(
     { items: INCOMPLETE_ITEMS, plan: "# Execution Plan: Deepen architecture\n\nbody" },
     (path) => {
-      const plans = listIncompleteRalphPlans(path);
+      const plans = listRalphPlans(path);
       assert.equal(plans.length, 1);
       assert.deepEqual(plans[0], {
         title: "Deepen architecture",
@@ -57,35 +57,31 @@ test("lists an incomplete plan with title and item counts", () => {
   );
 });
 
-test("excludes a plan whose loop is marked complete", () => {
+test("lists a plan even when a stale loop.md is marked complete", () => {
   withBundle(
     { items: INCOMPLETE_ITEMS, loop: '---\nstop_reason: "complete"\nmax_iterations: 9\n---\n' },
     (path) => {
-      assert.deepEqual(listIncompleteRalphPlans(path), []);
+      // loop.md is past-run state and is not reset when a new plan is written;
+      // existence of items.json is all that matters.
+      assert.equal(listRalphPlans(path).length, 1);
     },
   );
 });
 
-test("excludes a plan where every item passes", () => {
+test("lists a plan even when every item already passes", () => {
   withBundle(
     { items: { version: 1, items: [{ passes: true }, { passes: true }] } },
     (path) => {
-      assert.deepEqual(listIncompleteRalphPlans(path), []);
+      const plans = listRalphPlans(path);
+      assert.equal(plans.length, 1);
+      assert.equal(plans[0]?.totalItems, 2);
+      assert.equal(plans[0]?.doneItems, 2);
     },
   );
 });
 
-test("prefills max iterations from a prior loop run", () => {
-  withBundle(
-    {
-      items: INCOMPLETE_ITEMS,
-      plan: "# Build the thing\n",
-      loop: '---\nrunning: false\nmax_iterations: 20\nstop_reason: "stop"\n---\n',
-    },
-    (path) => {
-      const plans = listIncompleteRalphPlans(path);
-      assert.equal(plans[0]?.defaultMaxIterations, 20);
-      assert.equal(plans[0]?.title, "Build the thing");
-    },
-  );
+test("returns empty when items.json has no items", () => {
+  withBundle({ items: { version: 1, items: [] } }, (path) => {
+    assert.deepEqual(listRalphPlans(path), []);
+  });
 });

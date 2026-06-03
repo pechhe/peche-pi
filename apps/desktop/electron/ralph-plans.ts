@@ -6,35 +6,27 @@ const DEFAULT_MAX_ITERATIONS = 100;
 const PROMPT_REF = "@.ralph/prompt.md";
 
 /**
- * Discover incomplete Ralph plans in a workspace. A "plan" is a `.ralph/`
- * bundle; there is one per repo root. A plan is incomplete unless its loop was
- * marked complete or every item already passes. Returns an empty list when no
- * launchable plan exists (so the new-thread Ralph button is disabled).
+ * Discover Ralph plans in a workspace. A "plan" is a `.ralph/` bundle; there is
+ * one per repo root. Existence is the only test — if the workspace has a
+ * written plan (a non-empty `items.json`), it can be executed, so we surface
+ * it. We deliberately do not inspect item pass-state or `loop.md`: those are
+ * about loop progress, not about whether a plan exists to run.
  */
-export function listIncompleteRalphPlans(workspacePath: string): RalphPlanSummary[] {
+export function listRalphPlans(workspacePath: string): RalphPlanSummary[] {
   const ralphDir = join(workspacePath, ".ralph");
 
   const items = readItems(join(ralphDir, "items.json"));
-  if (!items) {
-    return [];
-  }
-
-  const totalItems = items.length;
-  const doneItems = items.filter((item) => item.passes === true).length;
-
-  const loop = readLoop(join(ralphDir, "loop.md"));
-  const completed = loop.stopReason === "complete" || (totalItems > 0 && doneItems === totalItems);
-  if (completed) {
+  if (!items || items.length === 0) {
     return [];
   }
 
   return [
     {
       title: readPlanTitle(join(ralphDir, "plan.md")) ?? "Ralph plan",
-      totalItems,
-      doneItems,
+      totalItems: items.length,
+      doneItems: items.filter((item) => item.passes === true).length,
       promptRef: PROMPT_REF,
-      defaultMaxIterations: loop.maxIterations ?? DEFAULT_MAX_ITERATIONS,
+      defaultMaxIterations: DEFAULT_MAX_ITERATIONS,
     },
   ];
 }
@@ -49,22 +41,6 @@ function readItems(path: string): { passes?: unknown }[] | null {
     // missing or malformed bundle -> no plan
   }
   return null;
-}
-
-function readLoop(path: string): { stopReason?: string; maxIterations?: number } {
-  let content: string;
-  try {
-    content = readFileSync(path, "utf-8");
-  } catch {
-    return {};
-  }
-  const stopReason = content.match(/^stop_reason:\s*"?([^"\n]*)"?/m)?.[1]?.trim();
-  const maxRaw = content.match(/^max_iterations:\s*(\d+)/m)?.[1];
-  const maxIterations = maxRaw ? Number.parseInt(maxRaw, 10) : undefined;
-  return {
-    ...(stopReason && stopReason !== "null" ? { stopReason } : {}),
-    ...(maxIterations !== undefined && !Number.isNaN(maxIterations) ? { maxIterations } : {}),
-  };
 }
 
 function readPlanTitle(path: string): string | null {
