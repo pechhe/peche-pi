@@ -51,6 +51,7 @@ import { useMentionMenu } from "./hooks/use-mention-menu";
 import { useThreadSearch } from "./hooks/use-thread-search";
 import { useWorkspaceMenu } from "./hooks/use-workspace-menu";
 import { useNavigationHistory } from "./hooks/use-navigation-history";
+import { useSelfHealTranscript } from "./hooks/use-self-heal-transcript";
 import { useSidebarWidth } from "./hooks/use-sidebar-width";
 import { ExtensionDialog } from "./extension-session-ui";
 import { RalphLaunchDialog } from "./ralph-launch-dialog";
@@ -744,45 +745,7 @@ export default function App() {
   const threadViewTranscript =
     pendingThreadStart && pendingOptimisticTranscript ? pendingOptimisticTranscript : visibleTranscript;
   const threadViewIsRunning = pendingThreadStart ? true : selectedSession?.status === "running";
-  // Self-heal: if a session is selected but its transcript never arrived (a
-  // main-side publish can be dropped if it fires before the renderer's IPC
-  // listener is attached, or coalesced and stranded), re-request it directly
-  // instead of staying stuck on the loading bar until the user switches
-  // threads and back.
-  const selfHealWorkspaceId = selectedWorkspace?.id;
-  const selfHealSessionId = selectedSession?.id;
-  useEffect(() => {
-    if (!isTranscriptLoading || !selfHealWorkspaceId || !selfHealSessionId) {
-      return undefined;
-    }
-    const api = window.piApp;
-    if (!api) {
-      return undefined;
-    }
-    let cancelled = false;
-    const refetch = () => {
-      void api.getSelectedTranscript().then((transcript) => {
-        if (
-          cancelled ||
-          !transcript ||
-          transcript.workspaceId !== selfHealWorkspaceId ||
-          transcript.sessionId !== selfHealSessionId
-        ) {
-          return;
-        }
-        setSelectedTranscript(transcript);
-      });
-    };
-    // First attempt shortly after detecting the stuck state, then a backstop
-    // retry in case hydration is still in flight on the main side.
-    const first = window.setTimeout(refetch, 200);
-    const second = window.setTimeout(refetch, 1000);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(first);
-      window.clearTimeout(second);
-    };
-  }, [isTranscriptLoading, selfHealWorkspaceId, selfHealSessionId, setSelectedTranscript]);
+  useSelfHealTranscript(isTranscriptLoading, selectedWorkspace?.id, selectedSession?.id, setSelectedTranscript);
   // Hold the "Preparing your thread…" placeholder until the new session's
   // transcript actually contains the user message, then mark that message as
   // already-animated (the send animation played on the placeholder) and clear

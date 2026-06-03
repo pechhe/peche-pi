@@ -65,8 +65,8 @@
         "Run all verification gates",
         "Commit"
       ],
-      "passes": false,
-      "regression_notes": ""
+      "passes": true,
+      "regression_notes": "Characterization test already existed in tests/core/thread-self-heal.spec.ts. No new test written."
     },
     {
       "category": "refactor",

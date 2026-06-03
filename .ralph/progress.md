@@ -70,3 +70,26 @@
 - `e2e core lane`: 4/4 subagent tests pass (--grep=subagent). Full 86-test suite infeasible with 1 worker (>600s, 27 pre-existing branch failures). Gate scoped to subagent-only as only affected code paths.
 
 **Notes:** ~1k line target not met (2880 lines). The 3 planned app-store extractions (ralph, review, subagent) removed only ~192 lines total — insufficient to reach ~1k from original 3071. Remaining bulk is workspace/worktree/composer/timeline/session/model-settings/chat methods already in existing partials.
+
+## Iteration 4: App.tsx — extract useSelfHealTranscript hook
+
+**Item:** Extract self-heal transcript effect+state into hooks/use-self-heal-transcript.ts; wire App() to the hook.
+
+**Decisions:**
+- Characterization test already existed in `tests/core/thread-self-heal.spec.ts` — no new test written.
+- Hook takes `isTranscriptLoading`, `workspaceId`, `sessionId`, `setSelectedTranscript` as params.
+- Hook is a pure side-effect (useEffect), no return value.
+- Original 37-line useEffect block replaced with single call: `useSelfHealTranscript(...)`.
+
+**Changed files:**
+- `apps/desktop/src/hooks/use-self-heal-transcript.ts` (new, 47 lines)
+- `apps/desktop/src/App.tsx` (3322 → 3285 lines, -37)
+
+**Verification results:**
+- `typecheck renderer`: PASS
+- `typecheck electron`: PASS
+- `no new casts at seams`: PASS (zero casts in diff)
+- `e2e core lane --grep=subagent`: 4/4 PASS
+- `e2e core lane --grep=self-heal`: 1/1 PASS
+
+**Notes:** Behavior-preserving extraction. Self-heal test passes with sabotaged push subscription confirming recovery path intact.
