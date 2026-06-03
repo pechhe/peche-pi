@@ -199,6 +199,7 @@ export function Sidebar(props: SidebarProps) {
                     key={group.rootWorkspace.id}
                     group={group}
                     canDrag={canDrag}
+                    activeView={activeView}
                     selectedWorkspace={selectedWorkspace}
                     selectedSession={selectedSession}
                     linkedWorktreeByWorkspaceId={linkedWorktreeByWorkspaceId}
@@ -215,6 +216,7 @@ export function Sidebar(props: SidebarProps) {
                     key={group.rootWorkspace.id}
                     group={group}
                     canDrag={false}
+                    activeView={activeView}
                     selectedWorkspace={selectedWorkspace}
                     selectedSession={selectedSession}
                     linkedWorktreeByWorkspaceId={linkedWorktreeByWorkspaceId}
@@ -234,6 +236,7 @@ export function Sidebar(props: SidebarProps) {
                   <WorkspaceGroupContent
                     group={activeGroup}
                     canDrag={false}
+                    activeView={activeView}
                     selectedWorkspace={selectedWorkspace}
                     selectedSession={selectedSession}
                     linkedWorktreeByWorkspaceId={linkedWorktreeByWorkspaceId}
@@ -259,6 +262,7 @@ export function Sidebar(props: SidebarProps) {
 interface WorkspaceGroupProps {
   readonly group: ThreadGroup;
   readonly canDrag: boolean;
+  readonly activeView: AppView;
   readonly selectedWorkspace: WorkspaceRecord | undefined;
   readonly selectedSession: SessionRecord | undefined;
   readonly linkedWorktreeByWorkspaceId: Map<string, WorktreeRecord>;
@@ -310,6 +314,7 @@ function WorkspaceGroupContent(
 ) {
   const {
     group: { rootWorkspace, threads, archivedThreads },
+    activeView,
     selectedWorkspace,
     selectedSession,
     linkedWorktreeByWorkspaceId,
@@ -460,7 +465,10 @@ function WorkspaceGroupContent(
         <>
           <div className="session-list">
             {threads.map((thread) => {
-              const active = thread.workspaceId === selectedWorkspace?.id && thread.session.id === selectedSession?.id;
+              const active =
+                activeView === "threads" &&
+                thread.workspaceId === selectedWorkspace?.id &&
+                thread.session.id === selectedSession?.id;
               return (
                 <ThreadSessionRow
                   key={`${thread.workspaceId}:${thread.session.id}`}
@@ -498,7 +506,9 @@ function WorkspaceGroupContent(
                 <div className="session-list session-list--archived">
                   {archivedThreads.map((thread) => {
                     const active =
-                      thread.workspaceId === selectedWorkspace?.id && thread.session.id === selectedSession?.id;
+                      activeView === "threads" &&
+                      thread.workspaceId === selectedWorkspace?.id &&
+                      thread.session.id === selectedSession?.id;
                     return (
                       <ThreadSessionRow
                         key={`${thread.workspaceId}:${thread.session.id}`}

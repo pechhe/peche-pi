@@ -14,6 +14,8 @@ interface SettingsViewProps {
   readonly workspace?: WorkspaceRecord;
   readonly runtime?: RuntimeSnapshot;
   readonly section: SettingsSection;
+  readonly onSelectSection: (section: SettingsSection) => void;
+  readonly onBack: () => void;
   readonly notificationPreferences: NotificationPreferences;
   readonly notificationPermissionStatus: DesktopNotificationPermissionStatus;
   readonly notificationPermissionPending: boolean;
@@ -44,6 +46,8 @@ export function SettingsView({
   workspace,
   runtime,
   section,
+  onSelectSection,
+  onBack,
   notificationPreferences,
   notificationPermissionStatus,
   notificationPermissionPending,
@@ -71,30 +75,41 @@ export function SettingsView({
 }: SettingsViewProps) {
   if (!workspace && section !== "general" && section !== "notifications" && section !== "appearance") {
     return (
-      <section className="canvas canvas--empty">
-        <div className="empty-panel">
-          <div className="session-header__eyebrow">Settings</div>
-          <h1>Select a workspace</h1>
-          <p>Provider and skill settings need a selected workspace.</p>
-        </div>
-      </section>
+      <div className="empty-panel">
+        <div className="session-header__eyebrow">Settings</div>
+        <h1>Select a workspace</h1>
+        <p>Provider and skill settings need a selected workspace.</p>
+      </div>
     );
   }
 
   return (
-    <section className="canvas">
-      <div className="conversation settings-view">
-        <header className="view-header">
-          <div>
-            <div className="chat-header__eyebrow">Settings</div>
-            <h1 className="view-header__title">{sectionTitle(section)}</h1>
-            <p className="view-header__body">
-              {sectionDescription(section, workspace?.name ?? "this workspace")}
-            </p>
-          </div>
-        </header>
+    <div className="settings-view">
+      <header className="view-header">
+        <div>
+          <div className="chat-header__eyebrow">Settings</div>
+          <h1 className="view-header__title">{sectionTitle(section)}</h1>
+          <p className="view-header__body">
+            {sectionDescription(section, workspace?.name ?? "this workspace")}
+          </p>
+        </div>
+      </header>
 
-        <div className="settings-grid">
+      <div className="settings-section-menu">
+        <button className="settings-section-menu__back" type="button" onClick={onBack}>Back to app</button>
+        {(["appearance", "general", "providers", "models", "notifications"] as const).map((item) => (
+          <button
+            key={item}
+            className={`settings-section-menu__item${section === item ? " settings-section-menu__item--active" : ""}`}
+            type="button"
+            onClick={() => onSelectSection(item)}
+          >
+            {sectionTitle(item)}
+          </button>
+        ))}
+      </div>
+
+      <div className="settings-grid">
           {section === "appearance" ? (
             <SettingsAppearanceSection
               themeMode={themeMode}
@@ -146,8 +161,7 @@ export function SettingsView({
               onOpenSystemNotificationSettings={onOpenSystemNotificationSettings}
             />
           ) : null}
-        </div>
       </div>
-    </section>
+    </div>
   );
 }

@@ -34,7 +34,6 @@ import { type ModelSelectorHandle } from "./model-selector";
 import { SkillsView } from "./skills-view";
 import { ExtensionsView } from "./extensions-view";
 import { SettingsView, type SettingsSection } from "./settings-view";
-import { SecondarySurface } from "./secondary-surface";
 import { NewThreadView } from "./new-thread-view";
 import { PendingThreadView } from "./pending-thread-view";
 import { buildThreadGroups } from "./thread-groups";
@@ -2077,75 +2076,99 @@ export default function App() {
     handleStartThread();
   };
 
-  const settingsNav = [
-    { id: "appearance", label: "Appearance" },
-    { id: "general", label: "General" },
-    { id: "providers", label: "Providers" },
-    { id: "models", label: "Models" },
-    { id: "notifications", label: "Notifications" },
-  ] as const;
-
   if (snapshot.activeView === "settings") {
+    const settingsShellClass = `shell shell--skills${snapshot.sidebarCollapsed ? " shell--sidebar-collapsed" : ""}${sidebarResize.isResizing ? " shell--sidebar-resizing" : ""}`;
+    const settingsShellStyle = snapshot.sidebarCollapsed
+      ? undefined
+      : ({ ["--sidebar-width" as string]: `${sidebarResize.width}px` } as React.CSSProperties);
     return (
-      <SecondarySurface
-        activeNavId={settingsSection}
-        navItems={settingsNav}
-        onBack={() => setActiveView("threads")}
-        onSelectNav={(section) => setSettingsSection(section as SettingsSection)}
-        testId="settings-surface"
-        title="Settings"
-      >
-        {settingsSection === "providers" || (settingsSection === "models" && snapshot.modelSettingsScopeMode === "per-repo") ? (
-          <div className="surface-toolbar">
-            <label className="surface-toolbar__field">
-              <span>Workspace</span>
-              <select
-                value={settingsWorkspace?.id ?? ""}
-                onChange={(event) => setSettingsWorkspaceId(event.target.value)}
-              >
-                {rootWorkspaceOptions.map((workspace) => (
-                  <option key={workspace.id} value={workspace.id}>
-                    {workspace.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
+      <div className={settingsShellClass} style={settingsShellStyle} data-testid="settings-surface">
+        {primarySidebarToggleVisible ? (
+          <SidebarToggleButton
+            collapsed={snapshot.sidebarCollapsed}
+            shortcutLabel={sidebarToggleShortcutLabel}
+            onToggle={handleTogglePrimarySidebar}
+          />
         ) : null}
-        <SettingsView
-          workspace={settingsWorkspace}
-          runtime={settingsSection === "models" ? settingsModelRuntime : settingsRuntime}
-          section={settingsSection}
-          notificationPreferences={snapshot.notificationPreferences}
-          notificationPermissionStatus={notificationPermissionStatus}
-          notificationPermissionPending={notificationPermissionPending}
-          modelSettingsScopeMode={snapshot.modelSettingsScopeMode}
-          integratedTerminalShell={snapshot.integratedTerminalShell}
-          themeMode={themeMode}
-          enableTransparency={snapshot.enableTransparency}
-          composerDeviceMode={snapshot.composerDeviceMode}
-          onLoginProvider={handleLoginProvider}
-          onLogoutProvider={handleLogoutProvider}
-          onSetProviderApiKey={handleSetProviderApiKey}
-          onRemoveProviderApiKey={handleRemoveProviderApiKey}
-          onSetModelSettingsScopeMode={handleSetModelSettingsScopeMode}
-          onSetDefaultModel={handleSetDefaultModel}
-          onSetNotificationPreferences={handleSetNotificationPreferences}
-          onSetIntegratedTerminalShell={handleSetIntegratedTerminalShell}
-          onRequestNotificationPermission={handleRequestNotificationPermission}
-          onOpenSystemNotificationSettings={handleOpenSystemNotificationSettings}
-          onSetScopedModelPatterns={handleSetScopedModelPatterns}
-          onSetThemeMode={handleSetThemeMode}
-          onSetThinkingLevel={handleSetThinkingLevel}
-          onToggleSkillCommands={handleToggleSkillCommands}
-          onSetEnableTransparency={(enabled) => {
-            void updateSnapshot(api, setSnapshot, () => api.setEnableTransparency(enabled));
-          }}
-          onSetComposerDeviceMode={(enabled) => {
-            void updateSnapshot(api, setSnapshot, () => api.setComposerDeviceMode(enabled));
-          }}
-        />
-      </SecondarySurface>
+        {!snapshot.sidebarCollapsed ? (
+          <Sidebar
+            resize={sidebarResize}
+            activeView={snapshot.activeView}
+            selectedWorkspace={selectedWorkspace}
+            selectedSession={selectedSession}
+            visibleWorkspaces={visibleWorkspaces}
+            threadGroups={threadGroups}
+            linkedWorktreeByWorkspaceId={linkedWorktreeByWorkspaceId}
+            wsMenu={wsMenu}
+            api={api}
+            setSnapshot={setSnapshot}
+            updateSnapshot={updateSnapshot}
+            onNewThreadForWorkspace={(rootWorkspaceId) => openNewThreadSurface(rootWorkspaceId)}
+            onSetActiveView={setActiveView}
+            onOpenSkills={openSkills}
+            onOpenExtensions={openExtensions}
+            onOpenSettings={openSettings}
+            onArchiveSession={handleArchiveSession}
+            onSelectSession={handleSelectSession}
+            onUnarchiveSession={handleUnarchiveSession}
+          />
+        ) : null}
+        <main className="main main--skills">
+          {settingsSection === "providers" || (settingsSection === "models" && snapshot.modelSettingsScopeMode === "per-repo") ? (
+            <div className="surface-toolbar">
+
+              <label className="surface-toolbar__field">
+                <span>Workspace</span>
+                <select
+                  value={settingsWorkspace?.id ?? ""}
+                  onChange={(event) => setSettingsWorkspaceId(event.target.value)}
+                >
+                  {rootWorkspaceOptions.map((workspace) => (
+                    <option key={workspace.id} value={workspace.id}>
+                      {workspace.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          ) : null}
+          <SettingsView
+            workspace={settingsWorkspace}
+            runtime={settingsSection === "models" ? settingsModelRuntime : settingsRuntime}
+            section={settingsSection}
+            onSelectSection={setSettingsSection}
+            onBack={() => setActiveView("threads")}
+            notificationPreferences={snapshot.notificationPreferences}
+            notificationPermissionStatus={notificationPermissionStatus}
+            notificationPermissionPending={notificationPermissionPending}
+            modelSettingsScopeMode={snapshot.modelSettingsScopeMode}
+            integratedTerminalShell={snapshot.integratedTerminalShell}
+            themeMode={themeMode}
+            enableTransparency={snapshot.enableTransparency}
+            composerDeviceMode={snapshot.composerDeviceMode}
+            onLoginProvider={handleLoginProvider}
+            onLogoutProvider={handleLogoutProvider}
+            onSetProviderApiKey={handleSetProviderApiKey}
+            onRemoveProviderApiKey={handleRemoveProviderApiKey}
+            onSetModelSettingsScopeMode={handleSetModelSettingsScopeMode}
+            onSetDefaultModel={handleSetDefaultModel}
+            onSetNotificationPreferences={handleSetNotificationPreferences}
+            onSetIntegratedTerminalShell={handleSetIntegratedTerminalShell}
+            onRequestNotificationPermission={handleRequestNotificationPermission}
+            onOpenSystemNotificationSettings={handleOpenSystemNotificationSettings}
+            onSetScopedModelPatterns={handleSetScopedModelPatterns}
+            onSetThemeMode={handleSetThemeMode}
+            onSetThinkingLevel={handleSetThinkingLevel}
+            onToggleSkillCommands={handleToggleSkillCommands}
+            onSetEnableTransparency={(enabled) => {
+              void updateSnapshot(api, setSnapshot, () => api.setEnableTransparency(enabled));
+            }}
+            onSetComposerDeviceMode={(enabled) => {
+              void updateSnapshot(api, setSnapshot, () => api.setComposerDeviceMode(enabled));
+            }}
+          />
+        </main>
+      </div>
     );
   }
 
@@ -2248,38 +2271,75 @@ export default function App() {
   }
 
   if (snapshot.activeView === "extensions") {
+    const extensionsShellClass = `shell shell--skills${snapshot.sidebarCollapsed ? " shell--sidebar-collapsed" : ""}${sidebarResize.isResizing ? " shell--sidebar-resizing" : ""}`;
+    const extensionsShellStyle = snapshot.sidebarCollapsed
+      ? undefined
+      : ({ ["--sidebar-width" as string]: `${sidebarResize.width}px` } as React.CSSProperties);
     return (
-      <SecondarySurface onBack={() => setActiveView("threads")} testId="extensions-surface" title="Extensions">
-        <div className="surface-toolbar">
-          <label className="surface-toolbar__field">
-            <span>Workspace</span>
-            <select
-              value={extensionsWorkspace?.id ?? ""}
-              onChange={(event) => setExtensionsWorkspaceId(event.target.value)}
-            >
-              {rootWorkspaceOptions.map((workspace) => (
-                <option key={workspace.id} value={workspace.id}>
-                  {workspace.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-        <ExtensionsView
-          workspace={extensionsWorkspace}
-          runtime={extensionsRuntime}
-          commandCompatibility={extensionsCommandCompatibility}
-          onOpenExtensionFolder={handleOpenExtensionFolder}
-          onRefresh={() => {
-            if (!extensionsWorkspace) {
-              return;
-            }
-            void updateSnapshot(api, setSnapshot, () => api.refreshRuntime(extensionsWorkspace.id));
-          }}
-          onToggleExtension={handleToggleExtension}
-          onDeleteExtension={handleDeleteExtension}
-        />
-      </SecondarySurface>
+      <div className={extensionsShellClass} style={extensionsShellStyle} data-testid="extensions-surface">
+        {primarySidebarToggleVisible ? (
+          <SidebarToggleButton
+            collapsed={snapshot.sidebarCollapsed}
+            shortcutLabel={sidebarToggleShortcutLabel}
+            onToggle={handleTogglePrimarySidebar}
+          />
+        ) : null}
+        {!snapshot.sidebarCollapsed ? (
+          <Sidebar
+            resize={sidebarResize}
+            activeView={snapshot.activeView}
+            selectedWorkspace={selectedWorkspace}
+            selectedSession={selectedSession}
+            visibleWorkspaces={visibleWorkspaces}
+            threadGroups={threadGroups}
+            linkedWorktreeByWorkspaceId={linkedWorktreeByWorkspaceId}
+            wsMenu={wsMenu}
+            api={api}
+            setSnapshot={setSnapshot}
+            updateSnapshot={updateSnapshot}
+            onNewThreadForWorkspace={(rootWorkspaceId) => openNewThreadSurface(rootWorkspaceId)}
+            onSetActiveView={setActiveView}
+            onOpenSkills={openSkills}
+            onOpenExtensions={openExtensions}
+            onOpenSettings={openSettings}
+            onArchiveSession={handleArchiveSession}
+            onSelectSession={handleSelectSession}
+            onUnarchiveSession={handleUnarchiveSession}
+          />
+        ) : null}
+        <main className="main main--skills">
+          <div className="surface-toolbar">
+            <button className="button button--secondary" type="button" onClick={() => setActiveView("threads")}>Back to app</button>
+            <label className="surface-toolbar__field">
+              <span>Workspace</span>
+              <select
+                value={extensionsWorkspace?.id ?? ""}
+                onChange={(event) => setExtensionsWorkspaceId(event.target.value)}
+              >
+                {rootWorkspaceOptions.map((workspace) => (
+                  <option key={workspace.id} value={workspace.id}>
+                    {workspace.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <ExtensionsView
+            workspace={extensionsWorkspace}
+            runtime={extensionsRuntime}
+            commandCompatibility={extensionsCommandCompatibility}
+            onOpenExtensionFolder={handleOpenExtensionFolder}
+            onRefresh={() => {
+              if (!extensionsWorkspace) {
+                return;
+              }
+              void updateSnapshot(api, setSnapshot, () => api.refreshRuntime(extensionsWorkspace.id));
+            }}
+            onToggleExtension={handleToggleExtension}
+            onDeleteExtension={handleDeleteExtension}
+          />
+        </main>
+      </div>
     );
   }
 

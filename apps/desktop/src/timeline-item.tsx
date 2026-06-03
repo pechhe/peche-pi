@@ -1,24 +1,5 @@
-import { memo } from "react";
+import { memo, useEffect, useState } from "react";
 import type { SessionTranscriptMessage } from "@pi-gui/pi-sdk-driver";
-
-// Tracks user-message ids whose entrance animation has already played. We use a
-// module-level Set so virtualised remounts (scroll-back) don't replay the
-// animation, while genuinely new submissions still animate. The createdAt gate
-// suppresses animation when an existing transcript is loaded for the first
-// time.
-const animatedUserMessageIds = new Set<string>();
-
-function shouldAnimateUserBubble(item: SessionTranscriptMessage): boolean {
-  if (animatedUserMessageIds.has(item.id)) {
-    return false;
-  }
-  animatedUserMessageIds.add(item.id);
-  const createdAt = Date.parse(item.createdAt);
-  if (!Number.isFinite(createdAt)) {
-    return false;
-  }
-  return Date.now() - createdAt < 1500;
-}
 import type { TimelineActivity, TimelineToolCall, TimelineSummary, TranscriptMessage } from "./timeline-types";
 import type { TimelineRow, TimelineToolBurst } from "./timeline-grouping";
 import { summariseToolBurst } from "./timeline-grouping";
@@ -27,6 +8,23 @@ import { InlineDiff, extractDiffFromOutput } from "./diff-inline";
 import { ChevronRightIcon, CopyIcon, DiffIcon, FileIcon } from "./icons";
 import { openImageLightbox } from "./image-lightbox";
 import { extensionToLanguage } from "./syntax-highlight";
+
+// Tracks user-message ids whose entrance animation has already played. The
+// createdAt gate suppresses animation when an existing transcript is loaded for
+// the first time; the Set prevents virtualised remounts from replaying it.
+const animatedUserMessageIds = new Set<string>();
+const USER_BUBBLE_ANIMATION_MS = 520;
+
+function isFreshUserBubble(item: SessionTranscriptMessage): boolean {
+  if (animatedUserMessageIds.has(item.id)) {
+    return false;
+  }
+  const createdAt = Date.parse(item.createdAt);
+  if (!Number.isFinite(createdAt)) {
+    return false;
+  }
+  return Date.now() - createdAt < 1500;
+}
 
 export const TimelineItem = memo(function TimelineItem({
   item,
@@ -146,52 +144,7 @@ function isSameTimelineItem(a: TimelineRow, b: TimelineRow): boolean {
 
 function TimelineMessage({ item }: { readonly item: SessionTranscriptMessage }) {
   if (item.role === "user") {
-    const justSent = shouldAnimateUserBubble(item);
-    return (
-      <article className={`timeline-item timeline-item--user${justSent ? " timeline-item--just-sent" : ""}`}>
-        <div className="timeline-item__bubble">
-          {item.attachments?.length ? (
-            <div className="timeline-item__attachments">
-              {item.attachments.map((attachment, index) =>
-                attachment.kind === "image" ? (
-                  (() => {
-                    const src = `data:${attachment.mimeType};base64,${attachment.data}`;
-                    const alt = attachment.name ?? `Attachment ${index + 1}`;
-                    return (
-                      <button
-                        type="button"
-                        className="timeline-item__attachment-button"
-                        key={`${item.id}:${index}`}
-                        onClick={() => openImageLightbox({ src, alt })}
-                        aria-label={`View ${alt}`}
-                      >
-                        <img
-                          alt={alt}
-                          className="timeline-item__attachment timeline-item__attachment--image"
-                          src={src}
-                        />
-                      </button>
-                    );
-                  })()
-                ) : (
-                  <div
-                    className="timeline-item__attachment timeline-item__attachment--file"
-                    key={`${item.id}:${index}`}
-                    title={attachment.fsPath}
-                  >
-                    <span className="timeline-item__attachment-icon" aria-hidden="true">
-                      <FileIcon />
-                    </span>
-                    <span className="timeline-item__attachment-name">{attachment.name}</span>
-                  </div>
-                ),
-              )}
-            </div>
-          ) : null}
-          <MessageMarkdown text={item.text} />
-        </div>
-      </article>
-    );
+    return <UserTimelineMessage item={item} />;
   }
 
   if (item.role === "branchSummary" || item.role === "compactionSummary") {
@@ -208,6 +161,65 @@ function TimelineMessage({ item }: { readonly item: SessionTranscriptMessage }) 
   return (
     <article className="timeline-item timeline-item--assistant">
       <MessageMarkdown text={item.text} />
+    </article>
+  );
+}
+
+function UserTimelineMessage({ item }: { readonly item: SessionTranscriptMessage }) {
+  const [justSent, setJustSent] = useState(() => isFreshUserBubble(item));
+
+  useEffect(() => {
+    if (!justSent) return;
+    const timeout = window.setTimeout(() => {
+      animatedUserMessageIds.add(item.id);
+      setJustSent(false);
+    }, USER_BUBBLE_ANIMATION_MS);
+    return () => window.clearTimeout(timeout);
+  }, [item.id, justSent]);
+
+  return (
+    <article className={`timeline-item timeline-item--user${justSent ? " timeline-item--just-sent" : ""}`}>
+      <div className="timeline-item__bubble">
+        {item.attachments?.length ? (
+          <div className="timeline-item__attachments">
+            {item.attachments.map((attachment, index) =>
+              attachment.kind === "image" ? (
+                (() => {
+                  const src = `data:${attachment.mimeType};base64,${attachment.data}`;
+                  const alt = attachment.name ?? `Attachment ${index + 1}`;
+                  return (
+                    <button
+                      type="button"
+                      className="timeline-item__attachment-button"
+                      key={`${item.id}:${index}`}
+                      onClick={() => openImageLightbox({ src, alt })}
+                      aria-label={`View ${alt}`}
+                    >
+                      <img
+                        alt={alt}
+                        className="timeline-item__attachment timeline-item__attachment--image"
+                        src={src}
+                      />
+                    </button>
+                  );
+                })()
+              ) : (
+                <div
+                  className="timeline-item__attachment timeline-item__attachment--file"
+                  key={`${item.id}:${index}`}
+                  title={attachment.fsPath}
+                >
+                  <span className="timeline-item__attachment-icon" aria-hidden="true">
+                    <FileIcon />
+                  </span>
+                  <span className="timeline-item__attachment-name">{attachment.name}</span>
+                </div>
+              ),
+            )}
+          </div>
+        ) : null}
+        <MessageMarkdown text={item.text} />
+      </div>
     </article>
   );
 }
