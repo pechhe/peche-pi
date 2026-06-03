@@ -6372,29 +6372,12 @@ mark.thread-find-active {
 /* "Begin Ralph loop" banner above the composer when a plan is ready. */
 .composer__begin-loop {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  justify-content: center;
   margin: 0 0 10px;
-  padding: 10px 14px;
-  border-radius: 14px;
-  border: 1px solid #cfd7ea;
-  background: #eef2ff;
-}
-
-.composer__begin-loop-label {
-  font-size: 13px;
-  font-weight: 560;
-  color: var(--text-strong);
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .composer__begin-loop-button {
-  flex-shrink: 0;
-  padding: 8px 16px;
+  padding: 8px 18px;
   border-radius: 999px;
   border: none;
   background: var(--accent, #4f46e5);

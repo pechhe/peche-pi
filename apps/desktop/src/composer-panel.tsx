@@ -200,10 +200,12 @@ export function ComposerPanel({
     <footer className="composer">
       {beginRalphLoop ? (
         <div className="composer__begin-loop">
-          <span className="composer__begin-loop-label">
-            Ralph plan ready: {beginRalphLoop.planTitle}
-          </span>
-          <button type="button" className="composer__begin-loop-button" onClick={beginRalphLoop.onBegin}>
+          <button
+            type="button"
+            className="composer__begin-loop-button"
+            onClick={beginRalphLoop.onBegin}
+            title={`Ralph plan ready: ${beginRalphLoop.planTitle}`}
+          >
             Begin Ralph loop
           </button>
         </div>
