@@ -159,6 +159,15 @@ export class SessionLock {
     return this.buildInfo();
   }
 
+  /** True if this instance currently owns the on-disk lock (token still matches). */
+  holdsLock(): boolean {
+    if (!this.held) {
+      return false;
+    }
+    const current = readLockInfo(this.path);
+    return Boolean(current && current.token === this.token);
+  }
+
   /** Acquire or reclaim. Throws LockHeldError when a live foreign holder owns it. */
   acquire(): void {
     const state = inspectLock(this.sessionFile, {

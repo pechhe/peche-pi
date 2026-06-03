@@ -129,6 +129,16 @@ test("release does not delete a lock reclaimed by someone else", () => {
   assert.equal(JSON.parse(readFileSync(lockPathFor(file), "utf8")).token, "stolen");
 });
 
+test("holdsLock reflects ownership across reclaim", () => {
+  const file = tmpSession();
+  const lock = new SessionLock(file, { kind: "gui" });
+  assert.equal(lock.holdsLock(), false);
+  lock.acquire();
+  assert.equal(lock.holdsLock(), true);
+  writeForeignLock(file, { token: "stolen" });
+  assert.equal(lock.holdsLock(), false);
+});
+
 test("corrupt lock content is reclaimable", () => {
   const file = tmpSession();
   writeFileSync(lockPathFor(file), "}{ not json");

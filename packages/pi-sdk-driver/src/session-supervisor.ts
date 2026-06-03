@@ -596,6 +596,10 @@ export class SessionSupervisor {
     if (!sessionFile) {
       return { status: "free" };
     }
+    // A lock we already hold is not "foreign": this window drives the session.
+    if (existing?.lock && existing.lockFile === sessionFile && existing.lock.holdsLock()) {
+      return { status: "free" };
+    }
     return inspectLock(sessionFile, { kind: "gui" });
   }
 
@@ -628,8 +632,11 @@ export class SessionSupervisor {
       return;
     }
     if (record.lock && record.lockFile === file) {
-      record.lock.refresh();
-      return;
+      if (record.lock.refresh()) {
+        return;
+      }
+      // The lock was reclaimed by another process while we held it; fall through
+      // and try to re-acquire (succeeds only if it is now free/stale/dead).
     }
     record.lock?.release();
     record.lock = undefined;
