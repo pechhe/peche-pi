@@ -7,11 +7,15 @@ import {
   type DesktopNotificationPermissionStatus,
   type PiDesktopCommand,
   type PrDraftResult,
+  type ClaimSessionResult,
+  type SessionLockSnapshot,
   type TerminalDataEvent,
   type TerminalErrorEvent,
   type TerminalExitEvent,
   type TerminalPanelSnapshot,
   type TerminalSize,
+  type UndoEditOp,
+  type UndoEditsResult,
   type WorkspacePrInfo,
 } from "../src/ipc";
 import type { ComposerMode } from "../src/composer-mode";
@@ -147,6 +151,8 @@ contextBridge.exposeInMainWorld("piApp", {
     ipcRenderer.invoke(desktopIpc.archiveSession, target) as Promise<DesktopAppState>,
   unarchiveSession: (target: WorkspaceSessionTarget) =>
     ipcRenderer.invoke(desktopIpc.unarchiveSession, target) as Promise<DesktopAppState>,
+  archiveAllNonRunningSessions: (workspaceId: string) =>
+    ipcRenderer.invoke(desktopIpc.archiveAllNonRunningSessions, workspaceId) as Promise<DesktopAppState>,
   createSession: (input: CreateSessionInput) =>
     ipcRenderer.invoke(desktopIpc.createSession, input) as Promise<DesktopAppState>,
   startThread: (input: StartThreadInput) =>
@@ -154,6 +160,10 @@ contextBridge.exposeInMainWorld("piApp", {
   cancelCurrentRun: () => ipcRenderer.invoke(desktopIpc.cancelCurrentRun) as Promise<DesktopAppState>,
   openSessionInDefaultTerminal: () =>
     ipcRenderer.invoke(desktopIpc.openSessionInDefaultTerminal) as Promise<DesktopAppState>,
+  chooseExternalTerminalApp: () =>
+    ipcRenderer.invoke(desktopIpc.chooseExternalTerminalApp) as Promise<DesktopAppState>,
+  clearExternalTerminalApp: () =>
+    ipcRenderer.invoke(desktopIpc.clearExternalTerminalApp) as Promise<DesktopAppState>,
   setActiveView: (view: AppView) =>
     ipcRenderer.invoke(desktopIpc.setActiveView, view) as Promise<DesktopAppState>,
   setSidebarCollapsed: (collapsed: boolean) =>
@@ -260,6 +270,10 @@ contextBridge.exposeInMainWorld("piApp", {
     ipcRenderer.invoke(desktopIpc.submitComposer, text, options) as Promise<DesktopAppState>,
   getSessionTree: (target: WorkspaceSessionTarget) =>
     ipcRenderer.invoke(desktopIpc.getSessionTree, target) as Promise<SessionTreeSnapshot>,
+  inspectSessionLock: (target: WorkspaceSessionTarget) =>
+    ipcRenderer.invoke(desktopIpc.inspectSessionLock, target) as Promise<SessionLockSnapshot>,
+  claimSession: (target: WorkspaceSessionTarget) =>
+    ipcRenderer.invoke(desktopIpc.claimSession, target) as Promise<ClaimSessionResult>,
   navigateSessionTree: (target: WorkspaceSessionTarget, targetId: string, options?: NavigateSessionTreeOptions) =>
     ipcRenderer.invoke(desktopIpc.navigateSessionTree, target, targetId, options) as Promise<{
       readonly state: DesktopAppState;
@@ -275,6 +289,10 @@ contextBridge.exposeInMainWorld("piApp", {
     ipcRenderer.invoke(desktopIpc.getFileDiff, workspaceId, filePath) as Promise<string>,
   stageFile: (workspaceId: string, filePath: string) =>
     ipcRenderer.invoke(desktopIpc.stageFile, workspaceId, filePath) as Promise<void>,
+  undoEdits: (workspaceId: string, ops: readonly UndoEditOp[]) =>
+    ipcRenderer.invoke(desktopIpc.undoEdits, workspaceId, ops) as Promise<UndoEditsResult>,
+  redoEdits: (workspaceId: string, ops: readonly UndoEditOp[]) =>
+    ipcRenderer.invoke(desktopIpc.redoEdits, workspaceId, ops) as Promise<UndoEditsResult>,
   commitPushExecute: (workspaceId: string) =>
     ipcRenderer.invoke(desktopIpc.commitPushExecute, workspaceId) as Promise<{ readonly success: boolean; readonly message: string; readonly commitMessage?: string }>,
   setCommitPushModel: (workspaceId: string, model: string) =>

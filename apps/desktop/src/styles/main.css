@@ -257,6 +257,44 @@
   margin: 0 auto;
 }
 
+.session-lock-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  width: min(920px, calc(100% - 56px));
+  margin: 8px auto 0;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--warning, #d97706) 45%, var(--line));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--warning, #d97706) 12%, var(--surface));
+  color: var(--muted-strong);
+  font-size: 13px;
+}
+
+.session-lock-banner__text {
+  flex: 1 1 auto;
+}
+
+.session-lock-banner__error {
+  color: var(--warning, #d97706);
+}
+
+.session-lock-banner__action {
+  flex: 0 0 auto;
+  padding: 4px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--muted-strong);
+  cursor: pointer;
+}
+
+.session-lock-banner__action:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 /* Thread conversations override the centered base: the scroll container
  * (.timeline-pane--thread) must span the full canvas so the scrollbar
  * sits at the far right edge and wheel events anywhere in the pane
@@ -837,8 +875,21 @@
   font-variant-numeric: tabular-nums;
 }
 
-.timeline-edited-files__review {
+.timeline-edited-files__actions {
   margin-left: auto;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.timeline-edited-files__note {
+  font-size: 12px;
+  color: var(--muted-soft);
+}
+
+.timeline-edited-files__review,
+.timeline-edited-files__undo {
   flex-shrink: 0;
   padding: 5px 14px;
   border: 1px solid var(--border);
@@ -850,8 +901,26 @@
   cursor: pointer;
 }
 
-.timeline-edited-files__review:hover {
+.timeline-edited-files__review:hover,
+.timeline-edited-files__undo:hover:not(:disabled) {
   background: var(--main);
+}
+
+.timeline-edited-files__undo:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.timeline-edited-files--undone {
+  opacity: 0.72;
+}
+
+.timeline-edited-files--undone .timeline-edited-files__list {
+  display: none;
+}
+
+.timeline-edited-files--undone .timeline-edited-files__title {
+  color: var(--muted-strong);
 }
 
 .timeline-edited-files__list {

@@ -39,6 +39,7 @@ export type DesktopAction =
   | { readonly type: "settings/setComposerDeviceMode"; readonly composerDeviceMode: ComposerDeviceMode }
   | { readonly type: "settings/setThemeMode"; readonly themeMode: ThemeMode }
   | { readonly type: "settings/setIntegratedTerminalShell"; readonly integratedTerminalShell: string }
+  | { readonly type: "settings/setExternalTerminalApp"; readonly externalTerminalApp: string }
   | { readonly type: "settings/setCommitPushModel"; readonly commitPushModel: string }
   | { readonly type: "settings/mergeNotificationPreferences"; readonly preferences: Partial<NotificationPreferences> }
   | { readonly type: "view/setActiveView"; readonly activeView: AppView }
@@ -101,6 +102,12 @@ export function reduce(state: DesktopAppState, action: DesktopAction): DesktopAp
         return state;
       }
       return bump({ ...state, integratedTerminalShell: action.integratedTerminalShell });
+    }
+    case "settings/setExternalTerminalApp": {
+      if (state.externalTerminalApp === action.externalTerminalApp) {
+        return state;
+      }
+      return bump({ ...state, externalTerminalApp: action.externalTerminalApp });
     }
     case "settings/setCommitPushModel": {
       if (state.commitPushModel === action.commitPushModel) {

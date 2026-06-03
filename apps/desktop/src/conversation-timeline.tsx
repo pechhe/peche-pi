@@ -4,6 +4,7 @@ import { ThreadSearchBar } from "./thread-search";
 import { TimelineItem } from "./timeline-item";
 import { WorkingLabel } from "./working-label";
 import { groupTranscript, type TimelineMetaEvent, type TimelineRow } from "./timeline-grouping";
+import type { UndoEditOp, UndoEditsResult } from "./ipc";
 
 const OVERSCAN_PX = 720;
 const ROW_GAP_PX = 14;
@@ -34,8 +35,14 @@ interface ConversationTimelineProps {
   readonly onJumpToLatest: () => void;
   readonly onContentHeightChange: () => void;
   readonly onViewFileInDiff?: (path: string) => void;
+  readonly onUndoEdits?: (ops: readonly UndoEditOp[]) => Promise<UndoEditsResult>;
+  readonly onRedoEdits?: (ops: readonly UndoEditOp[]) => Promise<UndoEditsResult>;
   readonly onMetaEventsChange?: (events: readonly TimelineMetaEvent[]) => void;
   readonly isRunning: boolean;
+  // Label for the bottom live indicator. Defaults to "Thinking…"; the
+  // new-thread placeholder passes "Preparing your thread…" so going live is a
+  // label swap on the same timeline rather than a remount.
+  readonly workingLabel?: string;
 }
 
 export function ConversationTimeline({
@@ -51,8 +58,11 @@ export function ConversationTimeline({
   onJumpToLatest,
   onContentHeightChange,
   onViewFileInDiff,
+  onUndoEdits,
+  onRedoEdits,
   onMetaEventsChange,
   isRunning,
+  workingLabel = "Thinking…",
 }: ConversationTimelineProps) {
   // Group consecutive tool calls into bursts and extract meta events.
   // Re-runs whenever the transcript reference changes (the main process clones
@@ -318,11 +328,14 @@ export function ConversationTimeline({
           onToggleBurst={toggleBurst}
           onToggleReasoning={toggleReasoning}
           onViewFileInDiff={onViewFileInDiff}
+          onUndoEdits={onUndoEdits}
+          onRedoEdits={onRedoEdits}
           isRunning={showThinkingIndicator}
           streamingAssistantId={streamingAssistantId}
           onStreamingCaughtUp={handleStreamingCaughtUp}
           streamingReasoningId={streamingReasoningId}
           liveThinkingSectionId={liveThinkingSectionId}
+          workingLabel={workingLabel}
         />
       ) : (
         <div className="timeline" data-testid="transcript">
@@ -338,6 +351,8 @@ export function ConversationTimeline({
               onToggleBurst={toggleBurst}
               onToggleReasoning={toggleReasoning}
               onViewFileInDiff={onViewFileInDiff}
+              onUndoEdits={onUndoEdits}
+              onRedoEdits={onRedoEdits}
               streamingAssistantId={streamingAssistantId}
               onStreamingCaughtUp={handleStreamingCaughtUp}
               streamingReasoningId={streamingReasoningId}
@@ -346,7 +361,7 @@ export function ConversationTimeline({
           ))}
           {showThinkingIndicator ? (
             <div className="timeline-working" data-testid="timeline-working">
-              <WorkingLabel label="Thinking…" />
+              <WorkingLabel label={workingLabel} />
             </div>
           ) : null}
         </div>
@@ -374,11 +389,14 @@ function VirtualizedTranscriptList({
   onToggleBurst,
   onToggleReasoning,
   onViewFileInDiff,
+  onUndoEdits,
+  onRedoEdits,
   isRunning,
   streamingAssistantId,
   onStreamingCaughtUp,
   streamingReasoningId,
   liveThinkingSectionId,
+  workingLabel,
 }: {
   readonly transcript: readonly TimelineRow[];
   readonly timelinePaneRef: MutableRefObject<HTMLDivElement | null>;
@@ -393,11 +411,14 @@ function VirtualizedTranscriptList({
   readonly onToggleBurst: (burstId: string) => void;
   readonly onToggleReasoning: (reasoningId: string) => void;
   readonly onViewFileInDiff?: (path: string) => void;
+  readonly onUndoEdits?: (ops: readonly UndoEditOp[]) => Promise<UndoEditsResult>;
+  readonly onRedoEdits?: (ops: readonly UndoEditOp[]) => Promise<UndoEditsResult>;
   readonly isRunning: boolean;
   readonly streamingAssistantId?: string;
   readonly onStreamingCaughtUp?: (messageId: string) => void;
   readonly streamingReasoningId?: string;
   readonly liveThinkingSectionId?: string;
+  readonly workingLabel: string;
 }) {
   const [viewport, setViewport] = useState({ scrollTop: 0, height: 0 });
   const previousTotalHeightRef = useRef(0);
@@ -476,6 +497,8 @@ function VirtualizedTranscriptList({
             onToggleBurst={onToggleBurst}
             onToggleReasoning={onToggleReasoning}
             onViewFileInDiff={onViewFileInDiff}
+            onUndoEdits={onUndoEdits}
+            onRedoEdits={onRedoEdits}
             streamingAssistantId={streamingAssistantId}
             onStreamingCaughtUp={onStreamingCaughtUp}
             streamingReasoningId={streamingReasoningId}
@@ -489,7 +512,7 @@ function VirtualizedTranscriptList({
           data-testid="timeline-working"
           style={{ transform: `translateY(${totalHeight}px)` }}
         >
-          <WorkingLabel label="Thinking…" />
+          <WorkingLabel label={workingLabel} />
         </div>
       ) : null}
     </div>
@@ -508,6 +531,8 @@ function MeasuredTimelineItem({
   onToggleBurst,
   onToggleReasoning,
   onViewFileInDiff,
+  onUndoEdits,
+  onRedoEdits,
   streamingAssistantId,
   onStreamingCaughtUp,
   streamingReasoningId,
@@ -524,6 +549,8 @@ function MeasuredTimelineItem({
   readonly onToggleBurst: (burstId: string) => void;
   readonly onToggleReasoning: (reasoningId: string) => void;
   readonly onViewFileInDiff?: (path: string) => void;
+  readonly onUndoEdits?: (ops: readonly UndoEditOp[]) => Promise<UndoEditsResult>;
+  readonly onRedoEdits?: (ops: readonly UndoEditOp[]) => Promise<UndoEditsResult>;
   readonly streamingAssistantId?: string;
   readonly onStreamingCaughtUp?: (messageId: string) => void;
   readonly streamingReasoningId?: string;
@@ -567,6 +594,8 @@ function MeasuredTimelineItem({
         onToggleBurst={onToggleBurst}
         onToggleReasoning={onToggleReasoning}
         onViewFileInDiff={onViewFileInDiff}
+        onUndoEdits={onUndoEdits}
+        onRedoEdits={onRedoEdits}
         streamingAssistantId={streamingAssistantId}
         onStreamingCaughtUp={onStreamingCaughtUp}
         streamingReasoningId={streamingReasoningId}

@@ -1,5 +1,12 @@
 import type { DesktopAppState, SessionRecord, WorkspaceRecord } from "./desktop-state";
 
+/**
+ * Sentinel session id for the optimistic sidebar row shown while a new thread
+ * is still being created on the main process (before the real session id
+ * exists). Special-cased as active in the sidebar and ignored by selection.
+ */
+export const PENDING_THREAD_SESSION_ID = "__pending_thread__";
+
 export interface ThreadEnvironmentMeta {
   readonly kind: "local" | "worktree";
   readonly label: string;

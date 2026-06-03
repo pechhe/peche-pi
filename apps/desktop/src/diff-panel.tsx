@@ -22,6 +22,7 @@ interface DiffPanelProps {
   readonly api: PiDesktopApi;
   readonly sessionStatus: string | undefined;
   readonly fileRequest?: DiffPanelFileRequest | null;
+  readonly refreshNonce?: number;
 }
 
 export function DiffPanel({
@@ -30,6 +31,7 @@ export function DiffPanel({
   api,
   sessionStatus,
   fileRequest,
+  refreshNonce,
 }: DiffPanelProps) {
   const [files, setFiles] = useState<readonly ChangedFile[]>([]);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
@@ -78,6 +80,11 @@ export function DiffPanel({
     if (!fileRequest) return;
     setSelectedFile(fileRequest.path);
   }, [fileRequest]);
+
+  useEffect(() => {
+    if (refreshNonce === undefined) return;
+    refresh();
+  }, [refreshNonce, refresh]);
 
   useEffect(() => {
     if (!selectedFile) {

@@ -22,6 +22,23 @@ import type {
 } from "./desktop-state";
 import type { ComposerMode } from "./composer-mode";
 
+export interface SessionLockOwner {
+  readonly pid: number;
+  readonly kind: "gui" | "cli";
+  readonly host: string;
+  readonly acquiredAt: string;
+  readonly heartbeat: string;
+}
+
+export type SessionLockSnapshot =
+  | { readonly status: "free" }
+  | { readonly status: "foreign"; readonly owner: SessionLockOwner; readonly alive: boolean };
+
+export interface ClaimSessionResult {
+  readonly claimed: boolean;
+  readonly owner?: SessionLockOwner;
+}
+
 export type DesktopNotificationPermissionStatus =
   | "granted"
   | "denied"
@@ -59,10 +76,13 @@ export const desktopIpc = {
   selectSession: "pi-gui:select-session",
   archiveSession: "pi-gui:archive-session",
   unarchiveSession: "pi-gui:unarchive-session",
+  archiveAllNonRunningSessions: "pi-gui:archive-all-non-running-sessions",
   createSession: "pi-gui:create-session",
   startThread: "pi-gui:start-thread",
   cancelCurrentRun: "pi-gui:cancel-current-run",
   openSessionInDefaultTerminal: "pi-gui:open-session-in-default-terminal",
+  chooseExternalTerminalApp: "pi-gui:choose-external-terminal-app",
+  clearExternalTerminalApp: "pi-gui:clear-external-terminal-app",
   setActiveView: "pi-gui:set-active-view",
   setSidebarCollapsed: "pi-gui:set-sidebar-collapsed",
   refreshRuntime: "pi-gui:refresh-runtime",
@@ -115,12 +135,16 @@ export const desktopIpc = {
   submitComposer: "pi-gui:submit-composer",
   getSessionTree: "pi-gui:get-session-tree",
   navigateSessionTree: "pi-gui:navigate-session-tree",
+  inspectSessionLock: "pi-gui:inspect-session-lock",
+  claimSession: "pi-gui:claim-session",
   toggleWindowMaximize: "pi-gui:toggle-window-maximize",
   listWorkspaceFiles: "pi-gui:list-workspace-files",
   getChangedFiles: "pi-gui:get-changed-files",
   getWorkspaceGitInfo: "pi-gui:get-workspace-git-info",
   getFileDiff: "pi-gui:get-file-diff",
   stageFile: "pi-gui:stage-file",
+  undoEdits: "pi-gui:undo-edits",
+  redoEdits: "pi-gui:redo-edits",
   commitPushExecute: "pi-gui:commit-push-execute",
   setCommitPushModel: "pi-gui:set-commit-push-model",
   getWorkspacePrInfo: "pi-gui:get-workspace-pr-info",
@@ -180,10 +204,13 @@ export const piDesktopApiIpcBridge = {
   selectSession: { kind: "invoke", channel: desktopIpc.selectSession },
   archiveSession: { kind: "invoke", channel: desktopIpc.archiveSession },
   unarchiveSession: { kind: "invoke", channel: desktopIpc.unarchiveSession },
+  archiveAllNonRunningSessions: { kind: "invoke", channel: desktopIpc.archiveAllNonRunningSessions },
   createSession: { kind: "invoke", channel: desktopIpc.createSession },
   startThread: { kind: "invoke", channel: desktopIpc.startThread },
   cancelCurrentRun: { kind: "invoke", channel: desktopIpc.cancelCurrentRun },
   openSessionInDefaultTerminal: { kind: "invoke", channel: desktopIpc.openSessionInDefaultTerminal },
+  chooseExternalTerminalApp: { kind: "invoke", channel: desktopIpc.chooseExternalTerminalApp },
+  clearExternalTerminalApp: { kind: "invoke", channel: desktopIpc.clearExternalTerminalApp },
   setActiveView: { kind: "invoke", channel: desktopIpc.setActiveView },
   setSidebarCollapsed: { kind: "invoke", channel: desktopIpc.setSidebarCollapsed },
   refreshRuntime: { kind: "invoke", channel: desktopIpc.refreshRuntime },
@@ -236,11 +263,15 @@ export const piDesktopApiIpcBridge = {
   submitComposer: { kind: "invoke", channel: desktopIpc.submitComposer },
   getSessionTree: { kind: "invoke", channel: desktopIpc.getSessionTree },
   navigateSessionTree: { kind: "invoke", channel: desktopIpc.navigateSessionTree },
+  inspectSessionLock: { kind: "invoke", channel: desktopIpc.inspectSessionLock },
+  claimSession: { kind: "invoke", channel: desktopIpc.claimSession },
   listWorkspaceFiles: { kind: "invoke", channel: desktopIpc.listWorkspaceFiles },
   getChangedFiles: { kind: "invoke", channel: desktopIpc.getChangedFiles },
   getWorkspaceGitInfo: { kind: "invoke", channel: desktopIpc.getWorkspaceGitInfo },
   getFileDiff: { kind: "invoke", channel: desktopIpc.getFileDiff },
   stageFile: { kind: "invoke", channel: desktopIpc.stageFile },
+  undoEdits: { kind: "invoke", channel: desktopIpc.undoEdits },
+  redoEdits: { kind: "invoke", channel: desktopIpc.redoEdits },
   commitPushExecute: { kind: "invoke", channel: desktopIpc.commitPushExecute },
   setCommitPushModel: { kind: "invoke", channel: desktopIpc.setCommitPushModel },
   getWorkspacePrInfo: { kind: "invoke", channel: desktopIpc.getWorkspacePrInfo },
@@ -376,6 +407,22 @@ export interface PrDraftResult {
   readonly message?: string;
 }
 
+export interface UndoEditReplacement {
+  readonly oldText: string;
+  readonly newText: string;
+}
+
+export interface UndoEditOp {
+  readonly kind: "edit" | "write";
+  readonly path: string;
+  readonly replacements?: readonly UndoEditReplacement[];
+}
+
+export interface UndoEditsResult {
+  readonly reverted: string[];
+  readonly failed: { path: string; reason: string }[];
+}
+
 export interface CreatePrInput {
   readonly title: string;
   readonly body: string;
@@ -417,10 +464,13 @@ export interface PiDesktopApi {
   selectSession(target: WorkspaceSessionTarget): Promise<DesktopAppState>;
   archiveSession(target: WorkspaceSessionTarget): Promise<DesktopAppState>;
   unarchiveSession(target: WorkspaceSessionTarget): Promise<DesktopAppState>;
+  archiveAllNonRunningSessions(workspaceId: string, olderThanMs?: number): Promise<DesktopAppState>;
   createSession(input: CreateSessionInput): Promise<DesktopAppState>;
   startThread(input: StartThreadInput): Promise<DesktopAppState>;
   cancelCurrentRun(): Promise<DesktopAppState>;
   openSessionInDefaultTerminal(): Promise<DesktopAppState>;
+  chooseExternalTerminalApp(): Promise<DesktopAppState>;
+  clearExternalTerminalApp(): Promise<DesktopAppState>;
   setActiveView(view: AppView): Promise<DesktopAppState>;
   setSidebarCollapsed(collapsed: boolean): Promise<DesktopAppState>;
   refreshRuntime(workspaceId?: string): Promise<DesktopAppState>;
@@ -506,6 +556,8 @@ export interface PiDesktopApi {
   updateComposerDraft(composerDraft: string): Promise<DesktopAppState>;
   submitComposer(text: string, options?: { readonly deliverAs?: "steer" | "followUp"; readonly mode?: ComposerMode }): Promise<DesktopAppState>;
   getSessionTree(target: WorkspaceSessionTarget): Promise<SessionTreeSnapshot>;
+  inspectSessionLock(target: WorkspaceSessionTarget): Promise<SessionLockSnapshot>;
+  claimSession(target: WorkspaceSessionTarget): Promise<ClaimSessionResult>;
   navigateSessionTree(
     target: WorkspaceSessionTarget,
     targetId: string,
@@ -516,6 +568,8 @@ export interface PiDesktopApi {
   getWorkspaceGitInfo(workspaceId: string): Promise<{ readonly isGitRepo: boolean; readonly changedCount: number }>;
   getFileDiff(workspaceId: string, filePath: string): Promise<string>;
   stageFile(workspaceId: string, filePath: string): Promise<void>;
+  undoEdits(workspaceId: string, ops: readonly UndoEditOp[]): Promise<UndoEditsResult>;
+  redoEdits(workspaceId: string, ops: readonly UndoEditOp[]): Promise<UndoEditsResult>;
   commitPushExecute(workspaceId: string): Promise<{ readonly success: boolean; readonly message: string; readonly commitMessage?: string }>;
   setCommitPushModel(workspaceId: string, model: string): Promise<DesktopAppState>;
   getWorkspacePrInfo(workspaceId: string): Promise<WorkspacePrInfo>;

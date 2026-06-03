@@ -2,6 +2,7 @@ import { memo, useEffect, useState } from "react";
 import type { SessionTranscriptMessage } from "@pi-gui/pi-sdk-driver";
 import type { TimelineActivity, TimelineReasoning, TimelineToolCall, TimelineSummary, TranscriptMessage } from "./timeline-types";
 import type { TimelineEditedFiles, TimelineThinkingSection } from "./timeline-model";
+import type { UndoEditOp, UndoEditReplacement, UndoEditsResult } from "./ipc";
 import type { TimelineRow, TimelineToolBurst } from "./timeline-grouping";
 import { summariseToolBurst } from "./timeline-grouping";
 import { MessageMarkdown, StreamingMessageText } from "./message-markdown";
@@ -9,12 +10,25 @@ import { InlineDiff, extractDiffFromOutput } from "./diff-inline";
 import { ChevronRightIcon, CopyIcon, DiffIcon, EditedFilesIcon, FileIcon, FolderIcon, TerminalIcon } from "./icons";
 import { openImageLightbox } from "./image-lightbox";
 import { extensionToLanguage } from "./syntax-highlight";
+import { SubagentToolCard, isSubagentTool } from "./subagent-card";
 
 // Tracks user-message ids whose entrance animation has already played. The
 // createdAt gate suppresses animation when an existing transcript is loaded for
 // the first time; the Set prevents virtualised remounts from replaying it.
 const animatedUserMessageIds = new Set<string>();
 const USER_BUBBLE_ANIMATION_MS = 520;
+
+/**
+ * Mark user-message ids as already-animated so their bubble does not replay the
+ * send animation on its next mount. Used when a thread transitions from the
+ * "Preparing your thread…" placeholder to the live session: the send animation
+ * already played on the placeholder, so the live bubble must appear in place.
+ */
+export function markUserMessagesAnimated(ids: Iterable<string>): void {
+  for (const id of ids) {
+    animatedUserMessageIds.add(id);
+  }
+}
 
 function isFreshUserBubble(item: SessionTranscriptMessage): boolean {
   if (animatedUserMessageIds.has(item.id)) {
@@ -36,6 +50,8 @@ export const TimelineItem = memo(function TimelineItem({
   onToggleBurst,
   onToggleReasoning,
   onViewFileInDiff,
+  onUndoEdits,
+  onRedoEdits,
   streamingAssistantId,
   onStreamingCaughtUp,
   streamingReasoningId,
@@ -49,6 +65,8 @@ export const TimelineItem = memo(function TimelineItem({
   readonly onToggleBurst?: (burstId: string) => void;
   readonly onToggleReasoning?: (reasoningId: string) => void;
   readonly onViewFileInDiff?: (path: string) => void;
+  readonly onUndoEdits?: (ops: readonly UndoEditOp[]) => Promise<UndoEditsResult>;
+  readonly onRedoEdits?: (ops: readonly UndoEditOp[]) => Promise<UndoEditsResult>;
   readonly streamingAssistantId?: string;
   readonly onStreamingCaughtUp?: (messageId: string) => void;
   readonly streamingReasoningId?: string;
@@ -82,6 +100,9 @@ export const TimelineItem = memo(function TimelineItem({
         />
       );
     case "tool":
+      if (isSubagentTool(item.toolName)) {
+        return <SubagentToolCard item={item} />;
+      }
       return (
         <TimelineToolCallItem
           item={item}
@@ -102,7 +123,7 @@ export const TimelineItem = memo(function TimelineItem({
         />
       );
     case "editedFiles":
-      return <TimelineEditedFilesItem item={item} onViewFileInDiff={onViewFileInDiff} />;
+      return <TimelineEditedFilesItem item={item} onViewFileInDiff={onViewFileInDiff} onUndoEdits={onUndoEdits} onRedoEdits={onRedoEdits} />;
     case "summary":
       return <TimelineSummaryItem item={item} />;
     default:
@@ -116,6 +137,8 @@ export const TimelineItem = memo(function TimelineItem({
   if (prev.onToggleBurst !== next.onToggleBurst) return false;
   if (prev.onToggleReasoning !== next.onToggleReasoning) return false;
   if (prev.onViewFileInDiff !== next.onViewFileInDiff) return false;
+  if (prev.onUndoEdits !== next.onUndoEdits) return false;
+  if (prev.onRedoEdits !== next.onRedoEdits) return false;
   if (prev.onStreamingCaughtUp !== next.onStreamingCaughtUp) return false;
   if (prev.item.kind === "reasoning" && next.item.kind === "reasoning") {
     const prevExpanded = prev.expandedReasoningIds?.has(prev.item.id) ?? false;
@@ -404,13 +427,55 @@ function aggregateEditedFiles(tools: TimelineEditedFiles["tools"]): EditedFileEn
   return order.map((path) => ({ path, ...byPath.get(path)! }));
 }
 
+function parseUndoReplacements(input: unknown): UndoEditReplacement[] {
+  if (typeof input !== "object" || input === null) return [];
+  const record = input as Record<string, unknown>;
+  const out: UndoEditReplacement[] = [];
+  if (Array.isArray(record.edits)) {
+    for (const entry of record.edits) {
+      if (entry && typeof entry === "object") {
+        const { oldText, newText } = entry as Record<string, unknown>;
+        if (typeof oldText === "string" && typeof newText === "string") {
+          out.push({ oldText, newText });
+        }
+      }
+    }
+  } else if (typeof record.oldText === "string" && typeof record.newText === "string") {
+    out.push({ oldText: record.oldText, newText: record.newText });
+  }
+  return out;
+}
+
+function buildUndoOps(tools: TimelineEditedFiles["tools"]): UndoEditOp[] {
+  const ops: UndoEditOp[] = [];
+  for (const tool of tools) {
+    const path = extractFilename(tool.input);
+    if (!path) continue;
+    const replacements = parseUndoReplacements(tool.input);
+    if (replacements.length > 0) {
+      ops.push({ kind: "edit", path, replacements });
+    } else {
+      // Full-file write (or unknown shape): the main process undoes it only
+      // when the file is untracked (created this turn).
+      ops.push({ kind: "write", path });
+    }
+  }
+  return ops;
+}
+
 function TimelineEditedFilesItem({
   item,
   onViewFileInDiff,
+  onUndoEdits,
+  onRedoEdits,
 }: {
   readonly item: TimelineEditedFiles;
   readonly onViewFileInDiff?: (path: string) => void;
+  readonly onUndoEdits?: (ops: readonly UndoEditOp[]) => Promise<UndoEditsResult>;
+  readonly onRedoEdits?: (ops: readonly UndoEditOp[]) => Promise<UndoEditsResult>;
 }) {
+  const [undoState, setUndoState] = useState<"idle" | "undoing" | "undone" | "redoing" | "error">("idle");
+  const [undoNote, setUndoNote] = useState<string | null>(null);
   const files = aggregateEditedFiles(item.tools);
   if (files.length === 0) {
     return null;
@@ -419,32 +484,108 @@ function TimelineEditedFilesItem({
   const totalAdded = files.reduce((sum, file) => sum + file.added, 0);
   const totalRemoved = files.reduce((sum, file) => sum + file.removed, 0);
   const reviewPath = files[0]!.path;
+  const undone = undoState === "undone" || undoState === "redoing";
+
+  const handleUndo = async () => {
+    if (!onUndoEdits || undoState === "undoing" || undoState === "redoing") return;
+    setUndoState("undoing");
+    setUndoNote(null);
+    try {
+      const result = await onUndoEdits(buildUndoOps(item.tools));
+      if (result.reverted.length === 0) {
+        setUndoState("error");
+        setUndoNote(result.failed[0]?.reason ?? "Nothing could be undone.");
+        return;
+      }
+      setUndoState("undone");
+      setUndoNote(result.failed.length > 0 ? `Couldn't undo ${result.failed.length} file${result.failed.length === 1 ? "" : "s"}.` : null);
+    } catch (error) {
+      setUndoState("error");
+      setUndoNote(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const handleRedo = async () => {
+    if (!onRedoEdits || undoState === "undoing" || undoState === "redoing") return;
+    setUndoState("redoing");
+    setUndoNote(null);
+    try {
+      const result = await onRedoEdits(buildUndoOps(item.tools));
+      if (result.reverted.length === 0) {
+        setUndoState("undone");
+        setUndoNote(result.failed[0]?.reason ?? "Nothing could be redone.");
+        return;
+      }
+      setUndoState("idle");
+      setUndoNote(result.failed.length > 0 ? `Couldn't redo ${result.failed.length} file${result.failed.length === 1 ? "" : "s"}.` : null);
+    } catch (error) {
+      setUndoState("undone");
+      setUndoNote(error instanceof Error ? error.message : String(error));
+    }
+  };
+
   return (
-    <article className="timeline-edited-files" data-testid="timeline-edited-files">
+    <article
+      className={`timeline-edited-files${undone ? " timeline-edited-files--undone" : ""}`}
+      data-testid="timeline-edited-files"
+    >
       <div className="timeline-edited-files__header">
         <span className="timeline-edited-files__icon" aria-hidden="true">
           <EditedFilesIcon />
         </span>
         <div className="timeline-edited-files__heading">
           <span className="timeline-edited-files__title">
-            {multiple ? `Edited ${files.length} files` : `Edited ${shortenPath(reviewPath)}`}
+            {undone
+              ? multiple
+                ? `Reverted ${files.length} files`
+                : `Reverted ${shortenPath(reviewPath)}`
+              : multiple
+                ? `Edited ${files.length} files`
+                : `Edited ${shortenPath(reviewPath)}`}
           </span>
           <span className="timeline-edited-files__stats">
             <span className="timeline-tool__stat-add">{`+${totalAdded}`}</span>{" "}
             <span className="timeline-tool__stat-del">{`-${totalRemoved}`}</span>
           </span>
         </div>
-        {onViewFileInDiff ? (
-          <button
-            aria-label="Review changes"
-            className="timeline-edited-files__review"
-            data-testid="timeline-edited-files-review"
-            type="button"
-            onClick={() => onViewFileInDiff(reviewPath)}
-          >
-            Review
-          </button>
-        ) : null}
+        <div className="timeline-edited-files__actions">
+          {undoNote ? <span className="timeline-edited-files__note">{undoNote}</span> : null}
+          {onUndoEdits && !undone ? (
+            <button
+              aria-label="Undo edits"
+              className="timeline-edited-files__undo"
+              data-testid="timeline-edited-files-undo"
+              type="button"
+              disabled={undoState === "undoing"}
+              onClick={handleUndo}
+            >
+              {undoState === "undoing" ? "Undoing…" : "Undo"}
+            </button>
+          ) : null}
+          {onRedoEdits && undone ? (
+            <button
+              aria-label="Redo edits"
+              className="timeline-edited-files__undo"
+              data-testid="timeline-edited-files-redo"
+              type="button"
+              disabled={undoState === "redoing"}
+              onClick={handleRedo}
+            >
+              {undoState === "redoing" ? "Redoing…" : "Redo"}
+            </button>
+          ) : null}
+          {onViewFileInDiff ? (
+            <button
+              aria-label="Review changes"
+              className="timeline-edited-files__review"
+              data-testid="timeline-edited-files-review"
+              type="button"
+              onClick={() => onViewFileInDiff(reviewPath)}
+            >
+              Review
+            </button>
+          ) : null}
+        </div>
       </div>
       {multiple ? (
         <div className="timeline-edited-files__list">

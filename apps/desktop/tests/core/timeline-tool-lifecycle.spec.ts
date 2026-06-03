@@ -1,3 +1,6 @@
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import type { SessionDriverEvent, SessionRef, SessionSnapshot } from "@pi-gui/session-driver";
 import {
@@ -147,6 +150,140 @@ test("tool activity uses Codex-style running, completed, and grouped states", as
     await expect(editBox.locator(".timeline-tool__stat-del")).toHaveText("-1");
   } finally {
     await harness.close();
+  }
+});
+
+test("undo reverts a turn's edits on disk", async () => {
+  test.setTimeout(45_000);
+
+  const userDataDir = await makeUserDataDir();
+  const workspacePath = await makeWorkspace("timeline-undo-workspace");
+  // Simulate the post-edit working-tree state on disk.
+  const filePath = join(workspacePath, "src/edited.ts");
+  await mkdir(dirname(filePath), { recursive: true });
+  await writeFile(filePath, "export const value = OMEGA;\n", "utf8");
+  const harness = await launchDesktop(userDataDir, {
+    initialWorkspaces: [workspacePath],
+    testMode: "background",
+  });
+
+  try {
+    const window = await harness.firstWindow();
+    await createNamedThread(window, "Undo edits");
+    const sessionRef = await selectedSessionRef(window);
+    const timestamp = new Date().toISOString();
+
+    await emitTestSessionEvent(harness, {
+      type: "sessionUpdated",
+      sessionRef,
+      timestamp,
+      snapshot: runningSnapshot(sessionRef, workspacePath),
+    });
+
+    const diff = "@@ -1 +1 @@\n-export const value = ALPHA;\n+export const value = OMEGA;\n";
+    await emitTestSessionEvent(harness, {
+      type: "toolStarted",
+      sessionRef,
+      timestamp,
+      callId: "edit-undo",
+      toolName: "edit",
+      input: { path: "src/edited.ts", edits: [{ oldText: "ALPHA", newText: "OMEGA" }] },
+    });
+    await emitTestSessionEvent(harness, {
+      type: "toolFinished",
+      sessionRef,
+      timestamp,
+      callId: "edit-undo",
+      success: true,
+      output: { diff },
+    });
+    await emitTestSessionEvent(harness, {
+      type: "assistantDelta",
+      sessionRef,
+      timestamp,
+      text: " Edited the file.",
+    });
+    await expect(window.locator(".timeline-item--assistant", { hasText: "Edited the file." })).toBeVisible();
+
+    const editBox = window.getByTestId("timeline-edited-files");
+    await editBox.getByTestId("timeline-edited-files-undo").click();
+
+    // Card flips to the reverted state and the file content is restored on disk.
+    await expect(editBox.locator(".timeline-edited-files__title")).toHaveText("Reverted src/edited.ts");
+    await expect(editBox.getByTestId("timeline-edited-files-undo")).toHaveCount(0);
+    await expect.poll(() => readFile(filePath, "utf8")).toBe("export const value = ALPHA;\n");
+
+    // Redo replays the edit forward: card returns to "Edited" and disk is reapplied.
+    await editBox.getByTestId("timeline-edited-files-redo").click();
+    await expect(editBox.locator(".timeline-edited-files__title")).toHaveText("Edited src/edited.ts");
+    await expect(editBox.getByTestId("timeline-edited-files-undo")).toBeVisible();
+    await expect.poll(() => readFile(filePath, "utf8")).toBe("export const value = OMEGA;\n");
+  } finally {
+    await harness.close();
+  }
+});
+
+test("undo reverts an edit to a file outside the workspace", async () => {
+  test.setTimeout(45_000);
+
+  const userDataDir = await makeUserDataDir();
+  const workspacePath = await makeWorkspace("timeline-undo-outside-workspace");
+  // A file that lives entirely outside the workspace root.
+  const outsideDir = await mkdtemp(join(tmpdir(), "pi-undo-outside-"));
+  const filePath = join(outsideDir, "Untitled.txt");
+  await writeFile(filePath, "edited!\n", "utf8");
+  const harness = await launchDesktop(userDataDir, {
+    initialWorkspaces: [workspacePath],
+    testMode: "background",
+  });
+
+  try {
+    const window = await harness.firstWindow();
+    await createNamedThread(window, "Undo outside");
+    const sessionRef = await selectedSessionRef(window);
+    const timestamp = new Date().toISOString();
+
+    await emitTestSessionEvent(harness, {
+      type: "sessionUpdated",
+      sessionRef,
+      timestamp,
+      snapshot: runningSnapshot(sessionRef, workspacePath),
+    });
+
+    const diff = "@@ -1 +1 @@\n-original\n+edited!\n";
+    await emitTestSessionEvent(harness, {
+      type: "toolStarted",
+      sessionRef,
+      timestamp,
+      callId: "edit-outside",
+      toolName: "edit",
+      input: { path: filePath, edits: [{ oldText: "original", newText: "edited!" }] },
+    });
+    await emitTestSessionEvent(harness, {
+      type: "toolFinished",
+      sessionRef,
+      timestamp,
+      callId: "edit-outside",
+      success: true,
+      output: { diff },
+    });
+    await emitTestSessionEvent(harness, {
+      type: "assistantDelta",
+      sessionRef,
+      timestamp,
+      text: " Edited the outside file.",
+    });
+    await expect(window.locator(".timeline-item--assistant", { hasText: "Edited the outside file." })).toBeVisible();
+
+    const editBox = window.getByTestId("timeline-edited-files");
+    await editBox.getByTestId("timeline-edited-files-undo").click();
+
+    // Undo succeeds despite the path being outside the workspace root.
+    await expect(editBox.getByTestId("timeline-edited-files-redo")).toBeVisible();
+    await expect.poll(() => readFile(filePath, "utf8")).toBe("original\n");
+  } finally {
+    await harness.close();
+    await rm(outsideDir, { recursive: true, force: true });
   }
 });
 

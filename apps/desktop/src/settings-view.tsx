@@ -21,6 +21,7 @@ interface SettingsViewProps {
   readonly notificationPermissionPending: boolean;
   readonly modelSettingsScopeMode: ModelSettingsScopeMode;
   readonly integratedTerminalShell: string;
+  readonly externalTerminalApp: string;
   readonly themeMode: import("./desktop-state").ThemeMode;
   readonly enableTransparency: boolean;
   readonly transcriptVerbose: boolean;
@@ -36,6 +37,8 @@ interface SettingsViewProps {
   readonly onRemoveProviderApiKey: (providerId: string) => Promise<string | undefined>;
   readonly onSetNotificationPreferences: (preferences: Partial<NotificationPreferences>) => void;
   readonly onSetIntegratedTerminalShell: (shellPath: string) => void;
+  readonly onChooseExternalTerminalApp: () => void;
+  readonly onClearExternalTerminalApp: () => void;
   readonly onRequestNotificationPermission: () => void;
   readonly onOpenSystemNotificationSettings: () => void;
   readonly onSetThemeMode: (mode: import("./desktop-state").ThemeMode) => void;
@@ -55,6 +58,7 @@ export function SettingsView({
   notificationPermissionPending,
   modelSettingsScopeMode,
   integratedTerminalShell,
+  externalTerminalApp,
   themeMode,
   enableTransparency,
   transcriptVerbose,
@@ -70,6 +74,8 @@ export function SettingsView({
   onRemoveProviderApiKey,
   onSetNotificationPreferences,
   onSetIntegratedTerminalShell,
+  onChooseExternalTerminalApp,
+  onClearExternalTerminalApp,
   onRequestNotificationPermission,
   onOpenSystemNotificationSettings,
   onSetThemeMode,
@@ -123,8 +129,11 @@ export function SettingsView({
               runtime={runtime}
               modelSettingsScopeMode={modelSettingsScopeMode}
               integratedTerminalShell={integratedTerminalShell}
+              externalTerminalApp={externalTerminalApp}
               onSetModelSettingsScopeMode={onSetModelSettingsScopeMode}
               onSetIntegratedTerminalShell={onSetIntegratedTerminalShell}
+              onChooseExternalTerminalApp={onChooseExternalTerminalApp}
+              onClearExternalTerminalApp={onClearExternalTerminalApp}
               onToggleSkillCommands={onToggleSkillCommands}
             />
           ) : null}

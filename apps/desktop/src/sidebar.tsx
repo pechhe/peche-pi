@@ -19,7 +19,7 @@ import { WorkingSpinner } from "./working-label";
 import type { PiDesktopApi } from "./ipc";
 import { formatRelativeTime } from "./string-utils";
 import type { WorkspaceMenuState } from "./hooks/use-workspace-menu";
-import type { ThreadGroup, ThreadListEntry } from "./thread-groups";
+import { PENDING_THREAD_SESSION_ID, type ThreadGroup, type ThreadListEntry } from "./thread-groups";
 import type { Dispatch, SetStateAction } from "react";
 import type { DesktopAppState } from "./desktop-state";
 import type { SidebarResize } from "./hooks/use-sidebar-width";
@@ -47,6 +47,7 @@ interface SidebarProps {
   readonly onOpenExtensions: (workspaceId?: string) => void;
   readonly onOpenSettings: (workspaceId?: string) => void;
   readonly onArchiveSession: (target: { workspaceId: string; sessionId: string }) => void;
+  readonly onArchiveAllNonRunningSessions: (workspaceId: string, olderThanMs?: number) => void;
   readonly onSelectSession: (target: { workspaceId: string; sessionId: string }) => void;
   readonly onUnarchiveSession: (target: { workspaceId: string; sessionId: string }) => void;
   readonly onCreateChat: () => void;
@@ -76,6 +77,7 @@ export function Sidebar(props: SidebarProps) {
     onOpenExtensions,
     onOpenSettings,
     onArchiveSession,
+    onArchiveAllNonRunningSessions,
     onSelectSession,
     onUnarchiveSession,
     onCreateChat,
@@ -218,6 +220,7 @@ export function Sidebar(props: SidebarProps) {
                     wsMenu={wsMenu}
                     api={api}
                     onArchiveSession={onArchiveSession}
+                    onArchiveAllNonRunningSessions={onArchiveAllNonRunningSessions}
                     onSelectSession={onSelectSession}
                     onUnarchiveSession={onUnarchiveSession}
                     onNewThreadForWorkspace={onNewThreadForWorkspace}
@@ -235,6 +238,7 @@ export function Sidebar(props: SidebarProps) {
                     wsMenu={wsMenu}
                     api={api}
                     onArchiveSession={onArchiveSession}
+                    onArchiveAllNonRunningSessions={onArchiveAllNonRunningSessions}
                     onSelectSession={onSelectSession}
                     onUnarchiveSession={onUnarchiveSession}
                     onNewThreadForWorkspace={onNewThreadForWorkspace}
@@ -255,6 +259,7 @@ export function Sidebar(props: SidebarProps) {
                     wsMenu={wsMenu}
                     api={api}
                     onArchiveSession={onArchiveSession}
+                    onArchiveAllNonRunningSessions={onArchiveAllNonRunningSessions}
                     onSelectSession={onSelectSession}
                     onUnarchiveSession={onUnarchiveSession}
                     onNewThreadForWorkspace={onNewThreadForWorkspace}
@@ -317,6 +322,7 @@ interface WorkspaceGroupProps {
   readonly wsMenu: WorkspaceMenuState;
   readonly api: PiDesktopApi;
   readonly onArchiveSession: (target: { workspaceId: string; sessionId: string }) => void;
+  readonly onArchiveAllNonRunningSessions: (workspaceId: string, olderThanMs?: number) => void;
   readonly onSelectSession: (target: { workspaceId: string; sessionId: string }) => void;
   readonly onUnarchiveSession: (target: { workspaceId: string; sessionId: string }) => void;
   readonly onNewThreadForWorkspace: (rootWorkspaceId: string) => void;
@@ -369,6 +375,7 @@ function WorkspaceGroupContent(
     wsMenu,
     api,
     onArchiveSession,
+    onArchiveAllNonRunningSessions,
     onSelectSession,
     onUnarchiveSession,
     onNewThreadForWorkspace,
@@ -464,6 +471,32 @@ function WorkspaceGroupContent(
               >
                 Edit name
               </button>
+              {threads.some((t) => t.session.status !== "running") ? (
+                <button
+                  className="workspace-menu__item"
+                  type="button"
+                  onClick={(event) =>
+                    wsMenu.runWorkspaceMenuAction(event, () =>
+                      onArchiveAllNonRunningSessions(rootWorkspace.id),
+                    )
+                  }
+                >
+                  Archive all non‑running threads
+                </button>
+              ) : null}
+              {threads.some((t) => t.session.status !== "running" && Date.now() - new Date(t.session.updatedAt).getTime() >= 3_600_000) ? (
+                <button
+                  className="workspace-menu__item"
+                  type="button"
+                  onClick={(event) =>
+                    wsMenu.runWorkspaceMenuAction(event, () =>
+                      onArchiveAllNonRunningSessions(rootWorkspace.id, 3_600_000),
+                    )
+                  }
+                >
+                  Archive inactive &gt; 1 hour
+                </button>
+              ) : null}
               <button
                 className="workspace-menu__item workspace-menu__item--danger"
                 type="button"
@@ -514,9 +547,10 @@ function WorkspaceGroupContent(
           <div className="session-list">
             {threads.map((thread) => {
               const active =
-                activeView === "threads" &&
-                thread.workspaceId === selectedWorkspace?.id &&
-                thread.session.id === selectedSession?.id;
+                thread.session.id === PENDING_THREAD_SESSION_ID ||
+                (activeView === "threads" &&
+                  thread.workspaceId === selectedWorkspace?.id &&
+                  thread.session.id === selectedSession?.id);
               return (
                 <ThreadSessionRow
                   key={`${thread.workspaceId}:${thread.session.id}`}

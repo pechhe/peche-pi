@@ -3,8 +3,8 @@
   "runtime_contract": {
     "source_docs": [],
     "verification_gates": [
-      { "name": "typecheck", "command": "pnpm typecheck" },
-      { "name": "desktop unit tests", "command": "pnpm --filter @pi-gui/desktop test:unit" }
+      { "name": "TypeScript typecheck", "command": "cd apps/desktop && npx tsc -p tsconfig.json --noEmit && npx tsc -p tsconfig.electron.json --noEmit" },
+      { "name": "Core e2e tests", "command": "cd apps/desktop && pnpm test:e2e:core" }
     ],
     "require_progress_append": true,
     "require_one_item_per_iteration": true,
@@ -13,79 +13,24 @@
   "items": [
     {
       "category": "functional",
-      "description": "Delete abandoned SvelteKit/Tauri residue that contradicts ADR-0002 and is not referenced by live source.",
+      "description": "Create TestButton component and render it on the main page",
       "steps": [
-        "Confirm no live source imports or package scripts reference `packages/desktop-core`, `packages/desktop-protocol`, or `packages/sidecar` as abandoned-port modules.",
-        "Remove stale abandoned-port generated artifacts and any workspace metadata that would make them appear as active modules.",
-        "Preserve the Electron Desktop App and live packages only; do not reintroduce Sidecar, Desktop Protocol, or platform adapters.",
-        "Run the required verification gates and record the deletion-test result in progress."
+        "Create TestButton.tsx in apps/desktop/src/renderer/src/components/",
+        "Export a React component that renders a <button> with text 'Test Button'",
+        "Import and render <TestButton /> in the main app page"
       ],
-      "passes": true,
-      "regression_notes": "Removed abandoned SvelteKit/Tauri package/app workspace residue. `pnpm install --lockfile-only` removed stale `apps/svelte-desktop`, `packages/desktop-core`, `packages/desktop-protocol`, `packages/sidecar`, and `@pi-gui/desktop-core` Electron lockfile entries; deleted tracked `apps/svelte-desktop/.gitignore` and ignored generated residue directories. Deletion test found no abandoned package/app dirs or workspace references in package.json, apps, packages, or pnpm-lock.yaml. Required gates passed: pnpm typecheck; pnpm --filter @pi-gui/desktop test:unit."
+      "passes": false,
+      "regression_notes": ""
     },
     {
-      "category": "functional",
-      "description": "Replace the `pi-sdk-driver` ambient session-driver type copy with the real `@pi-gui/session-driver` package type Interface.",
+      "category": "testing",
+      "description": "Add Playwright e2e test that asserts TestButton renders with correct text",
       "steps": [
-        "Remove or neutralize `packages/pi-sdk-driver/src/vendor/session-driver.d.ts` so it no longer shadows the real package contract.",
-        "Adjust `packages/pi-sdk-driver` TypeScript configuration or project build order so imports from `@pi-gui/session-driver` and `@pi-gui/session-driver/runtime-types` resolve to the real package types.",
-        "Fix any resulting compile errors by updating the true source types or consumers, not by creating a second copied contract.",
-        "Run focused package builds for `session-driver` and `pi-sdk-driver` plus the required verification gates."
+        "Add a test spec in apps/desktop/tests/e2e/core/ that navigates to the app and asserts the button with text 'Test Button' exists",
+        "Run pnpm test:e2e:core and confirm the test passes"
       ],
-      "passes": true,
-      "regression_notes": "Removed `packages/pi-sdk-driver/src/vendor/session-driver.d.ts` so `pi-sdk-driver` no longer shadows the real `@pi-gui/session-driver` and `@pi-gui/session-driver/runtime-types` contracts. Existing package build order already builds `session-driver` before `pi-sdk-driver`, so the real package type Interface resolved through workspace exports without TypeScript config changes. Focused builds passed: `pnpm --filter @pi-gui/session-driver build`; `pnpm --filter @pi-gui/pi-sdk-driver build`. Required gates passed: `pnpm typecheck`; `pnpm --filter @pi-gui/desktop test:unit`."
-    },
-    {
-      "category": "functional",
-      "description": "Deepen the Desktop App state transition module for composer and selected-session state invariants.",
-      "steps": [
-        "Extend `apps/desktop/electron/app-state-reducer.ts` or an adjacent state transition module to own composer draft, attachment, selected-session, revision, and error-clearing invariants for one coherent slice.",
-        "Update `app-store-composer.ts`, `app-store-workspace.ts`, or `app-store.ts` callers in that slice to use the deeper state transition Interface instead of hand-mutating the same `DesktopAppState` fields.",
-        "Keep side effects such as driver calls, persistence, and transcript publication outside the pure transition Implementation unless the selected design explicitly documents a safe internal seam.",
-        "Add unit tests at the state transition Interface proving no-op behavior, revision/error conventions, and selected-session/composer consistency.",
-        "Run the required verification gates and any focused tests for the touched state slice."
-      ],
-      "passes": true,
-      "regression_notes": "Extended `apps/desktop/electron/app-state-reducer.ts` so the Desktop App state transition Module owns composer draft sync, composer attachment replacement, and selected-session/composer consistency invariants. Updated composer and selected-session callers to use the reducer Seam while keeping driver calls, persistence, transcript publication, and other side-effect Implementations outside it. Added reducer Interface tests for no-op identity, revision/lastError conventions, attachment equality, and selection-to-threads composer state consistency. Focused and required gates passed: `pnpm --filter @pi-gui/desktop test:unit -- app-state-reducer`; `pnpm typecheck`; `pnpm --filter @pi-gui/desktop test:unit`."
-    },
-    {
-      "category": "functional",
-      "description": "Add a Desktop App IPC command registry or contract test that prevents drift between channel names, preload methods, renderer types, and main handlers.",
-      "steps": [
-        "Introduce a small owning module for Desktop App IPC command metadata, or a contract test over the existing metadata, without broadening the renderer's Node access.",
-        "Prove every exposed `window.piApp` command has a known channel and every command channel expected by the renderer has a main-process handler or documented event-only role.",
-        "Keep listener/event channels such as state changes, selected transcript changes, terminal output, and theme changes explicit so they are not confused with request/response commands.",
-        "Update preload, main, or IPC types only as needed for the selected seam; avoid product UI changes.",
-        "Run the required verification gates and the new IPC contract test."
-      ],
-      "passes": true,
-      "regression_notes": "Added IPC bridge metadata in `apps/desktop/src/ipc.ts` for the narrow `window.piApp` Interface, classifying local entries, request/response command channels, one-way send channels, sync clipboard channel, and event-only listener channels. Added `apps/desktop/electron/ipc-contract.test.ts` to prove preload entries, renderer Interface entries, Desktop IPC channel names, and main-process handlers stay aligned without broadening preload Node access. Focused and required gates passed: `pnpm --filter @pi-gui/desktop test:unit -- ipc-contract`; `pnpm typecheck`; `pnpm --filter @pi-gui/desktop test:unit`."
-    },
-    {
-      "category": "functional",
-      "description": "Create one owning Desktop App timeline model module for persisted transcript rows and live session events.",
-      "steps": [
-        "Introduce a timeline model module that owns assembly of product-visible timeline rows from persisted transcript messages and live `SessionDriverEvent` inputs.",
-        "Move or wrap existing behavior from `app-store-timeline.ts`, `timeline-types.ts`, and `timeline-grouping.ts` behind a smaller Interface while preserving current rendering output.",
-        "Cover assistant deltas, queued user messages, tool lifecycle rows, run summaries, meta activity extraction, and reopened transcript behavior with tests at the timeline model Interface.",
-        "Update Desktop App callers to use the owning timeline model module without changing visible conversation-first behavior.",
-        "Run the required verification gates and focused timeline tests."
-      ],
-      "passes": true,
-      "regression_notes": "Added `apps/desktop/src/timeline-model.ts` as the owning Desktop App timeline Module. It now assembles runtime transcript rows from live `SessionDriverEvent` inputs and builds renderer grouping/meta view models from persisted transcript rows behind one Interface, while `timeline-grouping.ts` remains a compatibility re-export Seam and `app-store-timeline.ts` delegates to the model Implementation. Added Interface tests covering assistant deltas, queued user messages with attachments, tool lifecycle rows, run summaries, run failures, reopened transcript meta extraction, non-trailing tool bursts, and trailing active tool rows. Focused and required gates passed: `pnpm --filter @pi-gui/desktop test:unit -- timeline-model`; `pnpm typecheck`; `pnpm --filter @pi-gui/desktop test:unit`."
-    },
-    {
-      "category": "functional",
-      "description": "Deepen one internal `SessionSupervisor` concern while preserving the external `PiSdkDriver` Interface.",
-      "steps": [
-        "Choose one high-friction concern inside `packages/pi-sdk-driver/src/session-supervisor.ts`, such as queued message delivery, extension host UI state, runtime command compatibility, or workspace/session catalog sync.",
-        "Extract that concern into an internal module with a smaller Interface and keep `PiSdkDriver` and `SessionDriver` caller behavior unchanged.",
-        "Use a real internal seam only where behavior varies or tests need locality; do not introduce pass-through Adapters for their own sake.",
-        "Add or update tests that exercise the extracted concern through its Interface and through the public driver path where practical.",
-        "Run focused `pi-sdk-driver` tests or builds plus the required verification gates."
-      ],
-      "passes": true,
-      "regression_notes": "Extracted queued message delivery concern from `session-supervisor.ts` into `packages/pi-sdk-driver/src/queued-message-delivery.ts` with a narrower Interface: `cloneQueuedMessage`, `queuedMessageFromInput`, `queuedPromptImagesFromAttachments`, `promptTextForQueuedDelivery`, `deliverQueuedPrompt`, `deliverQueuedMessage`, and `reconcileQueuedMessagesForStartedUserMessage`. Replaced inline queued-message mutation in `sendUserMessage`, `replaceQueuedMessages`, and `mapAgentEvent` with calls to the extracted Module; removed the private `queuePrompt` method. Added `packages/pi-sdk-driver/test/queued-message-delivery.test.ts` with 6 Interface tests covering clone Locality, image extraction, file preamble, steer/followUp dispatch, full deliverQueuedMessage pipeline, and steer-before-follow-up reconciliation. Focused tests passed: `pnpm exec tsx --test packages/pi-sdk-driver/test/queued-message-delivery.test.ts`; `pnpm --filter @pi-gui/pi-sdk-driver build`. Required gates passed: `pnpm typecheck`; `pnpm --filter @pi-gui/desktop test:unit`. External `PiSdkDriver` Interface unchanged; `SessionSupervisor` callers only interact through the existing public method Interface."
+      "passes": false,
+      "regression_notes": ""
     }
   ]
 }

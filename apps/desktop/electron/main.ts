@@ -16,7 +16,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { DesktopAppStore } from "./app-store";
-import { getChangedFiles, getFileDiff, getWorkspaceGitInfo, stageFile } from "./app-store-diff";
+import { getChangedFiles, getFileDiff, getWorkspaceGitInfo, redoEdits, stageFile, undoEdits } from "./app-store-diff";
 import { configureCommitPushLogDir, executeCommitPush } from "./commit-push-service";
 import {
   configurePrLogDir,
@@ -35,7 +35,7 @@ import { ThemeManager } from "./theme-manager";
 import { TerminalService } from "./terminal-service";
 import type { DesktopAppState, ThemeMode } from "../src/desktop-state";
 import type { ComposerMode } from "../src/composer-mode";
-import { desktopIpc, getDesktopCommandFromShortcut, type CavemanConfigSnapshot, type CavemanLevel } from "../src/ipc";
+import { desktopIpc, getDesktopCommandFromShortcut, type CavemanConfigSnapshot, type CavemanLevel, type UndoEditOp } from "../src/ipc";
 import { SUPPORTED_COMPOSER_IMAGE_TYPES } from "../src/composer-attachments";
 import type {
   ComposerAttachment,
@@ -296,6 +296,28 @@ async function pickWorkspaceViaDialog(): Promise<DesktopAppState> {
     window.webContents.send(desktopIpc.workspacePicked, nextState.selectedWorkspaceId);
   }
   return newThreadState;
+}
+
+async function pickTerminalAppViaDialog(): Promise<string | undefined> {
+  // Tests exercise the picker branch without blocking on a native dialog.
+  if (process.env.PI_APP_TEST_MODE) {
+    return process.env.PI_APP_TEST_TERMINAL_APP || "/System/Applications/Utilities/Terminal.app";
+  }
+  const window = mainWindow && canPublishToWindow(mainWindow) ? mainWindow : undefined;
+  const dialogOptions = {
+    properties: ["openFile"] as Array<"openFile">,
+    defaultPath: "/Applications",
+    title: "Choose a terminal app",
+    message: "Pick the terminal application to open pi sessions in (e.g. Terminal, iTerm, Ghostty).",
+    filters: [{ name: "Applications", extensions: ["app"] }],
+  };
+  const result = window
+    ? await dialog.showOpenDialog(window, dialogOptions)
+    : await dialog.showOpenDialog(dialogOptions);
+  if (result.canceled || result.filePaths.length === 0) {
+    return undefined;
+  }
+  return result.filePaths[0];
 }
 
 async function runManualUpdateCheck(): Promise<void> {
@@ -580,6 +602,9 @@ app.whenReady().then(async () => {
   ipcMain.handle(desktopIpc.unarchiveSession, (_event, target: WorkspaceSessionTarget) =>
     store.unarchiveSession(target),
   );
+  ipcMain.handle(desktopIpc.archiveAllNonRunningSessions, (_event, workspaceId: string, olderThanMs?: number) =>
+    store.archiveAllNonRunningSessions(workspaceId, olderThanMs),
+  );
   ipcMain.handle(desktopIpc.setActiveView, (_event, activeView) => store.setActiveView(activeView));
   ipcMain.handle(desktopIpc.setSidebarCollapsed, (_event, collapsed: boolean) =>
     store.setSidebarCollapsed(collapsed),
@@ -739,7 +764,14 @@ app.whenReady().then(async () => {
     await shell.openPath(path.dirname(resolved));
   });
   ipcMain.handle(desktopIpc.cancelCurrentRun, () => store.cancelCurrentRun());
-  ipcMain.handle(desktopIpc.openSessionInDefaultTerminal, () => store.openSessionInDefaultTerminal());
+  ipcMain.handle(desktopIpc.openSessionInDefaultTerminal, () =>
+    store.openSessionInDefaultTerminal(pickTerminalAppViaDialog),
+  );
+  ipcMain.handle(desktopIpc.chooseExternalTerminalApp, async () => {
+    const app = await pickTerminalAppViaDialog();
+    return app ? store.setExternalTerminalApp(app) : store.getState();
+  });
+  ipcMain.handle(desktopIpc.clearExternalTerminalApp, () => store.setExternalTerminalApp(""));
   ipcMain.handle(desktopIpc.pickComposerAttachments, async () => {
     const result = await dialog.showOpenDialog({
       properties: ["openFile", "multiSelections"],
@@ -783,6 +815,12 @@ app.whenReady().then(async () => {
   ipcMain.handle(desktopIpc.getSessionTree, (_event, target: WorkspaceSessionTarget) =>
     store.getSessionTree(target),
   );
+  ipcMain.handle(desktopIpc.inspectSessionLock, (_event, target: WorkspaceSessionTarget) =>
+    store.inspectSessionLock(target),
+  );
+  ipcMain.handle(desktopIpc.claimSession, (_event, target: WorkspaceSessionTarget) =>
+    store.claimSession(target),
+  );
   ipcMain.handle(
     desktopIpc.navigateSessionTree,
     (_event, target: WorkspaceSessionTarget, targetId: string, options) =>
@@ -822,6 +860,20 @@ app.whenReady().then(async () => {
       throw new Error(`Unknown workspace: ${workspaceId}`);
     }
     await stageFile(workspacePath, filePath);
+  });
+  ipcMain.handle(desktopIpc.undoEdits, async (_event, workspaceId: string, ops: readonly UndoEditOp[]) => {
+    const workspacePath = store.getWorkspacePath(workspaceId);
+    if (!workspacePath) {
+      throw new Error(`Unknown workspace: ${workspaceId}`);
+    }
+    return undoEdits(workspacePath, ops);
+  });
+  ipcMain.handle(desktopIpc.redoEdits, async (_event, workspaceId: string, ops: readonly UndoEditOp[]) => {
+    const workspacePath = store.getWorkspacePath(workspaceId);
+    if (!workspacePath) {
+      throw new Error(`Unknown workspace: ${workspaceId}`);
+    }
+    return redoEdits(workspacePath, ops);
   });
   ipcMain.handle(desktopIpc.setCommitPushModel, (_event, workspaceId: string, model: string) =>
     store.setCommitPushModel(workspaceId, model),

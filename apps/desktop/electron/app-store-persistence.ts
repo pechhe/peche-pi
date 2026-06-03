@@ -22,6 +22,7 @@ export interface PersistedUiState {
   readonly extensionCommandCompatibilityByWorkspace?: Record<string, readonly ExtensionCommandCompatibilityRecord[]>;
   readonly notificationPreferences?: NotificationPreferences;
   readonly integratedTerminalShell?: string;
+  readonly externalTerminalApp?: string;
   readonly lastViewedAtBySession?: Record<string, string>;
   readonly workspaceOrder?: readonly string[];
   readonly modelSettingsScopeMode?: ModelSettingsScopeMode;
@@ -76,6 +77,8 @@ export async function readPersistedUiState(uiStateFilePath: string): Promise<Leg
       notificationPreferences: parsed.notificationPreferences,
       integratedTerminalShell:
         typeof parsed.integratedTerminalShell === "string" ? parsed.integratedTerminalShell : undefined,
+      externalTerminalApp:
+        typeof parsed.externalTerminalApp === "string" ? parsed.externalTerminalApp : undefined,
       lastViewedAtBySession: parsed.lastViewedAtBySession,
       workspaceOrder: Array.isArray(parsed.workspaceOrder) ? parsed.workspaceOrder : undefined,
       modelSettingsScopeMode:

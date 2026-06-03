@@ -237,6 +237,51 @@ export async function createSession(store: AppStoreInternals, input: CreateSessi
   });
 }
 
+export async function archiveAllNonRunningSessions(
+  store: AppStoreInternals,
+  workspaceId: string,
+  olderThanMs?: number,
+): Promise<DesktopAppState> {
+  await store.initialize();
+
+  return store.withErrorHandling(async () => {
+    const workspace = store.state.workspaces.find((w) => w.id === workspaceId);
+    if (!workspace) {
+      return store.emit();
+    }
+
+    const now = Date.now();
+    const nonRunningSessions = workspace.sessions.filter((s) => {
+      if (s.archivedAt || s.status === "running") return false;
+      if (olderThanMs != null) {
+        const updatedAtMs = new Date(s.updatedAt).getTime();
+        return now - updatedAtMs >= olderThanMs;
+      }
+      return true;
+    });
+
+    for (const session of nonRunningSessions) {
+      const sessionRef = { workspaceId: workspace.id, sessionId: session.id };
+      store.clearPendingAutoTitle(sessionRef);
+      await store.driver.archiveSession(sessionRef);
+    }
+
+    // Re-resolve selection: keep current selection unless it was just archived.
+    const selectedSessionId = nonRunningSessions.some(
+      (s) => s.id === store.state.selectedSessionId,
+    )
+      ? ""
+      : store.state.selectedSessionId;
+
+    return store.refreshState({
+      selectedWorkspaceId: store.state.selectedWorkspaceId,
+      selectedSessionId,
+      clearLastError: true,
+      activeView: "threads",
+    });
+  });
+}
+
 export async function syncCurrentWorkspace(store: AppStoreInternals): Promise<DesktopAppState> {
   await store.initialize();
   if (!store.state.selectedWorkspaceId) {

@@ -56,6 +56,7 @@ import {
   type TranscriptMessage,
   type WorkspaceSessionTarget,
 } from "../src/desktop-state";
+import type { ClaimSessionResult, SessionLockSnapshot } from "../src/ipc";
 import type { ComposerMode } from "../src/composer-mode";
 import {
   applyTimelineEvent,
@@ -354,6 +355,10 @@ export class DesktopAppStore implements AppStoreInternals {
     return workspace.unarchiveSession(this, target);
   }
 
+  async archiveAllNonRunningSessions(workspaceId: string, olderThanMs?: number): Promise<DesktopAppState> {
+    return workspace.archiveAllNonRunningSessions(this, workspaceId, olderThanMs);
+  }
+
   async syncCurrentWorkspace(): Promise<DesktopAppState> {
     return workspace.syncCurrentWorkspace(this);
   }
@@ -409,7 +414,23 @@ export class DesktopAppStore implements AppStoreInternals {
     return composer.cancelCurrentRun(this);
   }
 
-  async openSessionInDefaultTerminal(): Promise<DesktopAppState> {
+  async setExternalTerminalApp(externalTerminalApp: string): Promise<DesktopAppState> {
+    await this.initialize();
+    const next = reduce(this.state, {
+      type: "settings/setExternalTerminalApp",
+      externalTerminalApp: externalTerminalApp.trim(),
+    });
+    if (next === this.state) {
+      return this.emit();
+    }
+    this.state = next;
+    await this.persistUiState();
+    return this.emit();
+  }
+
+  async openSessionInDefaultTerminal(
+    promptForTerminalApp: () => Promise<string | undefined>,
+  ): Promise<DesktopAppState> {
     await this.initialize();
     const sessionRef = this.selectedSessionRef();
     if (!sessionRef) {
@@ -424,6 +445,17 @@ export class DesktopAppStore implements AppStoreInternals {
       return this.withError("Cannot resolve the workspace folder for this session.");
     }
 
+    let terminalApp = this.state.externalTerminalApp.trim();
+    if (!terminalApp) {
+      const picked = (await promptForTerminalApp())?.trim();
+      if (!picked) {
+        // User cancelled the picker; abort without error.
+        return this.emit();
+      }
+      await this.setExternalTerminalApp(picked);
+      terminalApp = picked;
+    }
+
     return this.withErrorHandling(async () => {
       const catalog = await this.driver.listSessions(sessionRef.workspaceId);
       const sessionFilePath = catalog.sessions.find(
@@ -432,7 +464,7 @@ export class DesktopAppStore implements AppStoreInternals {
       if (!sessionFilePath) {
         return this.withError("This session has no saved file to resume.");
       }
-      await launchSessionInDefaultTerminal({ cwd, sessionFilePath });
+      await launchSessionInDefaultTerminal({ cwd, sessionFilePath, terminalApp });
       // Hand off ownership: drop the in-memory runtime so the external pi
       // process is the sole writer of the session file.
       await this.driver.closeSession(sessionRef);
@@ -446,6 +478,31 @@ export class DesktopAppStore implements AppStoreInternals {
     const sessionRef = toSessionRef(target);
     await this.ensureSessionReady(sessionRef);
     return this.driver.getSessionTree(sessionRef);
+  }
+
+  async inspectSessionLock(target: WorkspaceSessionTarget): Promise<SessionLockSnapshot> {
+    await this.initialize();
+    const state = await this.driver.inspectSessionLock(toSessionRef(target));
+    if (state.status === "foreign") {
+      const { token: _token, ...owner } = state.info;
+      return { status: "foreign", owner, alive: state.alive };
+    }
+    return { status: "free" };
+  }
+
+  async claimSession(target: WorkspaceSessionTarget): Promise<ClaimSessionResult> {
+    await this.initialize();
+    const sessionRef = toSessionRef(target);
+    const result = await this.driver.claimSession(sessionRef);
+    if (result.claimed) {
+      await this.reloadTranscriptFromDriver(sessionRef);
+      return { claimed: true };
+    }
+    if (result.owner) {
+      const { token: _token, ...owner } = result.owner;
+      return { claimed: false, owner };
+    }
+    return { claimed: false };
   }
 
   async navigateSessionTree(
@@ -846,6 +903,7 @@ export class DesktopAppStore implements AppStoreInternals {
           ...persisted.notificationPreferences,
         },
         integratedTerminalShell: persisted.integratedTerminalShell ?? this.state.integratedTerminalShell,
+        externalTerminalApp: persisted.externalTerminalApp ?? this.state.externalTerminalApp,
         lastViewedAtBySession: persisted.lastViewedAtBySession ?? {},
         workspaceOrder: persisted.workspaceOrder ?? [],
         sidebarCollapsed: persisted.sidebarCollapsed ?? this.state.sidebarCollapsed,
@@ -2027,6 +2085,7 @@ export class DesktopAppStore implements AppStoreInternals {
       extensionCommandCompatibilityByWorkspace: serializeCompatibilityByWorkspace(this.extensionCommandCompatibilityByWorkspace),
       notificationPreferences: this.state.notificationPreferences,
       integratedTerminalShell: this.state.integratedTerminalShell || undefined,
+      externalTerminalApp: this.state.externalTerminalApp || undefined,
       lastViewedAtBySession: mapToRecord(this.sessionState.lastViewedAtBySession),
       workspaceOrder: this.state.workspaceOrder.length > 0 ? this.state.workspaceOrder : undefined,
       modelSettingsScopeMode: this.state.modelSettingsScopeMode,

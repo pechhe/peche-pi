@@ -29,6 +29,7 @@ import {
   type DesktopNotificationPermissionStatus,
   type PiDesktopCommand,
   type CavemanLevel,
+  type UndoEditOp,
 } from "./ipc";
 import { deriveModelOnboardingState } from "./model-onboarding";
 import { type ModelSelectorHandle } from "./model-selector";
@@ -36,13 +37,15 @@ import { SkillsView } from "./skills-view";
 import { ExtensionsView } from "./extensions-view";
 import { SettingsView, type SettingsSection } from "./settings-view";
 import { NewThreadView } from "./new-thread-view";
-import { PendingThreadView } from "./pending-thread-view";
-import { buildThreadGroups } from "./thread-groups";
+import { PendingComposer } from "./pending-thread-view";
+import { buildThreadGroups, PENDING_THREAD_SESSION_ID, type ThreadListEntry } from "./thread-groups";
+import { markUserMessagesAnimated } from "./timeline-item";
 import { Sidebar } from "./sidebar";
 import { SidebarToggleButton } from "./sidebar-toggle-button";
 import { Topbar } from "./topbar";
 import { TerminalPanel } from "./terminal-panel";
 import { ConversationTimeline, VIRTUALIZATION_THRESHOLD } from "./conversation-timeline";
+import { SessionLockBanner } from "./session-lock-banner";
 import LoadingBar from "./loading-bar";
 import { useSlashMenu } from "./hooks/use-slash-menu";
 import { useMentionMenu } from "./hooks/use-mention-menu";
@@ -54,7 +57,7 @@ import { ExtensionDialog } from "./extension-session-ui";
 import { TreeModal } from "./tree-modal";
 import { ImageLightbox } from "./image-lightbox";
 import { Agentation } from "agentation";
-import { ToastHost } from "./toast";
+import { ToastHost, showToast } from "./toast";
 import { getEffectiveModelRuntime } from "./model-settings";
 import { resolveRepoWorkspaceId } from "./workspace-roots";
 import {
@@ -70,6 +73,62 @@ import {
 // repeat, until React tripped the max-update-depth guard and the tree
 // unmounted (the "black screen on thread switch" symptom).
 const EMPTY_TRANSCRIPT: readonly TranscriptMessage[] = Object.freeze([]) as readonly TranscriptMessage[];
+
+// Title for the optimistic sidebar row, derived from the prompt the user just
+// sent. Mirrors how the live thread reads before its auto-title resolves.
+// Stable id for the optimistic user-message row shown in the timeline while a
+// new thread is being created. Lets the placeholder transcript and the live
+// transcript share one ConversationTimeline so going live reconciles instead
+// of remounting.
+const PENDING_USER_MESSAGE_ID = "__pending_user_message__";
+
+// Slide the thread composer from where the centered new-thread composer was
+// down to the footer (a FLIP transform): capture the old rect, let the new
+// composer mount at its final spot, then animate transform from the old
+// position to identity. Only the composer moves — nothing zooms or cross-fades.
+const COMPOSER_SLIDE_EASING = "cubic-bezier(0.22, 1, 0.36, 1)";
+const COMPOSER_SLIDE_MS = 280;
+
+function runComposerSlide(fromRect: DOMRect): void {
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    return;
+  }
+  const el = document.querySelector("footer.composer") as HTMLElement | null;
+  if (!el) {
+    return;
+  }
+  const toRect = el.getBoundingClientRect();
+  const dx = fromRect.left + fromRect.width / 2 - (toRect.left + toRect.width / 2);
+  const dy = fromRect.top - toRect.top;
+  if (Math.abs(dx) < 1 && Math.abs(dy) < 1) {
+    return;
+  }
+  el.style.transition = "none";
+  el.style.transform = `translate(${dx}px, ${dy}px)`;
+  // Force a reflow so the starting transform is committed before we animate.
+  void el.offsetHeight;
+  requestAnimationFrame(() => {
+    el.style.transition = `transform ${COMPOSER_SLIDE_MS}ms ${COMPOSER_SLIDE_EASING}`;
+    el.style.transform = "translate(0px, 0px)";
+    const cleanup = (event: TransitionEvent) => {
+      if (event.propertyName !== "transform") {
+        return;
+      }
+      el.style.transition = "";
+      el.style.transform = "";
+      el.removeEventListener("transitionend", cleanup);
+    };
+    el.addEventListener("transitionend", cleanup);
+  });
+}
+
+function deriveThreadTitle(prompt: string): string {
+  const firstLine = prompt.split("\n").map((line) => line.trim()).find(Boolean) ?? "";
+  if (!firstLine) {
+    return "New thread";
+  }
+  return firstLine.length > 60 ? `${firstLine.slice(0, 57)}\u2026` : firstLine;
+}
 
 function useDesktopAppState() {
   const [snapshot, setSnapshot] = useState<DesktopAppState | null>(null);
@@ -323,6 +382,19 @@ export default function App() {
   // while the main process spins up the agent runtime. Cleared when
   // startThread resolves and the real snapshot takes over.
   const [pendingThreadStart, setPendingThreadStart] = useState<{
+    // Target root workspace for the optimistic sidebar row. Empty for chats
+    // (chats render in their own list, not the threads sidebar).
+    readonly rootWorkspaceId: string;
+    readonly title: string;
+    // Set once the main process resolves startThread/startChat: the real
+    // session the placeholder is standing in for. While undefined we are still
+    // in flight (show the optimistic sidebar row); once set we hold the
+    // placeholder until that session's transcript arrives.
+    readonly sessionId?: string;
+    readonly workspaceId?: string;
+    // Timestamp captured at send, kept stable across placeholder updates so the
+    // optimistic bubble plays its send animation exactly once.
+    readonly createdAt: string;
     readonly prompt: string;
     readonly attachments: readonly ComposerAttachment[];
     readonly provider: string | undefined;
@@ -349,6 +421,9 @@ export default function App() {
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const newThreadComposerRef = useRef<HTMLTextAreaElement | null>(null);
   const timelinePaneRef = useRef<HTMLDivElement | null>(null);
+  // Rect of the centered new-thread composer captured at send, used to slide
+  // the thread composer down from that spot once it mounts.
+  const composerFlipFromRef = useRef<DOMRect | null>(null);
   const lastTranscriptMarkerRef = useRef("");
   const pinnedToBottomRef = useRef(true);
   const previousTimelinePaneSizeRef = useRef<{ width: number; height: number } | null>(null);
@@ -361,12 +436,14 @@ export default function App() {
   const previousActiveViewRef = useRef<AppView | null>(null);
   const hydratedComposerSessionKeyRef = useRef("");
   const handledComposerSyncNonceRef = useRef(0);
+  const lastAbortToastKeyRef = useRef("");
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
   const [showDiffPanel, setShowDiffPanel] = useState(false);
   const [openTerminalSessionKey, setOpenTerminalSessionKey] = useState("");
   const [takeoverTerminalSessionKey, setTakeoverTerminalSessionKey] = useState("");
   const [terminalHeight, setTerminalHeight] = useState(340);
   const [diffFileRequest, setDiffFileRequest] = useState<DiffPanelFileRequest | null>(null);
+  const [diffRefreshNonce, setDiffRefreshNonce] = useState(0);
   const [timelinePaneMountVersion, setTimelinePaneMountVersion] = useState(0);
   const [disableTimelineVirtualization, setDisableTimelineVirtualization] = useState(true);
   const [timelineMetaEvents, setTimelineMetaEvents] = useState<
@@ -599,6 +676,8 @@ export default function App() {
   const editingQueuedMessageId = snapshot?.editingQueuedMessageId;
   const runningLabel = useRunningLabel(selectedSession?.status === "running" ? selectedSession.runningSince : undefined);
   const selectedSessionKey = selectedWorkspace && selectedSession ? `${selectedWorkspace.id}:${selectedSession.id}` : "";
+  const snapshotLastError = snapshot?.lastError;
+  const composerLastError = isRequestAbortedError(snapshotLastError) ? undefined : snapshotLastError;
   const isTerminalVisibleForSelectedThread = Boolean(selectedSessionKey) && openTerminalSessionKey === selectedSessionKey;
   const isTerminalTakeoverForSelectedThread = Boolean(selectedSessionKey) && takeoverTerminalSessionKey === selectedSessionKey;
   const activeTranscript =
@@ -624,6 +703,39 @@ export default function App() {
     selectedTranscript.workspaceId !== selectedWorkspace?.id ||
     selectedTranscript.sessionId !== selectedSession?.id
   );
+  // Optimistic transcript shown in the timeline while a thread is being
+  // created: a single user bubble built from what the user just sent. Lets the
+  // placeholder and the live session share one ConversationTimeline, so going
+  // live is a transcript/label swap rather than a full remount.
+  const pendingOptimisticTranscript = useMemo<readonly TranscriptMessage[] | null>(() => {
+    if (!pendingThreadStart) {
+      return null;
+    }
+    const attachments = pendingThreadStart.attachments.map((attachment) =>
+      attachment.kind === "image"
+        ? { kind: "image" as const, mimeType: attachment.mimeType, data: attachment.data, name: attachment.name }
+        : {
+            kind: "file" as const,
+            name: attachment.name,
+            mimeType: attachment.mimeType,
+            fsPath: attachment.fsPath,
+            ...(attachment.sizeBytes != null ? { sizeBytes: attachment.sizeBytes } : {}),
+          },
+    );
+    return [
+      {
+        kind: "message" as const,
+        role: "user" as const,
+        id: PENDING_USER_MESSAGE_ID,
+        createdAt: pendingThreadStart.createdAt,
+        text: pendingThreadStart.prompt,
+        ...(attachments.length > 0 ? { attachments } : {}),
+      },
+    ];
+  }, [pendingThreadStart]);
+  const threadViewTranscript =
+    pendingThreadStart && pendingOptimisticTranscript ? pendingOptimisticTranscript : visibleTranscript;
+  const threadViewIsRunning = pendingThreadStart ? true : selectedSession?.status === "running";
   // Self-heal: if a session is selected but its transcript never arrived (a
   // main-side publish can be dropped if it fires before the renderer's IPC
   // listener is attached, or coalesced and stranded), re-request it directly
@@ -663,6 +775,55 @@ export default function App() {
       window.clearTimeout(second);
     };
   }, [isTranscriptLoading, selfHealWorkspaceId, selfHealSessionId, setSelectedTranscript]);
+  // Hold the "Preparing your thread…" placeholder until the new session's
+  // transcript actually contains the user message, then mark that message as
+  // already-animated (the send animation played on the placeholder) and clear
+  // the placeholder. This turns going-live into a seamless label swap
+  // ("Preparing your thread…" → "Thinking…") instead of a flash through an
+  // empty/loading transcript with a replayed send animation.
+  const pendingSessionId = pendingThreadStart?.sessionId;
+  const pendingWorkspaceId = pendingThreadStart?.workspaceId;
+  useEffect(() => {
+    if (!pendingSessionId || !pendingWorkspaceId || !selectedTranscript) {
+      return;
+    }
+    if (
+      selectedTranscript.workspaceId !== pendingWorkspaceId ||
+      selectedTranscript.sessionId !== pendingSessionId
+    ) {
+      return;
+    }
+    const userMessageIds = selectedTranscript.transcript
+      .filter((item) => item.kind === "message" && item.role === "user")
+      .map((item) => item.id);
+    if (userMessageIds.length === 0) {
+      return;
+    }
+    markUserMessagesAnimated(userMessageIds);
+    setPendingThreadStart(null);
+    focusComposer();
+  }, [pendingSessionId, pendingWorkspaceId, selectedTranscript]);
+  // Safety net: if the transcript never arrives, don't hang on the placeholder.
+  useEffect(() => {
+    if (!pendingSessionId) {
+      return undefined;
+    }
+    const timer = window.setTimeout(() => setPendingThreadStart(null), 6000);
+    return () => window.clearTimeout(timer);
+  }, [pendingSessionId]);
+  // Slide the composer down from the new-thread position once the thread
+  // composer first mounts (runs before paint so there's no jump to the footer).
+  const pendingThreadActive = Boolean(pendingThreadStart);
+  useLayoutEffect(() => {
+    if (!pendingThreadActive) {
+      return;
+    }
+    const fromRect = composerFlipFromRef.current;
+    composerFlipFromRef.current = null;
+    if (fromRect) {
+      runComposerSlide(fromRect);
+    }
+  }, [pendingThreadActive]);
   const selectedSessionCommands = selectedSession ? snapshot?.sessionCommandsBySession[selectedSessionKey] ?? [] : [];
   const blackholeAvailable = selectedSessionCommands.some((command) => command.name === "blackhole");
   const selectedExtensionUi = selectedSession ? snapshot?.sessionExtensionUiBySession[selectedSessionKey] : undefined;
@@ -676,6 +837,17 @@ export default function App() {
     }
   }, [snapshot]);
   useEffect(() => {
+    if (!snapshotLastError || !isRequestAbortedError(snapshotLastError)) {
+      return;
+    }
+    const toastKey = `${selectedSessionKey}:${snapshotLastError}`;
+    if (lastAbortToastKeyRef.current === toastKey) {
+      return;
+    }
+    lastAbortToastKeyRef.current = toastKey;
+    showToast({ variant: "error", message: snapshotLastError, autoDismissMs: 4000 });
+  }, [selectedSessionKey, snapshotLastError]);
+  useEffect(() => {
     setOpenTerminalSessionKey("");
     setTakeoverTerminalSessionKey("");
   }, [selectedSessionKey]);
@@ -683,8 +855,36 @@ export default function App() {
   const activeExtensionDialog = selectedExtensionUi?.pendingDialogs[0];
   const persistedComposerDraft = snapshot?.composerDraft ?? "";
   const threadGroups = useMemo(
-    () => (snapshot ? buildThreadGroups(snapshot) : []),
-    [snapshot?.workspaces, snapshot?.worktreesByWorkspace, snapshot?.workspaceOrder, snapshot?.chats],
+    () => {
+      const groups = snapshot ? buildThreadGroups(snapshot) : [];
+      // Optimistic sidebar row: while a new thread is still being created (no
+      // real session id yet), show a running placeholder in its workspace so
+      // the thread appears immediately rather than after it goes live. Once
+      // the real session exists it is already in `groups`, so we stop
+      // injecting the placeholder.
+      if (!pendingThreadStart || pendingThreadStart.sessionId || !pendingThreadStart.rootWorkspaceId) {
+        return groups;
+      }
+      const optimistic: ThreadListEntry = {
+        workspaceId: pendingThreadStart.rootWorkspaceId,
+        session: {
+          id: PENDING_THREAD_SESSION_ID,
+          title: pendingThreadStart.title,
+          updatedAt: new Date().toISOString(),
+          preview: "",
+          status: "running",
+          hasUnseenUpdate: false,
+          isAwaitingAssistantText: true,
+        },
+        environment: { kind: "local", label: "Local" },
+      };
+      return groups.map((group) =>
+        group.rootWorkspace.id === pendingThreadStart.rootWorkspaceId
+          ? { ...group, threads: [optimistic, ...group.threads] }
+          : group,
+      );
+    },
+    [snapshot?.workspaces, snapshot?.worktreesByWorkspace, snapshot?.workspaceOrder, snapshot?.chats, pendingThreadStart],
   );
   const focusComposer = () => {
     window.requestAnimationFrame(() => {
@@ -910,6 +1110,32 @@ export default function App() {
     setShowDiffPanel(true);
     setDiffFileRequest({ path, nonce: Date.now() });
   }, []);
+
+  const handleUndoEdits = useCallback(
+    async (ops: readonly UndoEditOp[]) => {
+      const workspaceId = selectedWorkspaceRef.current?.id;
+      if (!api || !workspaceId) {
+        return { reverted: [], failed: [] };
+      }
+      const result = await api.undoEdits(workspaceId, ops);
+      setDiffRefreshNonce((nonce) => nonce + 1);
+      return result;
+    },
+    [api],
+  );
+
+  const handleRedoEdits = useCallback(
+    async (ops: readonly UndoEditOp[]) => {
+      const workspaceId = selectedWorkspaceRef.current?.id;
+      if (!api || !workspaceId) {
+        return { reverted: [], failed: [] };
+      }
+      const result = await api.redoEdits(workspaceId, ops);
+      setDiffRefreshNonce((nonce) => nonce + 1);
+      return result;
+    },
+    [api],
+  );
 
   const toggleDiffPanel = useCallback(() => {
     const pane = timelinePaneRef.current;
@@ -2081,6 +2307,14 @@ export default function App() {
     void updateSnapshot(api, setSnapshot, () => api.setIntegratedTerminalShell(shellPath));
   };
 
+  const handleChooseExternalTerminalApp = () => {
+    void updateSnapshot(api, setSnapshot, () => api.chooseExternalTerminalApp());
+  };
+
+  const handleClearExternalTerminalApp = () => {
+    void updateSnapshot(api, setSnapshot, () => api.clearExternalTerminalApp());
+  };
+
   const handleRequestNotificationPermission = () => {
     if (!api?.requestNotificationPermission) {
       return;
@@ -2112,7 +2346,15 @@ export default function App() {
     void updateSnapshot(api, setSnapshot, () => api.archiveSession(target));
   };
 
+  const handleArchiveAllNonRunningSessions = (workspaceId: string, olderThanMs?: number) => {
+    void updateSnapshot(api, setSnapshot, () => api.archiveAllNonRunningSessions(workspaceId, olderThanMs));
+  };
+
   const handleSelectSession = (target: { workspaceId: string; sessionId: string }) => {
+    // The optimistic placeholder row isn't a real session yet — ignore clicks.
+    if (target.sessionId === PENDING_THREAD_SESSION_ID) {
+      return;
+    }
     setOpenTerminalSessionKey("");
     setTakeoverTerminalSessionKey("");
     // Don't double-setSnapshot: the main process already pushes state via
@@ -2193,7 +2435,12 @@ export default function App() {
     };
     const capturedPrompt = newThreadPrompt;
     const capturedAttachments = newThreadAttachments;
+    composerFlipFromRef.current =
+      document.querySelector(".new-thread__composer")?.getBoundingClientRect() ?? null;
     setPendingThreadStart({
+      rootWorkspaceId: "",
+      title: deriveThreadTitle(capturedPrompt),
+      createdAt: new Date().toISOString(),
       prompt: capturedPrompt,
       attachments: capturedAttachments,
       provider: resolvedNewThreadProvider,
@@ -2210,9 +2457,15 @@ export default function App() {
     setNewThreadComposerMode("build");
     setNewThreadIsChat(false);
     void updateSnapshot(api, setSnapshot, () => api.startChat(input))
-      .then(() => {
-        setPendingThreadStart(null);
-        focusComposer();
+      .then((state) => {
+        // Don't clear the placeholder yet — hold it until the new session's
+        // transcript arrives so the live view doesn't flash an empty/loading
+        // state. The hold effect clears pendingThreadStart once ready.
+        setPendingThreadStart((prev) =>
+          prev
+            ? { ...prev, sessionId: state.selectedSessionId, workspaceId: state.selectedWorkspaceId }
+            : prev,
+        );
       })
       .catch((error: unknown) => {
         setPendingThreadStart(null);
@@ -2263,7 +2516,12 @@ export default function App() {
     // the runtime. We clear the composer state up front (rather than in
     // the .then) so the new-thread surface won't briefly reappear with
     // stale text if startThread resolves slowly.
+    composerFlipFromRef.current =
+      document.querySelector(".new-thread__composer")?.getBoundingClientRect() ?? null;
     setPendingThreadStart({
+      rootWorkspaceId: newThreadRootWorkspaceId,
+      title: deriveThreadTitle(newThreadPrompt),
+      createdAt: new Date().toISOString(),
       prompt: newThreadPrompt,
       attachments: newThreadAttachments,
       provider: resolvedNewThreadProvider,
@@ -2281,8 +2539,15 @@ export default function App() {
     setNewThreadEnvironment("local");
     void updateSnapshot(api, setSnapshot, () =>
       api.startThread(input),
-    ).then(() => {
-      setPendingThreadStart(null);
+    ).then((state) => {
+      // Hold the placeholder until the new session's transcript arrives (see
+      // the hold effect) so going live is a seamless label swap rather than a
+      // flash through an empty/loading transcript.
+      setPendingThreadStart((prev) =>
+        prev
+          ? { ...prev, sessionId: state.selectedSessionId, workspaceId: state.selectedWorkspaceId }
+          : prev,
+      );
     }).catch((error: unknown) => {
       // startThread can reject if the main process fails to register/handle
       // the IPC (e.g. a runtime spin-up error). Without this the pending
@@ -2426,6 +2691,7 @@ export default function App() {
             onOpenExtensions={openExtensions}
             onOpenSettings={openSettings}
             onArchiveSession={handleArchiveSession}
+            onArchiveAllNonRunningSessions={handleArchiveAllNonRunningSessions}
             onSelectSession={handleSelectSession}
             onUnarchiveSession={handleUnarchiveSession}
             onCreateChat={handleCreateChat}
@@ -2465,6 +2731,7 @@ export default function App() {
             notificationPermissionPending={notificationPermissionPending}
             modelSettingsScopeMode={snapshot.modelSettingsScopeMode}
             integratedTerminalShell={snapshot.integratedTerminalShell}
+            externalTerminalApp={snapshot.externalTerminalApp}
             themeMode={themeMode}
             enableTransparency={snapshot.enableTransparency}
             transcriptVerbose={snapshot.transcriptVerbose}
@@ -2477,6 +2744,8 @@ export default function App() {
             onSetDefaultModel={handleSetDefaultModel}
             onSetNotificationPreferences={handleSetNotificationPreferences}
             onSetIntegratedTerminalShell={handleSetIntegratedTerminalShell}
+            onChooseExternalTerminalApp={handleChooseExternalTerminalApp}
+            onClearExternalTerminalApp={handleClearExternalTerminalApp}
             onRequestNotificationPermission={handleRequestNotificationPermission}
             onOpenSystemNotificationSettings={handleOpenSystemNotificationSettings}
             onSetScopedModelPatterns={handleSetScopedModelPatterns}
@@ -2544,6 +2813,7 @@ export default function App() {
             onOpenExtensions={openExtensions}
             onOpenSettings={openSettings}
             onArchiveSession={handleArchiveSession}
+            onArchiveAllNonRunningSessions={handleArchiveAllNonRunningSessions}
             onSelectSession={handleSelectSession}
             onUnarchiveSession={handleUnarchiveSession}
             onCreateChat={handleCreateChat}
@@ -2638,6 +2908,7 @@ export default function App() {
             onOpenExtensions={openExtensions}
             onOpenSettings={openSettings}
             onArchiveSession={handleArchiveSession}
+            onArchiveAllNonRunningSessions={handleArchiveAllNonRunningSessions}
             onSelectSession={handleSelectSession}
             onUnarchiveSession={handleUnarchiveSession}
             onCreateChat={handleCreateChat}
@@ -2702,6 +2973,7 @@ export default function App() {
           onOpenExtensions={openExtensions}
           onOpenSettings={openSettings}
           onArchiveSession={handleArchiveSession}
+            onArchiveAllNonRunningSessions={handleArchiveAllNonRunningSessions}
           onSelectSession={handleSelectSession}
           onUnarchiveSession={handleUnarchiveSession}
           onCreateChat={handleCreateChat}
@@ -2741,18 +3013,7 @@ export default function App() {
           terminalPanel
         ) : (
           <>
-        {pendingThreadStart ? (
-          <PendingThreadView
-            prompt={pendingThreadStart.prompt}
-            attachments={pendingThreadStart.attachments}
-            runtime={rootRuntime}
-            provider={pendingThreadStart.provider}
-            modelId={pendingThreadStart.modelId}
-            thinkingLevel={pendingThreadStart.thinkingLevel}
-            cavemanLevel={pendingThreadStart.cavemanLevel}
-            composerMode={pendingThreadStart.composerMode}
-          />
-        ) : snapshot.activeView === "new-thread" ? (
+        {snapshot.activeView === "new-thread" && !pendingThreadStart ? (
           newThreadIsChat || rootWorkspaceOptions.length > 0 ? (
             <NewThreadView
               isChat={newThreadIsChat}
@@ -2815,14 +3076,26 @@ export default function App() {
               </div>
             </section>
           )
-        ) : selectedWorkspace && selectedSession ? (
+        ) : pendingThreadStart || (selectedWorkspace && selectedSession) ? (
           <>
             <section className="canvas canvas--thread">
-              <LoadingBar loading={isTranscriptLoading} />
+              <LoadingBar loading={pendingThreadStart ? false : isTranscriptLoading} />
+              {selectedWorkspace && selectedSession ? (
+                <SessionLockBanner
+                  api={api}
+                  workspaceId={selectedWorkspace.id}
+                  sessionId={selectedSession.id}
+                  onTakeOver={() =>
+                    void updateSnapshot(api, setSnapshot, () =>
+                      api.selectSession({ workspaceId: selectedWorkspace.id, sessionId: selectedSession.id }),
+                    )
+                  }
+                />
+              ) : null}
               <div className="conversation conversation--thread">
                 <ConversationTimeline
-                  transcript={visibleTranscript}
-                  isTranscriptLoading={isTranscriptLoading}
+                  transcript={threadViewTranscript}
+                  isTranscriptLoading={pendingThreadStart ? false : isTranscriptLoading}
                   timelinePaneRef={timelinePaneRef}
                   timelinePaneElementRef={setTimelinePaneElement}
                   disableVirtualization={disableTimelineVirtualization}
@@ -2833,11 +3106,15 @@ export default function App() {
                   onJumpToLatest={jumpToLatest}
                   onContentHeightChange={handleTimelineContentHeightChange}
                   onViewFileInDiff={handleViewFileInDiff}
+                  onUndoEdits={handleUndoEdits}
+                  onRedoEdits={handleRedoEdits}
                   onMetaEventsChange={setTimelineMetaEvents}
-                  isRunning={selectedSession.status === "running"}
+                  isRunning={threadViewIsRunning}
+                  workingLabel={pendingThreadStart ? "Preparing your thread…" : undefined}
                 />
               </div>
             </section>
+            {selectedWorkspace && selectedSession ? (
             <ComposerPanel
               key={selectedSessionKey}
               loopControl={loopControl}
@@ -2883,7 +3160,7 @@ export default function App() {
               onSubmit={submitComposerDraft}
               runningLabel={runningLabel}
               selectedSession={selectedSession}
-              lastError={snapshot.lastError}
+              lastError={composerLastError}
               selectedSlashCommand={slashMenu.activeSlashOptionCommand ?? slashMenu.selectedSlashCommand}
               selectedSlashOption={slashMenu.selectedSlashOption}
               slashOptionEmptyState={slashMenu.slashOptionEmptyState}
@@ -2897,6 +3174,16 @@ export default function App() {
               selectedMentionIndex={mentionMenu.selectedIndex}
               onSelectMention={mentionMenu.insertMention}
             />
+            ) : (
+              <PendingComposer
+                runtime={rootRuntime}
+                provider={pendingThreadStart?.provider}
+                modelId={pendingThreadStart?.modelId}
+                thinkingLevel={pendingThreadStart?.thinkingLevel}
+                cavemanLevel={pendingThreadStart?.cavemanLevel ?? cavemanLevel}
+                composerMode={pendingThreadStart?.composerMode ?? "build"}
+              />
+            )}
             {activeExtensionDialog ? (
               <ExtensionDialog dialog={activeExtensionDialog} onRespond={handleRespondToExtensionDialog} />
             ) : null}
@@ -2948,6 +3235,7 @@ export default function App() {
             api={api}
             sessionStatus={selectedSession.status}
             fileRequest={diffFileRequest}
+            refreshNonce={diffRefreshNonce}
           />
         ) : null}
       </main>
@@ -2966,4 +3254,8 @@ function buildTranscriptChangeMarker(sessionKey: string, transcript: SelectedTra
 function isNearBottom(element: HTMLDivElement): boolean {
   const remaining = element.scrollHeight - element.scrollTop - element.clientHeight;
   return remaining < 32;
+}
+
+function isRequestAbortedError(message: string | undefined): boolean {
+  return Boolean(message && /\brequest\s+(?:was\s+)?aborted\b/i.test(message));
 }

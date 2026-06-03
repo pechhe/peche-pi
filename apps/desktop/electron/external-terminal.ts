@@ -30,14 +30,15 @@ async function resolvePiBinary(): Promise<string> {
 }
 
 /**
- * Open the user's default terminal application at `cwd` and resume the given
- * pi session file. Uses a temporary executable `.command` script launched via
- * `open`, which routes to whatever terminal app is registered as the system
- * handler for `.command` files (Apple Terminal by default, user-configurable).
+ * Open the chosen terminal application at `cwd` and resume the given pi session
+ * file. Writes a temporary executable `.command` script and opens it with the
+ * chosen app (`open -a <app>`); terminal apps execute `.command` scripts on
+ * open. Falls back to the system handler when no app is provided.
  */
 export async function launchSessionInDefaultTerminal(options: {
   readonly cwd: string;
   readonly sessionFilePath: string;
+  readonly terminalApp?: string;
 }): Promise<void> {
   const piBinary = await resolvePiBinary();
   const scriptDir = mkdtempSync(path.join(tmpdir(), "pi-resume-"));
@@ -57,8 +58,9 @@ export async function launchSessionInDefaultTerminal(options: {
     return;
   }
 
+  const openArgs = options.terminalApp ? ["-a", options.terminalApp, scriptPath] : [scriptPath];
   await new Promise<void>((resolve, reject) => {
-    execFile("open", [scriptPath], (error) => {
+    execFile("open", openArgs, (error) => {
       if (error) {
         reject(error);
         return;

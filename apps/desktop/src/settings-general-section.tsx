@@ -7,17 +7,31 @@ interface SettingsGeneralSectionProps {
   readonly runtime?: RuntimeSnapshot;
   readonly modelSettingsScopeMode: ModelSettingsScopeMode;
   readonly integratedTerminalShell: string;
+  readonly externalTerminalApp: string;
   readonly onSetModelSettingsScopeMode: (mode: ModelSettingsScopeMode) => void;
   readonly onSetIntegratedTerminalShell: (shellPath: string) => void;
+  readonly onChooseExternalTerminalApp: () => void;
+  readonly onClearExternalTerminalApp: () => void;
   readonly onToggleSkillCommands: (enabled: boolean) => void;
+}
+
+function terminalAppLabel(appPath: string): string {
+  if (!appPath) {
+    return "Not set";
+  }
+  const base = appPath.split("/").pop() ?? appPath;
+  return base.replace(/\.app$/, "");
 }
 
 export function SettingsGeneralSection({
   runtime,
   modelSettingsScopeMode,
   integratedTerminalShell,
+  externalTerminalApp,
   onSetModelSettingsScopeMode,
   onSetIntegratedTerminalShell,
+  onChooseExternalTerminalApp,
+  onClearExternalTerminalApp,
   onToggleSkillCommands,
 }: SettingsGeneralSectionProps) {
   const connectedCount = runtime?.providers.filter((p) => p.hasAuth).length ?? 0;
@@ -85,6 +99,22 @@ export function SettingsGeneralSection({
               }
             }}
           />
+        </SettingsRow>
+        <SettingsRow
+          title="External terminal app"
+          description="Used by the “Open in external terminal” button to resume a session."
+        >
+          <div className="settings-pill-row">
+            <span className="settings-info-row__value">{terminalAppLabel(externalTerminalApp)}</span>
+            <button className="settings-pill" type="button" onClick={onChooseExternalTerminalApp}>
+              Choose…
+            </button>
+            {externalTerminalApp ? (
+              <button className="settings-pill" type="button" onClick={onClearExternalTerminalApp}>
+                Clear
+              </button>
+            ) : null}
+          </div>
         </SettingsRow>
       </SettingsGroup>
 
