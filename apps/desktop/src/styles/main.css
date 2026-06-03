@@ -6309,145 +6309,6 @@ mark.thread-find-active {
     inset 0 0 12px rgb(120 90 255 / 0.4);
 }
 
-/* Ralph plan launcher: new-thread button + run dialog. */
-.new-thread__ralph {
-  padding: 8px 12px;
-  border-radius: 999px;
-  border: 1px solid #dfe4ee;
-  background: #f8f9fc;
-  color: var(--muted-strong);
-  font-size: 13px;
-  font-weight: 560;
-  cursor: pointer;
-}
-
-.new-thread__ralph:hover:not(:disabled) {
-  border-color: #cfd7ea;
-  background: #eef2ff;
-  color: var(--text-strong);
-}
-
-.new-thread__ralph:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.ralph-dialog__backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 40;
-  display: grid;
-  place-items: center;
-  padding: 24px;
-  background: rgba(24, 31, 44, 0.26);
-  backdrop-filter: blur(6px);
-}
-
-.ralph-dialog {
-  width: min(460px, 100%);
-  display: grid;
-  gap: 14px;
-  padding: 22px;
-  border-radius: 22px;
-  background: #fff;
-  border: 1px solid #dfe4ee;
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.18);
-}
-
-.ralph-dialog__title {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 640;
-  color: var(--text-strong);
-}
-
-.ralph-dialog__subtitle {
-  margin: 4px 0 0;
-  font-size: 13px;
-  color: var(--muted-soft);
-}
-
-.ralph-dialog__plans {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 8px;
-}
-
-.ralph-dialog__plan,
-.ralph-dialog__plan-summary {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  width: 100%;
-  text-align: left;
-  padding: 12px 14px;
-  border-radius: 14px;
-  border: 1px solid #dfe4ee;
-  background: #f8f9fc;
-  cursor: pointer;
-}
-
-.ralph-dialog__plan--active {
-  border-color: #cfd7ea;
-  background: #eef2ff;
-}
-
-.ralph-dialog__plan-title {
-  font-size: 14px;
-  font-weight: 580;
-  color: var(--text-strong);
-}
-
-.ralph-dialog__plan-progress {
-  font-size: 12px;
-  color: var(--muted-soft);
-}
-
-.ralph-dialog__field {
-  display: grid;
-  gap: 6px;
-  font-size: 13px;
-  color: var(--muted-strong);
-}
-
-.ralph-dialog__field input {
-  padding: 8px 12px;
-  border-radius: 12px;
-  border: 1px solid #dfe4ee;
-  background: #fff;
-  font-size: 14px;
-}
-
-.ralph-dialog__suggestions {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.ralph-dialog__suggestion {
-  padding: 6px 12px;
-  border-radius: 999px;
-  border: 1px solid #dfe4ee;
-  background: #f8f9fc;
-  color: var(--muted-strong);
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.ralph-dialog__suggestion--active {
-  border-color: #cfd7ea;
-  background: #eef2ff;
-  color: var(--text-strong);
-}
-
-.ralph-dialog__actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-}
-
 /* Locked Ralph loop thread: control bar replacing the composer. */
 .composer--loop {
   padding: 12px 16px;
@@ -6506,4 +6367,43 @@ mark.thread-find-active {
 
 .loop-control-bar__button:hover {
   background: #e2e8ff;
+}
+
+/* "Begin Ralph loop" banner above the composer when a plan is ready. */
+.composer__begin-loop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 10px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  border: 1px solid #cfd7ea;
+  background: #eef2ff;
+}
+
+.composer__begin-loop-label {
+  font-size: 13px;
+  font-weight: 560;
+  color: var(--text-strong);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer__begin-loop-button {
+  flex-shrink: 0;
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: none;
+  background: var(--accent, #4f46e5);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.composer__begin-loop-button:hover {
+  filter: brightness(1.05);
 }
