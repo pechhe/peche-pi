@@ -76,3 +76,29 @@ Decisions made:
 
 Next-iteration notes:
 - Next item should be selected from `.ralph/items.json`; plan priority now points to the Desktop App IPC command Seam.
+
+## 2026-06-03 — Add Desktop App IPC contract seam
+
+Selected item: Add a Desktop App IPC command registry or contract test that prevents drift between channel names, preload methods, renderer types, and main handlers.
+
+Why chosen: Prioritization Strategy points to deeper Desktop App state and IPC Seams after abandoned-port residue, duplicated type contracts, and state transition work passed. This was the highest-priority unfinished item and reduces high-change coordination risk across preload, renderer Interface, and main-process handlers.
+
+Changed files:
+- `apps/desktop/src/ipc.ts`
+- `apps/desktop/electron/ipc-contract.test.ts`
+- `.ralph/items.json`
+- `.ralph/progress.md`
+
+Verification commands and results:
+- `pnpm --filter @pi-gui/desktop test:unit -- ipc-contract`: passed. 29 tests passed, including the focused IPC contract test.
+- `pnpm typecheck`: passed. Built `session-driver`, `catalogs`, `pi-sdk-driver`, then all workspace typecheck scripts.
+- `pnpm --filter @pi-gui/desktop test:unit`: passed. 29 tests passed.
+
+Decisions made:
+- Added IPC bridge metadata to the existing IPC Module instead of creating a pass-through Adapter, keeping Depth at the command Seam with minimal surface area.
+- Classified local preload entries, request/response commands, one-way sends, sync clipboard access, and event-only listener channels explicitly so command and event Interfaces do not drift.
+- Tested the public renderer `PiDesktopApi` Interface, preload Implementation, `desktopIpc` channel registry, and main handler coverage from one contract test without exposing broad filesystem or process APIs through preload.
+- No Desktop UI behavior changed, so Electron surface verification beyond required gates was not needed.
+
+Next-iteration notes:
+- Next item should be selected from `.ralph/items.json`; plan priority now points to the Desktop App timeline model Module.

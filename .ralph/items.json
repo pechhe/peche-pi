@@ -58,8 +58,8 @@
         "Update preload, main, or IPC types only as needed for the selected seam; avoid product UI changes.",
         "Run the required verification gates and the new IPC contract test."
       ],
-      "passes": false,
-      "regression_notes": ""
+      "passes": true,
+      "regression_notes": "Added IPC bridge metadata in `apps/desktop/src/ipc.ts` for the narrow `window.piApp` Interface, classifying local entries, request/response command channels, one-way send channels, sync clipboard channel, and event-only listener channels. Added `apps/desktop/electron/ipc-contract.test.ts` to prove preload entries, renderer Interface entries, Desktop IPC channel names, and main-process handlers stay aligned without broadening preload Node access. Focused and required gates passed: `pnpm --filter @pi-gui/desktop test:unit -- ipc-contract`; `pnpm typecheck`; `pnpm --filter @pi-gui/desktop test:unit`."
     },
     {
       "category": "functional",
