@@ -120,7 +120,12 @@ test("runs two sessions in parallel without sidebar status bleed", async () => {
     const sessionARow = window.locator(".session-row", { hasText: "Session A" });
     const sessionBRow = window.locator(".session-row", { hasText: "Session B" });
     await expect(sessionARow).toHaveAttribute("data-sidebar-indicator", "running");
-    await expect(sessionARow.locator(".session-row__status--running")).toHaveCount(1);
+    const sessionASpinner = sessionARow.locator(".session-row__status--running");
+    await expect(sessionASpinner).toHaveCount(1);
+    const firstSpinnerFrame = await sessionASpinner.textContent();
+    await expect
+      .poll(() => sessionASpinner.textContent(), { timeout: 2_000 })
+      .not.toBe(firstSpinnerFrame);
 
     const runningAlignedTitles = await Promise.all([
       sessionARow.locator(".session-row__title").boundingBox(),

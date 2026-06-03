@@ -184,6 +184,7 @@ export interface DesktopAppState {
   readonly globalModelSettings: ModelSettingsSnapshot;
   readonly sidebarCollapsed: boolean;
   readonly enableTransparency: boolean;
+  readonly transcriptVerbose: boolean;
   readonly composerDeviceMode: ComposerDeviceMode;
   readonly themeMode: ThemeMode;
   readonly commitPushModel?: string;
@@ -231,6 +232,7 @@ export function createEmptyDesktopAppState(): DesktopAppState {
     },
     sidebarCollapsed: false,
     enableTransparency: false,
+    transcriptVerbose: false,
     composerDeviceMode: "off",
     themeMode: "system",
     commitPushModel: undefined,

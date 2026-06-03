@@ -67,13 +67,45 @@ export function ConversationTimeline({
   const hasUnreliableVirtualizedHeights = timelineRows.some(
     (item) => item.kind === "message" && (item.text.length > 2000 || Boolean(item.attachments?.length)),
   );
-  // Codex-style "Thinking…" gate: only show the indicator while the assistant
-  // hasn't produced visible output for the current turn. The last visible row
-  // being a user message (or no rows at all) means we're still waiting.
+  // Codex-style "Thinking…" gate: show the bottom live indicator whenever
+  // the run is active but there is no more-specific live output at the tail.
+  // Assistant text and running tools are already visible activity; after a
+  // tool finishes, bring Thinking… back so the turn never looks dead while the
+  // model decides what to say/do next.
   const lastRow = timelineRows[timelineRows.length - 1];
-  const isAwaitingAssistantOutput =
-    !lastRow || (lastRow.kind === "message" && lastRow.role === "user");
-  const showThinkingIndicator = isRunning && isAwaitingAssistantOutput;
+  const isStreamingAssistantOutput = lastRow?.kind === "message" && lastRow.role === "assistant";
+  // A live thinking section streams its reasoning + tools inline but has no
+  // header label of its own; the global braille "Thinking…" pill at the bottom
+  // is the single "where the agent currently is" indicator, so we keep showing
+  // it while a section is the live tail.
+  const liveThinkingSectionId =
+    isRunning && lastRow?.kind === "thinkingSection" && lastRow.trailing ? lastRow.id : undefined;
+  const isRunningToolAtTail =
+    (lastRow?.kind === "tool" && lastRow.status === "running") ||
+    (lastRow?.kind === "toolBurst" && lastRow.tools.some((tool) => tool.status === "running"));
+  const showThinkingIndicator = isRunning && !isStreamingAssistantOutput && !isRunningToolAtTail;
+  // While running, the trailing assistant message is the one currently being
+  // streamed into. Keep rendering that message through StreamingMessageText
+  // even after the run completes until the render-side typewriter has caught
+  // up; otherwise the final markdown swap reveals any hidden buffered text as
+  // a burst.
+  const runningAssistantId =
+    isRunning && lastRow && lastRow.kind === "message" && lastRow.role === "assistant"
+      ? lastRow.id
+      : undefined;
+  const [lingeringStreamingAssistantId, setLingeringStreamingAssistantId] = useState<string | undefined>();
+  useEffect(() => {
+    if (runningAssistantId) {
+      setLingeringStreamingAssistantId(runningAssistantId);
+    }
+  }, [runningAssistantId]);
+  const streamingAssistantId = runningAssistantId ?? lingeringStreamingAssistantId;
+  const handleStreamingCaughtUp = useCallback((messageId: string) => {
+    if (runningAssistantId === messageId) {
+      return;
+    }
+    setLingeringStreamingAssistantId((current) => (current === messageId ? undefined : current));
+  }, [runningAssistantId]);
   const shouldVirtualize =
     !threadSearch.isOpen &&
     timelineRows.length > VIRTUALIZATION_THRESHOLD &&
@@ -81,6 +113,19 @@ export function ConversationTimeline({
     !hasUnreliableVirtualizedHeights;
   const [expandedToolCallIds, setExpandedToolCallIds] = useState<Set<string>>(() => new Set());
   const [expandedBurstIds, setExpandedBurstIds] = useState<Set<string>>(() => new Set());
+  const [expandedReasoningIds, setExpandedReasoningIds] = useState<Set<string>>(() => new Set());
+  // The reasoning text currently streaming in is the last reasoning child of
+  // the live (trailing) thinking section.
+  const streamingReasoningId = (() => {
+    if (!isRunning || lastRow?.kind !== "thinkingSection" || !lastRow.trailing) {
+      return undefined;
+    }
+    for (let k = lastRow.children.length - 1; k >= 0; k -= 1) {
+      const child = lastRow.children[k];
+      if (child?.kind === "reasoning") return child.id;
+    }
+    return undefined;
+  })();
   const measuredHeightsRef = useRef(new Map<string, number>());
   const [measurementVersion, setMeasurementVersion] = useState(0);
 
@@ -94,6 +139,12 @@ export function ConversationTimeline({
         availableBurstIds.add(row.id);
         for (const tool of row.tools) {
           availableToolCallIds.add(tool.callId);
+        }
+      } else if (row.kind === "thinkingSection") {
+        for (const child of row.children) {
+          if (child.kind === "tool") {
+            availableToolCallIds.add(child.callId);
+          }
         }
       }
     }
@@ -124,6 +175,27 @@ export function ConversationTimeline({
           continue;
         }
         next.add(burstId);
+      }
+      return changed ? next : current;
+    });
+    const availableReasoningIds = new Set<string>();
+    for (const row of timelineRows) {
+      if (row.kind === "reasoning" || row.kind === "thinkingSection") {
+        availableReasoningIds.add(row.id);
+      }
+    }
+    setExpandedReasoningIds((current) => {
+      if (current.size === 0) {
+        return current;
+      }
+      let changed = false;
+      const next = new Set<string>();
+      for (const id of current) {
+        if (!availableReasoningIds.has(id)) {
+          changed = true;
+          continue;
+        }
+        next.add(id);
       }
       return changed ? next : current;
     });
@@ -174,6 +246,18 @@ export function ConversationTimeline({
         next.delete(burstId);
       } else {
         next.add(burstId);
+      }
+      return next;
+    });
+  }, []);
+
+  const toggleReasoning = useCallback((reasoningId: string) => {
+    setExpandedReasoningIds((current) => {
+      const next = new Set(current);
+      if (next.has(reasoningId)) {
+        next.delete(reasoningId);
+      } else {
+        next.add(reasoningId);
       }
       return next;
     });
@@ -230,11 +314,17 @@ export function ConversationTimeline({
           measurementVersion={measurementVersion}
           expandedToolCallIds={expandedToolCallIds}
           expandedBurstIds={expandedBurstIds}
+          expandedReasoningIds={expandedReasoningIds}
           onHeightChange={updateMeasuredHeight}
           onToggleToolCall={toggleToolCall}
           onToggleBurst={toggleBurst}
+          onToggleReasoning={toggleReasoning}
           onViewFileInDiff={onViewFileInDiff}
           isRunning={showThinkingIndicator}
+          streamingAssistantId={streamingAssistantId}
+          onStreamingCaughtUp={handleStreamingCaughtUp}
+          streamingReasoningId={streamingReasoningId}
+          liveThinkingSectionId={liveThinkingSectionId}
         />
       ) : (
         <div className="timeline" data-testid="transcript">
@@ -245,9 +335,15 @@ export function ConversationTimeline({
               onHeightChange={updateMeasuredHeight}
               expandedToolCallIds={expandedToolCallIds}
               expandedBurstIds={expandedBurstIds}
+              expandedReasoningIds={expandedReasoningIds}
               onToggleToolCall={toggleToolCall}
               onToggleBurst={toggleBurst}
+              onToggleReasoning={toggleReasoning}
               onViewFileInDiff={onViewFileInDiff}
+              streamingAssistantId={streamingAssistantId}
+              onStreamingCaughtUp={handleStreamingCaughtUp}
+              streamingReasoningId={streamingReasoningId}
+              liveThinkingSectionId={liveThinkingSectionId}
             />
           ))}
           {showThinkingIndicator ? (
@@ -274,11 +370,17 @@ function VirtualizedTranscriptList({
   measurementVersion,
   expandedToolCallIds,
   expandedBurstIds,
+  expandedReasoningIds,
   onHeightChange,
   onToggleToolCall,
   onToggleBurst,
+  onToggleReasoning,
   onViewFileInDiff,
   isRunning,
+  streamingAssistantId,
+  onStreamingCaughtUp,
+  streamingReasoningId,
+  liveThinkingSectionId,
 }: {
   readonly transcript: readonly TimelineRow[];
   readonly timelinePaneRef: MutableRefObject<HTMLDivElement | null>;
@@ -287,11 +389,17 @@ function VirtualizedTranscriptList({
   readonly measurementVersion: number;
   readonly expandedToolCallIds: ReadonlySet<string>;
   readonly expandedBurstIds: ReadonlySet<string>;
+  readonly expandedReasoningIds: ReadonlySet<string>;
   readonly onHeightChange: (id: string, height: number) => void;
   readonly onToggleToolCall: (callId: string) => void;
   readonly onToggleBurst: (burstId: string) => void;
+  readonly onToggleReasoning: (reasoningId: string) => void;
   readonly onViewFileInDiff?: (path: string) => void;
   readonly isRunning: boolean;
+  readonly streamingAssistantId?: string;
+  readonly onStreamingCaughtUp?: (messageId: string) => void;
+  readonly streamingReasoningId?: string;
+  readonly liveThinkingSectionId?: string;
 }) {
   const [viewport, setViewport] = useState({ scrollTop: 0, height: 0 });
   const previousTotalHeightRef = useRef(0);
@@ -365,9 +473,15 @@ function VirtualizedTranscriptList({
             onHeightChange={onHeightChange}
             expandedToolCallIds={expandedToolCallIds}
             expandedBurstIds={expandedBurstIds}
+            expandedReasoningIds={expandedReasoningIds}
             onToggleToolCall={onToggleToolCall}
             onToggleBurst={onToggleBurst}
+            onToggleReasoning={onToggleReasoning}
             onViewFileInDiff={onViewFileInDiff}
+            streamingAssistantId={streamingAssistantId}
+            onStreamingCaughtUp={onStreamingCaughtUp}
+            streamingReasoningId={streamingReasoningId}
+            liveThinkingSectionId={liveThinkingSectionId}
           />
         );
       })}
@@ -391,9 +505,15 @@ function MeasuredTimelineItem({
   onHeightChange,
   expandedToolCallIds,
   expandedBurstIds,
+  expandedReasoningIds,
   onToggleToolCall,
   onToggleBurst,
+  onToggleReasoning,
   onViewFileInDiff,
+  streamingAssistantId,
+  onStreamingCaughtUp,
+  streamingReasoningId,
+  liveThinkingSectionId,
 }: {
   readonly item: TimelineRow;
   readonly className?: string;
@@ -401,9 +521,15 @@ function MeasuredTimelineItem({
   readonly onHeightChange: (id: string, height: number) => void;
   readonly expandedToolCallIds: ReadonlySet<string>;
   readonly expandedBurstIds: ReadonlySet<string>;
+  readonly expandedReasoningIds: ReadonlySet<string>;
   readonly onToggleToolCall: (callId: string) => void;
   readonly onToggleBurst: (burstId: string) => void;
+  readonly onToggleReasoning: (reasoningId: string) => void;
   readonly onViewFileInDiff?: (path: string) => void;
+  readonly streamingAssistantId?: string;
+  readonly onStreamingCaughtUp?: (messageId: string) => void;
+  readonly streamingReasoningId?: string;
+  readonly liveThinkingSectionId?: string;
 }) {
   const rowRef = useRef<HTMLDivElement | null>(null);
 
@@ -438,9 +564,15 @@ function MeasuredTimelineItem({
         item={item}
         expandedToolCallIds={expandedToolCallIds}
         expandedBurstIds={expandedBurstIds}
+        expandedReasoningIds={expandedReasoningIds}
         onToggleToolCall={onToggleToolCall}
         onToggleBurst={onToggleBurst}
+        onToggleReasoning={onToggleReasoning}
         onViewFileInDiff={onViewFileInDiff}
+        streamingAssistantId={streamingAssistantId}
+        onStreamingCaughtUp={onStreamingCaughtUp}
+        streamingReasoningId={streamingReasoningId}
+        liveThinkingSectionId={liveThinkingSectionId}
       />
     </div>
   );
@@ -502,6 +634,14 @@ function estimateTimelineItemHeight(item: TimelineRow): number {
   }
   if (item.kind === "summary") {
     return item.presentation === "divider" ? 44 : 38;
+  }
+  if (item.kind === "reasoning") {
+    return 32;
+  }
+  if (item.kind === "thinkingSection") {
+    // Live/expanded sections are tall; the ResizeObserver corrects the real
+    // height once mounted, so this is just a first-paint placeholder.
+    return item.trailing ? 120 : 32;
   }
   return 38;
 }

@@ -6,6 +6,7 @@ export {
   summariseToolBurst,
   type TimelineMetaEvent,
   type TimelineRow,
+  type TimelineThinkingSection,
   type TimelineToolBurst,
   type TimelineViewModel,
   type ToolItem,

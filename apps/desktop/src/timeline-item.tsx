@@ -1,11 +1,12 @@
 import { memo, useEffect, useState } from "react";
 import type { SessionTranscriptMessage } from "@pi-gui/pi-sdk-driver";
-import type { TimelineActivity, TimelineToolCall, TimelineSummary, TranscriptMessage } from "./timeline-types";
+import type { TimelineActivity, TimelineReasoning, TimelineToolCall, TimelineSummary, TranscriptMessage } from "./timeline-types";
+import type { TimelineThinkingSection } from "./timeline-model";
 import type { TimelineRow, TimelineToolBurst } from "./timeline-grouping";
 import { summariseToolBurst } from "./timeline-grouping";
-import { MessageMarkdown } from "./message-markdown";
+import { MessageMarkdown, StreamingMessageText } from "./message-markdown";
 import { InlineDiff, extractDiffFromOutput } from "./diff-inline";
-import { ChevronRightIcon, CopyIcon, DiffIcon, FileIcon } from "./icons";
+import { ChevronRightIcon, CopyIcon, DiffIcon, FileIcon, FolderIcon, TerminalIcon } from "./icons";
 import { openImageLightbox } from "./image-lightbox";
 import { extensionToLanguage } from "./syntax-highlight";
 
@@ -30,22 +31,56 @@ export const TimelineItem = memo(function TimelineItem({
   item,
   expandedToolCallIds,
   expandedBurstIds,
+  expandedReasoningIds,
   onToggleToolCall,
   onToggleBurst,
+  onToggleReasoning,
   onViewFileInDiff,
+  streamingAssistantId,
+  onStreamingCaughtUp,
+  streamingReasoningId,
+  liveThinkingSectionId,
 }: {
   readonly item: TimelineRow;
   readonly expandedToolCallIds?: ReadonlySet<string>;
   readonly expandedBurstIds?: ReadonlySet<string>;
+  readonly expandedReasoningIds?: ReadonlySet<string>;
   readonly onToggleToolCall?: (callId: string) => void;
   readonly onToggleBurst?: (burstId: string) => void;
+  readonly onToggleReasoning?: (reasoningId: string) => void;
   readonly onViewFileInDiff?: (path: string) => void;
+  readonly streamingAssistantId?: string;
+  readonly onStreamingCaughtUp?: (messageId: string) => void;
+  readonly streamingReasoningId?: string;
+  readonly liveThinkingSectionId?: string;
 }) {
   switch (item.kind) {
     case "message":
-      return <TimelineMessage item={item} />;
+      return <TimelineMessage item={item} streamingAssistantId={streamingAssistantId} onStreamingCaughtUp={onStreamingCaughtUp} />;
     case "activity":
       return <TimelineActivityItem item={item} />;
+    case "thinkingSection":
+      return (
+        <TimelineThinkingSectionItem
+          item={item}
+          isLive={liveThinkingSectionId === item.id}
+          expanded={expandedReasoningIds?.has(item.id) ?? false}
+          onToggle={onToggleReasoning}
+          expandedToolCallIds={expandedToolCallIds}
+          onToggleToolCall={onToggleToolCall}
+          onViewFileInDiff={onViewFileInDiff}
+          streamingReasoningId={streamingReasoningId}
+        />
+      );
+    case "reasoning":
+      return (
+        <TimelineReasoningItem
+          item={item}
+          expanded={expandedReasoningIds?.has(item.id) ?? false}
+          onToggle={onToggleReasoning}
+          isStreaming={streamingReasoningId === item.id}
+        />
+      );
     case "tool":
       return (
         <TimelineToolCallItem
@@ -77,7 +112,46 @@ export const TimelineItem = memo(function TimelineItem({
   // actually affect rendering for each item kind, and the tool-row expansion.
   if (prev.onToggleToolCall !== next.onToggleToolCall) return false;
   if (prev.onToggleBurst !== next.onToggleBurst) return false;
+  if (prev.onToggleReasoning !== next.onToggleReasoning) return false;
   if (prev.onViewFileInDiff !== next.onViewFileInDiff) return false;
+  if (prev.onStreamingCaughtUp !== next.onStreamingCaughtUp) return false;
+  if (prev.item.kind === "reasoning" && next.item.kind === "reasoning") {
+    const prevExpanded = prev.expandedReasoningIds?.has(prev.item.id) ?? false;
+    const nextExpanded = next.expandedReasoningIds?.has(next.item.id) ?? false;
+    if (prevExpanded !== nextExpanded) return false;
+    const prevStreaming = prev.streamingReasoningId === prev.item.id;
+    const nextStreaming = next.streamingReasoningId === next.item.id;
+    if (prevStreaming !== nextStreaming) return false;
+  }
+  if (prev.item.kind === "thinkingSection" && next.item.kind === "thinkingSection") {
+    const prevLive = prev.liveThinkingSectionId === prev.item.id;
+    const nextLive = next.liveThinkingSectionId === next.item.id;
+    if (prevLive !== nextLive) return false;
+    const prevExpanded = prev.expandedReasoningIds?.has(prev.item.id) ?? false;
+    const nextExpanded = next.expandedReasoningIds?.has(next.item.id) ?? false;
+    if (prevExpanded !== nextExpanded) return false;
+    // While live, the section streams reasoning text and tool status changes,
+    // so it must re-render on any child change.
+    if (nextLive) return false;
+    if (prevExpanded || nextExpanded) {
+      for (const child of next.item.children) {
+        if (child.kind !== "tool") continue;
+        const pe = prev.expandedToolCallIds?.has(child.callId) ?? false;
+        const ne = next.expandedToolCallIds?.has(child.callId) ?? false;
+        if (pe !== ne) return false;
+      }
+    }
+  }
+  // Re-render this row when streaming status flips for THIS row (so the
+  // assistant message swaps from StreamingMessageText to MessageMarkdown at
+  // run end, and vice versa). Comparing the raw id across all rows would
+  // invalidate every row on every delta — only matters for the row whose id
+  // is becoming / ceasing to be the streaming target.
+  if (prev.item.kind === "message" && next.item.kind === "message" && prev.item.role === "assistant") {
+    const prevStreaming = prev.streamingAssistantId === prev.item.id;
+    const nextStreaming = next.streamingAssistantId === next.item.id;
+    if (prevStreaming !== nextStreaming) return false;
+  }
   if (!isSameTimelineItem(prev.item, next.item)) return false;
   if (prev.item.kind === "tool" && next.item.kind === "tool") {
     const callId = prev.item.callId;
@@ -139,10 +213,171 @@ function isSameTimelineItem(a: TimelineRow, b: TimelineRow): boolean {
   if (a.kind === "summary" && b.kind === "summary") {
     return a.label === b.label && a.metadata === b.metadata && a.presentation === b.presentation;
   }
+  if (a.kind === "reasoning" && b.kind === "reasoning") {
+    return a.text === b.text;
+  }
+  if (a.kind === "thinkingSection" && b.kind === "thinkingSection") {
+    if (a.trailing !== b.trailing) return false;
+    if (a.children.length !== b.children.length) return false;
+    for (let idx = 0; idx < a.children.length; idx += 1) {
+      const ca = a.children[idx]!;
+      const cb = b.children[idx]!;
+      if (ca.kind !== cb.kind || ca.id !== cb.id) return false;
+      if (ca.kind === "reasoning" && cb.kind === "reasoning" && ca.text !== cb.text) return false;
+      if (ca.kind === "tool" && cb.kind === "tool" && ca.status !== cb.status) return false;
+    }
+    return true;
+  }
   return true;
 }
 
-function TimelineMessage({ item }: { readonly item: SessionTranscriptMessage }) {
+function TimelineReasoningItem({
+  item,
+  expanded,
+  onToggle,
+  isStreaming,
+}: {
+  readonly item: TimelineReasoning;
+  readonly expanded: boolean;
+  readonly onToggle?: (reasoningId: string) => void;
+  readonly isStreaming: boolean;
+}) {
+  const headerLabel = isStreaming ? "Thinking" : "Thought";
+  return (
+    <article className={`timeline-reasoning${isStreaming ? " timeline-reasoning--streaming" : ""}`}>
+      <button
+        className="timeline-reasoning__header"
+        type="button"
+        aria-expanded={expanded}
+        data-testid="timeline-reasoning"
+        onClick={() => onToggle?.(item.id)}
+      >
+        <span className={`timeline-reasoning__chevron ${expanded ? "timeline-reasoning__chevron--expanded" : ""}`}>
+          <ChevronRightIcon />
+        </span>
+        <span className="timeline-reasoning__label">{headerLabel}</span>
+      </button>
+      {expanded ? (
+        <div className="timeline-reasoning__body">
+          <MessageMarkdown text={item.text} />
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
+function TimelineThinkingSectionItem({
+  item,
+  isLive,
+  expanded,
+  onToggle,
+  expandedToolCallIds,
+  onToggleToolCall,
+  onViewFileInDiff,
+  streamingReasoningId,
+}: {
+  readonly item: TimelineThinkingSection;
+  readonly isLive: boolean;
+  readonly expanded: boolean;
+  readonly onToggle?: (id: string) => void;
+  readonly expandedToolCallIds?: ReadonlySet<string>;
+  readonly onToggleToolCall?: (callId: string) => void;
+  readonly onViewFileInDiff?: (path: string) => void;
+  readonly streamingReasoningId?: string;
+}) {
+  // While the run is the live tail, the section streams its content with no
+  // header label — the global braille "Thinking…" pill at the bottom of the
+  // timeline is the single "where the agent currently is" indicator. Once an
+  // answer follows, the section collapses into a "Thought for Ns" disclosure
+  // the user can re-open.
+  const isOpen = isLive || expanded;
+  // Keep the body mounted for the duration of the collapse animation so the
+  // grid-rows transition can actually run, then unmount it so collapsed
+  // history sections don't keep heavy reasoning markdown in the DOM.
+  const [renderBody, setRenderBody] = useState(isOpen);
+  useEffect(() => {
+    if (isOpen) {
+      setRenderBody(true);
+      return undefined;
+    }
+    const timeout = window.setTimeout(() => setRenderBody(false), THINKING_COLLAPSE_MS);
+    return () => window.clearTimeout(timeout);
+  }, [isOpen]);
+  const duration = formatThinkDuration(item.children);
+  const headerLabel = duration ? `Thought for ${duration}` : "Thought";
+  return (
+    <article className={`timeline-thinking${isLive ? " timeline-thinking--live" : ""}`} data-testid="timeline-thinking">
+      {isLive ? null : (
+        <button
+          className="timeline-thinking__header"
+          type="button"
+          aria-expanded={isOpen}
+          data-testid="timeline-thinking-toggle"
+          onClick={() => onToggle?.(item.id)}
+        >
+          <span className={`timeline-thinking__chevron ${isOpen ? "timeline-thinking__chevron--expanded" : ""}`}>
+            <ChevronRightIcon />
+          </span>
+          <span className="timeline-thinking__label">{headerLabel}</span>
+        </button>
+      )}
+      <div className="timeline-thinking__collapse" data-open={isOpen} aria-hidden={!isOpen}>
+        <div className="timeline-thinking__collapse-inner">
+          {renderBody ? (
+            <div className="timeline-thinking__body">
+              {item.children.map((child) =>
+                child.kind === "reasoning" ? (
+                  <div
+                    key={child.id}
+                    className={`timeline-thinking__reasoning${
+                      streamingReasoningId === child.id ? " timeline-thinking__reasoning--streaming" : ""
+                    }`}
+                  >
+                    <MessageMarkdown text={child.text} />
+                  </div>
+                ) : (
+                  <TimelineToolCallItem
+                    key={child.id}
+                    item={child}
+                    expanded={expandedToolCallIds?.has(child.callId) ?? false}
+                    onToggle={onToggleToolCall}
+                    onViewFileInDiff={onViewFileInDiff}
+                  />
+                ),
+              )}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+// Keep in sync with the grid-rows transition duration in main.css.
+const THINKING_COLLAPSE_MS = 260;
+
+function formatThinkDuration(children: TimelineThinkingSection["children"]): string {
+  const times = children
+    .map((child) => Date.parse(child.createdAt))
+    .filter((value) => !Number.isNaN(value));
+  if (times.length < 2) return "";
+  const seconds = Math.round((Math.max(...times) - Math.min(...times)) / 1000);
+  if (seconds <= 0) return "";
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  return rest ? `${minutes}m ${rest}s` : `${minutes}m`;
+}
+
+function TimelineMessage({
+  item,
+  streamingAssistantId,
+  onStreamingCaughtUp,
+}: {
+  readonly item: SessionTranscriptMessage;
+  readonly streamingAssistantId?: string;
+  readonly onStreamingCaughtUp?: (messageId: string) => void;
+}) {
   if (item.role === "user") {
     return <UserTimelineMessage item={item} />;
   }
@@ -158,9 +393,10 @@ function TimelineMessage({ item }: { readonly item: SessionTranscriptMessage }) 
     );
   }
 
+  const isStreaming = item.id === streamingAssistantId;
   return (
     <article className="timeline-item timeline-item--assistant">
-      <MessageMarkdown text={item.text} />
+      {isStreaming ? <StreamingMessageText text={item.text} onCaughtUp={() => onStreamingCaughtUp?.(item.id)} /> : <MessageMarkdown text={item.text} />}
     </article>
   );
 }
@@ -246,7 +482,7 @@ function TimelineToolCallItem({
   readonly onViewFileInDiff?: (path: string) => void;
 }) {
   const hasContent = item.input !== undefined || item.output !== undefined;
-  const diffText = isWriteTool(item.toolName) ? extractDiffFromOutput(item.output) : undefined;
+  const diffText = isWriteTool(item.toolName) ? extractDiffFromOutput(item.output) ?? extractDiffFromOutput(item.input) : undefined;
   const diffStats = diffText ? countDiffStats(diffText) : undefined;
   const compactLabel = buildCompactLabel(item, diffStats);
   const filePath = isWriteTool(item.toolName) ? extractFilename(item.input) || undefined : undefined;
@@ -258,7 +494,7 @@ function TimelineToolCallItem({
   };
 
   return (
-    <article className={`timeline-tool timeline-tool--${item.status}`}>
+    <article className={`timeline-tool timeline-tool--${item.status}${isWriteTool(item.toolName) ? " timeline-tool--write" : ""}`}>
       <div className="timeline-tool__header-row">
         <button
           className="timeline-tool__header"
@@ -272,6 +508,7 @@ function TimelineToolCallItem({
               <ChevronRightIcon />
             </span>
           ) : null}
+          <span className="timeline-tool__icon" aria-hidden="true">{toolIcon(item)}</span>
           <span className="timeline-tool__label">{compactLabel}</span>
           {diffStats ? (
             <span className="timeline-tool__diff-stats">
@@ -337,11 +574,21 @@ function isWriteTool(toolName: string): boolean {
   return /write|edit|patch|apply/i.test(toolName);
 }
 
+function toolIcon(item: TimelineToolCall) {
+  if (/read|open/i.test(item.toolName)) {
+    return <FileIcon />;
+  }
+  if (/glob|ls|list|find/i.test(item.toolName)) {
+    return <FolderIcon />;
+  }
+  return <TerminalIcon />;
+}
+
 function buildCompactLabel(item: TimelineToolCall, diffStats: { added: number; removed: number } | undefined): string {
   if (isWriteTool(item.toolName)) {
     const filename = extractFilename(item.input);
     if (filename) {
-      return `Edited ${shortenPath(filename)}`;
+      return `${item.status === "running" ? "Editing" : "Edited"} ${shortenPath(filename)}`;
     }
   }
   return item.label;
@@ -414,8 +661,9 @@ function TimelineToolBurstItem({
 }) {
   const summary = summariseToolBurst(item);
   const hasError = item.tools.some((tool) => tool.status === "error");
+  const hasOnlyErrors = item.tools.every((tool) => tool.status === "error");
   return (
-    <article className={`timeline-tool-burst${hasError ? " timeline-tool-burst--error" : ""}`}>
+    <article className={`timeline-tool-burst${hasError ? " timeline-tool-burst--has-error" : ""}${hasOnlyErrors ? " timeline-tool-burst--error" : ""}`}>
       <button
         className="timeline-tool-burst__header"
         type="button"
@@ -423,10 +671,13 @@ function TimelineToolBurstItem({
         data-testid="timeline-tool-burst"
         onClick={() => onToggle?.(item.id)}
       >
+        <span className="timeline-tool-burst__icon" aria-hidden="true">
+          <FolderIcon />
+        </span>
+        <span className="timeline-tool-burst__label">{summary}</span>
         <span className={`timeline-tool-burst__chevron ${expanded ? "timeline-tool-burst__chevron--expanded" : ""}`}>
           <ChevronRightIcon />
         </span>
-        <span className="timeline-tool-burst__label">{summary}</span>
       </button>
       {expanded ? (
         <div className="timeline-tool-burst__body">

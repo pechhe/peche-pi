@@ -28,6 +28,7 @@ export interface PersistedUiState {
   readonly sidebarCollapsed?: boolean;
   readonly allowMultiple?: boolean;
   readonly enableTransparency?: boolean;
+  readonly transcriptVerbose?: boolean;
   readonly composerDeviceMode?: "off" | "screen" | "modular";
   readonly themeMode?: ThemeMode;
   readonly commitPushModel?: string;
@@ -80,6 +81,7 @@ export async function readPersistedUiState(uiStateFilePath: string): Promise<Leg
       sidebarCollapsed: typeof parsed.sidebarCollapsed === "boolean" ? parsed.sidebarCollapsed : undefined,
       allowMultiple: typeof parsed.allowMultiple === "boolean" ? parsed.allowMultiple : undefined,
       enableTransparency: typeof parsed.enableTransparency === "boolean" ? parsed.enableTransparency : undefined,
+      transcriptVerbose: typeof parsed.transcriptVerbose === "boolean" ? parsed.transcriptVerbose : undefined,
       composerDeviceMode:
         parsed.composerDeviceMode === "screen" || parsed.composerDeviceMode === "modular" || parsed.composerDeviceMode === "off"
           ? parsed.composerDeviceMode

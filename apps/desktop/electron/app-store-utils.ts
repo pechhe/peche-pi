@@ -500,7 +500,7 @@ function normalizeComposerAttachment(value: Record<string, unknown>): ComposerAt
 
 export function makeActivityItem(
   label: string,
-  options: Pick<Extract<TranscriptMessage, { kind: "activity" }>, "detail" | "metadata" | "tone"> = {},
+  options: Pick<Extract<TranscriptMessage, { kind: "activity" }>, "detail" | "metadata" | "tone" | "noise"> = {},
 ): TranscriptMessage {
   return {
     kind: "activity",
@@ -522,6 +522,15 @@ export function makeSummaryItem(
     label,
     presentation: options.presentation ?? "inline",
     ...(options.metadata ? { metadata: options.metadata } : {}),
+  };
+}
+
+export function makeReasoningItem(text: string): TranscriptMessage {
+  return {
+    kind: "reasoning",
+    id: randomUUID(),
+    text,
+    createdAt: new Date().toISOString(),
   };
 }
 

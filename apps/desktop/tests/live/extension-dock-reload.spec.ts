@@ -68,13 +68,13 @@ test("resets dock expansion on /reload and extension enable or disable transitio
     const extensionCard = window.getByTestId("extensions-list").getByRole("button", { name: /reload-dock-extension/i });
     await extensionCard.click();
     await window.getByRole("button", { name: "Disable", exact: true }).click();
-    await window.getByRole("button", { name: "Back to app", exact: true }).click();
+    await window.locator(".session-row").first().click();
     await expect(window.getByTestId("extension-dock")).toHaveCount(0);
 
     await window.getByRole("button", { name: "Extensions", exact: true }).click();
     await extensionCard.click();
     await window.getByRole("button", { name: "Enable", exact: true }).click();
-    await window.getByRole("button", { name: "Back to app", exact: true }).click();
+    await window.locator(".session-row").first().click();
     await expect(dockSummary).toHaveText("Session ready");
     await expect(dockBody).toHaveCount(0);
   } finally {
@@ -108,7 +108,7 @@ test("refreshes runtime with new extension output and keeps the dock collapsed a
     await writeProjectExtension(workspacePath, "reload-dock-extension.ts", refreshedExtensionSource);
     await window.getByRole("button", { name: "Extensions", exact: true }).click();
     await window.getByRole("button", { name: "Refresh", exact: true }).click();
-    await window.getByRole("button", { name: "Back to app", exact: true }).click();
+    await window.locator(".session-row").first().click();
 
     await expect(dockSummary).toHaveText("Refreshed session ready");
     await expect(dockBody).toHaveCount(0);

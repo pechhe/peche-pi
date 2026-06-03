@@ -23,6 +23,7 @@ interface SettingsViewProps {
   readonly integratedTerminalShell: string;
   readonly themeMode: import("./desktop-state").ThemeMode;
   readonly enableTransparency: boolean;
+  readonly transcriptVerbose: boolean;
   readonly composerDeviceMode: import("./desktop-state").ComposerDeviceMode;
   readonly onSetModelSettingsScopeMode: (mode: ModelSettingsScopeMode) => void;
   readonly onSetDefaultModel: (provider: string, modelId: string) => void;
@@ -39,6 +40,7 @@ interface SettingsViewProps {
   readonly onOpenSystemNotificationSettings: () => void;
   readonly onSetThemeMode: (mode: import("./desktop-state").ThemeMode) => void;
   readonly onSetEnableTransparency: (enabled: boolean) => void;
+  readonly onSetTranscriptVerbose: (enabled: boolean) => void;
   readonly onSetComposerDeviceMode: (mode: import("./desktop-state").ComposerDeviceMode) => void;
 }
 
@@ -55,6 +57,7 @@ export function SettingsView({
   integratedTerminalShell,
   themeMode,
   enableTransparency,
+  transcriptVerbose,
   composerDeviceMode,
   onSetModelSettingsScopeMode,
   onSetDefaultModel,
@@ -71,6 +74,7 @@ export function SettingsView({
   onOpenSystemNotificationSettings,
   onSetThemeMode,
   onSetEnableTransparency,
+  onSetTranscriptVerbose,
   onSetComposerDeviceMode,
 }: SettingsViewProps) {
   if (!workspace && section !== "general" && section !== "notifications" && section !== "appearance") {
@@ -116,6 +120,8 @@ export function SettingsView({
               onSetThemeMode={onSetThemeMode}
               enableTransparency={enableTransparency}
               onSetEnableTransparency={onSetEnableTransparency}
+              transcriptVerbose={transcriptVerbose}
+              onSetTranscriptVerbose={onSetTranscriptVerbose}
               composerDeviceMode={composerDeviceMode}
               onSetComposerDeviceMode={onSetComposerDeviceMode}
             />

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const FRAME_INTERVAL_MS = 80;
@@ -14,6 +14,48 @@ function useBrailleFrame(): string {
   }, []);
 
   return SPINNER_FRAMES[frame]!;
+}
+
+/**
+ * Same braille frames but driven by a ref + direct DOM mutation instead of
+ * React state. Used by `WorkingSpinner` so the animation never stalls, even
+ * while React is busy re-rendering other parts of the tree (e.g. streaming
+ * a conversation response).
+ */
+function useBrailleFrameRef(): React.RefCallback<HTMLSpanElement> {
+  const frameRef = useRef(0);
+  const elRef = useRef<HTMLSpanElement | null>(null);
+  const intervalRef = useRef<number | null>(null);
+
+  const refCallback = useRef((el: HTMLSpanElement | null) => {
+    // Clean up previous interval if element changes
+    if (intervalRef.current !== null) {
+      window.clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    elRef.current = el;
+    if (el) {
+      // Set initial glyph
+      el.textContent = SPINNER_FRAMES[frameRef.current]!;
+      intervalRef.current = window.setInterval(() => {
+        frameRef.current = (frameRef.current + 1) % SPINNER_FRAMES.length;
+        if (elRef.current) {
+          elRef.current.textContent = SPINNER_FRAMES[frameRef.current]!;
+        }
+      }, FRAME_INTERVAL_MS);
+    }
+  }).current;
+
+  useEffect(() => {
+    return () => {
+      if (intervalRef.current !== null) {
+        window.clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+  }, []);
+
+  return refCallback;
 }
 
 export interface WorkingLabelProps {
@@ -44,21 +86,14 @@ export interface WorkingSpinnerProps {
 
 /**
  * Standalone braille spinner — same animation as `WorkingLabel` but without
- * the shimmer text. Used in compact slots like the sidebar session row.
+ * the shimmer text. Uses ref-based DOM mutation so it never stalls during
+ * heavy React rendering (e.g. streaming).
  */
 export function WorkingSpinner({ className, title }: WorkingSpinnerProps) {
-  const glyph = useBrailleFrame();
+  const spinnerRef = useBrailleFrameRef();
   const classes = `working-spinner${className ? ` ${className}` : ""}`;
   if (title) {
-    return (
-      <span className={classes} role="img" aria-label={title}>
-        {glyph}
-      </span>
-    );
+    return <span ref={spinnerRef} className={classes} role="img" aria-label={title} />;
   }
-  return (
-    <span className={classes} aria-hidden>
-      {glyph}
-    </span>
-  );
+  return <span ref={spinnerRef} className={classes} aria-hidden />;
 }

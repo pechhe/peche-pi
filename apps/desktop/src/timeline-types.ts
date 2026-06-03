@@ -41,4 +41,16 @@ export interface TimelineSummary {
   readonly presentation: TimelineSummaryPresentation;
 }
 
-export type TranscriptMessage = SessionTranscriptMessage | TimelineActivity | TimelineToolCall | TimelineSummary;
+export interface TimelineReasoning {
+  readonly kind: "reasoning";
+  readonly id: string;
+  readonly createdAt: string;
+  readonly text: string;
+}
+
+export type TranscriptMessage =
+  | SessionTranscriptMessage
+  | TimelineActivity
+  | TimelineToolCall
+  | TimelineSummary
+  | TimelineReasoning;

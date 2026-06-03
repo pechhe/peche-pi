@@ -647,6 +647,9 @@ app.whenReady().then(async () => {
     }
     return nextState;
   });
+  ipcMain.handle(desktopIpc.setTranscriptVerbose, async (_event, enabled: boolean) => {
+    return store.setTranscriptVerbose(enabled);
+  });
   ipcMain.handle(desktopIpc.setComposerDeviceMode, async (_event, mode: "off" | "screen" | "modular") => {
     return store.setComposerDeviceMode(mode);
   });

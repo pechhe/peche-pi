@@ -194,6 +194,8 @@ contextBridge.exposeInMainWorld("piApp", {
     ipcRenderer.invoke(desktopIpc.setIntegratedTerminalShell, shellPath) as Promise<DesktopAppState>,
   setEnableTransparency: (enabled: boolean) =>
     ipcRenderer.invoke(desktopIpc.setEnableTransparency, enabled) as Promise<DesktopAppState>,
+  setTranscriptVerbose: (enabled: boolean) =>
+    ipcRenderer.invoke(desktopIpc.setTranscriptVerbose, enabled) as Promise<DesktopAppState>,
   setComposerDeviceMode: (mode: "off" | "screen" | "modular") =>
     ipcRenderer.invoke(desktopIpc.setComposerDeviceMode, mode) as Promise<DesktopAppState>,
   ensureTerminalPanel: (workspaceId: string, terminalScopeId: string, size?: Partial<TerminalSize>) =>

@@ -83,6 +83,7 @@ export const desktopIpc = {
   setNotificationPreferences: "pi-gui:set-notification-preferences",
   setIntegratedTerminalShell: "pi-gui:set-integrated-terminal-shell",
   setEnableTransparency: "pi-gui:set-enable-transparency",
+  setTranscriptVerbose: "pi-gui:set-transcript-verbose",
   setComposerDeviceMode: "pi-gui:set-composer-device-mode",
   terminalEnsurePanel: "pi-gui:terminal-ensure-panel",
   terminalCreateSession: "pi-gui:terminal-create-session",
@@ -194,6 +195,7 @@ export const piDesktopApiIpcBridge = {
   setNotificationPreferences: { kind: "invoke", channel: desktopIpc.setNotificationPreferences },
   setIntegratedTerminalShell: { kind: "invoke", channel: desktopIpc.setIntegratedTerminalShell },
   setEnableTransparency: { kind: "invoke", channel: desktopIpc.setEnableTransparency },
+  setTranscriptVerbose: { kind: "invoke", channel: desktopIpc.setTranscriptVerbose },
   setComposerDeviceMode: { kind: "invoke", channel: desktopIpc.setComposerDeviceMode },
   ensureTerminalPanel: { kind: "invoke", channel: desktopIpc.terminalEnsurePanel },
   createTerminalSession: { kind: "invoke", channel: desktopIpc.terminalCreateSession },
@@ -441,6 +443,7 @@ export interface PiDesktopApi {
   setNotificationPreferences(preferences: Partial<NotificationPreferences>): Promise<DesktopAppState>;
   setIntegratedTerminalShell(shell: string): Promise<DesktopAppState>;
   setEnableTransparency(enabled: boolean): Promise<DesktopAppState>;
+  setTranscriptVerbose(enabled: boolean): Promise<DesktopAppState>;
   setComposerDeviceMode(mode: ComposerDeviceMode): Promise<DesktopAppState>;
   ensureTerminalPanel(
     workspaceId: string,

@@ -556,15 +556,15 @@
   align-items: center;
   grid-template-columns: minmax(0, 1fr);
   gap: 0;
-  padding-left: 14px;
+  padding-left: 20px;
   text-align: left;
   color: inherit;
   position: relative;
 }
 
 .session-row__leading {
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
   display: grid;
   place-items: center;
   position: absolute;
@@ -579,17 +579,13 @@
 }
 
 .session-row__status--running {
-  /* Braille spinner glyph rendered via <WorkingSpinner>. The frame switch
-   * happens in JS at 80ms; this rule just sizes/tints the glyph and aligns
-   * it inside the 12×12 leading slot. */
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 12px;
-  height: 12px;
+  /* Braille spinner glyph rendered via <WorkingSpinner>. Mirror the chat
+   * "Thinking…" spinner (.working-label__spinner) so the look matches. */
+  display: inline-block;
+  width: 1ch;
   color: var(--accent);
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 12px;
+  text-align: center;
   line-height: 1;
   background: none;
   border: 0;

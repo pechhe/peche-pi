@@ -34,6 +34,7 @@ import type {
 export type DesktopAction =
   | { readonly type: "settings/setSidebarCollapsed"; readonly sidebarCollapsed: boolean }
   | { readonly type: "settings/setEnableTransparency"; readonly enableTransparency: boolean }
+  | { readonly type: "settings/setTranscriptVerbose"; readonly transcriptVerbose: boolean }
   | { readonly type: "settings/setComposerDeviceMode"; readonly composerDeviceMode: ComposerDeviceMode }
   | { readonly type: "settings/setThemeMode"; readonly themeMode: ThemeMode }
   | { readonly type: "settings/setIntegratedTerminalShell"; readonly integratedTerminalShell: string }
@@ -68,6 +69,12 @@ export function reduce(state: DesktopAppState, action: DesktopAction): DesktopAp
         return state;
       }
       return bump({ ...state, enableTransparency: action.enableTransparency });
+    }
+    case "settings/setTranscriptVerbose": {
+      if (state.transcriptVerbose === action.transcriptVerbose) {
+        return state;
+      }
+      return bump({ ...state, transcriptVerbose: action.transcriptVerbose });
     }
     case "settings/setComposerDeviceMode": {
       if (state.composerDeviceMode === action.composerDeviceMode) {

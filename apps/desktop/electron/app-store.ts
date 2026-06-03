@@ -57,6 +57,7 @@ import type { ComposerMode } from "../src/composer-mode";
 import {
   applyTimelineEvent,
   appendAssistantDelta,
+  appendReasoningDelta,
   clearActiveAssistantMessage,
 } from "./app-store-timeline";
 import { applySessionEventState, updateSessionRecord } from "./app-store-session-state";
@@ -502,6 +503,17 @@ export class DesktopAppStore implements AppStoreInternals {
     return this.emit();
   }
 
+  async setTranscriptVerbose(enabled: boolean): Promise<DesktopAppState> {
+    await this.initialize();
+    const next = reduce(this.state, { type: "settings/setTranscriptVerbose", transcriptVerbose: enabled });
+    if (next === this.state) {
+      return structuredClone(this.state);
+    }
+    this.state = next;
+    await this.persistUiState();
+    return this.emit();
+  }
+
   async setComposerDeviceMode(mode: ComposerDeviceMode): Promise<DesktopAppState> {
     await this.initialize();
     const next = reduce(this.state, { type: "settings/setComposerDeviceMode", composerDeviceMode: mode });
@@ -783,6 +795,7 @@ export class DesktopAppStore implements AppStoreInternals {
         workspaceOrder: persisted.workspaceOrder ?? [],
         sidebarCollapsed: persisted.sidebarCollapsed ?? this.state.sidebarCollapsed,
         enableTransparency: persisted.enableTransparency ?? this.state.enableTransparency,
+        transcriptVerbose: persisted.transcriptVerbose ?? this.state.transcriptVerbose,
         composerDeviceMode: persisted.composerDeviceMode ?? this.state.composerDeviceMode,
         themeMode: persisted.themeMode ?? this.state.themeMode,
         commitPushModel: persisted.commitPushModel ?? this.state.commitPushModel,
@@ -842,6 +855,7 @@ export class DesktopAppStore implements AppStoreInternals {
       this.state = {
         ...createEmptyDesktopAppState(),
         enableTransparency: persisted.enableTransparency ?? false,
+        transcriptVerbose: persisted.transcriptVerbose ?? false,
         composerDeviceMode: persisted.composerDeviceMode ?? "off",
         themeMode: persisted.themeMode ?? "system",
         lastError: error instanceof Error ? error.message : String(error),
@@ -1393,7 +1407,22 @@ export class DesktopAppStore implements AppStoreInternals {
 
     switch (event.type) {
       case "assistantDelta":
-        appendAssistantDelta(this.sessionState.transcriptCache, this.sessionState.activeAssistantMessageBySession, event.sessionRef, event.text);
+        appendAssistantDelta(
+          this.sessionState.transcriptCache,
+          this.sessionState.activeAssistantMessageBySession,
+          this.sessionState.activeReasoningMessageBySession,
+          event.sessionRef,
+          event.text,
+        );
+        break;
+      case "reasoningDelta":
+        appendReasoningDelta(
+          this.sessionState.transcriptCache,
+          this.sessionState.activeAssistantMessageBySession,
+          this.sessionState.activeReasoningMessageBySession,
+          event.sessionRef,
+          event.text,
+        );
         break;
       case "sessionOpened":
       case "runCompleted":
@@ -1453,6 +1482,7 @@ export class DesktopAppStore implements AppStoreInternals {
       runMetricsBySession: this.sessionState.runMetricsBySession,
       runningSinceBySession: this.sessionState.runningSinceBySession,
       activeAssistantMessageBySession: this.sessionState.activeAssistantMessageBySession,
+      activeReasoningMessageBySession: this.sessionState.activeReasoningMessageBySession,
     });
     this.state = applySessionEventState(
       this.state,
@@ -1738,6 +1768,7 @@ export class DesktopAppStore implements AppStoreInternals {
       appGlobalModelSettings: hasStoredModelSettings(this.state.globalModelSettings) ? this.state.globalModelSettings : undefined,
       sidebarCollapsed: this.state.sidebarCollapsed || undefined,
       enableTransparency: this.state.enableTransparency,
+      transcriptVerbose: this.state.transcriptVerbose,
       composerDeviceMode: this.state.composerDeviceMode,
       themeMode: this.state.themeMode,
     };

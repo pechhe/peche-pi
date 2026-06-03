@@ -51,6 +51,7 @@ import { useSidebarWidth } from "./hooks/use-sidebar-width";
 import { ExtensionDialog } from "./extension-session-ui";
 import { TreeModal } from "./tree-modal";
 import { ImageLightbox } from "./image-lightbox";
+import { Agentation } from "agentation";
 import { ToastHost } from "./toast";
 import { getEffectiveModelRuntime } from "./model-settings";
 import { resolveRepoWorkspaceId } from "./workspace-roots";
@@ -84,6 +85,7 @@ function useDesktopAppState() {
         return;
       }
       setSnapshot(state);
+      lastAppliedSessionKey = transcript ? `${transcript.workspaceId}::${transcript.sessionId}` : null;
       setSelectedTranscript(transcript);
     });
 
@@ -509,7 +511,14 @@ export default function App() {
     selectedSession?.config?.thinkingLevel ?? selectedModelRuntime?.settings.defaultThinkingLevel;
   const resolvedNewThreadProvider = newThreadProvider ?? (newThreadDefaultEnabled ? newThreadRuntime?.settings.defaultProvider : undefined);
   const resolvedNewThreadModelId = newThreadModelId ?? (newThreadDefaultEnabled ? newThreadRuntime?.settings.defaultModelId : undefined);
-  const resolvedNewThreadThinkingLevel = newThreadThinkingLevel ?? newThreadRuntime?.settings.defaultThinkingLevel;
+  // New threads default to medium reasoning so the model emits thinking_delta
+  // events the timeline can render as a collapsed "Thought" disclosure.
+  // Per-model clamping (clampThinkingLevel in pi-sdk-driver) falls back to
+  // whatever level the model actually supports, including "off", so this is
+  // safe to apply universally. Users can still pick a different level in the
+  // composer or override the default in settings.
+  const resolvedNewThreadThinkingLevel =
+    newThreadThinkingLevel ?? newThreadRuntime?.settings.defaultThinkingLevel ?? "medium";
   const selectedSessionModelOnboarding = deriveModelOnboardingState(selectedModelRuntime, {
     provider: resolvedSessionProvider,
     modelId: resolvedSessionModelId,
@@ -546,6 +555,16 @@ export default function App() {
     selectedTranscript.sessionId === selectedSession.id
       ? selectedTranscript.transcript
       : EMPTY_TRANSCRIPT;
+  // In clean mode (default), hide noise-tagged activities (extension chatter
+  // like blackhole OM progress and cymbal nudges). Verbose mode shows them.
+  const transcriptVerbose = snapshot?.transcriptVerbose ?? false;
+  const visibleTranscript = useMemo(
+    () =>
+      transcriptVerbose
+        ? activeTranscript
+        : activeTranscript.filter((item) => !(item.kind === "activity" && item.noise)),
+    [activeTranscript, transcriptVerbose],
+  );
   const isTranscriptLoading = Boolean(selectedSession) && activeTranscript.length === 0 && (
     !selectedTranscript ||
     selectedTranscript.workspaceId !== selectedWorkspace?.id ||
@@ -2197,6 +2216,7 @@ export default function App() {
             integratedTerminalShell={snapshot.integratedTerminalShell}
             themeMode={themeMode}
             enableTransparency={snapshot.enableTransparency}
+            transcriptVerbose={snapshot.transcriptVerbose}
             composerDeviceMode={snapshot.composerDeviceMode}
             onLoginProvider={handleLoginProvider}
             onLogoutProvider={handleLogoutProvider}
@@ -2214,6 +2234,9 @@ export default function App() {
             onToggleSkillCommands={handleToggleSkillCommands}
             onSetEnableTransparency={(enabled) => {
               void updateSnapshot(api, setSnapshot, () => api.setEnableTransparency(enabled));
+            }}
+            onSetTranscriptVerbose={(enabled) => {
+              void updateSnapshot(api, setSnapshot, () => api.setTranscriptVerbose(enabled));
             }}
             onSetComposerDeviceMode={(enabled) => {
               void updateSnapshot(api, setSnapshot, () => api.setComposerDeviceMode(enabled));
@@ -2360,22 +2383,6 @@ export default function App() {
           />
         ) : null}
         <main className="main main--skills">
-          <div className="surface-toolbar">
-            <button className="button button--secondary" type="button" onClick={() => setActiveView("threads")}>Back to app</button>
-            <label className="surface-toolbar__field">
-              <span>Workspace</span>
-              <select
-                value={extensionsWorkspace?.id ?? ""}
-                onChange={(event) => setExtensionsWorkspaceId(event.target.value)}
-              >
-                {rootWorkspaceOptions.map((workspace) => (
-                  <option key={workspace.id} value={workspace.id}>
-                    {workspace.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
           <ExtensionsView
             workspace={extensionsWorkspace}
             runtime={extensionsRuntime}
@@ -2547,7 +2554,7 @@ export default function App() {
                 </div>
 
                 <ConversationTimeline
-                  transcript={activeTranscript}
+                  transcript={visibleTranscript}
                   isTranscriptLoading={isTranscriptLoading}
                   timelinePaneRef={timelinePaneRef}
                   timelinePaneElementRef={setTimelinePaneElement}
@@ -2678,6 +2685,7 @@ export default function App() {
       </main>
       <ImageLightbox />
       <ToastHost />
+      {import.meta.env.DEV && <Agentation />}
     </div>
   );
 }

@@ -46,6 +46,14 @@ export function ExtensionsView({
       ].some((value) => value.toLowerCase().includes(normalized)),
     );
   }, [extensions, query]);
+  const globalExtensions = useMemo(
+    () => filteredExtensions.filter((extension) => extension.sourceInfo.scope === "user"),
+    [filteredExtensions],
+  );
+  const projectExtensions = useMemo(
+    () => filteredExtensions.filter((extension) => extension.sourceInfo.scope !== "user"),
+    [filteredExtensions],
+  );
   const selectedExtension =
     filteredExtensions.find((extension) => extension.path === selectedExtensionPath) ?? filteredExtensions[0];
   const selectedCompatibilityRecords = useMemo(
@@ -75,7 +83,7 @@ export function ExtensionsView({
             <div className="chat-header__eyebrow">Extensions</div>
             <h1 className="view-header__title">Extensions</h1>
             <p className="view-header__body">
-              Inspect and manage first-class runtime extensions for this workspace.
+              Manage runtime extensions. Global extensions are enabled for every workspace; project extensions belong to the selected workspace.
             </p>
           </div>
           <div className="view-header__actions">
@@ -102,32 +110,26 @@ export function ExtensionsView({
             </div>
             <div className="skills-rail__list" data-testid="extensions-list">
               {filteredExtensions.length === 0 ? (
-                <ExtensionsEmptyState message="Refresh runtime discovery to load workspace and user-level extensions." />
+                <ExtensionsEmptyState message="Refresh runtime discovery to load global and project extensions." />
               ) : (
-                filteredExtensions.map((extension) => (
-                  <button
-                    className={`skill-row ${selectedExtension?.path === extension.path ? "skill-row--active" : ""}`}
-                    key={extension.path}
-                    type="button"
-                    onClick={() => {
-                      setSelectedExtensionPath(extension.path);
-                    }}
-                  >
-                    <span className="skill-row__avatar">
-                      <ExtensionIcon />
-                    </span>
-                    <span className="skill-row__body">
-                      <span className="skill-row__title">{extension.displayName}</span>
-                      <span className="skill-row__description">
-                        {extension.sourceInfo.scope} · {extension.sourceInfo.origin}
-                      </span>
-                    </span>
-                    <span className={`skill-status ${extension.enabled ? "skill-status--enabled" : "skill-status--disabled"}`}>
-                      <span className="skill-status__dot" />
-                      {extension.enabled ? "Enabled" : "Disabled"}
-                    </span>
-                  </button>
-                ))
+                <>
+                  {globalExtensions.length > 0 ? (
+                    <ExtensionGroup
+                      label="Global"
+                      extensions={globalExtensions}
+                      selectedPath={selectedExtension?.path}
+                      onSelect={setSelectedExtensionPath}
+                    />
+                  ) : null}
+                  {projectExtensions.length > 0 ? (
+                    <ExtensionGroup
+                      label={`Project${workspace.name ? ` · ${workspace.name}` : ""}`}
+                      extensions={projectExtensions}
+                      selectedPath={selectedExtension?.path}
+                      onSelect={setSelectedExtensionPath}
+                    />
+                  ) : null}
+                </>
               )}
             </div>
             <footer className="skills-rail__footer">
@@ -147,15 +149,26 @@ export function ExtensionsView({
                     <div className="skill-detail__heading">
                       <div className="skill-detail__title-row">
                         <h2>{selectedExtension.displayName}</h2>
-                        <span className={`skill-status ${selectedExtension.enabled ? "skill-status--enabled" : "skill-status--disabled"}`}>
+                        <span
+                          className={`skill-status skill-detail__status ${
+                            selectedExtension.enabled
+                              ? "skill-status--enabled skill-detail__status--enabled"
+                              : "skill-status--disabled"
+                          }`}
+                        >
                           <span className="skill-status__dot" />
-                          {selectedExtension.enabled ? "Enabled" : "Disabled"}
+                          {extensionStatusLabel(selectedExtension)}
                         </span>
                       </div>
                       <div className="skill-detail__tags">
                         <span className="skill-tag">{selectedExtension.sourceInfo.source}</span>
                         <span className="skill-tag skill-tag--muted">{selectedExtension.sourceInfo.scope}</span>
                       </div>
+                      {selectedExtension.sourceInfo.scope === "user" ? (
+                        <p className="skill-detail__description">
+                          Enabling or disabling this extension applies globally, across every workspace.
+                        </p>
+                      ) : null}
                     </div>
                   </div>
                 </header>
@@ -211,6 +224,55 @@ export function ExtensionsView({
             )}
           </div>
       </div>
+    </div>
+  );
+}
+
+function extensionStatusLabel(extension: RuntimeExtensionRecord): string {
+  if (extension.sourceInfo.scope === "user") {
+    return extension.enabled ? "Enabled globally" : "Disabled globally";
+  }
+  return extension.enabled ? "Enabled" : "Disabled";
+}
+
+function ExtensionGroup({
+  label,
+  extensions,
+  selectedPath,
+  onSelect,
+}: {
+  readonly label: string;
+  readonly extensions: readonly RuntimeExtensionRecord[];
+  readonly selectedPath?: string;
+  readonly onSelect: (path: string) => void;
+}) {
+  return (
+    <div className="skills-rail__group">
+      <div className="skills-rail__group-label">{label}</div>
+      {extensions.map((extension) => (
+        <button
+          className={`skill-row ${selectedPath === extension.path ? "skill-row--active" : ""}`}
+          key={extension.path}
+          type="button"
+          onClick={() => {
+            onSelect(extension.path);
+          }}
+        >
+          <span className="skill-row__avatar">
+            <ExtensionIcon />
+          </span>
+          <span className="skill-row__body">
+            <span className="skill-row__title">{extension.displayName}</span>
+            <span className="skill-row__description">
+              {extension.sourceInfo.scope} · {extension.sourceInfo.origin}
+            </span>
+          </span>
+          <span className={`skill-status ${extension.enabled ? "skill-status--enabled" : "skill-status--disabled"}`}>
+            <span className="skill-status__dot" />
+            {extensionStatusLabel(extension)}
+          </span>
+        </button>
+      ))}
     </div>
   );
 }
