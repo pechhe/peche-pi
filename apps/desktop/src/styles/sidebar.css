@@ -93,6 +93,24 @@
   padding: 14px 16px;
 }
 
+.sidebar__chats {
+  border-top: 1px solid var(--line);
+  flex-shrink: 0;
+}
+
+.sidebar__chats-empty {
+  display: grid;
+  gap: 8px;
+  padding: 8px 0;
+  text-align: center;
+}
+
+.sidebar__chats-empty p {
+  font-size: 12px;
+  color: var(--muted-soft);
+  margin: 0;
+}
+
 .sidebar__top {
   padding-top: 54px;
 }

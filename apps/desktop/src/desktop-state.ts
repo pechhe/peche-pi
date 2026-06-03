@@ -10,7 +10,7 @@ export type WorktreeStatus = "ready" | "missing" | "error";
 export type NewThreadEnvironment = "local" | "worktree";
 export type ThemeMode = "system" | "light" | "dark" | "dracula";
 
-export type ComposerDeviceMode = "off" | "screen" | "modular";
+export type ComposerDeviceMode = "off" | "screen" | "modular" | "screen-neon";
 export type ModelSettingsScopeMode = "app-global" | "per-repo";
 export type ComposerDraftSyncSource =
   | "state"
@@ -19,6 +19,35 @@ export type ComposerDraftSyncSource =
   | "command"
   | "extension-editor-text"
   | "queued-message-edit";
+
+export type ChatStatus = "idle" | "running" | "failed";
+
+export interface ChatConfig {
+  readonly provider?: string;
+  readonly modelId?: string;
+  readonly thinkingLevel?: string;
+}
+
+export interface ChatContextUsage {
+  readonly tokenCount?: number;
+  readonly percentUsed?: number;
+}
+
+export interface ChatRecord {
+  readonly id: string;
+  readonly title: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly archivedAt?: string;
+  readonly preview: string;
+  readonly status: ChatStatus;
+  readonly runningSince?: string;
+  readonly hasUnseenUpdate: boolean;
+  readonly isAwaitingAssistantText: boolean;
+  readonly config?: ChatConfig;
+  readonly contextUsage?: ChatContextUsage;
+  readonly chatWorkspaceId?: string;
+}
 
 export interface NotificationPreferences {
   readonly backgroundCompletion: boolean;
@@ -155,6 +184,14 @@ export type StartThreadInput = {
   readonly thinkingLevel?: string;
 };
 
+export type StartChatInput = {
+  readonly prompt?: string;
+  readonly attachments?: readonly ComposerAttachment[];
+  readonly provider?: string;
+  readonly modelId?: string;
+  readonly thinkingLevel?: string;
+};
+
 export interface RemoveWorktreeInput {
   readonly workspaceId: string;
   readonly worktreeId: string;
@@ -188,6 +225,8 @@ export interface DesktopAppState {
   readonly composerDeviceMode: ComposerDeviceMode;
   readonly themeMode: ThemeMode;
   readonly commitPushModel?: string;
+  readonly chats: readonly ChatRecord[];
+  readonly selectedChatId: string;
   readonly revision: number;
   readonly lastError?: string;
 }
@@ -236,6 +275,8 @@ export function createEmptyDesktopAppState(): DesktopAppState {
     composerDeviceMode: "off",
     themeMode: "system",
     commitPushModel: undefined,
+    chats: [],
+    selectedChatId: "",
     revision: 0,
   };
 }

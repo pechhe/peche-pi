@@ -21,6 +21,7 @@ import type { ModelSelectorHandle } from "./model-selector";
 import type { CavemanLevel } from "./ipc";
 
 interface NewThreadViewProps {
+  readonly isChat?: boolean;
   readonly workspaces: readonly WorkspaceRecord[];
   readonly selectedWorkspaceId: string;
   readonly runtime?: RuntimeSnapshot;
@@ -68,6 +69,7 @@ interface NewThreadViewProps {
 }
 
 export function NewThreadView({
+  isChat = false,
   workspaces,
   selectedWorkspaceId,
   runtime,
@@ -129,7 +131,7 @@ export function NewThreadView({
     composer.style.height = `${Math.min(composer.scrollHeight, 260)}px`;
   }, [composerRef, prompt]);
 
-  if (!workspace) {
+  if (!isChat && !workspace) {
     return (
       <section className="canvas canvas--empty">
         <div className="empty-panel">
@@ -148,8 +150,8 @@ export function NewThreadView({
           <div className="new-thread__logo" data-testid="new-thread-logo">
             <PiLogoMark />
           </div>
-          <div className="new-thread__eyebrow">New thread</div>
-          <h1 className="new-thread__title">Let&apos;s build</h1>
+          <div className="new-thread__eyebrow">{isChat ? "New chat" : "New thread"}</div>
+          <h1 className="new-thread__title">{isChat ? "What\u2019s up?" : "Let\u2019s build"}</h1>
         </div>
 
         <div className="new-thread__composer composer">
@@ -194,6 +196,7 @@ export function NewThreadView({
               textareaPlaceholder={composerMode === "plan" ? "Describe what you want to plan. Pi will grill you, write a PRD, then prepare Ralph." : "message the clanker"}
               footer={(
                 <NewThreadComposerFooter
+                  isChat={isChat}
                   runtime={runtime}
                   environment={environment}
                   provider={provider}
@@ -221,6 +224,7 @@ export function NewThreadView({
 }
 
 interface NewThreadComposerFooterProps {
+  readonly isChat: boolean;
   readonly runtime?: RuntimeSnapshot;
   readonly environment: NewThreadEnvironment;
   readonly provider: string | undefined;
@@ -240,6 +244,7 @@ interface NewThreadComposerFooterProps {
 }
 
 function NewThreadComposerFooter({
+  isChat,
   runtime,
   environment,
   provider,
@@ -262,42 +267,50 @@ function NewThreadComposerFooter({
       <div className="composer__footer">
         <div className="composer__footer-row">
           <div className="composer__hint new-thread__hint">
-            <div className="new-thread__environment-group">
-              <button
-                className={`new-thread__environment ${environment === "local" ? "new-thread__environment--active" : ""}`}
-                type="button"
-                onClick={() => onSelectEnvironment("local")}
-              >
-                <span>Local</span>
-              </button>
-              <button
-                className={`new-thread__environment ${environment === "worktree" ? "new-thread__environment--active" : ""}`}
-                type="button"
-                onClick={() => onSelectEnvironment("worktree")}
-              >
-                <span>Worktree</span>
-              </button>
-            </div>
-            <span className="new-thread__hint-separator">·</span>
-            <ComposerModeSelector mode={composerMode} onSetMode={onSetComposerMode} />
-            <span className="new-thread__hint-separator">·</span>
-            <CavemanSelector level={cavemanLevel} onSetLevel={onSetCavemanLevel} />
-            <ModelFeatureBadges runtime={runtime} provider={provider} modelId={modelId} />
-            <span className="new-thread__hint-separator">·</span>
-            <ModelSelector
-              ref={modelSelectorRef}
-              runtime={runtime}
-              provider={provider}
-              modelId={modelId}
-              thinkingLevel={thinkingLevel}
-              dropdownPlacement="below"
-              showEmptyModelControl
-              unselectedModelLabel={modelOnboarding.unselectedModelLabel}
-              emptyModelLabel={MODEL_OPTIONS_EMPTY_TITLE}
-              emptyModelTitle={modelOnboarding.emptyModelTitle}
-              onSetModel={onSetModel}
-              onSetThinking={onSetThinking}
-            />
+            <span className="composer__hint-prose">Enter to send · Shift+Enter for newline</span>
+            <span className="composer__controls">
+              {!isChat ? (
+                <>
+                  <span className="composer__controls-sep">{" \u00b7 "}</span>
+                  <span className="new-thread__environment-group">
+                    <button
+                      className={`new-thread__environment ${environment === "local" ? "new-thread__environment--active" : ""}`}
+                      type="button"
+                      onClick={() => onSelectEnvironment("local")}
+                    >
+                      <span>Local</span>
+                    </button>
+                    <button
+                      className={`new-thread__environment ${environment === "worktree" ? "new-thread__environment--active" : ""}`}
+                      type="button"
+                      onClick={() => onSelectEnvironment("worktree")}
+                    >
+                      <span>Worktree</span>
+                    </button>
+                  </span>
+                </>
+              ) : null}
+              <span className="composer__controls-sep">{" \u00b7 "}</span>
+              <ComposerModeSelector mode={composerMode} onSetMode={onSetComposerMode} />
+              <span className="composer__controls-sep">{" \u00b7 "}</span>
+              <ModelSelector
+                ref={modelSelectorRef}
+                runtime={runtime}
+                provider={provider}
+                modelId={modelId}
+                thinkingLevel={thinkingLevel}
+                dropdownPlacement="below"
+                showEmptyModelControl
+                unselectedModelLabel={modelOnboarding.unselectedModelLabel}
+                emptyModelLabel={MODEL_OPTIONS_EMPTY_TITLE}
+                emptyModelTitle={modelOnboarding.emptyModelTitle}
+                onSetModel={onSetModel}
+                onSetThinking={onSetThinking}
+              />
+              <span className="composer__controls-sep">{" \u00b7 "}</span>
+              <CavemanSelector level={cavemanLevel} onSetLevel={onSetCavemanLevel} />
+              <ModelFeatureBadges runtime={runtime} provider={provider} modelId={modelId} />
+            </span>
           </div>
 
           <div className="composer__actions">

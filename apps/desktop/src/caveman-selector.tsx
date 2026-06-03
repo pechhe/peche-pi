@@ -1,15 +1,30 @@
 import type { CavemanLevel } from "./ipc";
 
-const CAVEMAN_LEVELS: readonly { readonly value: CavemanLevel; readonly label: string }[] = [
-  { value: "off", label: "Caveman off" },
-  { value: "lite", label: "Caveman lite" },
-  { value: "full", label: "Caveman full" },
-  { value: "ultra", label: "Caveman ultra" },
-  { value: "micro", label: "Caveman micro" },
-  { value: "wenyan-lite", label: "文言 lite" },
-  { value: "wenyan", label: "文言" },
-  { value: "wenyan-ultra", label: "文言 ultra" },
-];
+// Click cycles through these three levels only.
+const CAVEMAN_CYCLE: readonly CavemanLevel[] = ["off", "micro", "ultra"];
+
+const CAVEMAN_LABELS: Record<string, string> = {
+  off: "Caveman off",
+  lite: "Caveman lite",
+  full: "Caveman full",
+  ultra: "Caveman ultra",
+  micro: "Caveman micro",
+  "wenyan-lite": "文言 lite",
+  wenyan: "文言",
+  "wenyan-ultra": "文言 ultra",
+};
+
+function cavemanLabel(level: CavemanLevel): string {
+  return CAVEMAN_LABELS[level] ?? `Caveman ${level}`;
+}
+
+function nextCavemanLevel(level: CavemanLevel): CavemanLevel {
+  const index = CAVEMAN_CYCLE.indexOf(level);
+  if (index === -1) {
+    return CAVEMAN_CYCLE[0]!;
+  }
+  return CAVEMAN_CYCLE[(index + 1) % CAVEMAN_CYCLE.length]!;
+}
 
 interface CavemanSelectorProps {
   readonly level: CavemanLevel;
@@ -19,22 +34,18 @@ interface CavemanSelectorProps {
 
 export function CavemanSelector({ level, disabled = false, onSetLevel }: CavemanSelectorProps) {
   return (
-    <label className="caveman-selector" title="Caveman output compression level">
+    <span className="caveman-selector" title="Caveman output compression level (click to cycle: off → micro → ultra)">
       <span aria-hidden="true">🪨</span>
       <span className="sr-only">Caveman compression</span>
-      <select
-        aria-label="Caveman compression"
+      <button
+        aria-label={`Caveman compression: ${cavemanLabel(level)}`}
         className="caveman-selector__select"
         disabled={disabled}
-        value={level}
-        onChange={(event) => onSetLevel(event.target.value as CavemanLevel)}
+        type="button"
+        onClick={() => onSetLevel(nextCavemanLevel(level))}
       >
-        {CAVEMAN_LEVELS.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-    </label>
+        {cavemanLabel(level)}
+      </button>
+    </span>
   );
 }

@@ -1,4 +1,4 @@
-import { useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type ReactNode, type RefObject } from "react";
+import { useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from "react";
 import type { ComposerAttachment } from "./desktop-state";
 import type {
   ComposerSlashCommand,
@@ -133,6 +133,24 @@ export function ComposerSurface({
     onComposerDrop(event);
   };
 
+  // Clicking anywhere in the empty screen area (the gap below the text,
+  // above the controls) should land the cursor in the textarea. Without
+  // this, clicks on the editor padding/gap do nothing.
+  const handleEditorMouseDown = (event: MouseEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement;
+    if (target.closest("button, a, input, select, textarea, .composer__bar")) {
+      return;
+    }
+    const textarea = composerRef.current;
+    if (!textarea) {
+      return;
+    }
+    event.preventDefault();
+    textarea.focus();
+    const caret = textarea.value.length;
+    textarea.setSelectionRange(caret, caret);
+  };
+
   return (
     <div
       className={`composer__surface ${isDragActive ? "composer__surface--drag-active" : ""}`}
@@ -234,7 +252,7 @@ export function ComposerSurface({
           {lastError}
         </div>
       ) : null}
-      <div className="composer__editor">
+      <div className="composer__editor" onMouseDown={handleEditorMouseDown}>
         {topNotice}
         {showMentionMenu ? (
           <div className="composer__menus">

@@ -10,6 +10,7 @@ import {
   type DesktopAppState,
   type NewThreadEnvironment,
   type SelectedTranscriptRecord,
+  type StartChatInput,
   type StartThreadInput,
   type TranscriptMessage,
   type WorktreeRecord,
@@ -41,6 +42,7 @@ import { SidebarToggleButton } from "./sidebar-toggle-button";
 import { Topbar } from "./topbar";
 import { TerminalPanel } from "./terminal-panel";
 import { ConversationTimeline, VIRTUALIZATION_THRESHOLD } from "./conversation-timeline";
+import LoadingBar from "./loading-bar";
 import { useSlashMenu } from "./hooks/use-slash-menu";
 import { useMentionMenu } from "./hooks/use-mention-menu";
 import { useThreadSearch } from "./hooks/use-thread-search";
@@ -79,14 +81,39 @@ function useDesktopAppState() {
       return undefined;
     }
 
-    void Promise.all([api.getState(), api.getSelectedTranscript()]).then(([state, transcript]) => {
-      if (!active) {
-        return;
-      }
-      setSnapshot(state);
-      lastAppliedSessionKey = transcript ? `${transcript.workspaceId}::${transcript.sessionId}` : null;
-      setSelectedTranscript(transcript);
-    });
+    void Promise.all([api.getState(), api.getSelectedTranscript()])
+      .then(([state, transcript]) => {
+        if (!active) return;
+        setSnapshot(state);
+        lastAppliedSessionKey = transcript ? `${transcript.workspaceId}::${transcript.sessionId}` : null;
+        setSelectedTranscript(transcript);
+        // If a session is selected but transcript came back null, retry.
+        if (!transcript && state.selectedSessionId) {
+          void api.getSelectedTranscript().then((retried) => {
+            if (active && retried) {
+              lastAppliedSessionKey = `${retried.workspaceId}::${retried.sessionId}`;
+              setSelectedTranscript(retried);
+            }
+          });
+        }
+      })
+      .catch(() => {
+        // Promise.all rejected (likely getSelectedTranscript threw).
+        // Retry each call individually so state at least populates.
+        if (!active) return;
+        void api.getState().then((state) => {
+          if (!active) return;
+          setSnapshot(state);
+          if (state.selectedSessionId) {
+            void api.getSelectedTranscript().then((transcript) => {
+              if (active && transcript) {
+                lastAppliedSessionKey = `${transcript.workspaceId}::${transcript.sessionId}`;
+                setSelectedTranscript(transcript);
+              }
+            });
+          }
+        });
+      });
 
     const unsubscribeState = api.onStateChanged((state) => {
       if (active) {
@@ -106,10 +133,22 @@ function useDesktopAppState() {
     // session's view.
     let pendingTranscript: SelectedTranscriptRecord | null | undefined = undefined;
     let rafHandle: number | null = null;
+    let coalesceTimer: ReturnType<typeof setTimeout> | null = null;
     let lastAppliedSessionKey: string | null = null;
 
+    const clearCoalesce = () => {
+      if (rafHandle !== null) {
+        cancelAnimationFrame(rafHandle);
+        rafHandle = null;
+      }
+      if (coalesceTimer !== null) {
+        clearTimeout(coalesceTimer);
+        coalesceTimer = null;
+      }
+    };
+
     const flushTranscript = () => {
-      rafHandle = null;
+      clearCoalesce();
       if (!active || pendingTranscript === undefined) {
         pendingTranscript = undefined;
         return;
@@ -121,10 +160,7 @@ function useDesktopAppState() {
     };
 
     const applyTranscriptImmediately = (payload: SelectedTranscriptRecord | null) => {
-      if (rafHandle !== null) {
-        cancelAnimationFrame(rafHandle);
-        rafHandle = null;
-      }
+      clearCoalesce();
       pendingTranscript = undefined;
       lastAppliedSessionKey = payload ? `${payload.workspaceId}::${payload.sessionId}` : null;
       setSelectedTranscript(payload);
@@ -142,23 +178,27 @@ function useDesktopAppState() {
         return;
       }
       pendingTranscript = payload;
+      // Throttle streaming deltas to one flush per frame via rAF, but back it
+      // with a timeout: requestAnimationFrame is paused while the window is
+      // backgrounded/occluded, which would otherwise strand this payload (the
+      // "thread stuck blank until you switch away and back" bug).
       if (rafHandle === null) {
         rafHandle = requestAnimationFrame(flushTranscript);
+      }
+      if (coalesceTimer === null) {
+        coalesceTimer = setTimeout(flushTranscript, 250);
       }
     });
 
     return () => {
       active = false;
-      if (rafHandle !== null) {
-        cancelAnimationFrame(rafHandle);
-        rafHandle = null;
-      }
+      clearCoalesce();
       unsubscribeState();
       unsubscribeTranscript();
     };
   }, []);
 
-  return [snapshot, setSnapshot, selectedTranscript] as const;
+  return [snapshot, setSnapshot, selectedTranscript, setSelectedTranscript] as const;
 }
 
 function updateSnapshot(
@@ -219,7 +259,7 @@ function formatRunningLabel(startedAt: string | undefined): string {
 }
 
 export default function App() {
-  const [snapshot, setSnapshot, selectedTranscript] = useDesktopAppState();
+  const [snapshot, setSnapshot, selectedTranscript, setSelectedTranscript] = useDesktopAppState();
   const [composerDraft, setComposerDraft] = useState("");
   const [composerMode, setComposerMode] = useState<ComposerMode>("build");
   const [newThreadComposerMode, setNewThreadComposerMode] = useState<ComposerMode>("build");
@@ -234,6 +274,7 @@ export default function App() {
   const [extensionsWorkspaceId, setExtensionsWorkspaceId] = useState("");
   const [pendingNewThreadWorkspaceId, setPendingNewThreadWorkspaceId] = useState("");
   const [newThreadRootWorkspaceId, setNewThreadRootWorkspaceId] = useState("");
+  const [newThreadIsChat, setNewThreadIsChat] = useState(false);
   const [newThreadEnvironment, setNewThreadEnvironment] = useState<NewThreadEnvironment>("local");
   // Per-project draft text + attachments. Keyed by rootWorkspaceId so each
   // project remembers what the user typed while navigating elsewhere.
@@ -286,6 +327,11 @@ export default function App() {
     readonly environment: NewThreadEnvironment;
     readonly prompt: string;
     readonly attachments: readonly ComposerAttachment[];
+    readonly provider: string | undefined;
+    readonly modelId: string | undefined;
+    readonly thinkingLevel: string | undefined;
+    readonly cavemanLevel: CavemanLevel;
+    readonly composerMode: ComposerMode;
   } | null>(null);
   const [themeMode, setThemeMode] = useState<"system" | "light" | "dark" | "dracula">("system");
   const [notificationPermissionStatus, setNotificationPermissionStatus] =
@@ -380,8 +426,9 @@ export default function App() {
     const root = document.documentElement;
     const mode = snapshot.composerDeviceMode;
     root.classList.toggle("composer-device", mode !== "off");
-    root.classList.toggle("composer-device--screen", mode === "screen");
+    root.classList.toggle("composer-device--screen", mode === "screen" || mode === "screen-neon");
     root.classList.toggle("composer-device--modular", mode === "modular");
+    root.classList.toggle("composer-device--neon", mode === "screen-neon");
   }, [snapshot?.composerDeviceMode]);
 
   useEffect(() => {
@@ -417,6 +464,7 @@ export default function App() {
 
   const selectedWorkspace = snapshot ? (getSelectedWorkspace(snapshot) ?? snapshot.workspaces[0]) : undefined;
   const selectedSession = snapshot ? (getSelectedSession(snapshot) ?? selectedWorkspace?.sessions[0]) : undefined;
+  const chats = snapshot?.chats ?? [];
   // Sidebar-facing derivations depend only on workspaces/worktrees, not selection.
   // Keeping them off `selectedWorkspace` lets the memoized Sidebar skip re-renders
   // when the user just switches between sessions.
@@ -430,20 +478,29 @@ export default function App() {
     }
 
     const workspacesById = new Map(snapshot.workspaces.map((workspace) => [workspace.id, workspace] as const));
-    const primaryWorkspaces = snapshot.workspaces.filter((workspace) => workspace.kind === "primary");
-    const orphanWorkspaces = snapshot.workspaces.filter(
+    const chatWorkspaceIds = new Set(
+      snapshot.chats.map((chat) => chat.chatWorkspaceId).filter((id): id is string => Boolean(id)),
+    );
+    // Chat workspaces live under a "/chats/" directory in app support. Filter by
+    // both the known chat ids and the path shape so leaked/unmigrated chat
+    // workspaces never appear in the Threads list.
+    const isChatWorkspace = (workspace: WorkspaceRecord): boolean =>
+      chatWorkspaceIds.has(workspace.id) || /[/\\]chats[/\\][^/\\]+[/\\]?$/.test(workspace.path);
+    const nonChatWorkspaces = snapshot.workspaces.filter((workspace) => !isChatWorkspace(workspace));
+    const primaryWorkspaces = nonChatWorkspaces.filter((workspace) => workspace.kind === "primary");
+    const orphanWorkspaces = nonChatWorkspaces.filter(
       (workspace) => workspace.kind === "worktree" && !workspacesById.has(workspace.rootWorkspaceId ?? ""),
     );
     const nextVisibleWorkspaces =
-      primaryWorkspaces.length > 0 ? [...primaryWorkspaces, ...orphanWorkspaces] : snapshot.workspaces;
+      primaryWorkspaces.length > 0 ? [...primaryWorkspaces, ...orphanWorkspaces] : nonChatWorkspaces;
     const nextLinkedWorktreeByWorkspaceId = new Map(
       Object.values(snapshot.worktreesByWorkspace)
         .flat()
         .filter((worktree) => Boolean(worktree.linkedWorkspaceId))
         .map((worktree) => [worktree.linkedWorkspaceId as string, worktree] as const),
     );
-    const nextRootWorkspaceOptions = [...new Set(snapshot.workspaces.map((workspace) => resolveRepoWorkspaceId(snapshot.workspaces, workspace.id) ?? workspace.id))]
-      .map((workspaceId) => snapshot.workspaces.find((workspace) => workspace.id === workspaceId))
+    const nextRootWorkspaceOptions = [...new Set(nonChatWorkspaces.map((workspace) => resolveRepoWorkspaceId(nonChatWorkspaces, workspace.id) ?? workspace.id))]
+      .map((workspaceId) => nonChatWorkspaces.find((workspace) => workspace.id === workspaceId))
       .filter((workspace): workspace is WorkspaceRecord => Boolean(workspace));
 
     return {
@@ -569,6 +626,45 @@ export default function App() {
     selectedTranscript.workspaceId !== selectedWorkspace?.id ||
     selectedTranscript.sessionId !== selectedSession?.id
   );
+  // Self-heal: if a session is selected but its transcript never arrived (a
+  // main-side publish can be dropped if it fires before the renderer's IPC
+  // listener is attached, or coalesced and stranded), re-request it directly
+  // instead of staying stuck on the loading bar until the user switches
+  // threads and back.
+  const selfHealWorkspaceId = selectedWorkspace?.id;
+  const selfHealSessionId = selectedSession?.id;
+  useEffect(() => {
+    if (!isTranscriptLoading || !selfHealWorkspaceId || !selfHealSessionId) {
+      return undefined;
+    }
+    const api = window.piApp;
+    if (!api) {
+      return undefined;
+    }
+    let cancelled = false;
+    const refetch = () => {
+      void api.getSelectedTranscript().then((transcript) => {
+        if (
+          cancelled ||
+          !transcript ||
+          transcript.workspaceId !== selfHealWorkspaceId ||
+          transcript.sessionId !== selfHealSessionId
+        ) {
+          return;
+        }
+        setSelectedTranscript(transcript);
+      });
+    };
+    // First attempt shortly after detecting the stuck state, then a backstop
+    // retry in case hydration is still in flight on the main side.
+    const first = window.setTimeout(refetch, 200);
+    const second = window.setTimeout(refetch, 1000);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(first);
+      window.clearTimeout(second);
+    };
+  }, [isTranscriptLoading, selfHealWorkspaceId, selfHealSessionId, setSelectedTranscript]);
   const selectedSessionCommands = selectedSession ? snapshot?.sessionCommandsBySession[selectedSessionKey] ?? [] : [];
   const blackholeAvailable = selectedSessionCommands.some((command) => command.name === "blackhole");
   const selectedExtensionUi = selectedSession ? snapshot?.sessionExtensionUiBySession[selectedSessionKey] : undefined;
@@ -590,7 +686,7 @@ export default function App() {
   const persistedComposerDraft = snapshot?.composerDraft ?? "";
   const threadGroups = useMemo(
     () => (snapshot ? buildThreadGroups(snapshot) : []),
-    [snapshot?.workspaces, snapshot?.worktreesByWorkspace, snapshot?.workspaceOrder],
+    [snapshot?.workspaces, snapshot?.worktreesByWorkspace, snapshot?.workspaceOrder, snapshot?.chats],
   );
   const focusComposer = () => {
     window.requestAnimationFrame(() => {
@@ -1556,8 +1652,22 @@ export default function App() {
 
   const openNewThreadSurface = (workspaceId?: string) => {
     setPendingNewThreadWorkspaceId("");
+    setNewThreadIsChat(false);
     resetNewThreadSurface(workspaceId);
     setActiveView("new-thread");
+  };
+
+  const openNewChatSurface = () => {
+    setPendingNewThreadWorkspaceId("");
+    setNewThreadIsChat(true);
+    setNewThreadEnvironment("local");
+    setNewThreadProvider(undefined);
+    setNewThreadModelId(undefined);
+    setNewThreadThinkingLevel(undefined);
+    setNewThreadComposerMode("build");
+    setNewThreadComposerError(undefined);
+    setActiveView("new-thread");
+    focusNewThreadComposer();
   };
 
   const handleSelectNewThreadWorkspace = (workspaceId: string) => {
@@ -1996,7 +2106,93 @@ export default function App() {
     void updateSnapshot(api, setSnapshot, () => api.unarchiveSession(target));
   };
 
+  const handleCreateChat = () => {
+    openNewChatSurface();
+  };
+
+  const handleSelectChat = (chatId: string) => {
+    void updateSnapshot(api, setSnapshot, () => api.selectChat(chatId)).then(() => {
+      focusComposer();
+    });
+  };
+
+  const handleArchiveChat = (chatId: string) => {
+    void updateSnapshot(api, setSnapshot, () => api.archiveChat(chatId));
+  };
+
+  const handleUnarchiveChat = (chatId: string) => {
+    void updateSnapshot(api, setSnapshot, () => api.unarchiveChat(chatId));
+  };
+
+  const handleRemoveChat = (chatId: string) => {
+    void updateSnapshot(api, setSnapshot, () => api.removeChat(chatId));
+  };
+
+  const handleStartChat = () => {
+    if (!newThreadPrompt.trim() && newThreadAttachments.length === 0) {
+      return;
+    }
+    if (newThreadModelOnboarding.requiresModelSelection) {
+      return;
+    }
+    const treeCommand = parseTreeComposerCommand(newThreadPrompt);
+    if (treeCommand?.type === "error") {
+      setNewThreadComposerError(treeCommand.message);
+      return;
+    }
+    if (treeCommand?.type === "tree") {
+      setNewThreadComposerError("/tree is only available inside an existing session.");
+      return;
+    }
+    const input: StartChatInput = {
+      prompt: newThreadComposerMode === "plan" ? buildPlanModePrompt(newThreadPrompt) : newThreadPrompt,
+      attachments: newThreadAttachments,
+      provider: resolvedNewThreadProvider,
+      modelId: resolvedNewThreadModelId,
+      thinkingLevel: resolvedNewThreadThinkingLevel,
+    };
+    const capturedPrompt = newThreadPrompt;
+    const capturedAttachments = newThreadAttachments;
+    setPendingThreadStart({
+      workspaceId: "",
+      workspaceName: "New chat",
+      environment: "local",
+      prompt: capturedPrompt,
+      attachments: capturedAttachments,
+      provider: resolvedNewThreadProvider,
+      modelId: resolvedNewThreadModelId,
+      thinkingLevel: resolvedNewThreadThinkingLevel,
+      cavemanLevel,
+      composerMode: newThreadComposerMode,
+    });
+    setNewThreadPrompt("");
+    setNewThreadAttachments([]);
+    setNewThreadProvider(undefined);
+    setNewThreadModelId(undefined);
+    setNewThreadThinkingLevel(undefined);
+    setNewThreadComposerMode("build");
+    setNewThreadIsChat(false);
+    void updateSnapshot(api, setSnapshot, () => api.startChat(input))
+      .then(() => {
+        setPendingThreadStart(null);
+        focusComposer();
+      })
+      .catch((error: unknown) => {
+        setPendingThreadStart(null);
+        setNewThreadIsChat(true);
+        setNewThreadPrompt(capturedPrompt);
+        setNewThreadAttachments(capturedAttachments);
+        setNewThreadComposerError(
+          error instanceof Error ? error.message : "Failed to start chat.",
+        );
+      });
+  };
+
   const handleStartThread = () => {
+    if (newThreadIsChat) {
+      handleStartChat();
+      return;
+    }
     if (!newThreadRootWorkspaceId || (!newThreadPrompt.trim() && newThreadAttachments.length === 0)) {
       return;
     }
@@ -2036,6 +2232,11 @@ export default function App() {
       environment: newThreadEnvironment,
       prompt: newThreadPrompt,
       attachments: newThreadAttachments,
+      provider: resolvedNewThreadProvider,
+      modelId: resolvedNewThreadModelId,
+      thinkingLevel: resolvedNewThreadThinkingLevel,
+      cavemanLevel,
+      composerMode: newThreadComposerMode,
     });
     setNewThreadPrompt("");
     setNewThreadAttachments([]);
@@ -2048,6 +2249,17 @@ export default function App() {
       api.startThread(input),
     ).then(() => {
       setPendingThreadStart(null);
+    }).catch((error: unknown) => {
+      // startThread can reject if the main process fails to register/handle
+      // the IPC (e.g. a runtime spin-up error). Without this the pending
+      // "Preparing your thread…" view would hang forever with no feedback.
+      // Clear the placeholder, restore the composer input, and surface the error.
+      setPendingThreadStart(null);
+      setNewThreadPrompt(newThreadPrompt);
+      setNewThreadAttachments(newThreadAttachments);
+      setNewThreadComposerError(
+        error instanceof Error ? error.message : "Failed to start thread.",
+      );
     });
   };
 
@@ -2166,6 +2378,7 @@ export default function App() {
             activeView={snapshot.activeView}
             selectedWorkspace={selectedWorkspace}
             selectedSession={selectedSession}
+            chats={chats}
             visibleWorkspaces={visibleWorkspaces}
             threadGroups={threadGroups}
             linkedWorktreeByWorkspaceId={linkedWorktreeByWorkspaceId}
@@ -2181,6 +2394,11 @@ export default function App() {
             onArchiveSession={handleArchiveSession}
             onSelectSession={handleSelectSession}
             onUnarchiveSession={handleUnarchiveSession}
+            onCreateChat={handleCreateChat}
+            onSelectChat={handleSelectChat}
+            onArchiveChat={handleArchiveChat}
+            onUnarchiveChat={handleUnarchiveChat}
+            onRemoveChat={handleRemoveChat}
           />
         ) : null}
         <main className="main main--skills">
@@ -2278,6 +2496,7 @@ export default function App() {
             activeView={snapshot.activeView}
             selectedWorkspace={selectedWorkspace}
             selectedSession={selectedSession}
+            chats={chats}
             visibleWorkspaces={visibleWorkspaces}
             threadGroups={threadGroups}
             linkedWorktreeByWorkspaceId={linkedWorktreeByWorkspaceId}
@@ -2293,6 +2512,11 @@ export default function App() {
             onArchiveSession={handleArchiveSession}
             onSelectSession={handleSelectSession}
             onUnarchiveSession={handleUnarchiveSession}
+            onCreateChat={handleCreateChat}
+            onSelectChat={handleSelectChat}
+            onArchiveChat={handleArchiveChat}
+            onUnarchiveChat={handleUnarchiveChat}
+            onRemoveChat={handleRemoveChat}
           />
         ) : null}
         <main className="main main--skills">
@@ -2366,6 +2590,7 @@ export default function App() {
             activeView={snapshot.activeView}
             selectedWorkspace={selectedWorkspace}
             selectedSession={selectedSession}
+            chats={chats}
             visibleWorkspaces={visibleWorkspaces}
             threadGroups={threadGroups}
             linkedWorktreeByWorkspaceId={linkedWorktreeByWorkspaceId}
@@ -2381,6 +2606,11 @@ export default function App() {
             onArchiveSession={handleArchiveSession}
             onSelectSession={handleSelectSession}
             onUnarchiveSession={handleUnarchiveSession}
+            onCreateChat={handleCreateChat}
+            onSelectChat={handleSelectChat}
+            onArchiveChat={handleArchiveChat}
+            onUnarchiveChat={handleUnarchiveChat}
+            onRemoveChat={handleRemoveChat}
           />
         ) : null}
         <main className="main main--skills">
@@ -2424,6 +2654,7 @@ export default function App() {
           activeView={snapshot.activeView}
           selectedWorkspace={selectedWorkspace}
           selectedSession={selectedSession}
+          chats={chats}
           visibleWorkspaces={visibleWorkspaces}
           threadGroups={threadGroups}
           linkedWorktreeByWorkspaceId={linkedWorktreeByWorkspaceId}
@@ -2439,6 +2670,11 @@ export default function App() {
           onArchiveSession={handleArchiveSession}
           onSelectSession={handleSelectSession}
           onUnarchiveSession={handleUnarchiveSession}
+          onCreateChat={handleCreateChat}
+          onSelectChat={handleSelectChat}
+          onArchiveChat={handleArchiveChat}
+          onUnarchiveChat={handleUnarchiveChat}
+          onRemoveChat={handleRemoveChat}
         />
       ) : null}
 
@@ -2471,14 +2707,19 @@ export default function App() {
           <>
         {pendingThreadStart ? (
           <PendingThreadView
-            workspaceName={pendingThreadStart.workspaceName}
             prompt={pendingThreadStart.prompt}
             attachments={pendingThreadStart.attachments}
-            environment={pendingThreadStart.environment}
+            runtime={rootRuntime}
+            provider={pendingThreadStart.provider}
+            modelId={pendingThreadStart.modelId}
+            thinkingLevel={pendingThreadStart.thinkingLevel}
+            cavemanLevel={pendingThreadStart.cavemanLevel}
+            composerMode={pendingThreadStart.composerMode}
           />
         ) : snapshot.activeView === "new-thread" ? (
-          rootWorkspaceOptions.length > 0 ? (
+          newThreadIsChat || rootWorkspaceOptions.length > 0 ? (
             <NewThreadView
+              isChat={newThreadIsChat}
               workspaces={rootWorkspaceOptions}
               selectedWorkspaceId={newThreadRootWorkspaceId || rootWorkspaceOptions[0]?.id || ""}
               runtime={newThreadRuntime}
@@ -2540,16 +2781,7 @@ export default function App() {
         ) : selectedWorkspace && selectedSession ? (
           <>
             <section className="canvas canvas--thread">
-              {isTranscriptLoading ? (
-                <div
-                  className="canvas__loading-bar"
-                  role="progressbar"
-                  aria-label="Loading transcript"
-                  data-testid="transcript-loading-bar"
-                >
-                  <span className="canvas__loading-bar-indicator" />
-                </div>
-              ) : null}
+              <LoadingBar loading={isTranscriptLoading} />
               <div className="conversation conversation--thread">
                 <ConversationTimeline
                   transcript={visibleTranscript}

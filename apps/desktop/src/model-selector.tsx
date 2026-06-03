@@ -27,10 +27,18 @@ interface ModelSelectorProps {
   readonly onSetThinking: (level: string) => void;
 }
 
-type OpenDropdown = "none" | "model" | "thinking";
+type OpenDropdown = "none" | "model";
 
 function modelKey(providerId: string, modelId: string): string {
   return `${providerId}:${modelId}`;
+}
+
+function nextThinkingLevel(level: string): string {
+  const index = THINKING_OPTIONS.findIndex((option) => option.value === level);
+  if (index === -1) {
+    return THINKING_OPTIONS[0]!.value;
+  }
+  return THINKING_OPTIONS[(index + 1) % THINKING_OPTIONS.length]!.value;
 }
 
 export const ModelSelector = forwardRef<ModelSelectorHandle, ModelSelectorProps>(
@@ -268,37 +276,11 @@ export const ModelSelector = forwardRef<ModelSelectorHandle, ModelSelectorProps>
               className="model-selector__badge"
               type="button"
               disabled={disabled}
-              onClick={() => setOpen(open === "thinking" ? "none" : "thinking")}
+              title="Thinking level (click to cycle)"
+              onClick={() => onSetThinking(nextThinkingLevel(thinkingLevel))}
             >
               <ReasoningMeter level={thinkingLevel} size={12} />
             </button>
-            {open === "thinking" ? (
-              <div
-                className={`model-selector__dropdown ${dropdownPlacement === "below" ? "model-selector__dropdown--below" : ""}`}
-                onWheel={(event) => event.stopPropagation()}
-              >
-                <div className="model-selector__group-title">Thinking Level</div>
-                {THINKING_OPTIONS.map((option) => {
-                  const isActive = option.value === thinkingLevel;
-                  return (
-                    <button
-                      className={`model-selector__item${isActive ? " model-selector__item--active" : ""}`}
-                      key={option.value}
-                      type="button"
-                      onClick={() => {
-                        if (!isActive) {
-                          onSetThinking(option.value);
-                        }
-                        setOpen("none");
-                      }}
-                    >
-                      <ReasoningMeter level={option.value} size={14} />
-                      <span className="model-selector__item-meta">{option.description}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            ) : null}
           </span>
         ) : null}
       </span>

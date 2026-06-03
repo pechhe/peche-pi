@@ -1,5 +1,6 @@
 import type {
   AppView,
+  ChatRecord,
   ComposerAttachment,
   ComposerDeviceMode,
   ComposerDraftSyncSource,
@@ -54,7 +55,14 @@ export type DesktopAction =
       readonly sessionId: string;
       readonly composerDraft: string;
       readonly composerAttachments: readonly ComposerAttachment[];
-    };
+    }
+  | { readonly type: "chats/add"; readonly chat: ChatRecord }
+  | { readonly type: "chats/select"; readonly chatId: string }
+  | { readonly type: "chats/remove"; readonly chatId: string }
+  | { readonly type: "chats/archive"; readonly chatId: string; readonly archivedAt: string }
+  | { readonly type: "chats/unarchive"; readonly chatId: string }
+  | { readonly type: "chats/rename"; readonly chatId: string; readonly title: string }
+  | { readonly type: "chats/setStatus"; readonly chatId: string; readonly status: ChatRecord["status"] };
 
 export function reduce(state: DesktopAppState, action: DesktopAction): DesktopAppState {
   switch (action.type) {
@@ -89,8 +97,6 @@ export function reduce(state: DesktopAppState, action: DesktopAction): DesktopAp
       return bump({ ...state, themeMode: action.themeMode });
     }
     case "settings/setIntegratedTerminalShell": {
-      // Caller is expected to normalise the value (e.g. trim) before
-      // dispatching; the reducer stores the exact value it receives.
       if (state.integratedTerminalShell === action.integratedTerminalShell) {
         return state;
       }
@@ -103,19 +109,12 @@ export function reduce(state: DesktopAppState, action: DesktopAction): DesktopAp
       return bump({ ...state, commitPushModel: action.commitPushModel });
     }
     case "settings/mergeNotificationPreferences": {
-      // Existing behaviour is to bump revision on every merge, even when
-      // the merged result is structurally identical. Preserve that.
       return bump({
         ...state,
         notificationPreferences: { ...state.notificationPreferences, ...action.preferences },
       });
     }
     case "view/setActiveView": {
-      // Deliberate deviation from the no-op convention: existing
-      // behaviour is to always bump revision even when activeView is
-      // unchanged. The orchestrator relies on this so re-selecting the
-      // current view still triggers the post-state "mark viewed" side
-      // effect via a fresh state-changed event.
       return bump({ ...state, activeView: action.activeView });
     }
     case "settings/setModelSettingsScopeMode": {
@@ -163,14 +162,72 @@ export function reduce(state: DesktopAppState, action: DesktopAction): DesktopAp
         composerAttachments: [...action.composerAttachments],
       });
     }
+    case "chats/add": {
+      if (state.chats.find((c) => c.id === action.chat.id)) {
+        return state;
+      }
+      return bump({ ...state, chats: [...state.chats, action.chat] });
+    }
+    case "chats/select": {
+      if (state.selectedChatId === action.chatId) {
+        return state;
+      }
+      return bump({ ...state, selectedChatId: action.chatId });
+    }
+    case "chats/remove": {
+      const index = state.chats.findIndex((c) => c.id === action.chatId);
+      if (index === -1) {
+        return state;
+      }
+      const nextChats = [...state.chats];
+      nextChats.splice(index, 1);
+      return bump({
+        ...state,
+        chats: nextChats,
+        selectedChatId: state.selectedChatId === action.chatId ? "" : state.selectedChatId,
+      });
+    }
+    case "chats/archive": {
+      return bump({
+        ...state,
+        chats: state.chats.map((c) => (c.id === action.chatId ? { ...c, archivedAt: action.archivedAt } : c)),
+      });
+    }
+    case "chats/unarchive": {
+      return bump({
+        ...state,
+        chats: state.chats.map((c) => (c.id === action.chatId ? { ...c, archivedAt: undefined } : c)),
+      });
+    }
+    case "chats/rename": {
+      return bump({
+        ...state,
+        chats: state.chats.map((c) =>
+          c.id === action.chatId ? { ...c, title: action.title, updatedAt: new Date().toISOString() } : c,
+        ),
+      });
+    }
+    case "chats/setStatus": {
+      return bump({
+        ...state,
+        chats: state.chats.map((c) =>
+          c.id === action.chatId
+            ? {
+                ...c,
+                status: action.status,
+                ...(action.status === "running"
+                  ? { runningSince: new Date().toISOString() }
+                  : action.status === "idle"
+                    ? { runningSince: undefined }
+                    : {}),
+              }
+            : c,
+        ),
+      });
+    }
   }
 }
 
-/**
- * Standard tail applied to every real state change: clear `lastError`
- * and bump `revision`. Kept private to the reducer so the convention
- * cannot drift across action handlers.
- */
 function bump(state: DesktopAppState): DesktopAppState {
   return { ...state, lastError: undefined, revision: state.revision + 1 };
 }
@@ -182,7 +239,6 @@ function composerAttachmentsEqual(
   if (left.length !== right.length) {
     return false;
   }
-
   return left.every((attachment, index) => {
     const other = right[index];
     if (!other || attachment.id !== other.id || attachment.kind !== other.kind || attachment.name !== other.name || attachment.mimeType !== other.mimeType) {

@@ -34,6 +34,7 @@ import type {
   NotificationPreferences,
   RemoveWorktreeInput,
   SelectedTranscriptRecord,
+  StartChatInput,
   StartThreadInput,
   WorkspaceSessionTarget,
 } from "../src/desktop-state";
@@ -196,7 +197,7 @@ contextBridge.exposeInMainWorld("piApp", {
     ipcRenderer.invoke(desktopIpc.setEnableTransparency, enabled) as Promise<DesktopAppState>,
   setTranscriptVerbose: (enabled: boolean) =>
     ipcRenderer.invoke(desktopIpc.setTranscriptVerbose, enabled) as Promise<DesktopAppState>,
-  setComposerDeviceMode: (mode: "off" | "screen" | "modular") =>
+  setComposerDeviceMode: (mode: "off" | "screen" | "modular" | "screen-neon") =>
     ipcRenderer.invoke(desktopIpc.setComposerDeviceMode, mode) as Promise<DesktopAppState>,
   ensureTerminalPanel: (workspaceId: string, terminalScopeId: string, size?: Partial<TerminalSize>) =>
     ipcRenderer.invoke(desktopIpc.terminalEnsurePanel, workspaceId, terminalScopeId, size) as Promise<TerminalPanelSnapshot>,
@@ -283,6 +284,22 @@ contextBridge.exposeInMainWorld("piApp", {
   prCreate: (workspaceId: string, input: CreatePrInput) =>
     ipcRenderer.invoke(desktopIpc.prCreate, workspaceId, input) as Promise<CreatePrResult>,
   toggleWindowMaximize: () => ipcRenderer.invoke(desktopIpc.toggleWindowMaximize) as Promise<void>,
+  startChat: (input: StartChatInput) =>
+    ipcRenderer.invoke(desktopIpc.startChat, input) as Promise<DesktopAppState>,
+  selectChat: (chatId: string) =>
+    ipcRenderer.invoke(desktopIpc.selectChat, chatId) as Promise<DesktopAppState>,
+  archiveChat: (chatId: string) =>
+    ipcRenderer.invoke(desktopIpc.archiveChat, chatId) as Promise<DesktopAppState>,
+  unarchiveChat: (chatId: string) =>
+    ipcRenderer.invoke(desktopIpc.unarchiveChat, chatId) as Promise<DesktopAppState>,
+  removeChat: (chatId: string) =>
+    ipcRenderer.invoke(desktopIpc.removeChat, chatId) as Promise<DesktopAppState>,
+  renameChat: (chatId: string, title: string) =>
+    ipcRenderer.invoke(desktopIpc.renameChat, chatId, title) as Promise<DesktopAppState>,
+  getChatAgentsMd: (chatId: string) =>
+    ipcRenderer.invoke(desktopIpc.getChatAgentsMd, chatId) as Promise<string>,
+  writeChatAgentsMd: (chatId: string, content: string) =>
+    ipcRenderer.invoke(desktopIpc.writeChatAgentsMd, chatId, content) as Promise<void>,
   openExternal: (url: string) => ipcRenderer.invoke(desktopIpc.openExternal, url) as Promise<void>,
   getThemeMode: () => ipcRenderer.invoke(desktopIpc.getThemeMode) as Promise<"system" | "light" | "dark" | "dracula">,
   getResolvedTheme: () => ipcRenderer.invoke(desktopIpc.getResolvedTheme) as Promise<"light" | "dark">,

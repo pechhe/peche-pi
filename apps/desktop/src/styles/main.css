@@ -300,6 +300,11 @@
 .conversation--thread .timeline-pane--thread {
   padding-left: 28px;
   padding-right: 28px;
+  /* Reserve scroll space below the last item so it can clear the
+   * composer, which overlaps the pane bottom by ~20px (margin-top: -20px
+   * on .composer). Without this the final content sits flush at the pane
+   * bottom and is hidden behind the composer surface at max scroll. */
+  padding-bottom: 48px;
 }
 
 .conversation--thread > .chat-header {
@@ -330,8 +335,9 @@
   margin-bottom: 18px;
 }
 
-/* Dia-style indeterminate loading bar pinned to the top of the thread
- * canvas — the divider between the topbar title and the page content. */
+/* YouTube/Dia-style progressive loading bar pinned to the top of the thread
+ * canvas — the divider between the topbar title and the page content.
+ * Driven by JS progress state via scaleX + transition. */
 .canvas__loading-bar {
   position: absolute;
   top: 0;
@@ -344,33 +350,15 @@
 }
 
 .canvas__loading-bar-indicator {
+  display: block;
   position: absolute;
   top: 0;
   bottom: 0;
   left: 0;
-  width: 40%;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    var(--accent, var(--text-strong)) 50%,
-    transparent 100%
-  );
-  animation: canvas-loading-slide 1.15s ease-in-out infinite;
-}
-
-@keyframes canvas-loading-slide {
-  0% {
-    transform: translateX(-120%);
-  }
-  100% {
-    transform: translateX(320%);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .canvas__loading-bar-indicator {
-    animation-duration: 2.4s;
-  }
+  right: 0;
+  background: var(--accent, var(--text-strong));
+  transform-origin: left center;
+  transform: scaleX(0);
 }
 
 .chat-header__eyebrow {
@@ -523,7 +511,6 @@
   max-width: min(620px, 100%);
   padding: 13px 17px;
   border-radius: 16px;
-  border: 1px solid var(--line);
   background: var(--main);
   transform-origin: bottom right;
 }
@@ -816,7 +803,6 @@
 .timeline-edited-files {
   display: grid;
   gap: 4px;
-  max-width: 860px;
   border: 1px solid var(--border);
   border-radius: 14px;
   padding: 10px 12px;
@@ -1674,13 +1660,21 @@
 }
 
 .composer {
-  padding: 18px 28px 24px;
+  padding: 0 28px 24px;
+  position: relative;
+  z-index: 2;
+  /* Overlap the conversation by the surface corner radius so conversation
+     content scrolls up behind the composer. The opaque surface covers
+     content over its solid body, and where the surface's rounded top
+     corners curve away the content behind shows through — filling the
+     otherwise-empty corner gap instead of being clipped flat. */
+  margin-top: -20px;
 }
 
 .composer__surface {
   position: relative;
   border-radius: 18px;
-  padding: 12px 14px 11px;
+  padding: 30px 14px 11px;
   border: 1px solid var(--line);
   background: var(--surface);
   width: 100%;
@@ -3259,17 +3253,6 @@
   outline: none;
 }
 
-.new-thread__hint {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.new-thread__hint-separator {
-  color: var(--muted-soft);
-}
-
 
 .settings-disclosure {
   border-top: 1px solid var(--line);
@@ -4717,7 +4700,6 @@ mark.thread-find-active {
 }
 
 :root.dark .timeline-item__bubble {
-  border-color: var(--line);
   background: var(--surface);
 }
 
@@ -5377,7 +5359,7 @@ mark.thread-find-active {
   background: var(--crt-frame);
   border: 0;
   border-radius: 20px;
-  padding: 22px 26px 24px;
+  padding: 14px 16px 16px;
   /* Flat darker grey frame (no bright raised edges) so it reads as the
      same box as the controls strip, surrounding the screen. */
   box-shadow:
@@ -5484,19 +5466,29 @@ mark.thread-find-active {
 /* for the parts that live on the screen).                          */
 /* ---------------------------------------------------------------- */
 
+/* Retro segmented (blocky) meter: dim phosphor blocks for the track,
+   bright phosphor blocks for the filled portion, aligned to the same
+   grid so it reads like a digital bar-graph readout. */
 .composer-device .composer__context-track {
-  background: rgb(var(--crt-phosphor) / 0.10);
-  box-shadow: inset 0 0 0 1px oklch(0 0 0 / 0.4);
-  height: 3px;
+  --crt-seg: 9px;
+  --crt-seg-gap: 3px;
+  height: 8px;
+  border-radius: 1px;
+  box-shadow: none;
+  background: repeating-linear-gradient(
+    90deg,
+    rgb(var(--crt-phosphor) / 0.14) 0 var(--crt-seg),
+    transparent var(--crt-seg) calc(var(--crt-seg) + var(--crt-seg-gap))
+  );
 }
 
 .composer-device .composer__context-fill {
-  background: linear-gradient(
+  background: repeating-linear-gradient(
     90deg,
-    rgb(var(--crt-phosphor) / 0.55),
-    color-mix(in srgb, rgb(var(--crt-phosphor)) 60%, oklch(0.74 0.19 55) 40%)
+    rgb(var(--crt-phosphor) / 0.85) 0 var(--crt-seg, 9px),
+    transparent var(--crt-seg, 9px) calc(var(--crt-seg, 9px) + var(--crt-seg-gap, 3px))
   );
-  box-shadow: 0 0 6px rgb(var(--crt-phosphor) / 0.25);
+  box-shadow: 0 0 6px rgb(var(--crt-phosphor) / 0.3);
 }
 
 .composer-device .composer__context-compact-tick {
@@ -5722,7 +5714,16 @@ mark.thread-find-active {
 
 /* The bar wraps context bar + footer-row. Give it a small top gap. */
 .composer-device--modular .composer__bar {
-  margin-top: 12px;
+  margin-top: 18px;
+}
+
+/* The base device surface reserves a 16px bottom bezel (padding-bottom)
+   painted in the same grey as the controls strip. In modular mode the
+   footer-row already IS the bottom strip, so that extra bezel just adds
+   dead grey below the keys and makes them read as sitting high. Trim it
+   to ~2px so the strip's own height defines the box the keys center in. */
+:root.composer-device--modular .composer__surface {
+  padding-bottom: 2px;
 }
 
 /* Context bar stays on the screen (phosphor green) */
@@ -5731,7 +5732,9 @@ mark.thread-find-active {
   font-family: ui-monospace, "SF Mono", Menlo, "Roboto Mono", monospace;
   font-size: 11px;
   letter-spacing: 0.02em;
-  padding-bottom: 14px;
+  /* Nudge the bar down toward the divider/strip and keep a small gap. */
+  margin-top: 6px;
+  padding-bottom: 8px;
 }
 
 /* Footer-row = controls strip. Paints its own chassis-toned background
@@ -5824,7 +5827,8 @@ mark.thread-find-active {
 
 .composer-device--modular .composer-mode,
 .composer-device--modular .caveman-selector__select,
-.composer-device--modular .model-selector__badge {
+.composer-device--modular .model-selector__badge,
+.composer-device--modular .new-thread__environment {
   position: relative;
   display: inline-flex;
   align-items: center;
@@ -5832,7 +5836,10 @@ mark.thread-find-active {
   gap: 6px;
   border: 0;
   border-radius: 8px;
-  padding: 9px 14px;
+  box-sizing: border-box;
+  height: 40px;
+  padding: 0 16px;
+  align-self: center;
   font-family: ui-monospace, "SF Mono", Menlo, "Roboto Mono", monospace;
   font-size: 11px;
   font-weight: 700;
@@ -5851,13 +5858,15 @@ mark.thread-find-active {
 
 .composer-device--modular .composer-mode:hover:not(:disabled),
 .composer-device--modular .caveman-selector__select:hover:not(:disabled),
-.composer-device--modular .model-selector__badge:hover:not(:disabled) {
+.composer-device--modular .model-selector__badge:hover:not(:disabled),
+.composer-device--modular .new-thread__environment:hover:not(:disabled) {
   filter: brightness(1.08);
 }
 
 .composer-device--modular .composer-mode:active:not(:disabled),
 .composer-device--modular .caveman-selector__select:active:not(:disabled),
-.composer-device--modular .model-selector__badge:active:not(:disabled) {
+.composer-device--modular .model-selector__badge:active:not(:disabled),
+.composer-device--modular .new-thread__environment:active:not(:disabled) {
   transform: translateY(1px);
   box-shadow:
     inset 1px 1px 2px oklch(0 0 0 / 0.45),
@@ -5871,6 +5880,23 @@ mark.thread-find-active {
   cursor: not-allowed;
   opacity: 0.5;
   filter: saturate(0.5);
+}
+
+/* New-thread environment toggle: selected key reads as pressed-in purple. */
+.composer-device--modular .new-thread__environment--active {
+  transform: translateY(1px);
+  background: linear-gradient(
+    160deg,
+    oklch(0.30 0.10 295) 0%,
+    oklch(0.22 0.11 295) 55%,
+    oklch(0.18 0.10 295) 100%
+  );
+  color: oklch(0.88 0.10 295);
+  box-shadow:
+    inset 1px 1px 2px oklch(0 0 0 / 0.55),
+    inset 0 0 0 1px oklch(0.42 0.13 295 / 0.85),
+    var(--crt-key-socket),
+    0 0 18px oklch(0.62 0.18 295 / 0.22);
 }
 
 /* Build/Plan: pressed-in purple state when plan is active */
@@ -5923,11 +5949,7 @@ mark.thread-find-active {
 .composer-device--modular .caveman-selector__select {
   appearance: none;
   -webkit-appearance: none;
-  padding-right: 28px;
-  background:
-    linear-gradient(45deg, transparent 50%, var(--crt-ink-muted) 50%) calc(100% - 14px) 50% / 4px 4px no-repeat,
-    linear-gradient(135deg, var(--crt-ink-muted) 50%, transparent 50%) calc(100% - 10px) 50% / 4px 4px no-repeat,
-    var(--crt-key-bg);
+  background: var(--crt-key-bg);
 }
 
 /* Hide the model feature badges in modular mode — they add too much
@@ -5935,6 +5957,25 @@ mark.thread-find-active {
    the model key if needed (popover lives elsewhere). */
 .composer-device--modular .model-feature-badge {
   display: none;
+}
+
+/* Reasoning (thinking-level) key: match the other keycaps exactly so the
+   bottom row reads as one consistent set of physical buttons. */
+.composer-device--modular .reasoning-meter {
+  gap: 6px;
+}
+
+/* Keep the reasoning ring from adding inline descender height so the
+   thinking key matches the other keycaps exactly. */
+.composer-device--modular .reasoning-meter svg {
+  display: block;
+}
+
+.composer-device--modular .reasoning-meter__label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--crt-ink);
 }
 
 /* ---------------------------------------------------------------- */
@@ -5988,10 +6029,6 @@ mark.thread-find-active {
   z-index: 2;
 }
 
-.composer-device .composer__send:hover:not(:disabled) {
-  filter: brightness(1.06);
-}
-
 .composer-device .composer__send:active:not(:disabled) {
   transform: translateY(1px);
   box-shadow:
@@ -6005,4 +6042,158 @@ mark.thread-find-active {
   cursor: not-allowed;
   opacity: 0.5;
   filter: saturate(0.55);
+}
+
+/* ================================================================ */
+/* Screen mode: drop the hint prose and make every control a        */
+/* uniform purple phosphor pill (matching Build / Caveman).         */
+/* ================================================================ */
+
+.composer-device--screen .composer__hint-prose {
+  display: none;
+}
+
+/* With the prose gone, hide the leading " · " separator. */
+.composer-device--screen .composer__controls > .composer__controls-sep:first-child {
+  display: none;
+}
+
+/* New-thread environment toggle → phosphor pills matching the other keys. */
+.composer-device--screen .new-thread__environment {
+  border: 1px solid rgb(198 178 255 / 0.32);
+  border-radius: 999px;
+  padding: 3px 10px;
+  background: rgb(198 178 255 / 0.10);
+  color: rgb(198 178 255);
+  text-shadow: 0 0 6px rgb(198 178 255 / 0.32);
+  font-family: ui-monospace, "SF Mono", Menlo, "Roboto Mono", monospace;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.composer-device--screen .new-thread__environment:hover {
+  background: rgb(198 178 255 / 0.16);
+  border-color: rgb(198 178 255 / 0.48);
+  color: rgb(198 178 255);
+}
+.composer-device--screen .new-thread__environment--active {
+  background: rgb(198 178 255 / 0.22);
+  border-color: rgb(198 178 255 / 0.6);
+  box-shadow: inset 0 0 0 1px rgb(198 178 255 / 0.4);
+}
+
+/* Model + thinking badges → same pill as Build / Caveman. */
+.composer-device--screen .model-selector {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  vertical-align: middle;
+}
+
+.composer-device--screen .model-selector__anchor {
+  display: inline-flex;
+  align-items: center;
+}
+
+.composer-device--screen .model-selector__badge {
+  border: 1px solid rgb(198 178 255 / 0.32);
+  border-radius: 999px;
+  padding: 3px 8px;
+  background: rgb(198 178 255 / 0.10);
+  color: rgb(198 178 255);
+  text-shadow: 0 0 6px rgb(198 178 255 / 0.32);
+  font-weight: 600;
+}
+
+.composer-device--screen .model-selector__badge:hover:not(:disabled) {
+  background: rgb(198 178 255 / 0.16);
+  border-color: rgb(198 178 255 / 0.48);
+  color: rgb(198 178 255);
+}
+
+/* Reasoning meter inside its pill: recolor to the shared phosphor purple. */
+.composer-device--screen .reasoning-meter__label {
+  color: rgb(198 178 255);
+}
+
+.composer-device--screen .reasoning-meter svg circle {
+  stroke: rgb(198 178 255);
+}
+
+/* ================================================================ */
+/* Screen / Screen (Neon): no chassis — the CRT screen IS the box.  */
+/* ================================================================ */
+
+:root.composer-device--screen .composer__surface {
+  background: none;
+  padding: 0;
+  box-shadow: none;
+  border-radius: 14px;
+}
+
+.composer-device--screen .composer__surface::before,
+.composer-device--screen .composer__surface::after {
+  display: none;
+}
+
+.composer-device--screen .composer__editor {
+  border-radius: 14px;
+  box-shadow:
+    inset 0 0 0 1px rgb(var(--crt-phosphor) / 0.12),
+    0 0 0 1px oklch(0 0 0 / 0.7),
+    inset 0 1px 2px oklch(0 0 0 / 0.85),
+    inset 0 0 36px rgb(140 240 165 / 0.05);
+}
+
+/* ================================================================ */
+/* Screen (Neon): purple glowing rounded-square send key.           */
+/* ================================================================ */
+
+.composer-device--neon .composer__send {
+  width: 52px;
+  min-width: 52px;
+  height: 58px;
+  border-radius: 16px;
+  color: rgb(206 188 255);
+  background: linear-gradient(180deg, oklch(0.17 0.04 292) 0%, oklch(0.11 0.03 292) 100%);
+  box-shadow:
+    0 0 0 1px rgb(150 120 255 / 0.35),
+    0 0 18px rgb(150 110 255 / 0.45),
+    0 0 34px rgb(140 100 255 / 0.22),
+    inset 0 1px 0 rgb(206 188 255 / 0.15);
+}
+
+.composer-device--neon .composer__send::before {
+  background: radial-gradient(ellipse 80% 55% at 50% 0%, rgb(206 188 255 / 0.18), transparent 70%);
+}
+
+.composer-device--neon .composer__send::after {
+  inset: 6px;
+  border-radius: 11px;
+  box-shadow:
+    0 0 0 1.5px rgb(202 178 255 / 0.95),
+    0 0 10px rgb(170 130 255 / 0.6),
+    inset 0 0 10px rgb(170 130 255 / 0.22);
+}
+
+.composer-device--neon .composer__send svg {
+  filter: drop-shadow(0 0 4px rgb(180 140 255 / 0.85));
+}
+
+.composer-device--neon .composer__send:hover:not(:disabled) {
+  filter: brightness(1.15);
+  box-shadow:
+    0 0 0 1px rgb(160 130 255 / 0.45),
+    0 0 22px rgb(160 120 255 / 0.6),
+    0 0 40px rgb(150 110 255 / 0.32),
+    inset 0 1px 0 rgb(206 188 255 / 0.2);
+}
+
+.composer-device--neon .composer__send:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow:
+    0 0 0 1px rgb(150 120 255 / 0.35),
+    0 0 14px rgb(150 110 255 / 0.5),
+    inset 0 0 12px rgb(120 90 255 / 0.4);
 }

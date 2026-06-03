@@ -176,7 +176,7 @@ test("timeline model creates tool lifecycle rows and run summaries", () => {
   assert.equal(tool.kind === "tool" ? tool.detail : undefined, "done");
   assert.deepEqual(
     transcript.filter((item) => item.kind === "summary").map((item) => item.label),
-    ["Explored 1 file", "Worked for 5s"],
+    ["Worked for 5s"],
   );
   assert.equal(runtime.runMetrics, undefined);
   assert.equal(runtime.runningSince, undefined);

@@ -16,6 +16,7 @@ import type {
   NotificationPreferences,
   RemoveWorktreeInput,
   SelectedTranscriptRecord,
+  StartChatInput,
   StartThreadInput,
   WorkspaceSessionTarget,
 } from "./desktop-state";
@@ -122,6 +123,14 @@ export const desktopIpc = {
   commitPushExecute: "pi-gui:commit-push-execute",
   setCommitPushModel: "pi-gui:set-commit-push-model",
   getWorkspacePrInfo: "pi-gui:get-workspace-pr-info",
+  startChat: "pi-gui:start-chat",
+  selectChat: "pi-gui:select-chat",
+  archiveChat: "pi-gui:archive-chat",
+  unarchiveChat: "pi-gui:unarchive-chat",
+  removeChat: "pi-gui:remove-chat",
+  renameChat: "pi-gui:rename-chat",
+  getChatAgentsMd: "pi-gui:get-chat-agents-md",
+  writeChatAgentsMd: "pi-gui:write-chat-agents-md",
   generatePrDraft: "pi-gui:generate-pr-draft",
   prCreate: "pi-gui:pr-create",
   getThemeMode: "pi-gui:get-theme-mode",
@@ -236,6 +245,14 @@ export const piDesktopApiIpcBridge = {
   generatePrDraft: { kind: "invoke", channel: desktopIpc.generatePrDraft },
   prCreate: { kind: "invoke", channel: desktopIpc.prCreate },
   toggleWindowMaximize: { kind: "invoke", channel: desktopIpc.toggleWindowMaximize },
+  startChat: { kind: "invoke", channel: desktopIpc.startChat },
+  selectChat: { kind: "invoke", channel: desktopIpc.selectChat },
+  archiveChat: { kind: "invoke", channel: desktopIpc.archiveChat },
+  unarchiveChat: { kind: "invoke", channel: desktopIpc.unarchiveChat },
+  removeChat: { kind: "invoke", channel: desktopIpc.removeChat },
+  renameChat: { kind: "invoke", channel: desktopIpc.renameChat },
+  getChatAgentsMd: { kind: "invoke", channel: desktopIpc.getChatAgentsMd },
+  writeChatAgentsMd: { kind: "invoke", channel: desktopIpc.writeChatAgentsMd },
   openExternal: { kind: "invoke", channel: desktopIpc.openExternal },
   getThemeMode: { kind: "invoke", channel: desktopIpc.getThemeMode },
   getResolvedTheme: { kind: "invoke", channel: desktopIpc.getResolvedTheme },
@@ -499,6 +516,14 @@ export interface PiDesktopApi {
   commitPushExecute(workspaceId: string): Promise<{ readonly success: boolean; readonly message: string; readonly commitMessage?: string }>;
   setCommitPushModel(workspaceId: string, model: string): Promise<DesktopAppState>;
   getWorkspacePrInfo(workspaceId: string): Promise<WorkspacePrInfo>;
+  startChat(input: StartChatInput): Promise<DesktopAppState>;
+  selectChat(chatId: string): Promise<DesktopAppState>;
+  archiveChat(chatId: string): Promise<DesktopAppState>;
+  unarchiveChat(chatId: string): Promise<DesktopAppState>;
+  removeChat(chatId: string): Promise<DesktopAppState>;
+  renameChat(chatId: string, title: string): Promise<DesktopAppState>;
+  getChatAgentsMd(chatId: string): Promise<string>;
+  writeChatAgentsMd(chatId: string, content: string): Promise<void>;
   generatePrDraft(workspaceId: string, baseBranch?: string): Promise<PrDraftResult>;
   prCreate(workspaceId: string, input: CreatePrInput): Promise<CreatePrResult>;
   toggleWindowMaximize(): Promise<void>;

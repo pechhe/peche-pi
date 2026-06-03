@@ -20,8 +20,18 @@ export interface ThreadGroup {
 }
 
 export function buildThreadGroups(state: DesktopAppState): readonly ThreadGroup[] {
+  const chatWorkspaceIds = new Set(
+    state.chats.map((chat) => chat.chatWorkspaceId).filter((id): id is string => Boolean(id)),
+  );
+  // Chat workspaces are sessions rooted under a "/chats/" directory in app
+  // support. They surface in the dedicated Chats section, never the Threads
+  // list — exclude them here so they don't leak in as primary workspaces.
+  const isChatWorkspace = (workspace: WorkspaceRecord): boolean =>
+    chatWorkspaceIds.has(workspace.id) || /[/\\]chats[/\\][^/\\]+[/\\]?$/.test(workspace.path);
   const workspacesById = new Map(state.workspaces.map((workspace) => [workspace.id, workspace] as const));
-  const rootWorkspaces = state.workspaces.filter((workspace) => workspace.kind === "primary");
+  const rootWorkspaces = state.workspaces.filter(
+    (workspace) => workspace.kind === "primary" && !isChatWorkspace(workspace),
+  );
   const orphanWorktrees = state.workspaces.filter(
     (workspace) => workspace.kind === "worktree" && !workspacesById.has(workspace.rootWorkspaceId ?? ""),
   );

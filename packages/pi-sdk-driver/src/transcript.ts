@@ -25,3 +25,15 @@ export interface SessionTranscriptMessage {
   readonly createdAt: string;
   readonly id: string;
 }
+
+/**
+ * One iteration of a loop (e.g. a Ralph loop) reconstructed from the
+ * `parentSession` ancestry chain. Ordered root-first; the final entry is the
+ * live (active) iteration. A host stitches these into one composite loop
+ * thread, inserting a divider before each iteration's messages.
+ */
+export interface LoopIterationTranscript {
+  readonly label: string;
+  readonly sessionId: string;
+  readonly messages: readonly SessionTranscriptMessage[];
+}

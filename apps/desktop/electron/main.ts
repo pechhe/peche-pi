@@ -44,6 +44,7 @@ import type {
   CreateSessionInput,
   CreateWorktreeInput,
   RemoveWorktreeInput,
+  StartChatInput,
   StartThreadInput,
   WorkspaceSessionTarget,
 } from "../src/desktop-state";
@@ -545,7 +546,9 @@ app.whenReady().then(async () => {
     return shell.openExternal(url);
   });
   ipcMain.handle(desktopIpc.stateRequest, () => store.getState());
-  ipcMain.handle(desktopIpc.selectedTranscriptRequest, () => store.getSelectedTranscript());
+  ipcMain.handle(desktopIpc.selectedTranscriptRequest, () =>
+    store.getSelectedTranscript().catch(() => null),
+  );
   ipcMain.handle(desktopIpc.addWorkspacePath, (_event, workspacePath: string) => store.addWorkspace(workspacePath));
   ipcMain.handle(desktopIpc.pickWorkspace, () => pickWorkspaceViaDialog());
   ipcMain.handle(desktopIpc.selectWorkspace, (_event, workspaceId: string) => store.selectWorkspace(workspaceId));
@@ -650,8 +653,32 @@ app.whenReady().then(async () => {
   ipcMain.handle(desktopIpc.setTranscriptVerbose, async (_event, enabled: boolean) => {
     return store.setTranscriptVerbose(enabled);
   });
-  ipcMain.handle(desktopIpc.setComposerDeviceMode, async (_event, mode: "off" | "screen" | "modular") => {
+  ipcMain.handle(desktopIpc.setComposerDeviceMode, async (_event, mode: "off" | "screen" | "modular" | "screen-neon") => {
     return store.setComposerDeviceMode(mode);
+  });
+  ipcMain.handle(desktopIpc.startChat, async (_event, input: StartChatInput) => {
+    return store.startChat(input);
+  });
+  ipcMain.handle(desktopIpc.selectChat, async (_event, chatId: string) => {
+    return store.selectChat(chatId);
+  });
+  ipcMain.handle(desktopIpc.archiveChat, async (_event, chatId: string) => {
+    return store.archiveChat(chatId);
+  });
+  ipcMain.handle(desktopIpc.unarchiveChat, async (_event, chatId: string) => {
+    return store.unarchiveChat(chatId);
+  });
+  ipcMain.handle(desktopIpc.removeChat, async (_event, chatId: string) => {
+    return store.removeChat(chatId);
+  });
+  ipcMain.handle(desktopIpc.renameChat, async (_event, chatId: string, title: string) => {
+    return store.renameChat(chatId, title);
+  });
+  ipcMain.handle(desktopIpc.getChatAgentsMd, async (_event, chatId: string) => {
+    return store.getChatAgentsMd(chatId);
+  });
+  ipcMain.handle(desktopIpc.writeChatAgentsMd, async (_event, chatId: string, content: string) => {
+    await store.writeChatAgentsMd(chatId, content);
   });
   ipcMain.handle(desktopIpc.terminalEnsurePanel, (event, workspaceId: string, terminalScopeId: string, size) => {
     return getTerminalService().ensurePanel(event.sender, workspaceId, terminalScopeId, size);

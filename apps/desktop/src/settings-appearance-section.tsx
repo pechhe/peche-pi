@@ -15,6 +15,7 @@ interface SettingsAppearanceSectionProps {
 const COMPOSER_DEVICE_OPTIONS: { mode: ComposerDeviceMode; label: string; description: string }[] = [
   { mode: "off", label: "Off", description: "Standard prompt box." },
   { mode: "screen", label: "Screen", description: "Whole prompt becomes a CRT screen. One physical send button." },
+  { mode: "screen-neon", label: "Screen (Neon)", description: "Whole prompt is one green CRT screen with a glowing neon send key." },
   { mode: "modular", label: "Modular", description: "CRT screen for input, physical keys for each control." },
 ];
 

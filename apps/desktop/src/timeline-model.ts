@@ -249,10 +249,6 @@ export function applySessionEventToTimeline(
       const metrics = runtime.runMetrics;
       clearRunState(runtime);
       if (metrics) {
-        const label = summaryLabel(metrics);
-        if (label) {
-          next.push(factory.summary(label, { presentation: "inline" }));
-        }
         next.push(factory.summary(workedForLabel(metrics.startedAt, event.timestamp), { presentation: "divider" }));
       } else {
         next.push(factory.summary("Completed", {
@@ -440,20 +436,6 @@ function looksLikeFileExplore(toolName: string, input: unknown): boolean {
     return true;
   }
   return typeof input === "string" && /\/|\.md|\.ts|file/i.test(input);
-}
-
-function summaryLabel(metrics: RunMetrics): string | undefined {
-  const parts: string[] = [];
-  if (metrics.fileCount > 0) {
-    parts.push(`Explored ${metrics.fileCount} file${metrics.fileCount === 1 ? "" : "s"}`);
-  }
-  if (metrics.searchCount > 0) {
-    parts.push(`${metrics.searchCount} search${metrics.searchCount === 1 ? "" : "es"}`);
-  }
-  if (parts.length === 0 && metrics.toolCount > 0) {
-    parts.push(`Used ${metrics.toolCount} tool${metrics.toolCount === 1 ? "" : "s"}`);
-  }
-  return parts.length > 0 ? parts.join(", ") : undefined;
 }
 
 function workedForLabel(startedAt: string, endedAt: string): string {

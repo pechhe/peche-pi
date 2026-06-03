@@ -4,8 +4,9 @@ import { homedir } from "node:os";
 import { sessionKey } from "@pi-gui/pi-sdk-driver";
 import type { WorktreeCatalogEntry } from "@pi-gui/catalogs";
 import type { WorkspaceRef } from "@pi-gui/session-driver";
-import type { CreateWorktreeInput, DesktopAppState, RemoveWorktreeInput, StartThreadInput } from "../src/desktop-state";
+import type { CreateWorktreeInput, DesktopAppState, RemoveWorktreeInput, StartChatInput, StartThreadInput } from "../src/desktop-state";
 import { sendMessageToSession } from "./app-store-composer";
+import { reduce } from "./app-state-reducer";
 import type { CreateWorktreeOptions } from "./worktree-manager";
 import type { AppStoreInternals } from "./app-store-internals";
 import { NEW_THREAD_PLACEHOLDER_TITLE } from "./thread-title-constants";
@@ -74,7 +75,12 @@ export async function removeWorktree(store: AppStoreInternals, input: RemoveWork
 }
 
 export async function startThread(store: AppStoreInternals, input: StartThreadInput): Promise<DesktopAppState> {
+  const __dbg = (step: string) => {
+    try { require("node:fs").appendFileSync("/tmp/pi-startthread.log", `[${new Date().toISOString()}] ${step}\n`); } catch { /* ignore */ }
+  };
+  __dbg("enter " + JSON.stringify({ env: input.environment, provider: input.provider, modelId: input.modelId }));
   await store.initialize();
+  __dbg("after initialize");
   const rootWorkspace = store.workspaceRefFromState(input.rootWorkspaceId);
   if (!rootWorkspace) {
     return store.withError(`Unknown workspace: ${input.rootWorkspaceId}`);
@@ -88,6 +94,101 @@ export async function startThread(store: AppStoreInternals, input: StartThreadIn
       const synced = await store.driver.syncWorkspace(created.path, created.displayName);
       targetWorkspace = synced.workspace;
     }
+
+    const prompt = input.prompt?.trim() ?? "";
+    const attachments = input.attachments ?? [];
+    __dbg("before buildCreateSessionOptions");
+    const createOptions = (await store.buildCreateSessionOptions(targetWorkspace.workspaceId)) ?? {};
+    __dbg("after buildCreateSessionOptions; before createSession");
+    const initialModel =
+      input.provider && input.modelId
+        ? { provider: input.provider, modelId: input.modelId }
+        : createOptions.initialModel;
+    const initialThinkingLevel = input.thinkingLevel ?? createOptions.initialThinkingLevel;
+    const session = await store.driver.createSession(targetWorkspace, {
+      ...createOptions,
+      title: NEW_THREAD_PLACEHOLDER_TITLE,
+      ...(initialModel ? { initialModel } : {}),
+      ...(initialThinkingLevel ? { initialThinkingLevel } : {}),
+    });
+    const key = sessionKey(session.ref);
+    store.sessionState.transcriptCache.set(key, []);
+    store.sessionState.loadedTranscriptKeys.add(key);
+    store.updateSessionConfig(session.ref, session.config);
+    const autoTitleAbortController = new AbortController();
+    const pendingAutoTitle = {
+      requestToken: randomUUID(),
+      cancel: () => autoTitleAbortController.abort(),
+    };
+    store.setPendingAutoTitle(session.ref, pendingAutoTitle);
+    __dbg("after createSession " + session.ref.sessionId);
+
+    // Navigate to thread view immediately so streaming deltas render live.
+    // Set selection eagerly so that any subscription replay events
+    // (fired by ensureSessionReady inside refreshState) read the new
+    // session ID instead of the stale one.
+    store.state = {
+      ...store.state,
+      selectedWorkspaceId: session.ref.workspaceId,
+      selectedSessionId: session.ref.sessionId,
+    };
+    __dbg("before refreshState");
+    const state = await store.refreshState({
+      selectedWorkspaceId: session.ref.workspaceId,
+      selectedSessionId: session.ref.sessionId,
+      composerDraft: "",
+      clearLastError: true,
+      refreshWorktrees: input.environment === "worktree",
+      activeView: "threads",
+    });
+    __dbg("after refreshState");
+
+    // Fire message in background — assistantDelta events flow through
+    // handleSessionEvent → emit() and update React while on the thread view
+    if (prompt || attachments.length > 0) {
+      void sendMessageToSession(store, session.ref, prompt, attachments, {
+        rollbackOptimisticMessageOnError: false,
+      }).catch((error) => {
+        void store.withError(error);
+      });
+    }
+    if (prompt) {
+      void generateAndApplyAutoTitle(store, session.ref, targetWorkspace, {
+        prompt,
+        requestToken: pendingAutoTitle.requestToken,
+        signal: autoTitleAbortController.signal,
+        ...(initialModel ? { model: initialModel } : {}),
+        ...(initialThinkingLevel ? { thinkingLevel: initialThinkingLevel } : {}),
+      });
+    } else {
+      store.clearPendingAutoTitle(session.ref);
+    }
+
+    __dbg("returning state");
+    return state;
+  });
+}
+
+export async function startChat(store: AppStoreInternals, input: StartChatInput): Promise<DesktopAppState> {
+  await store.initialize();
+
+  return store.withErrorHandling(async () => {
+    const id = randomUUID();
+    const now = new Date().toISOString();
+    const chat = {
+      id,
+      title: "New chat",
+      createdAt: now,
+      updatedAt: now,
+      preview: "",
+      status: "idle" as const,
+      hasUnseenUpdate: false,
+      isAwaitingAssistantText: false,
+    };
+    store.state = reduce(store.state, { type: "chats/add", chat });
+    store.state = reduce(store.state, { type: "chats/select", chatId: id });
+
+    const targetWorkspace = await store.ensureChatWorkspace(chat);
 
     const prompt = input.prompt?.trim() ?? "";
     const attachments = input.attachments ?? [];
@@ -114,10 +215,6 @@ export async function startThread(store: AppStoreInternals, input: StartThreadIn
     };
     store.setPendingAutoTitle(session.ref, pendingAutoTitle);
 
-    // Navigate to thread view immediately so streaming deltas render live.
-    // Set selection eagerly so that any subscription replay events
-    // (fired by ensureSessionReady inside refreshState) read the new
-    // session ID instead of the stale one.
     store.state = {
       ...store.state,
       selectedWorkspaceId: session.ref.workspaceId,
@@ -128,12 +225,9 @@ export async function startThread(store: AppStoreInternals, input: StartThreadIn
       selectedSessionId: session.ref.sessionId,
       composerDraft: "",
       clearLastError: true,
-      refreshWorktrees: input.environment === "worktree",
       activeView: "threads",
     });
 
-    // Fire message in background — assistantDelta events flow through
-    // handleSessionEvent → emit() and update React while on the thread view
     if (prompt || attachments.length > 0) {
       void sendMessageToSession(store, session.ref, prompt, attachments, {
         rollbackOptimisticMessageOnError: false,
@@ -148,6 +242,11 @@ export async function startThread(store: AppStoreInternals, input: StartThreadIn
         signal: autoTitleAbortController.signal,
         ...(initialModel ? { model: initialModel } : {}),
         ...(initialThinkingLevel ? { thinkingLevel: initialThinkingLevel } : {}),
+        onTitleApplied: (title) => {
+          store.state = reduce(store.state, { type: "chats/rename", chatId: id, title });
+          void store.persistUiState();
+          store.emit();
+        },
       });
     } else {
       store.clearPendingAutoTitle(session.ref);

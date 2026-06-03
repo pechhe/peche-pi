@@ -54,6 +54,7 @@ import {
 import { normalizeRuntimeCommandName, skillCommandName } from "./runtime-command-utils.js";
 import {
   buildSnapshot,
+  collectLoopIterations,
   createWorkspaceRef,
   deriveSessionConfig,
   deriveWorkspaceTitle,
@@ -69,7 +70,7 @@ import {
   truncate,
   workspaceToRef,
 } from "./session-supervisor-utils.js";
-import type { SessionTranscriptMessage } from "./transcript.js";
+import type { LoopIterationTranscript, SessionTranscriptMessage } from "./transcript.js";
 import { createAgentSessionRuntimeWithNpmFallback } from "./npm-package-fallback.js";
 import {
   cloneQueuedMessage,
@@ -283,6 +284,37 @@ export class SessionSupervisor {
   async getTranscript(sessionRef: SessionRef): Promise<SessionTranscriptMessage[]> {
     const record = await this.ensureRecord(sessionRef);
     return transcriptFromMessages(record.session?.messages ?? [], record.updatedAt);
+  }
+
+  /**
+   * Reconstruct a loop's iterations from the active session's `parentSession`
+   * ancestry chain. Returns `null` when the active session is not a loop
+   * iteration (no `ralph_loop` marker), so callers can fall back to a plain
+   * transcript. Otherwise returns the iterations root-first, with the live
+   * session last. Each prior iteration is read from its persisted session file;
+   * the live iteration uses in-memory messages so streaming stays current.
+   */
+  async getLoopIterations(sessionRef: SessionRef): Promise<LoopIterationTranscript[] | null> {
+    const record = await this.ensureRecord(sessionRef);
+    const session = record.session;
+    if (!session) {
+      return null;
+    }
+    const infos = await SessionManager.list(record.workspace.path);
+    return collectLoopIterations({
+      leafEntries: session.sessionManager.getEntries(),
+      leafSessionId: session.sessionId,
+      leafMessages: session.messages ?? [],
+      leafUpdatedAt: record.updatedAt,
+      leafSessionFile: record.sessionFile,
+      sessions: infos.map((info) => ({
+        path: info.path,
+        id: info.id,
+        parentSessionPath: info.parentSessionPath,
+        modifiedIso: info.modified.toISOString(),
+      })),
+      readEntries: (path) => SessionManager.open(path).getEntries(),
+    });
   }
 
   async getSessionCommands(sessionRef: SessionRef): Promise<readonly RuntimeCommandRecord[]> {

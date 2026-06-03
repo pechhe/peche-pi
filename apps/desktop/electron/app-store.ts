@@ -1,6 +1,6 @@
 import type { BrowserWindow } from "electron";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import {
   applyHostUiRequestToExtensionUiState,
   type GenerateThreadTitleOptions,
@@ -35,6 +35,7 @@ import type {
 } from "@pi-gui/session-driver/runtime-types";
 import {
   type AppView,
+  type ChatRecord,
   type ComposerAttachment,
   type ComposerDraftSyncSource,
   type ExtensionCommandCompatibilityRecord,
@@ -49,6 +50,7 @@ import {
   type QueuedComposerMessage,
   type RemoveWorktreeInput,
   type SelectedTranscriptRecord,
+  type StartChatInput,
   type StartThreadInput,
   type TranscriptMessage,
   type WorkspaceSessionTarget,
@@ -99,6 +101,20 @@ import * as workspace from "./app-store-workspace";
 import * as worktree from "./app-store-worktree";
 import * as composer from "./app-store-composer";
 import { isSessionActivelyViewed } from "./session-visibility";
+
+const DEFAULT_CHAT_AGENTS_MD = `# Chat Agent
+
+You are a general-purpose agentic assistant operating inside a standalone chat.
+This chat has no associated coding project or workspace.
+
+## Rules
+
+- These chats are for general agentic tasks — research, writing, advice, browsing, and similar non-code-project work.
+- You do not inherit any project-level AGENTS.md. Ignore any global agent instructions that assume a coding project context.
+- You may write files into your chat's scratch directory, but you should not modify files outside it unless the user explicitly directs you to.
+- Keep responses helpful and grounded. Ask clarifying questions when the task is ambiguous.
+- The user can view and edit this AGENTS.md per chat to customize your behaviour.
+`;
 
 type StateListener = (state: DesktopAppState) => void;
 type SelectedTranscriptListener = (payload: SelectedTranscriptRecord | null) => void;
@@ -191,13 +207,17 @@ export class DesktopAppStore implements AppStoreInternals {
   }
 
   async getSelectedTranscript(): Promise<SelectedTranscriptRecord | null> {
-    await this.initialize();
-    const sessionRef = this.selectedSessionRef();
-    if (!sessionRef) {
+    try {
+      await this.initialize();
+      const sessionRef = this.selectedSessionRef();
+      if (!sessionRef) {
+        return null;
+      }
+      await this.ensureTranscriptLoaded(sessionRef);
+      return this.buildSelectedTranscriptRecord(sessionRef);
+    } catch {
       return null;
     }
-    await this.ensureTranscriptLoaded(sessionRef);
-    return this.buildSelectedTranscriptRecord(sessionRef);
   }
 
   async flushPersistence(): Promise<void> {
@@ -799,6 +819,8 @@ export class DesktopAppStore implements AppStoreInternals {
         composerDeviceMode: persisted.composerDeviceMode ?? this.state.composerDeviceMode,
         themeMode: persisted.themeMode ?? this.state.themeMode,
         commitPushModel: persisted.commitPushModel ?? this.state.commitPushModel,
+        chats: persisted.chats ?? [],
+        selectedChatId: persisted.selectedChatId ?? "",
       };
       await this.migrateLegacyPersistence(persisted);
       this.sessionState.lastViewedAtBySession.clear();
@@ -860,6 +882,8 @@ export class DesktopAppStore implements AppStoreInternals {
         themeMode: persisted.themeMode ?? "system",
         lastError: error instanceof Error ? error.message : String(error),
         commitPushModel: persisted.commitPushModel,
+        chats: persisted.chats ?? [],
+        selectedChatId: persisted.selectedChatId ?? "",
         revision: 1,
       };
       await this.persistUiState();
@@ -1028,8 +1052,18 @@ export class DesktopAppStore implements AppStoreInternals {
 
       await this.persistUiState();
       const snapshot = this.emit();
+      // Only publish a transcript once it is actually loaded. Publishing here
+      // when hydrateSelectedSession === false (e.g. session restore on launch)
+      // pushes an EMPTY transcript and pins the renderer's coalescing key to
+      // the selected session, so the later hydration publish gets coalesced
+      // behind a requestAnimationFrame that can starve while the window is
+      // backgrounded — leaving the thread stuck blank until the user switches
+      // away and back.
       if (this.currentSelectedSessionKey() !== previousSelectedKey) {
-        this.publishSelectedTranscript();
+        const selectedRef = this.selectedSessionRef();
+        if (selectedRef && this.sessionState.loadedTranscriptKeys.has(sessionKey(selectedRef))) {
+          this.publishSelectedTranscript();
+        }
       }
       return snapshot;
     } finally {
@@ -1744,6 +1778,154 @@ export class DesktopAppStore implements AppStoreInternals {
     }
   }
 
+  async startChat(input: StartChatInput): Promise<DesktopAppState> {
+    return worktree.startChat(this, input);
+  }
+
+  async selectChat(chatId: string): Promise<DesktopAppState> {
+    await this.initialize();
+    const chat = this.state.chats.find((c) => c.id === chatId);
+    if (!chat) {
+      return this.emit();
+    }
+    this.state = reduce(this.state, { type: "chats/select", chatId });
+
+    return this.withErrorHandling(async () => {
+      const workspace = await this.ensureChatWorkspace(chat);
+      const synced = await this.driver.syncWorkspace(workspace.path, chat.title);
+      let sessionId = synced.sessions[0]?.sessionRef.sessionId ?? "";
+      if (!sessionId) {
+        const createOptions = await this.buildCreateSessionOptions(workspace.workspaceId);
+        const snapshot = await this.driver.createSession(synced.workspace, {
+          ...createOptions,
+          title: chat.title,
+        });
+        const key = sessionKey(snapshot.ref);
+        this.sessionState.transcriptCache.set(key, []);
+        this.sessionState.loadedTranscriptKeys.add(key);
+        this.updateSessionConfig(snapshot.ref, snapshot.config);
+        sessionId = snapshot.ref.sessionId;
+      }
+      return this.refreshState({
+        selectedWorkspaceId: workspace.workspaceId,
+        selectedSessionId: sessionId,
+        composerDraft: "",
+        clearLastError: true,
+        activeView: "threads",
+      });
+    });
+  }
+
+  // A chat is a normal session rooted in its own directory. Ensure the chat
+  // directory exists with our AGENTS.md and is synced as a driver workspace.
+  // Stores the resolved workspace id on the chat record so it converges with
+  // older chat records that predate this shape.
+  async ensureChatWorkspace(chat: ChatRecord): Promise<WorkspaceRef> {
+    const chatDir = this.getChatDir(chat.id);
+    await this.ensureChatTemplateAgentsMd();
+    await mkdir(chatDir, { recursive: true });
+    try {
+      await readFile(join(chatDir, "AGENTS.md"), "utf8");
+    } catch {
+      try {
+        const template = await readFile(join(this.getChatsRootDir(), "_template", "AGENTS.md"), "utf8");
+        await writeFile(join(chatDir, "AGENTS.md"), template, "utf8");
+      } catch {
+        await writeFile(join(chatDir, "AGENTS.md"), DEFAULT_CHAT_AGENTS_MD, "utf8");
+      }
+    }
+    const synced = await this.driver.syncWorkspace(chatDir, chat.title);
+    const workspaceId = synced.workspace.workspaceId;
+    if (workspaceId !== chat.chatWorkspaceId) {
+      this.state = {
+        ...this.state,
+        chats: this.state.chats.map((c) => (c.id === chat.id ? { ...c, chatWorkspaceId: workspaceId } : c)),
+      };
+    }
+    return synced.workspace;
+  }
+
+  async archiveChat(chatId: string): Promise<DesktopAppState> {
+    await this.initialize();
+    this.state = reduce(this.state, {
+      type: "chats/archive",
+      chatId,
+      archivedAt: new Date().toISOString(),
+    });
+    await this.persistUiState();
+    this.emit();
+    return this.getState();
+  }
+
+  async unarchiveChat(chatId: string): Promise<DesktopAppState> {
+    await this.initialize();
+    this.state = reduce(this.state, { type: "chats/unarchive", chatId });
+    await this.persistUiState();
+    this.emit();
+    return this.getState();
+  }
+
+  async removeChat(chatId: string): Promise<DesktopAppState> {
+    await this.initialize();
+    const chat = this.state.chats.find((c) => c.id === chatId);
+    if (chat?.chatWorkspaceId) {
+      try {
+        await this.driver.removeWorkspace(chat.chatWorkspaceId);
+      } catch {
+        // Best-effort: continue removing the chat record even if the driver
+        // no longer knows about the workspace.
+      }
+    }
+    this.state = reduce(this.state, { type: "chats/remove", chatId });
+    await this.persistUiState();
+    return this.refreshState({
+      selectedWorkspaceId: this.state.selectedWorkspaceId,
+      selectedSessionId: this.state.selectedSessionId,
+      clearLastError: true,
+    });
+  }
+
+  async renameChat(chatId: string, title: string): Promise<DesktopAppState> {
+    await this.initialize();
+    this.state = reduce(this.state, { type: "chats/rename", chatId, title });
+    await this.persistUiState();
+    this.emit();
+    return this.getState();
+  }
+
+  private getChatsRootDir(): string {
+    return join(dirname(this.uiStateFilePath), "chats");
+  }
+
+  private getChatDir(chatId: string): string {
+    return join(this.getChatsRootDir(), chatId);
+  }
+
+  private async ensureChatTemplateAgentsMd(): Promise<void> {
+    const templateDir = join(this.getChatsRootDir(), "_template");
+    const templatePath = join(templateDir, "AGENTS.md");
+    try {
+      await readFile(templatePath, "utf8");
+    } catch {
+      await mkdir(templateDir, { recursive: true });
+      await writeFile(templatePath, DEFAULT_CHAT_AGENTS_MD, "utf8");
+    }
+  }
+
+  async getChatAgentsMd(chatId: string): Promise<string> {
+    try {
+      return await readFile(join(this.getChatDir(chatId), "AGENTS.md"), "utf8");
+    } catch {
+      return "";
+    }
+  }
+
+  async writeChatAgentsMd(chatId: string, content: string): Promise<void> {
+    const chatDir = this.getChatDir(chatId);
+    await mkdir(chatDir, { recursive: true });
+    await writeFile(join(chatDir, "AGENTS.md"), content, "utf8");
+  }
+
   private async readUiState(): Promise<LegacyPersistedUiState> {
     return readPersistedUiState(this.uiStateFilePath);
   }
@@ -1771,6 +1953,8 @@ export class DesktopAppStore implements AppStoreInternals {
       transcriptVerbose: this.state.transcriptVerbose,
       composerDeviceMode: this.state.composerDeviceMode,
       themeMode: this.state.themeMode,
+      chats: this.state.chats.length > 0 ? this.state.chats : undefined,
+      selectedChatId: this.state.selectedChatId || undefined,
     };
 
     await writePersistedUiState(this.uiStateFilePath, payload);

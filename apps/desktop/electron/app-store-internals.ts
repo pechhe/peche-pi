@@ -77,6 +77,7 @@ export interface AppStoreInternals {
   publishSelectedTranscript(): void;
   publishSelectedTranscriptFor(sessionRef: SessionRef): void;
   buildCreateSessionOptions(workspaceId: string): Promise<CreateSessionOptions | undefined>;
+  ensureChatWorkspace(chat: import("../src/desktop-state").ChatRecord): Promise<WorkspaceRef>;
 }
 
 export interface RefreshStateOptions {

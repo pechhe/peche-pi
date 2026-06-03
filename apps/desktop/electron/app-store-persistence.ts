@@ -1,5 +1,6 @@
 import type {
   AppView,
+  ChatRecord,
   ExtensionCommandCompatibilityRecord,
   ModelSettingsScopeMode,
   NotificationPreferences,
@@ -12,7 +13,7 @@ import { dirname } from "node:path";
 
 const uiStateWriteQueueByPath = new Map<string, Promise<void>>();
 export interface PersistedUiState {
-  readonly version?: 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
+  readonly version?: 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
   readonly selectedWorkspaceId?: string;
   readonly selectedSessionId?: string;
   readonly activeView?: AppView;
@@ -29,9 +30,11 @@ export interface PersistedUiState {
   readonly allowMultiple?: boolean;
   readonly enableTransparency?: boolean;
   readonly transcriptVerbose?: boolean;
-  readonly composerDeviceMode?: "off" | "screen" | "modular";
+  readonly composerDeviceMode?: "off" | "screen" | "modular" | "screen-neon";
   readonly themeMode?: ThemeMode;
   readonly commitPushModel?: string;
+  readonly chats?: readonly ChatRecord[];
+  readonly selectedChatId?: string;
 }
 
 export interface LegacyPersistedUiState extends PersistedUiState {
@@ -45,23 +48,25 @@ export async function readPersistedUiState(uiStateFilePath: string): Promise<Leg
     const parsed = JSON.parse(raw) as LegacyPersistedUiState;
     return {
       version:
-        parsed.version === 9
-          ? 9
-          : parsed.version === 8
-            ? 8
-            : parsed.version === 7
-            ? 7
-            : parsed.version === 6
-              ? 6
-              : parsed.version === 5
-                ? 5
-                : parsed.version === 4
-                  ? 4
-                  : parsed.version === 3
-                    ? 3
-                    : parsed.version === 2
-                      ? 2
-                      : undefined,
+        parsed.version === 10
+          ? 10
+          : parsed.version === 9
+            ? 9
+            : parsed.version === 8
+              ? 8
+              : parsed.version === 7
+                ? 7
+                : parsed.version === 6
+                  ? 6
+                  : parsed.version === 5
+                    ? 5
+                    : parsed.version === 4
+                      ? 4
+                      : parsed.version === 3
+                        ? 3
+                        : parsed.version === 2
+                          ? 2
+                          : undefined,
       selectedWorkspaceId: parsed.selectedWorkspaceId,
       selectedSessionId: parsed.selectedSessionId,
       activeView: parsed.activeView,
@@ -83,7 +88,7 @@ export async function readPersistedUiState(uiStateFilePath: string): Promise<Leg
       enableTransparency: typeof parsed.enableTransparency === "boolean" ? parsed.enableTransparency : undefined,
       transcriptVerbose: typeof parsed.transcriptVerbose === "boolean" ? parsed.transcriptVerbose : undefined,
       composerDeviceMode:
-        parsed.composerDeviceMode === "screen" || parsed.composerDeviceMode === "modular" || parsed.composerDeviceMode === "off"
+        parsed.composerDeviceMode === "screen" || parsed.composerDeviceMode === "modular" || parsed.composerDeviceMode === "screen-neon" || parsed.composerDeviceMode === "off"
           ? parsed.composerDeviceMode
           : // Migrate legacy boolean: true → screen, false/undefined → off
             (parsed as { composerDeviceMode?: unknown }).composerDeviceMode === true
@@ -94,6 +99,8 @@ export async function readPersistedUiState(uiStateFilePath: string): Promise<Leg
           ? parsed.themeMode
           : undefined,
       commitPushModel: typeof parsed.commitPushModel === "string" ? parsed.commitPushModel : undefined,
+      chats: Array.isArray(parsed.chats) ? (parsed.chats as readonly ChatRecord[]) : undefined,
+      selectedChatId: typeof parsed.selectedChatId === "string" ? parsed.selectedChatId : undefined,
       composerAttachmentsBySession: parsed.composerAttachmentsBySession,
       transcripts: parsed.transcripts,
     };
@@ -110,7 +117,7 @@ export async function writePersistedUiState(
     await mkdir(dirname(uiStateFilePath), { recursive: true });
     const serialized = `${JSON.stringify(
       {
-        version: 9,
+        version: 10,
         ...payload,
       } satisfies PersistedUiState,
       null,
