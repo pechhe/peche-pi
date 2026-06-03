@@ -106,7 +106,7 @@ import * as workspace from "./app-store-workspace";
 import * as worktree from "./app-store-worktree";
 import * as composer from "./app-store-composer";
 import { isSessionActivelyViewed } from "./session-visibility";
-import { readRalphLoopStatus } from "./ralph-loop-status";
+import { loadLoopTranscript, resolveSelectedLoopStatus, resolveSelectedSessionCreatedRalphPlan } from "./app-store-ralph";
 import { launchSessionInDefaultTerminal } from "./external-terminal";
 
 const DEFAULT_CHAT_AGENTS_MD = `# Chat Agent
@@ -1311,78 +1311,25 @@ export class DesktopAppStore implements AppStoreInternals {
     await this.ensureSessionSubscribed(sessionRef);
   }
 
-  /**
-   * Build a composite transcript for a loop thread by stitching the
-   * parentSession iteration chain, inserting a divider before each iteration.
-   * Returns null when the session is not a loop iteration, so callers fall
-   * back to a plain transcript.
-   */
-  private async loadLoopTranscript(sessionRef: SessionRef): Promise<TranscriptMessage[] | null> {
-    const iterations = await this.driver.getLoopIterations(sessionRef);
-    if (!iterations) {
-      return null;
-    }
-    const rows: TranscriptMessage[] = [];
-    for (const iteration of iterations) {
-      rows.push({
-        kind: "summary",
-        id: `loop-divider-${iteration.sessionId}`,
-        createdAt: iteration.messages[0]?.createdAt ?? new Date().toISOString(),
-        label: iteration.label,
-        presentation: "divider",
-      });
-      rows.push(...iteration.messages);
-    }
-    return rows;
+  private loadLoopTranscript(sessionRef: SessionRef): Promise<TranscriptMessage[] | null> {
+    return loadLoopTranscript(this, sessionRef);
   }
 
-  /**
-   * Read the Ralph loop status (if any) for the selected workspace so the
-   * renderer can lock the loop thread's composer and surface loop controls.
-   * Returns undefined when no `.ralph/loop.md` exists.
-   */
   private resolveSelectedLoopStatus(
     workspaces: readonly { id: string; path: string }[],
     selectedWorkspaceId: string,
     selectedSessionId: string,
   ): RalphLoopStatus | undefined {
-    if (!selectedWorkspaceId || !selectedSessionId) {
-      return undefined;
-    }
-    const workspace = workspaces.find((entry) => entry.id === selectedWorkspaceId);
-    if (!workspace) {
-      return undefined;
-    }
-    return readRalphLoopStatus(workspace.path, selectedSessionId) ?? undefined;
+    return resolveSelectedLoopStatus(this, workspaces, selectedWorkspaceId, selectedSessionId);
   }
 
-  /**
-   * Whether the selected chat is the one that wrote the workspace's Ralph plan,
-   * so the "Begin Ralph loop" banner shows only there. Gated to avoid scanning
-   * session entries unless there is actually a plan to run and the thread is
-   * not already a loop thread.
-   */
-  private async resolveSelectedSessionCreatedRalphPlan(
+  private resolveSelectedSessionCreatedRalphPlan(
     workspaces: readonly WorkspaceRecord[],
     selectedWorkspaceId: string,
     selectedSessionId: string,
     selectedLoopStatus: RalphLoopStatus | undefined,
   ): Promise<boolean> {
-    if (!selectedWorkspaceId || !selectedSessionId || selectedLoopStatus?.isSelectedSessionActive) {
-      return false;
-    }
-    const workspace = workspaces.find((entry) => entry.id === selectedWorkspaceId);
-    if (!workspace?.ralphPlans?.length) {
-      return false;
-    }
-    try {
-      return await this.driver.sessionEditedRalphPlan({
-        workspaceId: selectedWorkspaceId,
-        sessionId: selectedSessionId,
-      });
-    } catch {
-      return false;
-    }
+    return resolveSelectedSessionCreatedRalphPlan(this, workspaces, selectedWorkspaceId, selectedSessionId, selectedLoopStatus);
   }
 
   private async ensureTranscriptLoaded(sessionRef: SessionRef): Promise<void> {
