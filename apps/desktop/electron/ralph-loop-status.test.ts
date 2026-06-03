@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { readRalphLoopStatus } from "./ralph-loop-status";
+import { readRalphLoopStatus } from "./ralph-loop-status.ts";
 
 function withWorkspace(loopMd: string | null, run: (path: string) => void): void {
   const root = mkdtempSync(join(tmpdir(), "ralph-loop-status-"));

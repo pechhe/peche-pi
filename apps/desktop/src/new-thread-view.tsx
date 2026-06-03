@@ -1,6 +1,6 @@
-import { useEffect, useRef, type ClipboardEvent, type DragEvent, type KeyboardEvent, type RefObject } from "react";
+import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type RefObject } from "react";
 import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
-import type { ComposerAttachment, NewThreadEnvironment, WorkspaceRecord } from "./desktop-state";
+import type { ComposerAttachment, NewThreadEnvironment, RalphPlanSummary, WorkspaceRecord } from "./desktop-state";
 import type { ComposerMode } from "./composer-mode";
 import { CavemanSelector } from "./caveman-selector";
 import { ComposerModeSelector } from "./composer-mode-selector";
@@ -66,6 +66,7 @@ interface NewThreadViewProps {
   readonly onSelectMention: (filePath: string) => void;
   readonly onRemoveAttachment: (attachmentId: string) => void;
   readonly onSubmit: () => void;
+  readonly onLaunchRalphPlan: (plan: RalphPlanSummary, maxIterations: number) => void;
 }
 
 export function NewThreadView({
@@ -114,8 +115,11 @@ export function NewThreadView({
   onSelectMention,
   onRemoveAttachment,
   onSubmit,
+  onLaunchRalphPlan,
 }: NewThreadViewProps) {
   const workspace = workspaces.find((entry) => entry.id === selectedWorkspaceId);
+  const ralphPlans = isChat ? [] : workspace?.ralphPlans ?? [];
+  const [ralphDialogOpen, setRalphDialogOpen] = useState(false);
 
   useEffect(() => {
     composerRef.current?.focus();
@@ -213,12 +217,24 @@ export function NewThreadView({
                   onSetCavemanLevel={onSetCavemanLevel}
                   onSetComposerMode={onSetComposerMode}
                   onSubmit={onSubmit}
+                  ralphPlans={ralphPlans}
+                  onOpenRalph={() => setRalphDialogOpen(true)}
                 />
               )}
             />
           </div>
         </div>
       </div>
+      {ralphDialogOpen ? (
+        <RalphPlanDialog
+          plans={ralphPlans}
+          onClose={() => setRalphDialogOpen(false)}
+          onLaunch={(plan, maxIterations) => {
+            setRalphDialogOpen(false);
+            onLaunchRalphPlan(plan, maxIterations);
+          }}
+        />
+      ) : null}
     </section>
   );
 }
@@ -241,6 +257,8 @@ interface NewThreadComposerFooterProps {
   readonly onSetCavemanLevel: (level: CavemanLevel) => void;
   readonly onSetComposerMode: (mode: ComposerMode) => void;
   readonly onSubmit: () => void;
+  readonly ralphPlans: readonly RalphPlanSummary[];
+  readonly onOpenRalph: () => void;
 }
 
 function NewThreadComposerFooter({
@@ -261,6 +279,8 @@ function NewThreadComposerFooter({
   onSetCavemanLevel,
   onSetComposerMode,
   onSubmit,
+  ralphPlans,
+  onOpenRalph,
 }: NewThreadComposerFooterProps) {
   return (
     <>
@@ -288,6 +308,24 @@ function NewThreadComposerFooter({
                       <span>Worktree</span>
                     </button>
                   </span>
+                </>
+              ) : null}
+              {!isChat ? (
+                <>
+                  <span className="composer__controls-sep">{" \u00b7 "}</span>
+                  <button
+                    className="new-thread__ralph"
+                    type="button"
+                    disabled={ralphPlans.length === 0}
+                    title={
+                      ralphPlans.length === 0
+                        ? "No incomplete Ralph plans in this workspace"
+                        : "Run a Ralph plan as a loop"
+                    }
+                    onClick={onOpenRalph}
+                  >
+                    Ralph
+                  </button>
                 </>
               ) : null}
               <span className="composer__controls-sep">{" \u00b7 "}</span>
@@ -327,5 +365,103 @@ function NewThreadComposerFooter({
         </div>
       </div>
     </>
+  );
+}
+
+const RALPH_MAX_ITERATION_OPTIONS = [5, 10, 20, 50, 100] as const;
+
+function RalphPlanDialog({
+  plans,
+  onClose,
+  onLaunch,
+}: {
+  readonly plans: readonly RalphPlanSummary[];
+  readonly onClose: () => void;
+  readonly onLaunch: (plan: RalphPlanSummary, maxIterations: number) => void;
+}) {
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const plan = plans[selectedIndex] ?? plans[0];
+  const [maxIterations, setMaxIterations] = useState(plan?.defaultMaxIterations ?? 100);
+
+  if (!plan) {
+    return null;
+  }
+
+  return (
+    <div className="ralph-dialog__backdrop" role="presentation" onClick={onClose}>
+      <div
+        className="ralph-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Run a Ralph plan"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <header className="ralph-dialog__header">
+          <h2 className="ralph-dialog__title">Run a Ralph plan</h2>
+          <p className="ralph-dialog__subtitle">
+            Starts a locked loop thread that runs the plan iteratively in fresh sessions.
+          </p>
+        </header>
+
+        {plans.length > 1 ? (
+          <ul className="ralph-dialog__plans">
+            {plans.map((entry, index) => (
+              <li key={`${entry.title}-${index}`}>
+                <button
+                  type="button"
+                  className={`ralph-dialog__plan ${index === selectedIndex ? "ralph-dialog__plan--active" : ""}`}
+                  onClick={() => setSelectedIndex(index)}
+                >
+                  <span className="ralph-dialog__plan-title">{entry.title}</span>
+                  <span className="ralph-dialog__plan-progress">
+                    {entry.doneItems}/{entry.totalItems} items done
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="ralph-dialog__plan-summary">
+            <span className="ralph-dialog__plan-title">{plan.title}</span>
+            <span className="ralph-dialog__plan-progress">
+              {plan.doneItems}/{plan.totalItems} items done
+            </span>
+          </div>
+        )}
+
+        <label className="ralph-dialog__field">
+          <span>Max iterations</span>
+          <input
+            type="number"
+            min={1}
+            value={maxIterations}
+            onChange={(event) =>
+              setMaxIterations(Math.max(1, Number.parseInt(event.target.value, 10) || 1))
+            }
+          />
+        </label>
+        <div className="ralph-dialog__suggestions">
+          {RALPH_MAX_ITERATION_OPTIONS.map((value) => (
+            <button
+              key={value}
+              type="button"
+              className={`ralph-dialog__suggestion ${value === maxIterations ? "ralph-dialog__suggestion--active" : ""}`}
+              onClick={() => setMaxIterations(value)}
+            >
+              {value}
+            </button>
+          ))}
+        </div>
+
+        <footer className="ralph-dialog__actions">
+          <button type="button" className="button" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="button" className="button button--primary" onClick={() => onLaunch(plan, maxIterations)}>
+            Run loop
+          </button>
+        </footer>
+      </div>
+    </div>
   );
 }
