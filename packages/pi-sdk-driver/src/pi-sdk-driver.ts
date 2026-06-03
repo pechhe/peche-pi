@@ -24,6 +24,7 @@ import {
   type SyncWorkspaceResult,
 } from "./session-supervisor.js";
 import { RuntimeSupervisor, type RuntimeSupervisorOptions } from "./runtime-supervisor.js";
+import type { LockInfo, LockState } from "./session-lock.js";
 import { createRuntimeDependencies } from "./runtime-deps.js";
 import { generateThreadTitle, type GenerateThreadTitleOptions } from "./thread-title-generator.js";
 
@@ -100,6 +101,14 @@ export class PiSdkDriver implements SessionDriver {
 
   getSessionTree(sessionRef: SessionRef): Promise<SessionTreeSnapshot> {
     return this.supervisor.getSessionTree(sessionRef);
+  }
+
+  inspectSessionLock(sessionRef: SessionRef): Promise<LockState> {
+    return this.supervisor.inspectSessionLock(sessionRef);
+  }
+
+  claimSession(sessionRef: SessionRef): Promise<{ readonly claimed: boolean; readonly owner?: LockInfo }> {
+    return this.supervisor.claimSession(sessionRef);
   }
 
   navigateSessionTree(

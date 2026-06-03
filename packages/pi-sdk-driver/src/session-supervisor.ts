@@ -42,7 +42,7 @@ import type {
 } from "@pi-gui/session-driver";
 import type { RuntimeCommandRecord } from "@pi-gui/session-driver/runtime-types";
 import { JsonCatalogStore, type SessionFileCatalogStorage } from "./json-catalog-store.js";
-import { inspectLock, type LockState } from "./session-lock.js";
+import { inspectLock, LockHeldError, SessionLock, type LockInfo, type LockState } from "./session-lock.js";
 import {
   applyHostUiRequestToExtensionUiState,
   createEmptyExtensionUiState,
@@ -105,6 +105,10 @@ interface ManagedSessionRecord {
   runtime: AgentSessionRuntime | undefined;
   session: AgentSession | undefined;
   sessionFile: string | undefined;
+  lock: SessionLock | undefined;
+  lockFile: string | undefined;
+  observeOnly: boolean;
+  lockOwner: LockInfo | undefined;
   status: SessionStatus;
   updatedAt: string;
   archivedAt: string | undefined;
@@ -159,6 +163,8 @@ export class SessionSupervisor {
   private readonly createAgentSessionRuntimeImpl: (options?: CreateAgentSessionOptions) => Promise<AgentSessionRuntime>;
   private readonly modelRegistry: ModelRegistry | undefined;
   private readonly records = new Map<string, ManagedSessionRecord>();
+  private heartbeatTimer: ReturnType<typeof setInterval> | undefined;
+  private static readonly LOCK_HEARTBEAT_MS = 10_000;
 
   constructor(options: PiSdkDriverOptions = {}) {
     this.catalogs = options.catalogFilePath
@@ -364,6 +370,7 @@ export class SessionSupervisor {
       record.sessionFile = sessionFile;
       await this.catalogs.setSessionFile(record.ref, sessionFile);
     }
+    this.ensureDriverLock(record);
 
     this.records.set(sessionKey(record.ref), record);
     await this.bindSessionRuntime(record);
@@ -401,6 +408,14 @@ export class SessionSupervisor {
 
   async sendUserMessage(sessionRef: SessionRef, input: SessionMessageInput): Promise<void> {
     const record = await this.ensureRecord(sessionRef);
+    if (record.observeOnly) {
+      const owner = record.lockOwner;
+      throw new Error(
+        `Session is driven by ${owner?.kind ?? "another process"}` +
+          (owner ? ` (pid ${owner.pid})` : "") +
+          `. Take over the session to send messages.`,
+      );
+    }
     const session = this.requireSession(record);
     const isExtensionCommand = this.isExtensionCommand(session, input.text);
     if (session.isStreaming && !isExtensionCommand && !input.deliverAs) {
@@ -584,6 +599,87 @@ export class SessionSupervisor {
     return inspectLock(sessionFile, { kind: "gui" });
   }
 
+  /**
+   * Attempt to take over the driver role for a session. Reclaims a free, stale,
+   * or dead lock and reloads the session from disk so the GUI sees any appends
+   * the previous holder made. Returns `{ claimed: false, owner }` when a live
+   * foreign holder (e.g. a running `pi` CLI) still owns it — that case cannot be
+   * preempted; the holder must exit first.
+   */
+  async claimSession(sessionRef: SessionRef): Promise<{ readonly claimed: boolean; readonly owner?: LockInfo }> {
+    const record = await this.ensureRecord(sessionRef);
+    this.ensureDriverLock(record);
+    if (record.observeOnly) {
+      return { claimed: false, ...(record.lockOwner ? { owner: record.lockOwner } : {}) };
+    }
+    await this.requireSession(record).reload();
+    await this.syncRecordAfterSessionMutation(record, { emitUpdate: true });
+    return { claimed: true };
+  }
+
+  /**
+   * Acquire (or refresh) the driver-role lock for a record's session file. Never
+   * throws: a live foreign holder flips the record to observe-only instead, so
+   * opening a CLI-driven session still works for reading/tailing.
+   */
+  private ensureDriverLock(record: ManagedSessionRecord): void {
+    const file = record.sessionFile;
+    if (!file) {
+      return;
+    }
+    if (record.lock && record.lockFile === file) {
+      record.lock.refresh();
+      return;
+    }
+    record.lock?.release();
+    record.lock = undefined;
+    record.lockFile = undefined;
+    record.observeOnly = false;
+    record.lockOwner = undefined;
+    const lock = new SessionLock(file, { kind: "gui" });
+    try {
+      lock.acquire();
+      record.lock = lock;
+      record.lockFile = file;
+      this.startHeartbeat();
+    } catch (error) {
+      if (error instanceof LockHeldError) {
+        record.observeOnly = true;
+        record.lockOwner = error.owner;
+        return;
+      }
+      throw error;
+    }
+  }
+
+  private releaseDriverLock(record: ManagedSessionRecord): void {
+    record.lock?.release();
+    record.lock = undefined;
+    record.lockFile = undefined;
+    record.observeOnly = false;
+    record.lockOwner = undefined;
+  }
+
+  private startHeartbeat(): void {
+    if (this.heartbeatTimer) {
+      return;
+    }
+    this.heartbeatTimer = setInterval(() => {
+      let active = 0;
+      for (const record of this.records.values()) {
+        if (record.lock) {
+          record.lock.refresh();
+          active += 1;
+        }
+      }
+      if (active === 0 && this.heartbeatTimer) {
+        clearInterval(this.heartbeatTimer);
+        this.heartbeatTimer = undefined;
+      }
+    }, SessionSupervisor.LOCK_HEARTBEAT_MS);
+    this.heartbeatTimer.unref?.();
+  }
+
   async getSessionTree(sessionRef: SessionRef): Promise<SessionTreeSnapshot> {
     const record = await this.ensureRecord(sessionRef);
     const session = this.requireSession(record);
@@ -711,6 +807,7 @@ export class SessionSupervisor {
     record.closed = false;
 
     this.records.set(key, record);
+    this.ensureDriverLock(record);
     await this.bindSessionRuntime(record);
     return record;
   }
@@ -729,6 +826,10 @@ export class SessionSupervisor {
       runtime,
       session,
       sessionFile: session.sessionFile ?? session.sessionManager.getSessionFile(),
+      lock: undefined,
+      lockFile: undefined,
+      observeOnly: false,
+      lockOwner: undefined,
       status: "idle",
       updatedAt: nowIso(),
       archivedAt: undefined,
@@ -774,6 +875,7 @@ export class SessionSupervisor {
   private async disposeRecordRuntime(record: ManagedSessionRecord): Promise<void> {
     const runtime = record.runtime;
     const session = record.session;
+    this.releaseDriverLock(record);
     record.runtime = undefined;
     record.session = undefined;
     record.sessionCommands = [];
