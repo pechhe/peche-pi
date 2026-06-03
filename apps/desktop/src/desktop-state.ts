@@ -91,6 +91,22 @@ export interface SessionContextUsage {
 }
 
 /**
+ * A runnable, incomplete Ralph plan (a `.ralph/` bundle) discovered in a
+ * workspace. Surfaced in the new-thread Ralph picker so a plan can be launched
+ * as a loop.
+ */
+export interface RalphPlanSummary {
+  /** Human title taken from `.ralph/plan.md`'s first heading. */
+  readonly title: string;
+  readonly totalItems: number;
+  readonly doneItems: number;
+  /** Prompt reference passed to `/ralph-loop` bundle mode. */
+  readonly promptRef: string;
+  /** Pre-filled max-iterations (from a prior loop run, else the ralph default). */
+  readonly defaultMaxIterations: number;
+}
+
+/**
  * Status of a Ralph loop owning the selected workspace, read from
  * `.ralph/loop.md`. Drives the loop thread's locked composer + control bar.
  */
@@ -180,6 +196,8 @@ export interface WorkspaceRecord {
   readonly rootWorkspaceId?: string;
   readonly branchName?: string;
   readonly sessions: readonly SessionRecord[];
+  /** Incomplete Ralph plans found in this workspace, launchable as loops. */
+  readonly ralphPlans?: readonly RalphPlanSummary[];
 }
 
 export interface CreateWorktreeInput {
