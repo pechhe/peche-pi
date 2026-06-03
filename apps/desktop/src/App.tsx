@@ -16,7 +16,7 @@ import {
   type WorktreeRecord,
   type WorkspaceRecord,
 } from "./desktop-state";
-import { ComposerPanel } from "./composer-panel";
+import { ComposerPanel, type LoopControlProps } from "./composer-panel";
 import { buildPlanModePrompt, type ComposerMode } from "./composer-mode";
 import { DiffPanel, type DiffPanelFileRequest } from "./diff-panel";
 import { buildModelOptions, THINKING_OPTIONS } from "./composer-commands";
@@ -1895,6 +1895,21 @@ export default function App() {
     }
   };
 
+  // When the selected thread is the active iteration of a Ralph loop, replace
+  // the composer with a locked control bar so the loop cannot be interrupted.
+  const selectedLoopStatus = snapshot?.selectedLoopStatus;
+  const sendLoopCommand = (command: string) =>
+    void updateSnapshot(api, setSnapshot, () => api.submitComposer(command));
+  const loopControl: LoopControlProps | undefined =
+    selectedLoopStatus && selectedLoopStatus.isSelectedSessionActive
+      ? {
+          status: selectedLoopStatus,
+          onStop: () => sendLoopCommand("/ralph-stop"),
+          onResume: () => sendLoopCommand("/ralph-resume"),
+          onRestart: () => sendLoopCommand("/ralph-restart"),
+        }
+      : undefined;
+
   const handleSetDefaultModel = (provider: string, modelId: string) => {
     if (!settingsWorkspace) {
       return;
@@ -2802,6 +2817,7 @@ export default function App() {
             </section>
             <ComposerPanel
               key={selectedSessionKey}
+              loopControl={loopControl}
               activeSlashCommand={slashMenu.activeSlashFlow?.command}
               activeSlashCommandMeta={slashMenu.activeSlashFlow?.command?.description}
               attachments={composerAttachments}
