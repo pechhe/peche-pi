@@ -32,8 +32,8 @@
         "Fix any resulting compile errors by updating the true source types or consumers, not by creating a second copied contract.",
         "Run focused package builds for `session-driver` and `pi-sdk-driver` plus the required verification gates."
       ],
-      "passes": false,
-      "regression_notes": ""
+      "passes": true,
+      "regression_notes": "Removed `packages/pi-sdk-driver/src/vendor/session-driver.d.ts` so `pi-sdk-driver` no longer shadows the real `@pi-gui/session-driver` and `@pi-gui/session-driver/runtime-types` contracts. Existing package build order already builds `session-driver` before `pi-sdk-driver`, so the real package type Interface resolved through workspace exports without TypeScript config changes. Focused builds passed: `pnpm --filter @pi-gui/session-driver build`; `pnpm --filter @pi-gui/pi-sdk-driver build`. Required gates passed: `pnpm typecheck`; `pnpm --filter @pi-gui/desktop test:unit`."
     },
     {
       "category": "functional",
