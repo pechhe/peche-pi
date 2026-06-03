@@ -39,7 +39,7 @@ export function sectionTitle(section: SettingsSection): string {
 export function sectionDescription(section: SettingsSection, workspaceName: string): string {
   switch (section) {
     case "appearance":
-      return "Choose between light, dark, or automatic system theme.";
+      return "Choose between light, dark, Dracula, or automatic system theme.";
     case "providers":
       return `Connect providers and manage auth for ${workspaceName}.`;
     case "models":

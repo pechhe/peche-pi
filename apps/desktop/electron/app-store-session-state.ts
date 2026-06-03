@@ -1,7 +1,12 @@
 import { sessionKey } from "@pi-gui/pi-sdk-driver";
 import type { SessionDriverEvent, SessionSnapshot } from "@pi-gui/session-driver";
 import type { DesktopAppState, SessionRecord, TranscriptMessage } from "../src/desktop-state";
-import { cloneTranscriptMessage, hasUnseenSessionUpdate, previewFromTranscript } from "./app-store-utils";
+import {
+  cloneTranscriptMessage,
+  hasUnseenSessionUpdate,
+  isAwaitingAssistantText,
+  previewFromTranscript,
+} from "./app-store-utils";
 
 export function applySessionEventState(
   state: DesktopAppState,
@@ -44,7 +49,7 @@ export function updateSessionRecord(
   session: SessionRecord,
   options: {
     readonly snapshot?: Partial<
-      Pick<SessionSnapshot, "title" | "updatedAt" | "archivedAt" | "preview" | "status" | "config">
+      Pick<SessionSnapshot, "title" | "updatedAt" | "archivedAt" | "preview" | "status" | "config" | "contextUsage">
     >;
     readonly status?: SessionRecord["status"];
     readonly transcript: readonly TranscriptMessage[];
@@ -65,7 +70,9 @@ export function updateSessionRecord(
     status: nextStatus,
     runningSince: options.runningSince,
     hasUnseenUpdate: hasUnseenSessionUpdate(nextStatus, updatedAt, options.lastViewedAt, options.transcript),
+    isAwaitingAssistantText: isAwaitingAssistantText(nextStatus, options.transcript),
     config: options.snapshot?.config ?? session.config,
+    contextUsage: options.snapshot?.contextUsage ?? session.contextUsage,
   };
 }
 

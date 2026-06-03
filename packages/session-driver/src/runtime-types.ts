@@ -33,6 +33,7 @@ export interface RuntimeModelRecord {
   readonly authType: RuntimeAuthType;
   readonly reasoning: boolean;
   readonly supportsImages: boolean;
+  readonly contextWindow: number;
 }
 
 export interface RuntimeSkillRecord {
@@ -151,4 +152,5 @@ export interface RuntimeResourceDriver {
   setScopedModelPatterns(workspace: WorkspaceRef, patterns: readonly string[]): Promise<RuntimeSnapshot>;
   setSkillEnabled(workspace: WorkspaceRef, filePath: string, enabled: boolean): Promise<RuntimeSnapshot>;
   setExtensionEnabled(workspace: WorkspaceRef, filePath: string, enabled: boolean): Promise<RuntimeSnapshot>;
+  deleteExtension(workspace: WorkspaceRef, filePath: string): Promise<RuntimeSnapshot>;
 }

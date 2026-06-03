@@ -403,7 +403,7 @@ export function buildModelOptions(
     })
     .map((model: RuntimeSnapshot["models"][number]) => ({
       value: model.modelId,
-      label: `${model.providerName} · ${model.label}`,
+      label: model.label,
       description: model.modelId,
       providerId: model.providerId,
       modelId: model.modelId,

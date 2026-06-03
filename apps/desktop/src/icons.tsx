@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 
+import logoUrl from "./assets/logo.png";
+
 function Icon({ children }: { readonly children: ReactNode }) {
   return (
     <svg aria-hidden="true" fill="none" viewBox="0 0 20 20">
@@ -72,22 +74,15 @@ export function ArrowUpIcon() {
 
 export function PiLogoMark() {
   return (
-    <svg aria-hidden="true" viewBox="0 0 64 64" fill="none">
-      <rect width="64" height="64" rx="18" fill="#1f2638" />
-      <text
-        x="50%"
-        y="54%"
-        textAnchor="middle"
-        dominantBaseline="middle"
-        fontFamily="SF Pro Display, SF Pro Text, ui-sans-serif, system-ui, sans-serif"
-        fontSize="34"
-        fontStyle="italic"
-        fontWeight="700"
-        fill="#ffffff"
-      >
-        π
-      </text>
-    </svg>
+    <img
+      src={logoUrl}
+      alt=""
+      aria-hidden="true"
+      width={64}
+      height={64}
+      draggable={false}
+      style={{ display: "block" }}
+    />
   );
 }
 
@@ -340,6 +335,28 @@ export function DiffIcon() {
     <Icon>
       <path d="M7 7h6M7 10h4M7 13h5" stroke="currentColor" strokeLinecap="round" strokeWidth="1.3" />
       <rect x="4" y="4" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.3" fill="none" />
+    </Icon>
+  );
+}
+
+export function ComposeIcon() {
+  // Square-with-pencil — Codex-style "new thread" affordance.
+  return (
+    <Icon>
+      <path
+        d="M9 4.25H6.25A2 2 0 0 0 4.25 6.25v7.5A2 2 0 0 0 6.25 15.75h7.5A2 2 0 0 0 15.75 13.75V11"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.4"
+      />
+      <path
+        d="m12.4 4.6 3 3-5.1 5.1H7.3V9.7l5.1-5.1Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.4"
+      />
     </Icon>
   );
 }

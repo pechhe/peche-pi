@@ -116,6 +116,57 @@
   --shadow-xl: 0 32px 80px rgba(0, 0, 0, 0.6);
 }
 
+:root.dracula {
+  color-scheme: dark;
+  --window: #282a36;
+  --window-glass: rgba(40, 42, 54, 0.6);
+  --sidebar: #21222c;
+  --sidebar-glass: rgba(33, 34, 44, 0.7);
+  --main: #282a36;
+  --main-glass: rgba(40, 42, 54, 0.6);
+  --surface: #44475a;
+  --surface-glass: rgba(68, 71, 90, 0.8);
+  --surface-muted: #343746;
+  --surface-muted-glass: rgba(52, 55, 70, 0.7);
+  --line: #6272a4;
+  --line-glass: rgba(98, 114, 164, 0.4);
+  --line-strong: #6d7eb0;
+  --line-strong-glass: rgba(109, 126, 176, 0.6);
+  --text: #f8f8f2;
+  --text-strong: #f8f8f2;
+  --muted: #bd93f9;
+  --muted-strong: #bd93f9;
+  --muted-soft: #6272a4;
+  --muted-subtle: #55597a;
+  --muted-icon: #6e72a4;
+  --muted-path: #6e72a4;
+  --muted-settings: #6e72a4;
+  --accent: #bd93f9;
+  --error: #ff5555;
+  --error-ink: #ff6e6e;
+  --surface-overlay: rgba(255, 255, 255, 0.06);
+  --surface-overlay-hover: rgba(255, 255, 255, 0.1);
+  --surface-overlay-border: rgba(255, 255, 255, 0.12);
+  --surface-overlay-muted: rgba(255, 255, 255, 0.04);
+  --border: var(--line);
+  --ink: var(--text);
+  --ink-strong: var(--text-strong);
+  --button-primary-bg: #bd93f9;
+  --button-primary-border: #bd93f9;
+  --button-primary-ink: #282a36;
+  --button-primary-hover-bg: #caa4fa;
+  --button-primary-hover-border: #caa4fa;
+  --button-primary-disabled-bg: #55597a;
+  --button-primary-disabled-border: #55597a;
+  --button-primary-disabled-ink: #f8f8f2;
+
+  --glass-border: rgba(0, 0, 0, 0.2);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.5);
+  --shadow-xl: 0 32px 80px rgba(0, 0, 0, 0.6);
+}
+
 .enable-transparency {
   --window: transparent !important;
   --sidebar: transparent !important;
@@ -292,6 +343,13 @@ svg {
   height: 18px;
 }
 
+.composer__send {
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  border-radius: 50%;
+}
+
 .meta-chip {
   display: inline-flex;
   align-items: center;
@@ -317,20 +375,24 @@ svg {
 }
 
 /* Dark mode overrides for hardcoded light colors */
-:root.dark .empty-state {
+:root.dark .empty-state,
+:root.dracula .empty-state {
   background: var(--surface-overlay-muted);
 }
 
-:root.dark .button--ghost {
+:root.dark .button--ghost,
+:root.dracula .button--ghost {
   background: var(--surface-overlay);
 }
 
-:root.dark .button:hover:not(:disabled) {
+:root.dark .button:hover:not(:disabled),
+:root.dracula .button:hover:not(:disabled) {
   background: var(--surface-overlay-hover);
   border-color: var(--surface-overlay-border);
 }
 
-:root.dark .meta-chip {
+:root.dark .meta-chip,
+:root.dracula .meta-chip {
   background: var(--surface-glass);
   border-color: var(--line);
 }

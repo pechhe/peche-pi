@@ -21,7 +21,6 @@ interface TimelineRuntimeState {
   readonly runMetricsBySession: Map<string, RunMetrics>;
   readonly runningSinceBySession: Map<string, string>;
   readonly activeAssistantMessageBySession: Map<string, string>;
-  readonly activeWorkingActivityBySession: Map<string, string>;
 }
 
 export function appendUserMessage(
@@ -132,10 +131,7 @@ export function applyTimelineEvent(
           toolCount: 0,
           searchCount: 0,
           fileCount: 0,
-        });        
-        const activity = makeActivityItem("Working…");
-        state.activeWorkingActivityBySession.set(key, activity.id);
-        transcript.push(activity);
+        });
       }
       break;
     case "queuedMessageStarted":
@@ -258,25 +254,13 @@ function upsertToolRow(
   transcript.push(next);
 }
 
-function removeWorkingActivity(transcript: TranscriptMessage[], activityId: string | undefined): void {
-  if (!activityId) {
-    return;
-  }
-  const index = transcript.findIndex((item) => item.kind === "activity" && item.id === activityId);
-  if (index >= 0) {
-    transcript.splice(index, 1);
-  }
-}
-
 function clearRunState(
-  transcript: TranscriptMessage[],
+  _transcript: TranscriptMessage[],
   key: string,
   sessionRef: SessionRef,
   state: TimelineRuntimeState,
 ): void {
   clearActiveAssistantMessage(state.activeAssistantMessageBySession, sessionRef);
-  removeWorkingActivity(transcript, state.activeWorkingActivityBySession.get(key));
-  state.activeWorkingActivityBySession.delete(key);
   state.runningSinceBySession.delete(key);
   state.runMetricsBySession.delete(key);
 }

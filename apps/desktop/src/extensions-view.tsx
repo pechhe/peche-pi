@@ -10,6 +10,7 @@ interface ExtensionsViewProps {
   readonly onRefresh: () => void;
   readonly onOpenExtensionFolder: (filePath: string) => void;
   readonly onToggleExtension: (filePath: string, enabled: boolean) => void;
+  readonly onDeleteExtension: (filePath: string) => void;
 }
 
 export function ExtensionsView({
@@ -19,6 +20,7 @@ export function ExtensionsView({
   onRefresh,
   onOpenExtensionFolder,
   onToggleExtension,
+  onDeleteExtension,
 }: ExtensionsViewProps) {
   const [query, setQuery] = useState("");
   const [selectedExtensionPath, setSelectedExtensionPath] = useState<string | undefined>();
@@ -127,6 +129,19 @@ export function ExtensionsView({
                     {extension.commands.length > 0 ? <span>{extension.commands.length} commands</span> : null}
                     {extension.tools.length > 0 ? <span>{extension.tools.length} tools</span> : null}
                     {extension.diagnostics.length > 0 ? <span>{extension.diagnostics.length} issues</span> : null}
+                  </span>
+                  <span
+                    className="skill-card__delete"
+                    title="Delete extension"
+                    aria-label={`Delete ${extension.displayName}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onDeleteExtension(extension.path);
+                    }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M2 4.5h10M5.5 4.5V3a1 1 0 0 1 1-1h1a1 1 0 0 1 1 1v1.5M3.5 4.5v7a1 1 0 0 0 1 1h5a1 1 0 0 0 1-1v-7M6 7v3.5M8 7v3.5" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
                   </span>
                 </button>
               ))

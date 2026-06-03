@@ -3,6 +3,7 @@ import type {
   ExtensionCommandCompatibilityRecord,
   ModelSettingsScopeMode,
   NotificationPreferences,
+  ThemeMode,
 } from "../src/desktop-state";
 import type { ModelSettingsSnapshot } from "@pi-gui/session-driver/runtime-types";
 import { randomUUID } from "node:crypto";
@@ -27,6 +28,9 @@ export interface PersistedUiState {
   readonly sidebarCollapsed?: boolean;
   readonly allowMultiple?: boolean;
   readonly enableTransparency?: boolean;
+  readonly composerDeviceMode?: "off" | "screen" | "modular";
+  readonly themeMode?: ThemeMode;
+  readonly commitPushModel?: string;
 }
 
 export interface LegacyPersistedUiState extends PersistedUiState {
@@ -76,6 +80,18 @@ export async function readPersistedUiState(uiStateFilePath: string): Promise<Leg
       sidebarCollapsed: typeof parsed.sidebarCollapsed === "boolean" ? parsed.sidebarCollapsed : undefined,
       allowMultiple: typeof parsed.allowMultiple === "boolean" ? parsed.allowMultiple : undefined,
       enableTransparency: typeof parsed.enableTransparency === "boolean" ? parsed.enableTransparency : undefined,
+      composerDeviceMode:
+        parsed.composerDeviceMode === "screen" || parsed.composerDeviceMode === "modular" || parsed.composerDeviceMode === "off"
+          ? parsed.composerDeviceMode
+          : // Migrate legacy boolean: true → screen, false/undefined → off
+            (parsed as { composerDeviceMode?: unknown }).composerDeviceMode === true
+            ? "screen"
+            : undefined,
+      themeMode:
+        parsed.themeMode === "dracula" || parsed.themeMode === "dark" || parsed.themeMode === "light" || parsed.themeMode === "system"
+          ? parsed.themeMode
+          : undefined,
+      commitPushModel: typeof parsed.commitPushModel === "string" ? parsed.commitPushModel : undefined,
       composerAttachmentsBySession: parsed.composerAttachmentsBySession,
       transcripts: parsed.transcripts,
     };

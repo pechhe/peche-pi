@@ -1,86 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { HostUiResponse } from "@pi-gui/session-driver";
-import { ChevronDownIcon, ChevronRightIcon } from "./icons";
-import type { SessionExtensionDialogRecord, SessionExtensionUiStateRecord } from "./desktop-state";
-
-const ANSI_ESCAPE_PATTERN = /\u001B\[[0-?]*[ -/]*[@-~]/g;
-const DOCK_SEGMENT_SEPARATOR = "--------------------";
-const GENERIC_ACTIVE_LABEL = "Extension UI active";
-
-interface ExtensionDockBlock {
-  readonly key: string;
-  readonly lines: readonly string[];
-}
-
-export interface ExtensionDockModel {
-  readonly summaryText: string;
-  readonly bodyText: string;
-}
-
-export function hasExtensionDockContent(uiState?: SessionExtensionUiStateRecord): boolean {
-  if (!uiState) {
-    return false;
-  }
-
-  return uiState.statuses.length > 0 || uiState.widgets.length > 0;
-}
-
-export function buildExtensionDockModel(uiState?: SessionExtensionUiStateRecord): ExtensionDockModel | undefined {
-  if (!hasExtensionDockContent(uiState)) {
-    return undefined;
-  }
-
-  const statuses = (uiState?.statuses ?? [])
-    .map((status) => ({
-      key: status.key,
-      text: sanitizeDockText(status.text),
-    }))
-    .filter((status) => status.text.trim().length > 0);
-  const primaryBlocks = buildWidgetBlocks(uiState?.widgets ?? [], "aboveComposer");
-  const secondaryBlocks = buildWidgetBlocks(uiState?.widgets ?? [], "belowComposer");
-  const summaryText = resolveDockSummaryText(statuses, primaryBlocks, secondaryBlocks);
-
-  return {
-    summaryText,
-    bodyText: buildDockBodyText(statuses, primaryBlocks, secondaryBlocks),
-  };
-}
-
-export function ExtensionDock({
-  dock,
-  expanded,
-  onToggle,
-}: {
-  readonly dock: ExtensionDockModel;
-  readonly expanded: boolean;
-  readonly onToggle: () => void;
-}) {
-  return (
-    <div className={`extension-dock ${expanded ? "extension-dock--expanded" : ""}`} data-testid="extension-dock">
-      <button
-        aria-controls="extension-dock-body"
-        aria-expanded={expanded}
-        className="extension-dock__toggle"
-        data-testid="extension-dock-toggle"
-        title={dock.summaryText}
-        type="button"
-        onClick={onToggle}
-      >
-        <span className="extension-dock__summary" data-testid="extension-dock-summary">
-          {dock.summaryText}
-        </span>
-        <span className="extension-dock__chevron" aria-hidden="true">
-          {expanded ? <ChevronDownIcon /> : <ChevronRightIcon />}
-        </span>
-      </button>
-      {expanded ? (
-        <pre className="extension-dock__body" data-testid="extension-dock-body" id="extension-dock-body">
-          {dock.bodyText}
-        </pre>
-      ) : null}
-    </div>
-  );
-}
+import type { SessionExtensionDialogRecord } from "./desktop-state";
 
 export function ExtensionDialog({
   dialog,
@@ -102,6 +22,10 @@ export function ExtensionDialog({
     }
     setDraft("");
   }, [dialog]);
+
+  if (dialog.kind === "questionnaire") {
+    return <QuestionnaireDialog dialog={dialog} onRespond={onRespond} />;
+  }
 
   return (
     <div className="extension-dialog-backdrop">
@@ -175,80 +99,163 @@ export function ExtensionDialog({
   );
 }
 
-function buildWidgetBlocks(
-  widgets: SessionExtensionUiStateRecord["widgets"],
-  placement: "aboveComposer" | "belowComposer",
-): ExtensionDockBlock[] {
-  return widgets
-    .filter((widget) => widget.placement === placement)
-    .map((widget) => ({
-      key: widget.key,
-      lines: widget.lines.map((line) => sanitizeDockText(line)),
-    }))
-    .filter((widget) => widget.lines.some((line) => line.trim().length > 0));
+type QuestionnaireDialogRecord = Extract<SessionExtensionDialogRecord, { readonly kind: "questionnaire" }>;
+
+interface DraftAnswer {
+  readonly value: string;
+  readonly label: string;
+  readonly wasCustom: boolean;
+  readonly index?: number;
 }
 
-function resolveDockSummaryText(
-  statuses: readonly { readonly key: string; readonly text: string }[],
-  primaryBlocks: readonly ExtensionDockBlock[],
-  secondaryBlocks: readonly ExtensionDockBlock[],
-): string {
-  for (const status of statuses) {
-    if (status.text.trim().length > 0) {
-      return status.text;
-    }
-  }
+function QuestionnaireDialog({
+  dialog,
+  onRespond,
+}: {
+  readonly dialog: QuestionnaireDialogRecord;
+  readonly onRespond: (response: HostUiResponse) => void;
+}) {
+  const total = dialog.questions.length;
+  const [step, setStep] = useState(0);
+  const [answers, setAnswers] = useState<Record<string, DraftAnswer>>({});
+  const [otherDraft, setOtherDraft] = useState("");
 
-  for (const block of [...primaryBlocks, ...secondaryBlocks]) {
-    const summaryLine = block.lines.find((line) => line.trim().length > 0);
-    if (summaryLine) {
-      return summaryLine;
-    }
-  }
-
-  return GENERIC_ACTIVE_LABEL;
-}
-
-function buildDockBodyText(
-  statuses: readonly { readonly key: string; readonly text: string }[],
-  primaryBlocks: readonly ExtensionDockBlock[],
-  secondaryBlocks: readonly ExtensionDockBlock[],
-): string {
-  const totalBlocks = statuses.length + primaryBlocks.length + secondaryBlocks.length;
-  const needsLabels = totalBlocks > 1;
-  const primaryLines = [
-    ...statuses.flatMap((status, index) => renderStatusBlock(status, needsLabels, index > 0)),
-    ...primaryBlocks.flatMap((block, index) => renderWidgetBlock(block, needsLabels, statuses.length + index > 0)),
-  ];
-  const secondaryLines = secondaryBlocks.flatMap((block, index) =>
-    renderWidgetBlock(block, needsLabels, index > 0),
+  const current = dialog.questions[step];
+  const recommendedIndex = useMemo(
+    () => current?.options.findIndex((o) => o.recommended) ?? -1,
+    [current],
   );
 
-  if (secondaryLines.length === 0) {
-    return primaryLines.join("\n");
+  useEffect(() => {
+    setOtherDraft("");
+  }, [step]);
+
+  if (!current) {
+    return null;
   }
 
-  if (primaryLines.length === 0) {
-    return secondaryLines.join("\n");
-  }
+  const commit = (next: Record<string, DraftAnswer>) => {
+    if (step + 1 >= total) {
+      const ordered = dialog.questions.map((q) => ({
+        id: q.id,
+        value: next[q.id]?.value ?? "",
+        label: next[q.id]?.label ?? "",
+        wasCustom: next[q.id]?.wasCustom ?? false,
+        ...(next[q.id]?.index !== undefined ? { index: next[q.id]!.index } : {}),
+      }));
+      onRespond({ requestId: dialog.requestId, answers: ordered });
+    } else {
+      setStep(step + 1);
+    }
+  };
 
-  return [...primaryLines, "", DOCK_SEGMENT_SEPARATOR, "", ...secondaryLines].join("\n");
-}
+  const pickOption = (index: number) => {
+    const option = current.options[index];
+    if (!option) return;
+    const next = {
+      ...answers,
+      [current.id]: { value: option.value, label: option.label, wasCustom: false, index },
+    };
+    setAnswers(next);
+    commit(next);
+  };
 
-function renderStatusBlock(
-  status: { readonly key: string; readonly text: string },
-  needsLabel: boolean,
-  addLeadingGap: boolean,
-): string[] {
-  const lines = [`${needsLabel ? `${status.key}: ` : ""}${status.text}`];
-  return addLeadingGap ? ["", ...lines] : lines;
-}
+  const submitOther = () => {
+    const text = otherDraft.trim();
+    if (!text) return;
+    const next = {
+      ...answers,
+      [current.id]: { value: text, label: text, wasCustom: true },
+    };
+    setAnswers(next);
+    commit(next);
+  };
 
-function renderWidgetBlock(block: ExtensionDockBlock, needsLabel: boolean, addLeadingGap: boolean): string[] {
-  const lines = needsLabel ? [`${block.key}:`, ...block.lines] : [...block.lines];
-  return addLeadingGap ? ["", ...lines] : lines;
-}
+  return (
+    <div className="extension-dialog-backdrop">
+      <div
+        className="extension-dialog extension-dialog--questionnaire"
+        data-testid="extension-dialog-questionnaire"
+        role="dialog"
+        aria-modal="true"
+      >
+        <div className="questionnaire__header">
+          <div className="questionnaire__title">{dialog.title ?? "Questionnaire"}</div>
+          <div className="questionnaire__progress">
+            Question {step + 1} of {total}
+          </div>
+        </div>
+        {step === 0 && dialog.intro ? <p className="questionnaire__intro">{dialog.intro}</p> : null}
+        {current.label ? <div className="questionnaire__label">{current.label}</div> : null}
+        <p className="questionnaire__prompt">{current.prompt}</p>
 
-function sanitizeDockText(text: string): string {
-  return text.replaceAll("\r\n", "\n").replaceAll("\r", "\n").replace(ANSI_ESCAPE_PATTERN, "");
+        <div className="questionnaire__options">
+          {current.options.map((option, index) => (
+            <button
+              key={option.value + index}
+              type="button"
+              className={`questionnaire__option${index === recommendedIndex ? " questionnaire__option--recommended" : ""}`}
+              onClick={() => pickOption(index)}
+            >
+              <div className="questionnaire__option-row">
+                <span className="questionnaire__option-key">{index + 1}</span>
+                <span className="questionnaire__option-label">{option.label}</span>
+                {index === recommendedIndex ? (
+                  <span className="questionnaire__option-badge">recommended</span>
+                ) : null}
+              </div>
+              {option.description ? (
+                <div className="questionnaire__option-description">{option.description}</div>
+              ) : null}
+            </button>
+          ))}
+        </div>
+
+        {current.allowOther ? (
+          <div className="questionnaire__other">
+            <input
+              type="text"
+              className="skills-search"
+              placeholder={current.otherPlaceholder ?? "Other (free text)"}
+              value={otherDraft}
+              onChange={(event) => setOtherDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  submitOther();
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="button button--secondary"
+              onClick={submitOther}
+              disabled={!otherDraft.trim()}
+            >
+              Use this answer
+            </button>
+          </div>
+        ) : null}
+
+        <div className="extension-dialog__actions">
+          {step > 0 ? (
+            <button
+              type="button"
+              className="button button--secondary"
+              onClick={() => setStep(step - 1)}
+            >
+              Back
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="button button--secondary"
+            onClick={() => onRespond({ requestId: dialog.requestId, cancelled: true })}
+          >
+            Stop grilling
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }

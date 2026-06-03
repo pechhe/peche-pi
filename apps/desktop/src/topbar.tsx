@@ -3,6 +3,8 @@ import type { AppView, DesktopAppState, SessionRecord, WorkspaceRecord, Worktree
 import { DiffIcon, FolderIcon, TerminalIcon } from "./icons";
 import { getDesktopShortcutLabel, type PiDesktopApi } from "./ipc";
 import type { WorkspaceMenuState } from "./hooks/use-workspace-menu";
+import { CommitPushButton } from "./commit-push-button";
+import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
 
 interface TopbarProps {
   readonly activeView: AppView;
@@ -26,6 +28,8 @@ interface TopbarProps {
   readonly onToggleTerminal: () => void;
   readonly showDiffPanel: boolean;
   readonly onToggleDiffPanel: () => void;
+  readonly selectedRuntime?: RuntimeSnapshot;
+  readonly commitPushModel?: string;
 }
 
 export function Topbar(props: TopbarProps) {
@@ -47,9 +51,12 @@ export function Topbar(props: TopbarProps) {
     onToggleTerminal,
     showDiffPanel,
     onToggleDiffPanel,
+    selectedRuntime,
+    commitPushModel,
   } = props;
   const terminalShortcut = getDesktopShortcutLabel(api.platform, "J");
   const diffShortcut = getDesktopShortcutLabel(api.platform, "D");
+  const commitShortcut = api.platform === "darwin" ? "⌘⇧K" : "Ctrl+Shift+K";
 
   const handleDoubleClick = (event: ReactMouseEvent<HTMLElement>) => {
     const target = event.target;
@@ -70,7 +77,7 @@ export function Topbar(props: TopbarProps) {
         <span className="topbar__workspace">
           {rootWorkspace ? rootWorkspace.name : "Open a folder to begin"}
         </span>
-        {selectedWorkspace && activeView === "threads" ? (
+        {selectedWorkspace && activeView === "threads" && selectedWorkspace.kind === "worktree" ? (
           <>
             <span className="topbar__separator">/</span>
             <div className="environment-picker" ref={wsMenu.environmentMenuRef}>
@@ -81,7 +88,7 @@ export function Topbar(props: TopbarProps) {
                 type="button"
                 onClick={() => wsMenu.setEnvironmentMenuOpen((current) => !current)}
               >
-                {selectedWorkspace.kind === "worktree" ? selectedWorktree?.name ?? selectedWorkspace.name : "Local"}
+                {selectedWorktree?.name ?? selectedWorkspace.name}
               </button>
               {wsMenu.environmentMenuOpen && rootWorkspace ? (
                 <div className="workspace-menu environment-picker__menu">
@@ -162,6 +169,14 @@ export function Topbar(props: TopbarProps) {
             <kbd>{diffShortcut}</kbd>
           </span>
         </div>
+        <CommitPushButton
+          workspaceId={rootWorkspace?.id ?? ""}
+          runtime={selectedRuntime}
+          commitPushModel={commitPushModel}
+          api={api}
+          sessionStatus={selectedSession?.status}
+          shortcutLabel={commitShortcut}
+        />
         <button
           aria-label="Add folder"
           className="icon-button topbar__icon"

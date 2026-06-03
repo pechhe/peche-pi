@@ -92,7 +92,10 @@ export function SettingsGeneralSection({
         <SettingsInfoRow label="New thread" value="Cmd+Shift+O" />
         <SettingsInfoRow label="Open settings" value="Cmd+," />
         <SettingsInfoRow label="Toggle terminal" value="Cmd+J" />
-        <SettingsInfoRow label="New terminal tab" value="Cmd+T" />
+        <SettingsInfoRow label="Commit &amp; push" value="Cmd+Shift+K" />
+        <SettingsInfoRow label="New terminal tab" value="Cmd+T (in terminal)" />
+        <SettingsInfoRow label="Cycle model" value="Cmd+T" />
+        <SettingsInfoRow label="Cycle thinking" value="Shift+Tab" />
         <SettingsInfoRow label="Send message" value="Enter" />
         <SettingsInfoRow label="New line" value="Shift+Enter" />
       </SettingsGroup>

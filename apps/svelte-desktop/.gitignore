@@ -1,0 +1,14 @@
+# Node
+node_modules
+dist
+build
+.svelte-kit
+
+# Tauri / Rust build artifacts
+src-tauri/target
+src-tauri/Cargo.lock
+src-tauri/gen
+
+# Test results
+test-results
+playwright-report

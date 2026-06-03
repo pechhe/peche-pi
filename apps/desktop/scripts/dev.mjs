@@ -48,6 +48,29 @@ function start(cmd, args, cwd) {
   });
 }
 
+const children = [];
+
+/** Label a child process so exit/error logs are traceable. */
+function label(child, label) {
+  child.__label = label;
+  return child;
+}
+
+function logCrash(child, code, signal) {
+  const label = child.__label ?? child.spawnfile ?? "unknown process";
+  const reason = signal ? `killed by ${signal}` : `exit code ${code}`;
+  const cwd = child.__cwd ?? "?";
+  process.stderr.write(`
+╔══════════════════════════════════════════════════════════════╗
+║  DEV CRASH: ${label.padEnd(48).slice(0, 48)}║
+║  ${reason.padEnd(56)}║
+║  cwd: ${cwd.padEnd(51)}║
+║  Electron crash log (if any):                               ║
+║    ~/Library/Application Support/peche-pi/crash.log         ║
+╚══════════════════════════════════════════════════════════════╝
+`);
+}
+
 async function main() {
   if (isBun) {
     for (const pkgPath of packagePaths) {
@@ -61,14 +84,19 @@ async function main() {
     );
   }
 
-  const children = isBun
-    ? [
-        ...packagePaths.map((pkgPath) =>
-          start("bun", ["x", "tsc", "-w", "-p", "tsconfig.json"], pkgPath),
-        ),
-        start("bun", ["x", "electron-vite", "dev", "--watch", ...extraArgs], desktopDir),
-      ]
-    : [
+  if (isBun) {
+    for (const pkgPath of packagePaths) {
+      const name = path.basename(pkgPath);
+      children.push(
+        label(start("bun", ["x", "tsc", "-w", "-p", "tsconfig.json"], pkgPath), `tsc --watch (${name})`),
+      );
+    }
+    children.push(
+      label(start("bun", ["x", "electron-vite", "dev", "--watch", ...extraArgs], desktopDir), "electron-vite"),
+    );
+  } else {
+    children.push(
+      label(
         start(
           "pnpm",
           [
@@ -87,8 +115,13 @@ async function main() {
           ],
           desktopDir,
         ),
-        start("pnpm", ["exec", "electron-vite", "dev", "--watch", ...extraArgs], desktopDir),
-      ];
+        "pnpm build --watch",
+      ),
+    );
+    children.push(
+      label(start("pnpm", ["exec", "electron-vite", "dev", "--watch", ...extraArgs], desktopDir), "electron-vite"),
+    );
+  }
 
   let exiting = false;
   const stopChildren = () => {
@@ -104,11 +137,14 @@ async function main() {
   };
 
   for (const child of children) {
+    child.__cwd = child.spawnoptions?.cwd ?? desktopDir;
     child.once("exit", (code, signal) => {
+      logCrash(child, code, signal);
       stopChildren();
       process.exitCode = code ?? (signal ? 1 : 0);
     });
     child.once("error", (error) => {
+      logCrash(child, error.errno ?? "spawn error", null);
       console.error(error);
       stopChildren();
       process.exitCode = 1;

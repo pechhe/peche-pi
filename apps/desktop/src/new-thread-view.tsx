@@ -1,7 +1,11 @@
 import { useEffect, useRef, type ClipboardEvent, type DragEvent, type KeyboardEvent, type RefObject } from "react";
 import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
 import type { ComposerAttachment, NewThreadEnvironment, WorkspaceRecord } from "./desktop-state";
-import { ArrowUpIcon, PiLogoMark, PlusIcon } from "./icons";
+import type { ComposerMode } from "./composer-mode";
+import { CavemanSelector } from "./caveman-selector";
+import { ComposerModeSelector } from "./composer-mode-selector";
+import { ModelFeatureBadges } from "./model-feature-badges";
+import { ArrowUpIcon, PiLogoMark } from "./icons";
 import {
   MODEL_OPTIONS_EMPTY_TITLE,
   type ComposerSlashCommand,
@@ -13,6 +17,8 @@ import { ComposerSurface } from "./composer-surface";
 import { ModelOnboardingNoticeBanner } from "./model-onboarding-notice";
 import type { ModelOnboardingState, ModelOnboardingSettingsSection } from "./model-onboarding";
 import { ModelSelector } from "./model-selector";
+import type { ModelSelectorHandle } from "./model-selector";
+import type { CavemanLevel } from "./ipc";
 
 interface NewThreadViewProps {
   readonly workspaces: readonly WorkspaceRecord[];
@@ -25,8 +31,11 @@ interface NewThreadViewProps {
   readonly provider: string | undefined;
   readonly modelId: string | undefined;
   readonly thinkingLevel: string | undefined;
+  readonly cavemanLevel: CavemanLevel;
+  readonly composerMode: ComposerMode;
   readonly modelOnboarding: ModelOnboardingState;
   readonly composerRef: RefObject<HTMLTextAreaElement | null>;
+  readonly modelSelectorRef: RefObject<ModelSelectorHandle | null>;
   readonly activeSlashCommand?: ComposerSlashCommand;
   readonly activeSlashCommandMeta?: string;
   readonly slashSections: readonly ComposerSlashCommandSection[];
@@ -44,6 +53,8 @@ interface NewThreadViewProps {
   readonly onSelectWorkspace: (workspaceId: string) => void;
   readonly onSetModel: (provider: string, modelId: string) => void;
   readonly onSetThinking: (level: string) => void;
+  readonly onSetCavemanLevel: (level: CavemanLevel) => void;
+  readonly onSetComposerMode: (mode: ComposerMode) => void;
   readonly onOpenModelSettings: (section: ModelOnboardingSettingsSection) => void;
   readonly onComposerKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
   readonly onComposerPaste: (event: ClipboardEvent<HTMLDivElement>) => void;
@@ -52,7 +63,6 @@ interface NewThreadViewProps {
   readonly onSelectSlashCommand: (command: ComposerSlashCommand) => void;
   readonly onSelectSlashOption: (option: ComposerSlashOption) => void;
   readonly onSelectMention: (filePath: string) => void;
-  readonly onAddAttachments: (files: File[]) => void;
   readonly onRemoveAttachment: (attachmentId: string) => void;
   readonly onSubmit: () => void;
 }
@@ -68,8 +78,11 @@ export function NewThreadView({
   provider,
   modelId,
   thinkingLevel,
+  cavemanLevel,
+  composerMode,
   modelOnboarding,
   composerRef,
+  modelSelectorRef,
   activeSlashCommand,
   activeSlashCommandMeta,
   slashSections,
@@ -87,6 +100,8 @@ export function NewThreadView({
   onSelectWorkspace,
   onSetModel,
   onSetThinking,
+  onSetCavemanLevel,
+  onSetComposerMode,
   onOpenModelSettings,
   onComposerKeyDown,
   onComposerPaste,
@@ -95,11 +110,9 @@ export function NewThreadView({
   onSelectSlashCommand,
   onSelectSlashOption,
   onSelectMention,
-  onAddAttachments,
   onRemoveAttachment,
   onSubmit,
 }: NewThreadViewProps) {
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const workspace = workspaces.find((entry) => entry.id === selectedWorkspaceId);
 
   useEffect(() => {
@@ -137,20 +150,6 @@ export function NewThreadView({
           </div>
           <div className="new-thread__eyebrow">New thread</div>
           <h1 className="new-thread__title">Let&apos;s build</h1>
-          <label className="new-thread__workspace-picker">
-            <span className="sr-only">Workspace</span>
-            <select
-              className="new-thread__workspace"
-              value={workspace.id}
-              onChange={(event) => onSelectWorkspace(event.target.value)}
-            >
-              {workspaces.map((entry) => (
-                <option key={entry.id} value={entry.id}>
-                  {entry.name}
-                </option>
-              ))}
-            </select>
-          </label>
         </div>
 
         <div className="new-thread__composer composer">
@@ -192,7 +191,7 @@ export function NewThreadView({
               textareaLabel="New thread prompt"
               textareaTestId="new-thread-composer"
               textareaClassName="new-thread__textarea"
-              textareaPlaceholder="Ask pi anything, use / for commands and skills"
+              textareaPlaceholder={composerMode === "plan" ? "Describe what you want to plan. Pi will grill you, write a PRD, then prepare Ralph." : "message the clanker"}
               footer={(
                 <NewThreadComposerFooter
                   runtime={runtime}
@@ -200,13 +199,16 @@ export function NewThreadView({
                   provider={provider}
                   modelId={modelId}
                   thinkingLevel={thinkingLevel}
+                  cavemanLevel={cavemanLevel}
+                  composerMode={composerMode}
                   modelOnboarding={modelOnboarding}
                   hasContent={Boolean(prompt.trim() || attachments.length > 0)}
-                  fileInputRef={fileInputRef}
+                  modelSelectorRef={modelSelectorRef}
                   onSelectEnvironment={onSelectEnvironment}
                   onSetModel={onSetModel}
                   onSetThinking={onSetThinking}
-                  onAddAttachments={onAddAttachments}
+                  onSetCavemanLevel={onSetCavemanLevel}
+                  onSetComposerMode={onSetComposerMode}
                   onSubmit={onSubmit}
                 />
               )}
@@ -224,13 +226,16 @@ interface NewThreadComposerFooterProps {
   readonly provider: string | undefined;
   readonly modelId: string | undefined;
   readonly thinkingLevel: string | undefined;
+  readonly cavemanLevel: CavemanLevel;
+  readonly composerMode: ComposerMode;
   readonly modelOnboarding: ModelOnboardingState;
   readonly hasContent: boolean;
-  readonly fileInputRef: RefObject<HTMLInputElement | null>;
+  readonly modelSelectorRef: RefObject<ModelSelectorHandle | null>;
   readonly onSelectEnvironment: (environment: NewThreadEnvironment) => void;
   readonly onSetModel: (provider: string, modelId: string) => void;
   readonly onSetThinking: (level: string) => void;
-  readonly onAddAttachments: (files: File[]) => void;
+  readonly onSetCavemanLevel: (level: CavemanLevel) => void;
+  readonly onSetComposerMode: (mode: ComposerMode) => void;
   readonly onSubmit: () => void;
 }
 
@@ -240,13 +245,16 @@ function NewThreadComposerFooter({
   provider,
   modelId,
   thinkingLevel,
+  cavemanLevel,
+  composerMode,
   modelOnboarding,
   hasContent,
-  fileInputRef,
+  modelSelectorRef,
   onSelectEnvironment,
   onSetModel,
   onSetThinking,
-  onAddAttachments,
+  onSetCavemanLevel,
+  onSetComposerMode,
   onSubmit,
 }: NewThreadComposerFooterProps) {
   return (
@@ -271,7 +279,13 @@ function NewThreadComposerFooter({
               </button>
             </div>
             <span className="new-thread__hint-separator">·</span>
+            <ComposerModeSelector mode={composerMode} onSetMode={onSetComposerMode} />
+            <span className="new-thread__hint-separator">·</span>
+            <CavemanSelector level={cavemanLevel} onSetLevel={onSetCavemanLevel} />
+            <ModelFeatureBadges runtime={runtime} provider={provider} modelId={modelId} />
+            <span className="new-thread__hint-separator">·</span>
             <ModelSelector
+              ref={modelSelectorRef}
               runtime={runtime}
               provider={provider}
               modelId={modelId}
@@ -287,30 +301,9 @@ function NewThreadComposerFooter({
           </div>
 
           <div className="composer__actions">
-            <input
-              ref={fileInputRef}
-              hidden
-              type="file"
-              multiple
-              onChange={(event) => {
-                const files = Array.from(event.target.files ?? []);
-                if (files.length > 0) {
-                  onAddAttachments(files);
-                }
-                event.currentTarget.value = "";
-              }}
-            />
-            <button
-              aria-label="Attach files"
-              className="icon-button composer__attach"
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <PlusIcon />
-            </button>
             <button
               aria-label="Start thread"
-              className="button button--primary button--cta-icon"
+              className="button button--primary button--cta-icon composer__send"
               type="button"
               disabled={!hasContent || modelOnboarding.requiresModelSelection}
               onClick={onSubmit}

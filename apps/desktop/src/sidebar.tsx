@@ -14,15 +14,18 @@ import {
 import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { AppView, SessionRecord, WorkspaceRecord, WorktreeRecord } from "./desktop-state";
-import { ArchiveIcon, ChevronDownIcon, ExtensionIcon, FolderIcon, PlusIcon, RestoreIcon, SettingsIcon, SkillIcon, WorktreeIcon } from "./icons";
+import { ArchiveIcon, ChevronDownIcon, ChevronRightIcon, ComposeIcon, ExtensionIcon, FolderIcon, RestoreIcon, SettingsIcon, SkillIcon, WorktreeIcon } from "./icons";
+import { WorkingSpinner } from "./working-label";
 import type { PiDesktopApi } from "./ipc";
 import { formatRelativeTime } from "./string-utils";
 import type { WorkspaceMenuState } from "./hooks/use-workspace-menu";
 import type { ThreadGroup, ThreadListEntry } from "./thread-groups";
 import type { Dispatch, SetStateAction } from "react";
 import type { DesktopAppState } from "./desktop-state";
+import type { SidebarResize } from "./hooks/use-sidebar-width";
 
 interface SidebarProps {
+  readonly resize: SidebarResize;
   readonly activeView: AppView;
   readonly selectedWorkspace: WorkspaceRecord | undefined;
   readonly selectedSession: SessionRecord | undefined;
@@ -37,7 +40,7 @@ interface SidebarProps {
     setSnapshot: Dispatch<SetStateAction<DesktopAppState | null>>,
     action: () => Promise<DesktopAppState>,
   ) => Promise<DesktopAppState>;
-  readonly onNewThread: () => void;
+  readonly onNewThreadForWorkspace: (rootWorkspaceId: string) => void;
   readonly onSetActiveView: (view: AppView) => void;
   readonly onOpenSkills: (workspaceId?: string) => void;
   readonly onOpenExtensions: (workspaceId?: string) => void;
@@ -49,6 +52,7 @@ interface SidebarProps {
 
 export function Sidebar(props: SidebarProps) {
   const {
+    resize,
     activeView,
     selectedWorkspace,
     selectedSession,
@@ -59,7 +63,7 @@ export function Sidebar(props: SidebarProps) {
     api,
     setSnapshot,
     updateSnapshot,
-    onNewThread,
+    onNewThreadForWorkspace,
     onSetActiveView,
     onOpenSkills,
     onOpenExtensions,
@@ -119,28 +123,17 @@ export function Sidebar(props: SidebarProps) {
 
   return (
     <aside className="sidebar">
+      <div
+        className={`sidebar__resize-handle ${resize.isResizing ? "sidebar__resize-handle--active" : ""}`}
+        onPointerDown={resize.onPointerDown}
+        role="separator"
+        aria-label="Resize sidebar"
+        aria-orientation="vertical"
+      />
       <div className="sidebar__top">
-        <button
-          className="sidebar__new"
-          type="button"
-          disabled={!selectedWorkspace}
-          onClick={onNewThread}
-        >
-          <PlusIcon />
-          <span>New thread</span>
-        </button>
-
         <div className="sidebar__nav">
           <button
-            className={`sidebar__nav-item ${activeView === "threads" ? "sidebar__nav-item--active" : ""}`}
-            type="button"
-            onClick={() => onSetActiveView("threads")}
-          >
-            <FolderIcon />
-            <span>Threads</span>
-          </button>
-          <button
-            className="sidebar__nav-item"
+            className={`sidebar__nav-item ${activeView === "skills" ? "sidebar__nav-item--active" : ""}`}
             type="button"
             onClick={() => onOpenSkills(selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id)}
           >
@@ -148,7 +141,7 @@ export function Sidebar(props: SidebarProps) {
             <span>Skills</span>
           </button>
           <button
-            className="sidebar__nav-item"
+            className={`sidebar__nav-item ${activeView === "extensions" ? "sidebar__nav-item--active" : ""}`}
             type="button"
             onClick={() => onOpenExtensions(selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id)}
           >
@@ -156,7 +149,7 @@ export function Sidebar(props: SidebarProps) {
             <span>Extensions</span>
           </button>
           <button
-            className="sidebar__nav-item"
+            className={`sidebar__nav-item ${activeView === "settings" ? "sidebar__nav-item--active" : ""}`}
             type="button"
             onClick={() => onOpenSettings(selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id)}
           >
@@ -214,6 +207,7 @@ export function Sidebar(props: SidebarProps) {
                     onArchiveSession={onArchiveSession}
                     onSelectSession={onSelectSession}
                     onUnarchiveSession={onUnarchiveSession}
+                    onNewThreadForWorkspace={onNewThreadForWorkspace}
                   />
                 ))}
                 {orphanGroups.map((group) => (
@@ -229,6 +223,7 @@ export function Sidebar(props: SidebarProps) {
                     onArchiveSession={onArchiveSession}
                     onSelectSession={onSelectSession}
                     onUnarchiveSession={onUnarchiveSession}
+                    onNewThreadForWorkspace={onNewThreadForWorkspace}
                   />
                 ))}
               </div>
@@ -247,6 +242,7 @@ export function Sidebar(props: SidebarProps) {
                     onArchiveSession={onArchiveSession}
                     onSelectSession={onSelectSession}
                     onUnarchiveSession={onUnarchiveSession}
+                    onNewThreadForWorkspace={onNewThreadForWorkspace}
                   />
                 </div>
               ) : null}
@@ -271,6 +267,7 @@ interface WorkspaceGroupProps {
   readonly onArchiveSession: (target: { workspaceId: string; sessionId: string }) => void;
   readonly onSelectSession: (target: { workspaceId: string; sessionId: string }) => void;
   readonly onUnarchiveSession: (target: { workspaceId: string; sessionId: string }) => void;
+  readonly onNewThreadForWorkspace: (rootWorkspaceId: string) => void;
 }
 
 function SortableWorkspaceGroup(props: WorkspaceGroupProps) {
@@ -321,6 +318,7 @@ function WorkspaceGroupContent(
     onArchiveSession,
     onSelectSession,
     onUnarchiveSession,
+    onNewThreadForWorkspace,
     dragHandleProps,
   } = props;
 
@@ -333,7 +331,14 @@ function WorkspaceGroupContent(
 
   return (
     <>
-      <div className={`workspace-row ${workspaceActive ? "workspace-row--active" : ""}`}>
+      <div
+        className={`workspace-row ${workspaceActive ? "workspace-row--active" : ""}`}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          wsMenu.openWorkspaceMenu(rootWorkspace.id);
+        }}
+      >
         <button
           className={`workspace-row__select ${dragHandleProps ? "workspace-row__select--draggable" : ""}`}
           onClick={() => wsMenu.toggleWorkspaceCollapsed(rootWorkspace.id)}
@@ -347,22 +352,21 @@ function WorkspaceGroupContent(
           <span className="workspace-row__name">{rootWorkspace.name}</span>
         </button>
         <span
-          className="workspace-row__menu-wrap"
+          className="workspace-row__actions"
+          data-menu-open={wsMenu.workspaceMenuId === rootWorkspace.id || undefined}
           ref={wsMenu.workspaceMenuId === rootWorkspace.id ? wsMenu.workspaceMenuWrapRef : undefined}
         >
           <button
-            aria-label={`Workspace actions for ${rootWorkspace.name}`}
-            aria-haspopup="menu"
-            className="icon-button workspace-row__menu-button"
-            aria-expanded={wsMenu.workspaceMenuId === rootWorkspace.id}
+            aria-label={`New thread in ${rootWorkspace.name}`}
+            className="icon-button workspace-row__compose-button"
             type="button"
             onClick={(event) => {
               event.preventDefault();
               event.stopPropagation();
-              wsMenu.openWorkspaceMenu(rootWorkspace.id);
+              onNewThreadForWorkspace(rootWorkspace.id);
             }}
           >
-            …
+            <ComposeIcon />
           </button>
           {wsMenu.workspaceMenuId === rootWorkspace.id ? (
             <div className="workspace-menu">
@@ -524,7 +528,11 @@ function WorkspaceGroupContent(
 /* ── Thread session row ────────────────────────────────── */
 
 function sessionIndicatorVariant(thread: ThreadListEntry): "running" | "unseen" | "none" {
-  if (thread.session.status === "running") {
+  // Codex-style: only show the spinner while the assistant hasn't started
+  // producing visible output for the current turn. Once text streams in or a
+  // tool call lands, the indicator goes away even though status is still
+  // "running".
+  if (thread.session.status === "running" && thread.session.isAwaitingAssistantText) {
     return "running";
   }
   if (thread.session.hasUnseenUpdate) {
@@ -552,17 +560,19 @@ function ThreadSessionRow({
       className={`session-row ${active ? "session-row--active" : ""}`}
       data-sidebar-indicator={indicatorVariant}
       data-session-id={thread.session.id}
+      onClick={onSelect}
     >
       <button className="session-row__select" onClick={onSelect} type="button">
         <span className="session-row__leading" aria-hidden="true">
-          {indicatorVariant === "running" ? <span className="session-row__status session-row__status--running" /> : null}
+          {indicatorVariant === "running" ? (
+            <WorkingSpinner className="session-row__status session-row__status--running" title="Thinking…" />
+          ) : null}
           {indicatorVariant === "unseen" ? <span className="session-row__status session-row__status--unseen" /> : null}
         </span>
         <span className="session-row__body">
           <span className="session-row__title-line">
             <span className="session-row__title">{thread.session.title}</span>
           </span>
-          {thread.session.preview ? <span className="session-row__preview">{thread.session.preview}</span> : null}
         </span>
       </button>
       <span className="session-row__trailing">
@@ -576,7 +586,10 @@ function ThreadSessionRow({
           aria-label={`${archived ? "Restore" : "Archive"} ${thread.session.title}`}
           className="icon-button session-row__action"
           type="button"
-          onClick={onAction}
+          onClick={(event) => {
+            event.stopPropagation();
+            onAction();
+          }}
         >
           {archived ? <RestoreIcon /> : <ArchiveIcon />}
         </button>

@@ -8,7 +8,9 @@ export type AppView = "threads" | "new-thread" | "skills" | "extensions" | "sett
 export type WorkspaceKind = "primary" | "worktree";
 export type WorktreeStatus = "ready" | "missing" | "error";
 export type NewThreadEnvironment = "local" | "worktree";
-export type ThemeMode = "system" | "light" | "dark";
+export type ThemeMode = "system" | "light" | "dark" | "dracula";
+
+export type ComposerDeviceMode = "off" | "screen" | "modular";
 export type ModelSettingsScopeMode = "app-global" | "per-repo";
 export type ComposerDraftSyncSource =
   | "state"
@@ -54,6 +56,11 @@ export interface QueuedComposerMessage {
   readonly updatedAt: string;
 }
 
+export interface SessionContextUsage {
+  readonly usedTokens: number;
+  readonly contextWindow: number;
+}
+
 export interface SessionRecord {
   readonly id: string;
   readonly title: string;
@@ -64,7 +71,9 @@ export interface SessionRecord {
   readonly status: SessionStatus;
   readonly runningSince?: string;
   readonly hasUnseenUpdate: boolean;
+  readonly isAwaitingAssistantText: boolean;
   readonly config?: SessionConfig;
+  readonly contextUsage?: SessionContextUsage;
 }
 
 export interface SelectedTranscriptRecord {
@@ -97,7 +106,7 @@ export interface SessionExtensionWidgetRecord {
 
 export type SessionExtensionDialogRecord = Extract<
   HostUiRequest,
-  { readonly kind: "confirm" | "select" | "input" | "editor" }
+  { readonly kind: "confirm" | "select" | "input" | "editor" | "questionnaire" }
 >;
 
 export interface SessionExtensionUiStateRecord {
@@ -175,6 +184,9 @@ export interface DesktopAppState {
   readonly globalModelSettings: ModelSettingsSnapshot;
   readonly sidebarCollapsed: boolean;
   readonly enableTransparency: boolean;
+  readonly composerDeviceMode: ComposerDeviceMode;
+  readonly themeMode: ThemeMode;
+  readonly commitPushModel?: string;
   readonly revision: number;
   readonly lastError?: string;
 }
@@ -219,6 +231,9 @@ export function createEmptyDesktopAppState(): DesktopAppState {
     },
     sidebarCollapsed: false,
     enableTransparency: false,
+    composerDeviceMode: "off",
+    themeMode: "system",
+    commitPushModel: undefined,
     revision: 0,
   };
 }

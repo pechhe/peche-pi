@@ -10,6 +10,8 @@
     "noUncheckedIndexedAccess": true,
     "noFallthroughCasesInSwitch": true,
     "forceConsistentCasingInFileNames": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
     "types": ["node", "electron"]
   },
   "include": ["electron/**/*.ts", "src/**/*.ts"],

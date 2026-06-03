@@ -7,6 +7,7 @@ import type {
 import type {
   AppView,
   ComposerAttachment,
+  ComposerDeviceMode,
   ComposerImageAttachment,
   CreateSessionInput,
   CreateWorktreeInput,
@@ -18,6 +19,7 @@ import type {
   StartThreadInput,
   WorkspaceSessionTarget,
 } from "./desktop-state";
+import type { ComposerMode } from "./composer-mode";
 
 export type DesktopNotificationPermissionStatus =
   | "granted"
@@ -25,6 +27,13 @@ export type DesktopNotificationPermissionStatus =
   | "default"
   | "unsupported"
   | "unknown";
+
+export type CavemanLevel = "off" | "lite" | "full" | "ultra" | "wenyan-lite" | "wenyan" | "wenyan-ultra" | "micro";
+
+export interface CavemanConfigSnapshot {
+  readonly defaultLevel: CavemanLevel;
+  readonly showStatus: boolean;
+}
 
 export const desktopIpc = {
   stateRequest: "pi-gui:state-request",
@@ -58,6 +67,8 @@ export const desktopIpc = {
   setModelSettingsScopeMode: "pi-gui:set-model-settings-scope-mode",
   setDefaultModel: "pi-gui:set-default-model",
   setDefaultThinkingLevel: "pi-gui:set-default-thinking-level",
+  getCavemanConfig: "pi-gui:get-caveman-config",
+  setCavemanDefaultLevel: "pi-gui:set-caveman-default-level",
   setSessionModel: "pi-gui:set-session-model",
   setSessionThinkingLevel: "pi-gui:set-session-thinking-level",
   loginProvider: "pi-gui:login-provider",
@@ -67,10 +78,12 @@ export const desktopIpc = {
   setScopedModelPatterns: "pi-gui:set-scoped-model-patterns",
   setSkillEnabled: "pi-gui:set-skill-enabled",
   setExtensionEnabled: "pi-gui:set-extension-enabled",
+  deleteExtension: "pi-gui:delete-extension",
   respondToHostUiRequest: "pi-gui:respond-to-host-ui-request",
   setNotificationPreferences: "pi-gui:set-notification-preferences",
   setIntegratedTerminalShell: "pi-gui:set-integrated-terminal-shell",
   setEnableTransparency: "pi-gui:set-enable-transparency",
+  setComposerDeviceMode: "pi-gui:set-composer-device-mode",
   terminalEnsurePanel: "pi-gui:terminal-ensure-panel",
   terminalCreateSession: "pi-gui:terminal-create-session",
   terminalSetActiveSession: "pi-gui:terminal-set-active-session",
@@ -102,8 +115,11 @@ export const desktopIpc = {
   toggleWindowMaximize: "pi-gui:toggle-window-maximize",
   listWorkspaceFiles: "pi-gui:list-workspace-files",
   getChangedFiles: "pi-gui:get-changed-files",
+  getWorkspaceGitInfo: "pi-gui:get-workspace-git-info",
   getFileDiff: "pi-gui:get-file-diff",
   stageFile: "pi-gui:stage-file",
+  commitPushExecute: "pi-gui:commit-push-execute",
+  setCommitPushModel: "pi-gui:set-commit-push-model",
   getThemeMode: "pi-gui:get-theme-mode",
   getResolvedTheme: "pi-gui:get-resolved-theme",
   setThemeMode: "pi-gui:set-theme-mode",
@@ -117,6 +133,7 @@ export const desktopCommands = {
   openNewThread: "open-new-thread",
   toggleTerminal: "toggle-terminal",
   toggleSidebar: "toggle-sidebar",
+  commitAndPush: "commit-and-push",
 } as const;
 
 export function getDesktopShortcutLabel(platform: NodeJS.Platform, key: string): string {
@@ -187,6 +204,7 @@ export function getDesktopCommandFromShortcut(input: DesktopShortcutInput): PiDe
   const isB = lowerKey === "b" || input.code === "KeyB";
   const isJ = lowerKey === "j" || input.code === "KeyJ";
   const isShiftO = input.shift && (lowerKey === "o" || input.code === "KeyO");
+  const isShiftK = input.shift && (lowerKey === "k" || input.code === "KeyK");
 
   if (!input.shift && isComma) {
     return desktopCommands.openSettings;
@@ -202,6 +220,10 @@ export function getDesktopCommandFromShortcut(input: DesktopShortcutInput): PiDe
 
   if (isShiftO) {
     return desktopCommands.openNewThread;
+  }
+
+  if (isShiftK) {
+    return desktopCommands.commitAndPush;
   }
 
   return undefined;
@@ -246,6 +268,8 @@ export interface PiDesktopApi {
     workspaceId: string,
     thinkingLevel: RuntimeSettingsSnapshot["defaultThinkingLevel"],
   ): Promise<DesktopAppState>;
+  getCavemanConfig(): Promise<CavemanConfigSnapshot>;
+  setCavemanDefaultLevel(level: CavemanLevel): Promise<CavemanConfigSnapshot>;
   setSessionModel(
     workspaceId: string,
     sessionId: string,
@@ -264,17 +288,20 @@ export interface PiDesktopApi {
   setScopedModelPatterns(workspaceId: string, patterns: readonly string[]): Promise<DesktopAppState>;
   setSkillEnabled(workspaceId: string, filePath: string, enabled: boolean): Promise<DesktopAppState>;
   setExtensionEnabled(workspaceId: string, filePath: string, enabled: boolean): Promise<DesktopAppState>;
+  deleteExtension(workspaceId: string, filePath: string): Promise<DesktopAppState>;
   respondToHostUiRequest(
     workspaceId: string,
     sessionId: string,
     response:
       | { readonly requestId: string; readonly value: string }
       | { readonly requestId: string; readonly confirmed: boolean }
+      | { readonly requestId: string; readonly answers: readonly { readonly id: string; readonly value: string; readonly label: string; readonly wasCustom: boolean; readonly index?: number }[] }
       | { readonly requestId: string; readonly cancelled: true },
   ): Promise<DesktopAppState>;
   setNotificationPreferences(preferences: Partial<NotificationPreferences>): Promise<DesktopAppState>;
   setIntegratedTerminalShell(shell: string): Promise<DesktopAppState>;
   setEnableTransparency(enabled: boolean): Promise<DesktopAppState>;
+  setComposerDeviceMode(mode: ComposerDeviceMode): Promise<DesktopAppState>;
   ensureTerminalPanel(
     workspaceId: string,
     terminalScopeId: string,
@@ -314,7 +341,7 @@ export interface PiDesktopApi {
   removeQueuedComposerMessage(messageId: string): Promise<DesktopAppState>;
   steerQueuedComposerMessage(messageId: string): Promise<DesktopAppState>;
   updateComposerDraft(composerDraft: string): Promise<DesktopAppState>;
-  submitComposer(text: string, options?: { readonly deliverAs?: "steer" | "followUp" }): Promise<DesktopAppState>;
+  submitComposer(text: string, options?: { readonly deliverAs?: "steer" | "followUp"; readonly mode?: ComposerMode }): Promise<DesktopAppState>;
   getSessionTree(target: WorkspaceSessionTarget): Promise<SessionTreeSnapshot>;
   navigateSessionTree(
     target: WorkspaceSessionTarget,
@@ -323,12 +350,15 @@ export interface PiDesktopApi {
   ): Promise<{ readonly state: DesktopAppState; readonly result: NavigateSessionTreeResult }>;
   listWorkspaceFiles(workspaceId: string): Promise<string[]>;
   getChangedFiles(workspaceId: string): Promise<{ path: string; status: "added" | "modified" | "deleted" | "untracked"; staged: boolean }[]>;
+  getWorkspaceGitInfo(workspaceId: string): Promise<{ readonly isGitRepo: boolean; readonly changedCount: number }>;
   getFileDiff(workspaceId: string, filePath: string): Promise<string>;
   stageFile(workspaceId: string, filePath: string): Promise<void>;
+  commitPushExecute(workspaceId: string): Promise<{ readonly success: boolean; readonly message: string; readonly commitMessage?: string }>;
+  setCommitPushModel(workspaceId: string, model: string): Promise<DesktopAppState>;
   toggleWindowMaximize(): Promise<void>;
   openExternal(url: string): Promise<void>;
-  getThemeMode(): Promise<"system" | "light" | "dark">;
+  getThemeMode(): Promise<"system" | "light" | "dark" | "dracula">;
   getResolvedTheme(): Promise<"light" | "dark">;
-  setThemeMode(mode: "system" | "light" | "dark"): Promise<string>;
+  setThemeMode(mode: "system" | "light" | "dark" | "dracula"): Promise<string>;
   onThemeChanged(callback: (theme: "light" | "dark") => void): () => void;
 }

@@ -1,10 +1,13 @@
-import { useCallback, useLayoutEffect, useRef, useState, type MutableRefObject, type RefCallback, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MutableRefObject, type RefCallback, type RefObject } from "react";
 import type { TranscriptMessage } from "./desktop-state";
 import { ThreadSearchBar } from "./thread-search";
 import { TimelineItem } from "./timeline-item";
+import { WorkingLabel } from "./working-label";
+import { groupTranscript, type TimelineMetaEvent, type TimelineRow } from "./timeline-grouping";
 
 const OVERSCAN_PX = 720;
 const ROW_GAP_PX = 14;
+const WORKING_LABEL_HEIGHT_PX = 28;
 export const VIRTUALIZATION_THRESHOLD = 80;
 
 interface ThreadSearchModel {
@@ -31,6 +34,8 @@ interface ConversationTimelineProps {
   readonly onJumpToLatest: () => void;
   readonly onContentHeightChange: () => void;
   readonly onViewFileInDiff?: (path: string) => void;
+  readonly onMetaEventsChange?: (events: readonly TimelineMetaEvent[]) => void;
+  readonly isRunning: boolean;
 }
 
 export function ConversationTimeline({
@@ -46,25 +51,52 @@ export function ConversationTimeline({
   onJumpToLatest,
   onContentHeightChange,
   onViewFileInDiff,
+  onMetaEventsChange,
+  isRunning,
 }: ConversationTimelineProps) {
+  // Group consecutive tool calls into bursts and extract meta events.
+  // Re-runs whenever the transcript reference changes (the main process clones
+  // on every push, so identity changes per event).
+  const { rows: timelineRows, metaEvents } = useMemo(() => groupTranscript(transcript), [transcript]);
+  useEffect(() => {
+    onMetaEventsChange?.(metaEvents);
+  }, [metaEvents, onMetaEventsChange]);
+
   // Giant prose blocks and attachment-heavy rows routinely blow past the estimator,
   // so keep those transcripts on the exact DOM path instead of restoring to a fake bottom.
-  const hasUnreliableVirtualizedHeights = transcript.some(
+  const hasUnreliableVirtualizedHeights = timelineRows.some(
     (item) => item.kind === "message" && (item.text.length > 2000 || Boolean(item.attachments?.length)),
   );
+  // Codex-style "Thinking…" gate: only show the indicator while the assistant
+  // hasn't produced visible output for the current turn. The last visible row
+  // being a user message (or no rows at all) means we're still waiting.
+  const lastRow = timelineRows[timelineRows.length - 1];
+  const isAwaitingAssistantOutput =
+    !lastRow || (lastRow.kind === "message" && lastRow.role === "user");
+  const showThinkingIndicator = isRunning && isAwaitingAssistantOutput;
   const shouldVirtualize =
     !threadSearch.isOpen &&
-    transcript.length > VIRTUALIZATION_THRESHOLD &&
+    timelineRows.length > VIRTUALIZATION_THRESHOLD &&
     !disableVirtualization &&
     !hasUnreliableVirtualizedHeights;
   const [expandedToolCallIds, setExpandedToolCallIds] = useState<Set<string>>(() => new Set());
+  const [expandedBurstIds, setExpandedBurstIds] = useState<Set<string>>(() => new Set());
   const measuredHeightsRef = useRef(new Map<string, number>());
   const [measurementVersion, setMeasurementVersion] = useState(0);
 
   useLayoutEffect(() => {
-    const availableToolCallIds = new Set(
-      transcript.filter((item): item is Extract<TranscriptMessage, { kind: "tool" }> => item.kind === "tool").map((item) => item.callId),
-    );
+    const availableToolCallIds = new Set<string>();
+    const availableBurstIds = new Set<string>();
+    for (const row of timelineRows) {
+      if (row.kind === "tool") {
+        availableToolCallIds.add(row.callId);
+      } else if (row.kind === "toolBurst") {
+        availableBurstIds.add(row.id);
+        for (const tool of row.tools) {
+          availableToolCallIds.add(tool.callId);
+        }
+      }
+    }
     setExpandedToolCallIds((current) => {
       if (current.size === 0) {
         return current;
@@ -80,10 +112,25 @@ export function ConversationTimeline({
       }
       return changed ? next : current;
     });
-  }, [transcript]);
+    setExpandedBurstIds((current) => {
+      if (current.size === 0) {
+        return current;
+      }
+      let changed = false;
+      const next = new Set<string>();
+      for (const burstId of current) {
+        if (!availableBurstIds.has(burstId)) {
+          changed = true;
+          continue;
+        }
+        next.add(burstId);
+      }
+      return changed ? next : current;
+    });
+  }, [timelineRows]);
 
   useLayoutEffect(() => {
-    const knownIds = new Set(transcript.map((item) => item.id));
+    const knownIds = new Set(timelineRows.map((item) => item.id));
     let removedAny = false;
     for (const id of measuredHeightsRef.current.keys()) {
       if (knownIds.has(id)) {
@@ -95,18 +142,18 @@ export function ConversationTimeline({
     if (removedAny) {
       setMeasurementVersion((current) => current + 1);
     }
-  }, [transcript]);
+  }, [timelineRows]);
 
   useLayoutEffect(() => {
-    if (!disableVirtualization || isTranscriptLoading || transcript.length === 0) {
+    if (!disableVirtualization || isTranscriptLoading || timelineRows.length === 0) {
       return;
     }
-    const allRowsMeasured = transcript.every((item) => measuredHeightsRef.current.has(item.id));
+    const allRowsMeasured = timelineRows.every((item) => measuredHeightsRef.current.has(item.id));
     if (!allRowsMeasured) {
       return;
     }
     onDisableVirtualizationReady?.();
-  }, [disableVirtualization, isTranscriptLoading, measurementVersion, onDisableVirtualizationReady, transcript]);
+  }, [disableVirtualization, isTranscriptLoading, measurementVersion, onDisableVirtualizationReady, timelineRows]);
 
   const toggleToolCall = useCallback((callId: string) => {
     setExpandedToolCallIds((current) => {
@@ -115,6 +162,18 @@ export function ConversationTimeline({
         next.delete(callId);
       } else {
         next.add(callId);
+      }
+      return next;
+    });
+  }, []);
+
+  const toggleBurst = useCallback((burstId: string) => {
+    setExpandedBurstIds((current) => {
+      const next = new Set(current);
+      if (next.has(burstId)) {
+        next.delete(burstId);
+      } else {
+        next.add(burstId);
       }
       return next;
     });
@@ -158,34 +217,44 @@ export function ConversationTimeline({
         <div className="timeline" data-testid="transcript">
           <div className="timeline-empty">Loading transcript…</div>
         </div>
-      ) : transcript.length === 0 ? (
+      ) : timelineRows.length === 0 ? (
         <div className="timeline" data-testid="transcript">
           <div className="timeline-empty">Send a prompt to start the session.</div>
         </div>
       ) : shouldVirtualize ? (
         <VirtualizedTranscriptList
-          transcript={transcript}
+          transcript={timelineRows}
           timelinePaneRef={timelinePaneRef}
           onContentHeightChange={onContentHeightChange}
           measuredHeightsRef={measuredHeightsRef}
           measurementVersion={measurementVersion}
           expandedToolCallIds={expandedToolCallIds}
+          expandedBurstIds={expandedBurstIds}
           onHeightChange={updateMeasuredHeight}
           onToggleToolCall={toggleToolCall}
+          onToggleBurst={toggleBurst}
           onViewFileInDiff={onViewFileInDiff}
+          isRunning={showThinkingIndicator}
         />
       ) : (
         <div className="timeline" data-testid="transcript">
-          {transcript.map((item) => (
+          {timelineRows.map((item) => (
             <MeasuredTimelineItem
               item={item}
               key={item.id}
               onHeightChange={updateMeasuredHeight}
               expandedToolCallIds={expandedToolCallIds}
+              expandedBurstIds={expandedBurstIds}
               onToggleToolCall={toggleToolCall}
+              onToggleBurst={toggleBurst}
               onViewFileInDiff={onViewFileInDiff}
             />
           ))}
+          {showThinkingIndicator ? (
+            <div className="timeline-working" data-testid="timeline-working">
+              <WorkingLabel label="Thinking…" />
+            </div>
+          ) : null}
         </div>
       )}
       {showJumpToLatest ? (
@@ -204,19 +273,25 @@ function VirtualizedTranscriptList({
   measuredHeightsRef,
   measurementVersion,
   expandedToolCallIds,
+  expandedBurstIds,
   onHeightChange,
   onToggleToolCall,
+  onToggleBurst,
   onViewFileInDiff,
+  isRunning,
 }: {
-  readonly transcript: readonly TranscriptMessage[];
+  readonly transcript: readonly TimelineRow[];
   readonly timelinePaneRef: MutableRefObject<HTMLDivElement | null>;
   readonly onContentHeightChange: () => void;
   readonly measuredHeightsRef: MutableRefObject<Map<string, number>>;
   readonly measurementVersion: number;
   readonly expandedToolCallIds: ReadonlySet<string>;
+  readonly expandedBurstIds: ReadonlySet<string>;
   readonly onHeightChange: (id: string, height: number) => void;
   readonly onToggleToolCall: (callId: string) => void;
+  readonly onToggleBurst: (burstId: string) => void;
   readonly onViewFileInDiff?: (path: string) => void;
+  readonly isRunning: boolean;
 }) {
   const [viewport, setViewport] = useState({ scrollTop: 0, height: 0 });
   const previousTotalHeightRef = useRef(0);
@@ -275,8 +350,10 @@ function VirtualizedTranscriptList({
   const startIndex = findStartIndex(rowOffsets, rowHeights, startOffset);
   const endIndex = findEndIndex(rowOffsets, endOffset);
 
+  const containerHeight = totalHeight + (isRunning ? WORKING_LABEL_HEIGHT_PX : 0);
+
   return (
-    <div className="timeline timeline--virtualized" data-testid="transcript" style={{ height: `${totalHeight}px` }}>
+    <div className="timeline timeline--virtualized" data-testid="transcript" style={{ height: `${containerHeight}px` }}>
       {transcript.slice(startIndex, endIndex).map((item, offsetIndex) => {
         const index = startIndex + offsetIndex;
         return (
@@ -287,11 +364,22 @@ function VirtualizedTranscriptList({
             top={rowOffsets[index] ?? 0}
             onHeightChange={onHeightChange}
             expandedToolCallIds={expandedToolCallIds}
+            expandedBurstIds={expandedBurstIds}
             onToggleToolCall={onToggleToolCall}
+            onToggleBurst={onToggleBurst}
             onViewFileInDiff={onViewFileInDiff}
           />
         );
       })}
+      {isRunning ? (
+        <div
+          className="timeline-working timeline-working--virtualized"
+          data-testid="timeline-working"
+          style={{ transform: `translateY(${totalHeight}px)` }}
+        >
+          <WorkingLabel label="Thinking…" />
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -302,15 +390,19 @@ function MeasuredTimelineItem({
   top,
   onHeightChange,
   expandedToolCallIds,
+  expandedBurstIds,
   onToggleToolCall,
+  onToggleBurst,
   onViewFileInDiff,
 }: {
-  readonly item: TranscriptMessage;
+  readonly item: TimelineRow;
   readonly className?: string;
   readonly top?: number;
   readonly onHeightChange: (id: string, height: number) => void;
   readonly expandedToolCallIds: ReadonlySet<string>;
+  readonly expandedBurstIds: ReadonlySet<string>;
   readonly onToggleToolCall: (callId: string) => void;
+  readonly onToggleBurst: (burstId: string) => void;
   readonly onViewFileInDiff?: (path: string) => void;
 }) {
   const rowRef = useRef<HTMLDivElement | null>(null);
@@ -345,7 +437,9 @@ function MeasuredTimelineItem({
       <TimelineItem
         item={item}
         expandedToolCallIds={expandedToolCallIds}
+        expandedBurstIds={expandedBurstIds}
         onToggleToolCall={onToggleToolCall}
+        onToggleBurst={onToggleBurst}
         onViewFileInDiff={onViewFileInDiff}
       />
     </div>
@@ -390,7 +484,7 @@ function findEndIndex(offsets: readonly number[], targetOffset: number): number 
   return Math.min(offsets.length, Math.max(lastVisibleIndex + 1, 1));
 }
 
-function estimateTimelineItemHeight(item: TranscriptMessage): number {
+function estimateTimelineItemHeight(item: TimelineRow): number {
   if (item.kind === "message") {
     const attachmentHeight = item.attachments?.some((attachment) => attachment.kind === "image")
       ? 120
@@ -402,6 +496,9 @@ function estimateTimelineItemHeight(item: TranscriptMessage): number {
   }
   if (item.kind === "tool") {
     return 52;
+  }
+  if (item.kind === "toolBurst") {
+    return 38;
   }
   if (item.kind === "summary") {
     return item.presentation === "divider" ? 44 : 38;
