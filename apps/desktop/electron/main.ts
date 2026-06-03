@@ -913,7 +913,8 @@ app.whenReady().then(async () => {
       throw new Error(`Unknown workspace: ${workspaceId}`);
     }
     const modelString = store.state.commitPushModel ?? "deepseek:deepseek-chat";
-    return generatePrDraft(workspacePath, modelString, baseBranch);
+    const getApiKey = (providerId: string) => store.getProviderApiKey(providerId);
+    return generatePrDraft(workspacePath, modelString, baseBranch, getApiKey);
   });
   ipcMain.handle(
     desktopIpc.prCreate,
