@@ -11,6 +11,7 @@ import {
   type NewThreadEnvironment,
   type SelectedTranscriptRecord,
   type StartChatInput,
+  type RalphPlanSummary,
   type StartThreadInput,
   type TranscriptMessage,
   type WorktreeRecord,
@@ -1910,6 +1911,27 @@ export default function App() {
         }
       : undefined;
 
+  // Launch a made Ralph plan: start an empty thread in the workspace, then
+  // submit the bundle-mode /ralph-loop command into the new session.
+  const handleLaunchRalphPlan = (plan: RalphPlanSummary, maxIterations: number) => {
+    const workspaceId = newThreadRootWorkspaceId || rootWorkspaceOptions[0]?.id || "";
+    if (!workspaceId) {
+      return;
+    }
+    const command = `/ralph-loop "${plan.promptRef}" --max-iterations=${maxIterations}`;
+    void updateSnapshot(api, setSnapshot, () =>
+      api.startThread({
+        rootWorkspaceId: workspaceId,
+        environment: newThreadEnvironment,
+        provider: resolvedNewThreadProvider,
+        modelId: resolvedNewThreadModelId,
+        thinkingLevel: resolvedNewThreadThinkingLevel,
+      }),
+    ).then(() => {
+      void api.submitComposer(command);
+    });
+  };
+
   const handleSetDefaultModel = (provider: string, modelId: string) => {
     if (!settingsWorkspace) {
       return;
@@ -2782,6 +2804,7 @@ export default function App() {
               onSelectMention={newThreadMentionMenu.insertMention}
               onRemoveAttachment={handleNewThreadRemoveAttachment}
               onSubmit={handleStartThread}
+              onLaunchRalphPlan={handleLaunchRalphPlan}
             />
           ) : (
             <section className="canvas canvas--empty">
