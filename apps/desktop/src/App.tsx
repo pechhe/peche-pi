@@ -2137,26 +2137,32 @@ export default function App() {
         }
       : undefined;
 
-  // Launch a made Ralph plan: start an empty thread in the workspace, then
-  // submit the bundle-mode /ralph-loop command into the new session.
-  const handleLaunchRalphPlan = (plan: RalphPlanSummary, maxIterations: number) => {
-    const workspaceId = newThreadRootWorkspaceId || rootWorkspaceOptions[0]?.id || "";
+  // Once a Ralph plan has been written, the plan's workspace exposes it on
+  // `ralphPlans`. Surface a "Begin Ralph loop" banner on the chat composer
+  // (hidden while a loop already owns the thread). Beginning starts a fresh
+  // thread — the special loop thread — and runs the bundle-mode loop there.
+  const selectedRalphPlan: RalphPlanSummary | undefined =
+    !loopControl && selectedSession ? selectedWorkspace?.ralphPlans?.[0] : undefined;
+  const handleBeginRalphLoop = (plan: RalphPlanSummary) => {
+    const workspaceId = selectedWorkspace?.id;
     if (!workspaceId) {
       return;
     }
-    const command = `/ralph-loop "${plan.promptRef}" --max-iterations=${maxIterations}`;
     void updateSnapshot(api, setSnapshot, () =>
       api.startThread({
         rootWorkspaceId: workspaceId,
-        environment: newThreadEnvironment,
-        provider: resolvedNewThreadProvider,
-        modelId: resolvedNewThreadModelId,
-        thinkingLevel: resolvedNewThreadThinkingLevel,
+        environment: "local",
+        provider: resolvedSessionProvider,
+        modelId: resolvedSessionModelId,
+        thinkingLevel: resolvedSessionThinkingLevel,
       }),
     ).then(() => {
-      void api.submitComposer(command);
+      void api.submitComposer(`/ralph-loop "${plan.promptRef}"`);
     });
   };
+  const beginRalphLoop = selectedRalphPlan
+    ? { planTitle: selectedRalphPlan.title, onBegin: () => handleBeginRalphLoop(selectedRalphPlan) }
+    : undefined;
 
   const handleSetDefaultModel = (provider: string, modelId: string) => {
     if (!settingsWorkspace) {
@@ -3065,7 +3071,6 @@ export default function App() {
               onSelectMention={newThreadMentionMenu.insertMention}
               onRemoveAttachment={handleNewThreadRemoveAttachment}
               onSubmit={handleStartThread}
-              onLaunchRalphPlan={handleLaunchRalphPlan}
             />
           ) : (
             <section className="canvas canvas--empty">
@@ -3118,6 +3123,7 @@ export default function App() {
             <ComposerPanel
               key={selectedSessionKey}
               loopControl={loopControl}
+              beginRalphLoop={beginRalphLoop}
               activeSlashCommand={slashMenu.activeSlashFlow?.command}
               activeSlashCommandMeta={slashMenu.activeSlashFlow?.command?.description}
               attachments={composerAttachments}
