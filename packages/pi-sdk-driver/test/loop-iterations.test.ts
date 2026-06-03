@@ -25,6 +25,15 @@ test("entriesEditedRalphPlan detects a tool call touching .ralph/", () => {
     entriesEditedRalphPlan([toolCallMsg("a", "Edit", { path: "/repo/.ralph/items.json" })]),
     true,
   );
+  // multi-file edit nests paths in an array — must still match
+  assert.equal(
+    entriesEditedRalphPlan([
+      toolCallMsg("a", "MultiEdit", {
+        files: [{ path: "peche-pi/.ralph/plan.md" }, { path: "peche-pi/.ralph/items.json" }],
+      }),
+    ]),
+    true,
+  );
 });
 
 test("entriesEditedRalphPlan is false without a .ralph/ tool call", () => {

@@ -244,13 +244,15 @@ export function loopMarkerIteration(entries: readonly unknown[]): number | undef
   return undefined;
 }
 
-const RALPH_PATH = /(^|\/)\.ralph\//;
+const RALPH_PATH = /\.ralph\//;
 
 /**
  * Whether a session's persisted entries contain a tool call that touched the
  * `.ralph/` bundle — i.e. this is the chat where the Ralph plan was written.
- * Scans `message` entries' assistant `toolCall` blocks for any string argument
- * referencing a `.ralph/` path. Pure (no IO) so it can be unit tested.
+ * Scans `message` entries' assistant `toolCall` blocks and matches a `.ralph/`
+ * path anywhere in the tool arguments (single- or multi-file edits nest paths
+ * differently, so we match the serialized arguments rather than a fixed field).
+ * Pure (no IO) so it can be unit tested.
  */
 export function entriesEditedRalphPlan(entries: readonly unknown[]): boolean {
   for (const entry of entries) {
@@ -267,13 +269,8 @@ export function entriesEditedRalphPlan(entries: readonly unknown[]): boolean {
         continue;
       }
       const args = (block as { arguments?: unknown }).arguments;
-      if (!isRecord(args)) {
-        continue;
-      }
-      for (const value of Object.values(args)) {
-        if (typeof value === "string" && RALPH_PATH.test(value)) {
-          return true;
-        }
+      if (args !== undefined && RALPH_PATH.test(JSON.stringify(args))) {
+        return true;
       }
     }
   }
