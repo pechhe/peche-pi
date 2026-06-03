@@ -42,6 +42,7 @@ import type {
 } from "@pi-gui/session-driver";
 import type { RuntimeCommandRecord } from "@pi-gui/session-driver/runtime-types";
 import { JsonCatalogStore, type SessionFileCatalogStorage } from "./json-catalog-store.js";
+import { inspectLock, type LockState } from "./session-lock.js";
 import {
   applyHostUiRequestToExtensionUiState,
   createEmptyExtensionUiState,
@@ -563,6 +564,24 @@ export class SessionSupervisor {
     this.resetExtensionUi(record);
     await session.reload();
     await this.syncRecordAfterSessionMutation(record, { emitUpdate: true });
+  }
+
+  /**
+   * Report whether another pi runtime (e.g. the CLI) currently drives this
+   * session's file. Read-only: never acquires or mutates the lock. The GUI uses
+   * this to show an observe-only banner and decide whether take-over is possible
+   * (`free` or a stale/dead `foreign` lock can be claimed; a live `foreign` lock
+   * cannot be preempted).
+   */
+  async inspectSessionLock(sessionRef: SessionRef): Promise<LockState> {
+    const key = sessionKey(sessionRef);
+    const existing = this.records.get(key);
+    const sessionFile =
+      existing?.sessionFile ?? (await this.catalogs.getSessionFile(sessionRef).catch(() => undefined));
+    if (!sessionFile) {
+      return { status: "free" };
+    }
+    return inspectLock(sessionFile, { kind: "gui" });
   }
 
   async getSessionTree(sessionRef: SessionRef): Promise<SessionTreeSnapshot> {
