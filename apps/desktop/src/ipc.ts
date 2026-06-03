@@ -22,23 +22,6 @@ import type {
 } from "./desktop-state";
 import type { ComposerMode } from "./composer-mode";
 
-export interface SessionLockOwner {
-  readonly pid: number;
-  readonly kind: "gui" | "cli";
-  readonly host: string;
-  readonly acquiredAt: string;
-  readonly heartbeat: string;
-}
-
-export type SessionLockSnapshot =
-  | { readonly status: "free" }
-  | { readonly status: "foreign"; readonly owner: SessionLockOwner; readonly alive: boolean };
-
-export interface ClaimSessionResult {
-  readonly claimed: boolean;
-  readonly owner?: SessionLockOwner;
-}
-
 export type DesktopNotificationPermissionStatus =
   | "granted"
   | "denied"
@@ -139,8 +122,6 @@ export const desktopIpc = {
   submitComposer: "pi-gui:submit-composer",
   getSessionTree: "pi-gui:get-session-tree",
   navigateSessionTree: "pi-gui:navigate-session-tree",
-  inspectSessionLock: "pi-gui:inspect-session-lock",
-  claimSession: "pi-gui:claim-session",
   toggleWindowMaximize: "pi-gui:toggle-window-maximize",
   listWorkspaceFiles: "pi-gui:list-workspace-files",
   getChangedFiles: "pi-gui:get-changed-files",
@@ -271,8 +252,6 @@ export const piDesktopApiIpcBridge = {
   submitComposer: { kind: "invoke", channel: desktopIpc.submitComposer },
   getSessionTree: { kind: "invoke", channel: desktopIpc.getSessionTree },
   navigateSessionTree: { kind: "invoke", channel: desktopIpc.navigateSessionTree },
-  inspectSessionLock: { kind: "invoke", channel: desktopIpc.inspectSessionLock },
-  claimSession: { kind: "invoke", channel: desktopIpc.claimSession },
   listWorkspaceFiles: { kind: "invoke", channel: desktopIpc.listWorkspaceFiles },
   getChangedFiles: { kind: "invoke", channel: desktopIpc.getChangedFiles },
   getWorkspaceGitInfo: { kind: "invoke", channel: desktopIpc.getWorkspaceGitInfo },
@@ -568,8 +547,6 @@ export interface PiDesktopApi {
   updateComposerDraft(composerDraft: string): Promise<DesktopAppState>;
   submitComposer(text: string, options?: { readonly deliverAs?: "steer" | "followUp"; readonly mode?: ComposerMode }): Promise<DesktopAppState>;
   getSessionTree(target: WorkspaceSessionTarget): Promise<SessionTreeSnapshot>;
-  inspectSessionLock(target: WorkspaceSessionTarget): Promise<SessionLockSnapshot>;
-  claimSession(target: WorkspaceSessionTarget): Promise<ClaimSessionResult>;
   navigateSessionTree(
     target: WorkspaceSessionTarget,
     targetId: string,

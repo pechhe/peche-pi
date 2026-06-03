@@ -91,6 +91,7 @@ async function generateCommitMessage(
   diff: string,
   providerId: string,
   modelId: string,
+  getApiKey: (providerId: string) => Promise<string | undefined>,
 ): Promise<string> {
   const config = resolveProviderConfig(providerId);
   if (!config) {
@@ -100,10 +101,10 @@ async function generateCommitMessage(
     );
   }
 
-  const apiKey = process.env[config.apiKeyEnv];
+  const apiKey = (await getApiKey(providerId)) ?? process.env[config.apiKeyEnv];
   if (!apiKey) {
     throw new Error(
-      `${config.apiKeyEnv} not set in the Electron process. Launch Pi Dev from a shell that exports it, or set it in your environment before opening Pi Dev.`,
+      `${config.apiKeyEnv} not set. Add your API key in Settings → Providers, or set it in your environment before opening Pi Dev.`,
     );
   }
 
@@ -218,6 +219,7 @@ function parseProviderAndModel(modelString: string): { providerId: string; model
 export async function executeCommitPush(
   workspacePath: string,
   modelString: string,
+  getApiKey: (providerId: string) => Promise<string | undefined>,
 ): Promise<CommitPushResult> {
   const started = Date.now();
   log("start", { workspacePath, modelString });
@@ -267,7 +269,7 @@ export async function executeCommitPush(
   const { providerId, modelId } = parseProviderAndModel(modelString);
   let commitMessage: string;
   try {
-    commitMessage = await generateCommitMessage(diff, providerId, modelId);
+    commitMessage = await generateCommitMessage(diff, providerId, modelId, getApiKey);
   } catch (err) {
     // Unstage so user can try again
     await execGit(["reset", "HEAD"], workspacePath);

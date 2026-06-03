@@ -24,7 +24,6 @@ import {
   type SyncWorkspaceResult,
 } from "./session-supervisor.js";
 import { RuntimeSupervisor, type RuntimeSupervisorOptions } from "./runtime-supervisor.js";
-import type { LockInfo, LockState } from "./session-lock.js";
 import { createRuntimeDependencies } from "./runtime-deps.js";
 import { generateThreadTitle, type GenerateThreadTitleOptions } from "./thread-title-generator.js";
 
@@ -103,14 +102,6 @@ export class PiSdkDriver implements SessionDriver {
     return this.supervisor.getSessionTree(sessionRef);
   }
 
-  inspectSessionLock(sessionRef: SessionRef): Promise<LockState> {
-    return this.supervisor.inspectSessionLock(sessionRef);
-  }
-
-  claimSession(sessionRef: SessionRef): Promise<{ readonly claimed: boolean; readonly owner?: LockInfo }> {
-    return this.supervisor.claimSession(sessionRef);
-  }
-
   navigateSessionTree(
     sessionRef: SessionRef,
     targetId: string,
@@ -153,6 +144,10 @@ export class PiSdkDriver implements SessionDriver {
 
   removeWorkspace(workspaceId: WorkspaceId): Promise<void> {
     return this.supervisor.removeWorkspace(workspaceId);
+  }
+
+  async getProviderApiKey(providerId: string): Promise<string | undefined> {
+    return this.authStorage.getApiKey(providerId);
   }
 
   getTranscript(sessionRef: SessionRef) {

@@ -267,6 +267,84 @@ export function ComposerSurface({
           {lastError}
         </div>
       ) : null}
+      {showSlashMenu || (showSlashOptionMenu && selectedSlashCommand) ? (
+        <div className="composer__slash-panel" data-testid="composer-slash-panel" onWheel={(event) => event.stopPropagation()}>
+          {showSlashMenu ? (
+            <div className="slash-menu" data-testid="slash-menu">
+              {slashSections.map((section) => (
+                <div className="slash-menu__section" key={section.id}>
+                  {section.title ? (
+                    <div className={`slash-menu__section-title slash-menu__section-title--${section.id}`}>
+                      <span className="slash-menu__section-icon" aria-hidden="true">
+                        {section.id === "runtime" ? <SparkIcon /> : <SettingsIcon />}
+                      </span>
+                      <span>{section.title}</span>
+                    </div>
+                  ) : null}
+                  {section.items.map((command) => (
+                    <button
+                      className={`slash-menu__item ${command.section === "runtime" ? "slash-menu__item--skill" : ""} ${selectedSlashCommand?.id === command.id ? "slash-menu__item--active" : ""}`}
+                      key={command.id}
+                      type="button"
+                      onClick={() => onSelectSlashCommand(command)}
+                    >
+                      <span className="slash-menu__icon" aria-hidden="true">
+                        <SlashCommandIcon command={command} />
+                      </span>
+                      {command.section === "runtime" ? (
+                        <span className="slash-menu__content slash-menu__content--skill">
+                          <span className="slash-menu__line">
+                            <span className="slash-menu__title">{command.title}</span>
+                            {command.sourceLabel ? <span className="slash-menu__skill-badge">{command.sourceLabel}</span> : null}
+                            {command.compatibility?.status === "terminal-only" ? (
+                              <span className="slash-menu__skill-badge slash-menu__skill-badge--warning">Terminal-only</span>
+                            ) : null}
+                          </span>
+                          <span className="slash-menu__description">{command.description}</span>
+                          <span className="slash-menu__meta">
+                            <span className="slash-menu__command slash-menu__command--skill">{command.command}</span>
+                          </span>
+                        </span>
+                      ) : (
+                        <span className="slash-menu__content">
+                          <span className="slash-menu__line">
+                            <span className="slash-menu__title">{command.title}</span>
+                            <span className="slash-menu__command">{command.command}</span>
+                          </span>
+                          <span className="slash-menu__description">{command.description}</span>
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {showSlashOptionMenu && selectedSlashCommand ? (
+            <div className="slash-menu slash-menu--options" data-testid="slash-options-menu">
+              <div className="slash-menu__search">{selectedSlashCommand.title}</div>
+              {slashOptions.length > 0
+                ? slashOptions.map((option) => (
+                    <button
+                      className={`slash-menu__option ${selectedSlashOption?.value === option.value ? "slash-menu__option--active" : ""}`}
+                      key={option.value}
+                      type="button"
+                      onClick={() => onSelectSlashOption(option)}
+                    >
+                      <span className="slash-menu__option-title">{option.label}</span>
+                      <span className="slash-menu__option-description">{option.description}</span>
+                    </button>
+                  ))
+                : slashOptionEmptyState ? (
+                    <div className="slash-menu__empty">
+                      <div className="slash-menu__empty-title">{slashOptionEmptyState.title}</div>
+                      <div className="slash-menu__empty-description">{slashOptionEmptyState.description}</div>
+                    </div>
+                  ) : null}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
       <div className="composer__editor" onMouseDown={handleEditorMouseDown}>
         <div className="composer__screen">
           {topNotice}
@@ -290,84 +368,6 @@ export function ComposerSurface({
                 );
               })}
             </div>
-          </div>
-        ) : null}
-        {showSlashMenu || (showSlashOptionMenu && selectedSlashCommand) ? (
-          <div className="composer__menus">
-            {showSlashMenu ? (
-              <div className="slash-menu" data-testid="slash-menu" onWheel={(event) => event.stopPropagation()}>
-                {slashSections.map((section) => (
-                  <div className="slash-menu__section" key={section.id}>
-                    {section.title ? (
-                      <div className={`slash-menu__section-title slash-menu__section-title--${section.id}`}>
-                        <span className="slash-menu__section-icon" aria-hidden="true">
-                          {section.id === "runtime" ? <SparkIcon /> : <SettingsIcon />}
-                        </span>
-                        <span>{section.title}</span>
-                      </div>
-                    ) : null}
-                    {section.items.map((command) => (
-                      <button
-                        className={`slash-menu__item ${command.section === "runtime" ? "slash-menu__item--skill" : ""} ${selectedSlashCommand?.id === command.id ? "slash-menu__item--active" : ""}`}
-                        key={command.id}
-                        type="button"
-                        onClick={() => onSelectSlashCommand(command)}
-                      >
-                        <span className="slash-menu__icon" aria-hidden="true">
-                          <SlashCommandIcon command={command} />
-                        </span>
-                        {command.section === "runtime" ? (
-                          <span className="slash-menu__content slash-menu__content--skill">
-                            <span className="slash-menu__line">
-                              <span className="slash-menu__title">{command.title}</span>
-                              {command.sourceLabel ? <span className="slash-menu__skill-badge">{command.sourceLabel}</span> : null}
-                              {command.compatibility?.status === "terminal-only" ? (
-                                <span className="slash-menu__skill-badge slash-menu__skill-badge--warning">Terminal-only</span>
-                              ) : null}
-                            </span>
-                            <span className="slash-menu__description">{command.description}</span>
-                            <span className="slash-menu__meta">
-                              <span className="slash-menu__command slash-menu__command--skill">{command.command}</span>
-                            </span>
-                          </span>
-                        ) : (
-                          <span className="slash-menu__content">
-                            <span className="slash-menu__line">
-                              <span className="slash-menu__title">{command.title}</span>
-                              <span className="slash-menu__command">{command.command}</span>
-                            </span>
-                            <span className="slash-menu__description">{command.description}</span>
-                          </span>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                ))}
-              </div>
-            ) : null}
-            {showSlashOptionMenu && selectedSlashCommand ? (
-              <div className="slash-menu slash-menu--options" data-testid="slash-options-menu" onWheel={(event) => event.stopPropagation()}>
-                <div className="slash-menu__search">{selectedSlashCommand.title}</div>
-                {slashOptions.length > 0
-                  ? slashOptions.map((option) => (
-                      <button
-                        className={`slash-menu__option ${selectedSlashOption?.value === option.value ? "slash-menu__option--active" : ""}`}
-                        key={option.value}
-                        type="button"
-                        onClick={() => onSelectSlashOption(option)}
-                      >
-                        <span className="slash-menu__option-title">{option.label}</span>
-                        <span className="slash-menu__option-description">{option.description}</span>
-                      </button>
-                    ))
-                  : slashOptionEmptyState ? (
-                      <div className="slash-menu__empty">
-                        <div className="slash-menu__empty-title">{slashOptionEmptyState.title}</div>
-                        <div className="slash-menu__empty-description">{slashOptionEmptyState.description}</div>
-                      </div>
-                    ) : null}
-              </div>
-            ) : null}
           </div>
         ) : null}
           <textarea

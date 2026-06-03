@@ -318,6 +318,7 @@ export async function generatePrDraft(
   workspacePath: string,
   modelString: string,
   baseBranchHint: string | undefined,
+  getApiKey: (providerId: string) => Promise<string | undefined>,
 ): Promise<PrDraftSuggestion> {
   const started = Date.now();
   if (!(await isGitRepo(workspacePath))) {
@@ -346,14 +347,14 @@ export async function generatePrDraft(
     };
   }
 
-  const apiKey = process.env[config.apiKeyEnv];
+  const apiKey = (await getApiKey(providerId)) ?? process.env[config.apiKeyEnv];
   if (!apiKey) {
     log("llm.missing_key", { providerId, env: config.apiKeyEnv });
     const draft = fallbackDraft(headBranch, commits);
     return {
       success: true,
       ...draft,
-      message: `${config.apiKeyEnv} not set; using fallback template.`,
+      message: `${config.apiKeyEnv} not set. Add your key in Settings → Providers, or use a fallback template.`,
     };
   }
 

@@ -261,44 +261,6 @@
   margin: 0 auto;
 }
 
-.session-lock-banner {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  width: min(920px, calc(100% - 56px));
-  margin: 8px auto 0;
-  padding: 8px 12px;
-  border: 1px solid color-mix(in srgb, var(--warning, #d97706) 45%, var(--line));
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--warning, #d97706) 12%, var(--surface));
-  color: var(--muted-strong);
-  font-size: 13px;
-}
-
-.session-lock-banner__text {
-  flex: 1 1 auto;
-}
-
-.session-lock-banner__error {
-  color: var(--warning, #d97706);
-}
-
-.session-lock-banner__action {
-  flex: 0 0 auto;
-  padding: 4px 12px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--surface);
-  color: var(--muted-strong);
-  cursor: pointer;
-}
-
-.session-lock-banner__action:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
-
 /* Thread conversations override the centered base: the scroll container
  * (.timeline-pane--thread) must span the full canvas so the scrollbar
  * sits at the far right edge and wheel events anywhere in the pane
@@ -359,6 +321,18 @@
   pointer-events: none;
 }
 
+/* Docked slash panel: its own surface above the composer device, in normal
+   flow so it pushes the composer down instead of floating as an overlay
+   (which the CRT screen's overflow:hidden would clip). */
+.composer__slash-panel {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+  position: relative;
+  z-index: 3;
+  pointer-events: auto;
+}
+
 .chat-header {
   display: grid;
   gap: 4px;
@@ -370,7 +344,7 @@
  * Driven by JS progress state via scaleX + transition. */
 .canvas__loading-bar {
   position: absolute;
-  top: 3px;
+  top: 0;
   left: 0;
   right: 0;
   height: 2px;
@@ -400,15 +374,15 @@
  * the indicator and counter-scales (inline) so it stays round. */
 .canvas__loading-bar-bloom {
   position: absolute;
-  top: 50%;
+  top: 0;
   right: 0;
   width: 6px;
   height: 5px;
   border-radius: 999px;
-  transform-origin: right center;
+  transform-origin: right top;
   background: var(--accent, var(--text-strong));
   box-shadow: 0 0 4px 0 color-mix(in srgb, var(--accent, var(--text-strong)) 70%, transparent);
-  translate: 50% -50%;
+  translate: 50% -1px;
   animation: canvas-loading-bloom-pulse 1100ms ease-in-out infinite;
 }
 

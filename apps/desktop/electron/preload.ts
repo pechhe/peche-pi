@@ -7,8 +7,6 @@ import {
   type DesktopNotificationPermissionStatus,
   type PiDesktopCommand,
   type PrDraftResult,
-  type ClaimSessionResult,
-  type SessionLockSnapshot,
   type TerminalDataEvent,
   type TerminalErrorEvent,
   type TerminalExitEvent,
@@ -278,10 +276,6 @@ contextBridge.exposeInMainWorld("piApp", {
     ipcRenderer.invoke(desktopIpc.submitComposer, text, options) as Promise<DesktopAppState>,
   getSessionTree: (target: WorkspaceSessionTarget) =>
     ipcRenderer.invoke(desktopIpc.getSessionTree, target) as Promise<SessionTreeSnapshot>,
-  inspectSessionLock: (target: WorkspaceSessionTarget) =>
-    ipcRenderer.invoke(desktopIpc.inspectSessionLock, target) as Promise<SessionLockSnapshot>,
-  claimSession: (target: WorkspaceSessionTarget) =>
-    ipcRenderer.invoke(desktopIpc.claimSession, target) as Promise<ClaimSessionResult>,
   navigateSessionTree: (target: WorkspaceSessionTarget, targetId: string, options?: NavigateSessionTreeOptions) =>
     ipcRenderer.invoke(desktopIpc.navigateSessionTree, target, targetId, options) as Promise<{
       readonly state: DesktopAppState;

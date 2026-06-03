@@ -819,12 +819,6 @@ app.whenReady().then(async () => {
   ipcMain.handle(desktopIpc.getSessionTree, (_event, target: WorkspaceSessionTarget) =>
     store.getSessionTree(target),
   );
-  ipcMain.handle(desktopIpc.inspectSessionLock, (_event, target: WorkspaceSessionTarget) =>
-    store.inspectSessionLock(target),
-  );
-  ipcMain.handle(desktopIpc.claimSession, (_event, target: WorkspaceSessionTarget) =>
-    store.claimSession(target),
-  );
   ipcMain.handle(
     desktopIpc.navigateSessionTree,
     (_event, target: WorkspaceSessionTarget, targetId: string, options) =>
@@ -903,7 +897,8 @@ app.whenReady().then(async () => {
       effectiveModel: modelString,
       usingDefault: !configuredModel,
     }));
-    return executeCommitPush(workspacePath, modelString);
+    const getApiKey = (providerId: string) => store.getProviderApiKey(providerId);
+    return executeCommitPush(workspacePath, modelString, getApiKey);
   });
   ipcMain.handle(desktopIpc.getWorkspacePrInfo, async (_event, workspaceId: string) => {
     const workspacePath = store.getWorkspacePath(workspaceId);

@@ -45,7 +45,6 @@ import { SidebarToggleButton } from "./sidebar-toggle-button";
 import { Topbar } from "./topbar";
 import { TerminalPanel } from "./terminal-panel";
 import { ConversationTimeline, VIRTUALIZATION_THRESHOLD } from "./conversation-timeline";
-import { SessionLockBanner } from "./session-lock-banner";
 import LoadingBar from "./loading-bar";
 import { useSlashMenu } from "./hooks/use-slash-menu";
 import { useMentionMenu } from "./hooks/use-mention-menu";
@@ -3060,8 +3059,6 @@ export default function App() {
           commitPushModel={snapshot.commitPushModel}
         />
 
-        <LoadingBar loading={pendingThreadStart ? false : isTranscriptLoading} />
-
         {showTerminalTakeover ? (
           terminalPanel
         ) : (
@@ -3131,18 +3128,7 @@ export default function App() {
         ) : pendingThreadStart || (selectedWorkspace && selectedSession) ? (
           <>
             <section className="canvas canvas--thread">
-              {selectedWorkspace && selectedSession ? (
-                <SessionLockBanner
-                  api={api}
-                  workspaceId={selectedWorkspace.id}
-                  sessionId={selectedSession.id}
-                  onTakeOver={() =>
-                    void updateSnapshot(api, setSnapshot, () =>
-                      api.selectSession({ workspaceId: selectedWorkspace.id, sessionId: selectedSession.id }),
-                    )
-                  }
-                />
-              ) : null}
+              <LoadingBar loading={pendingThreadStart ? false : isTranscriptLoading} />
               <div className="conversation conversation--thread">
                 <SubagentLiveProvider widgets={selectedExtensionUi?.widgets ?? []}>
                 <ConversationTimeline

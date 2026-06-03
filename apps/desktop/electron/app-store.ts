@@ -60,7 +60,6 @@ import {
   type WorkspaceRecord,
   type WorkspaceSessionTarget,
 } from "../src/desktop-state";
-import type { ClaimSessionResult, SessionLockSnapshot } from "../src/ipc";
 import type { ComposerMode } from "../src/composer-mode";
 import {
   applyTimelineEvent,
@@ -348,6 +347,11 @@ export class DesktopAppStore implements AppStoreInternals {
     return this.state.workspaces.find((w) => w.id === workspaceId)?.path;
   }
 
+  async getProviderApiKey(providerId: string): Promise<string | undefined> {
+    await this.initialize();
+    return this.driver.getProviderApiKey(providerId);
+  }
+
   getSkillFilePath(workspaceId: string, filePath: string): string | undefined {
     return this.runtimeByWorkspace.get(workspaceId)?.skills.find((s) => s.filePath === filePath)?.filePath;
   }
@@ -543,31 +547,6 @@ export class DesktopAppStore implements AppStoreInternals {
     const sessionRef = toSessionRef(target);
     await this.ensureSessionReady(sessionRef);
     return this.driver.getSessionTree(sessionRef);
-  }
-
-  async inspectSessionLock(target: WorkspaceSessionTarget): Promise<SessionLockSnapshot> {
-    await this.initialize();
-    const state = await this.driver.inspectSessionLock(toSessionRef(target));
-    if (state.status === "foreign") {
-      const { token: _token, ...owner } = state.info;
-      return { status: "foreign", owner, alive: state.alive };
-    }
-    return { status: "free" };
-  }
-
-  async claimSession(target: WorkspaceSessionTarget): Promise<ClaimSessionResult> {
-    await this.initialize();
-    const sessionRef = toSessionRef(target);
-    const result = await this.driver.claimSession(sessionRef);
-    if (result.claimed) {
-      await this.reloadTranscriptFromDriver(sessionRef);
-      return { claimed: true };
-    }
-    if (result.owner) {
-      const { token: _token, ...owner } = result.owner;
-      return { claimed: false, owner };
-    }
-    return { claimed: false };
   }
 
   async navigateSessionTree(

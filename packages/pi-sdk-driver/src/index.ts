@@ -1,12 +1,5 @@
 export { JsonCatalogStore } from "./json-catalog-store.js";
 export {
-  inspectLock,
-  lockPathFor,
-  LockHeldError,
-  SessionLock,
-} from "./session-lock.js";
-export type { LockInfo, LockKind, LockState, SessionLockOptions } from "./session-lock.js";
-export {
   applyHostUiRequestToExtensionUiState,
   createEmptyExtensionUiState,
   isExtensionUiDialogRequest,
