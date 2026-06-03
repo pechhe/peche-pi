@@ -336,8 +336,8 @@ export function ComposerSurface({
           onKeyDown={onComposerKeyDown}
           placeholder={textareaPlaceholder}
         />
+        <div className="composer__bar">{footer}</div>
       </div>
-      <div className="composer__bar">{footer}</div>
     </div>
   );
 }

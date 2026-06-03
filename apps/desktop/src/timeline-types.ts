@@ -13,6 +13,9 @@ export interface TimelineActivity {
   readonly detail?: string;
   readonly metadata?: string;
   readonly tone?: TimelineTone;
+  // info-level extension chatter (e.g. blackhole OM progress, cymbal nudges).
+  // Hidden from the transcript unless transcriptVerbose is enabled.
+  readonly noise?: boolean;
 }
 
 export interface TimelineToolCall {

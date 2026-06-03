@@ -4,7 +4,7 @@
     "source_docs": [],
     "verification_gates": [
       { "name": "typecheck", "command": "pnpm typecheck" },
-      { "name": "lint", "command": "pnpm lint" }
+      { "name": "desktop unit tests", "command": "pnpm --filter @pi-gui/desktop test:unit" }
     ],
     "require_progress_append": true,
     "require_one_item_per_iteration": true,
@@ -13,163 +13,79 @@
   "items": [
     {
       "category": "functional",
-      "description": "Create the shared Desktop Protocol package with Valibot-validated command, response, event, snapshot, and error envelopes.",
+      "description": "Delete abandoned SvelteKit/Tauri residue that contradicts ADR-0002 and is not referenced by live source.",
       "steps": [
-        "Create a workspace package for the Desktop Protocol.",
-        "Define protocol versioning, request/response correlation, command envelopes, event envelopes, snapshot envelopes, and structured errors.",
-        "Add Valibot runtime validation tests that reject malformed privileged messages and accept representative valid messages.",
-        "Run the package tests plus the required verification gates."
+        "Confirm no live source imports or package scripts reference `packages/desktop-core`, `packages/desktop-protocol`, or `packages/sidecar` as abandoned-port modules.",
+        "Remove stale abandoned-port generated artifacts and any workspace metadata that would make them appear as active modules.",
+        "Preserve the Electron Desktop App and live packages only; do not reintroduce Sidecar, Desktop Protocol, or platform adapters.",
+        "Run the required verification gates and record the deletion-test result in progress."
       ],
       "passes": true,
-      "regression_notes": "Committed in d6c02a9 (feat(protocol): add @pi-gui/desktop-protocol with Valibot schemas and auth handshake). Contains typed command/event/snapshot/error envelopes, parseClientCommand/parseServerEnvelope/parseEventPayload helpers, 17/17 tests. Fixed missing workspace dep in desktop-core and noUncheckedIndexedAccess lint in commit-push-service.ts to satisfy root typecheck gate."
+      "regression_notes": "Removed abandoned SvelteKit/Tauri package/app workspace residue. `pnpm install --lockfile-only` removed stale `apps/svelte-desktop`, `packages/desktop-core`, `packages/desktop-protocol`, `packages/sidecar`, and `@pi-gui/desktop-core` Electron lockfile entries; deleted tracked `apps/svelte-desktop/.gitignore` and ignored generated residue directories. Deletion test found no abandoned package/app dirs or workspace references in package.json, apps, packages, or pnpm-lock.yaml. Required gates passed: pnpm typecheck; pnpm --filter @pi-gui/desktop test:unit."
     },
     {
       "category": "functional",
-      "description": "Add a Sidecar runtime compatibility probe that decides whether Bun can run the pi runtime stack or whether the plan must switch to bundled Node.",
+      "description": "Replace the `pi-sdk-driver` ambient session-driver type copy with the real `@pi-gui/session-driver` package type Interface.",
       "steps": [
-        "Create the Sidecar package or runtime test harness.",
-        "Probe imports for `@earendil-works/pi-coding-agent`, `@pi-gui/pi-sdk-driver`, filesystem catalog persistence, and child process spawning under Bun.",
-        "Record a deterministic Node fallback path when a clear Bun incompatibility is observed.",
-        "Run the probe and the required verification gates without interactive prompts."
+        "Remove or neutralize `packages/pi-sdk-driver/src/vendor/session-driver.d.ts` so it no longer shadows the real package contract.",
+        "Adjust `packages/pi-sdk-driver` TypeScript configuration or project build order so imports from `@pi-gui/session-driver` and `@pi-gui/session-driver/runtime-types` resolve to the real package types.",
+        "Fix any resulting compile errors by updating the true source types or consumers, not by creating a second copied contract.",
+        "Run focused package builds for `session-driver` and `pi-sdk-driver` plus the required verification gates."
       ],
       "passes": true,
-      "regression_notes": "Bun 1.3.14 passes all 8 probes: pi-coding-agent import, pi-sdk-driver import, desktop-protocol import, session-driver import, catalogs import, fs r/w/unlink, child_process spawn, PiSdkDriver instantiation. Node v24.16.0 fallback also passes all probes. Compat gate: Bun preferred, Node fallback via node --import tsx. No native addons, node-pty, or worker_threads in any dependency tree."
+      "regression_notes": "Removed `packages/pi-sdk-driver/src/vendor/session-driver.d.ts` so `pi-sdk-driver` no longer shadows the real `@pi-gui/session-driver` and `@pi-gui/session-driver/runtime-types` contracts. Existing package build order already builds `session-driver` before `pi-sdk-driver`, so the real package type Interface resolved through workspace exports without TypeScript config changes. Focused builds passed: `pnpm --filter @pi-gui/session-driver build`; `pnpm --filter @pi-gui/pi-sdk-driver build`. Required gates passed: `pnpm typecheck`; `pnpm --filter @pi-gui/desktop test:unit`."
     },
     {
       "category": "functional",
-      "description": "Extract a headless Desktop Core seam from the current Electron store for workspace, session, composer, model, and persistence behavior.",
+      "description": "Deepen the Desktop App state transition module for composer and selected-session state invariants.",
       "steps": [
-        "Create a shared Desktop Core package with explicit platform adapter interfaces.",
-        "Move or wrap the minimum state orchestration needed for workspace listing/sync, session create/select/archive, composer send/cancel, model selection, and JSON persistence.",
-        "Keep Electron Desktop callers working through adapters or compatibility wrappers.",
-        "Run focused core tests or existing Electron tests that cover the touched behavior plus the required verification gates."
+        "Extend `apps/desktop/electron/app-state-reducer.ts` or an adjacent state transition module to own composer draft, attachment, selected-session, revision, and error-clearing invariants for one coherent slice.",
+        "Update `app-store-composer.ts`, `app-store-workspace.ts`, or `app-store.ts` callers in that slice to use the deeper state transition Interface instead of hand-mutating the same `DesktopAppState` fields.",
+        "Keep side effects such as driver calls, persistence, and transcript publication outside the pure transition Implementation unless the selected design explicitly documents a safe internal seam.",
+        "Add unit tests at the state transition Interface proving no-op behavior, revision/error conventions, and selected-session/composer consistency.",
+        "Run the required verification gates and any focused tests for the touched state slice."
       ],
       "passes": true,
-      "regression_notes": "DesktopCore interface + DesktopCoreImpl extracted into @pi-gui/desktop-core. Wraps PiSdkDriver for workspace list/sync/add/remove/select, session list/create/select/archive/unarchive/getTranscript, composer submit/cancel, model refresh/setDefault/setThinkingLevel, state subscriptions, and persistence flush. 11 new DesktopCore tests + 7 existing adapter tests = 18/18 pass. Electron Desktop callers unaffected — core is additive, not breaking."
+      "regression_notes": "Extended `apps/desktop/electron/app-state-reducer.ts` so the Desktop App state transition Module owns composer draft sync, composer attachment replacement, and selected-session/composer consistency invariants. Updated composer and selected-session callers to use the reducer Seam while keeping driver calls, persistence, transcript publication, and other side-effect Implementations outside it. Added reducer Interface tests for no-op identity, revision/lastError conventions, attachment equality, and selection-to-threads composer state consistency. Focused and required gates passed: `pnpm --filter @pi-gui/desktop test:unit -- app-state-reducer`; `pnpm typecheck`; `pnpm --filter @pi-gui/desktop test:unit`."
     },
     {
       "category": "functional",
-      "description": "Implement the Sidecar authenticated WebSocket service around Desktop Core.",
+      "description": "Add a Desktop App IPC command registry or contract test that prevents drift between channel names, preload methods, renderer types, and main handlers.",
       "steps": [
-        "Start a localhost-only WebSocket service that accepts the Desktop Protocol envelopes.",
-        "Require a per-run token and reject missing, invalid, or wrong-origin clients.",
-        "Expose commands for fresh snapshot, workspace list/sync, session create/select/archive, composer send/cancel, model refresh/selection, and shutdown.",
-        "Emit typed state, runtime, and error events to connected clients.",
-        "Run Sidecar integration tests plus the required verification gates."
+        "Introduce a small owning module for Desktop App IPC command metadata, or a contract test over the existing metadata, without broadening the renderer's Node access.",
+        "Prove every exposed `window.piApp` command has a known channel and every command channel expected by the renderer has a main-process handler or documented event-only role.",
+        "Keep listener/event channels such as state changes, selected transcript changes, terminal output, and theme changes explicit so they are not confused with request/response commands.",
+        "Update preload, main, or IPC types only as needed for the selected seam; avoid product UI changes.",
+        "Run the required verification gates and the new IPC contract test."
       ],
       "passes": true,
-      "regression_notes": "WebSocket server (startSidecarServer) in @pi-gui/sidecar: binds 127.0.0.1 only, per-run token auth via client-hello handshake, dispatches all tracer-bullet commands (snapshot, workspace CRUD, session CRUD, composer submit/cancel, model set, shutdown). 7 integration tests covering auth rejection (no hello, wrong token, wrong version), handshake, state snapshot, unknown commands, and transcript null. 14/14 total sidecar tests pass."
+      "regression_notes": "Added IPC bridge metadata in `apps/desktop/src/ipc.ts` for the narrow `window.piApp` Interface, classifying local entries, request/response command channels, one-way send channels, sync clipboard channel, and event-only listener channels. Added `apps/desktop/electron/ipc-contract.test.ts` to prove preload entries, renderer Interface entries, Desktop IPC channel names, and main-process handlers stay aligned without broadening preload Node access. Focused and required gates passed: `pnpm --filter @pi-gui/desktop test:unit -- ipc-contract`; `pnpm typecheck`; `pnpm --filter @pi-gui/desktop test:unit`."
     },
     {
       "category": "functional",
-      "description": "Support Sidecar reconnect semantics with fresh snapshots and live in-flight session continuity.",
+      "description": "Create one owning Desktop App timeline model module for persisted transcript rows and live session events.",
       "steps": [
-        "Add client reconnect handling that authenticates again and requests a fresh snapshot.",
-        "Keep in-flight Sidecar sessions alive across Desktop Client reloads.",
-        "Resubscribe selected session transcript/runtime streams after reconnect.",
-        "Prove reconnect behavior with an automated Sidecar integration test and the required verification gates."
+        "Introduce a timeline model module that owns assembly of product-visible timeline rows from persisted transcript messages and live `SessionDriverEvent` inputs.",
+        "Move or wrap existing behavior from `app-store-timeline.ts`, `timeline-types.ts`, and `timeline-grouping.ts` behind a smaller Interface while preserving current rendering output.",
+        "Cover assistant deltas, queued user messages, tool lifecycle rows, run summaries, meta activity extraction, and reopened transcript behavior with tests at the timeline model Interface.",
+        "Update Desktop App callers to use the owning timeline model module without changing visible conversation-first behavior.",
+        "Run the required verification gates and focused timeline tests."
       ],
       "passes": true,
-      "regression_notes": "Reconnect semantics: client re-auths after disconnect and receives fresh state.snapshot event. In-flight sessions live in long-lived DesktopCore. New session.subscribe command forwards session events to client WebSocket. Reconnect integration test proves reconnect works with fresh auth + snapshot. 9/9 WS tests pass, 16/16 total sidecar tests pass."
+      "regression_notes": "Added `apps/desktop/src/timeline-model.ts` as the owning Desktop App timeline Module. It now assembles runtime transcript rows from live `SessionDriverEvent` inputs and builds renderer grouping/meta view models from persisted transcript rows behind one Interface, while `timeline-grouping.ts` remains a compatibility re-export Seam and `app-store-timeline.ts` delegates to the model Implementation. Added Interface tests covering assistant deltas, queued user messages with attachments, tool lifecycle rows, run summaries, run failures, reopened transcript meta extraction, non-trailing tool bursts, and trailing active tool rows. Focused and required gates passed: `pnpm --filter @pi-gui/desktop test:unit -- timeline-model`; `pnpm typecheck`; `pnpm --filter @pi-gui/desktop test:unit`."
     },
     {
       "category": "functional",
-      "description": "Create the Svelte Desktop app shell using SvelteKit static output inside Tauri.",
+      "description": "Deepen one internal `SessionSupervisor` concern while preserving the external `PiSdkDriver` Interface.",
       "steps": [
-        "Create `apps/svelte-desktop` as a workspace app with SvelteKit static output and Tauri configuration.",
-        "Add root scripts or package scripts for typecheck, lint, development launch, and bounded desktop smoke execution.",
-        "Ensure production build does not require a SvelteKit SSR server.",
-        "Run the Svelte app build/typecheck plus the required verification gates."
+        "Choose one high-friction concern inside `packages/pi-sdk-driver/src/session-supervisor.ts`, such as queued message delivery, extension host UI state, runtime command compatibility, or workspace/session catalog sync.",
+        "Extract that concern into an internal module with a smaller Interface and keep `PiSdkDriver` and `SessionDriver` caller behavior unchanged.",
+        "Use a real internal seam only where behavior varies or tests need locality; do not introduce pass-through Adapters for their own sake.",
+        "Add or update tests that exercise the extracted concern through its Interface and through the public driver path where practical.",
+        "Run focused `pi-sdk-driver` tests or builds plus the required verification gates."
       ],
       "passes": true,
-      "regression_notes": "@pi-gui/svelte-desktop created with SvelteKit + @sveltejs/adapter-static (fallback: index.html, prerender: /). No SSR server needed — static SPA output. Tauri v2 configuration with greet command, 1200x800 default window, devUrl to Vite port 5174. Svelte-check 0 errors, 0 warnings. Build produces dist/ with static assets. Known-gap labels for workspace, timeline, composer, settings, terminal, extensions."
-    },
-    {
-      "category": "functional",
-      "description": "Make Tauri supervise the local Sidecar process and hand the Desktop Client its connection data safely.",
-      "steps": [
-        "On app launch, mint a random token and start the Sidecar as a supervised child process with port, token, and environment.",
-        "Expose only the connection data needed by the Svelte Desktop Client through a Tauri command.",
-        "Show a user-visible error when the Sidecar fails or crashes instead of silently hanging.",
-        "Terminate the Sidecar on full app quit without killing it on frontend reload.",
-        "Run a bounded Tauri lifecycle smoke test plus the required verification gates."
-      ],
-      "passes": true,
-      "regression_notes": "Tauri lib.rs: start_sidecar command spawns Node child process, reads JSON connection info from stdout, stores SidecarConnection. get_sidecar_connection returns current port+token. stop_sidecar kills process. Window Destroyed cleanup via RunEvent::Exit ensures sidecar termination without killing on frontend reload. Sidecar run.ts entry point added. cargo check passes. Root typecheck + lint pass."
-    },
-    {
-      "category": "functional",
-      "description": "Implement the Svelte `desktopClient` store that owns connection lifecycle, state projection, command status, and event reduction.",
-      "steps": [
-        "Connect to the Sidecar with the Tauri-provided token and WebSocket URL.",
-        "Load an initial full snapshot and apply typed events into a projected app state.",
-        "Expose derived state for workspace, selected session, timeline, composer status, model settings, connection state, and known gaps.",
-        "Handle reconnect and snapshot resync without duplicating canonical state ownership in the client.",
-        "Run store tests or component-level integration tests plus the required verification gates."
-      ],
-      "passes": true,
-      "regression_notes": "createDesktopClientStore in src/lib/desktop-client.ts: WebSocket connection with client-hello auth (PROTOCOL_VERSION + token), command dispatch with per-id Promise tracking (30s timeout), event reduction (state.snapshot, state.changed, transcript.appended, session.event, selectedTranscript.changed, app.error), reconnect with exponential backoff on non-1000 close codes, subscribe() for external reactivity. Tauri bridge via dynamic @tauri-apps/api import. 14/14 tests pass. Root typecheck + lint pass."
-    },
-    {
-      "category": "functional",
-      "description": "Build the Svelte Tracer Bullet UI for workspace and session workflows.",
-      "steps": [
-        "Render the Desktop App shell with workspace menu, session list, selected session, timeline, composer, and settings/model affordances needed for the Tracer Bullet.",
-        "Support adding/selecting a workspace, creating/selecting/archiving a session, sending a message, canceling a run, and selecting model/thinking settings.",
-        "Render live timeline streaming from Sidecar events.",
-        "Show clear known-gap labels or hidden controls for terminal, extension UI, worktree create/remove, and commit/push.",
-        "Run Svelte UI tests or desktop smoke tests plus the required verification gates."
-      ],
-      "passes": true,
-      "regression_notes": "Svelte Tracer Bullet UI with 5 components (ConnectionBadge, WorkspacePanel, SessionList, Timeline, Composer, ModelSettings) wired to DesktopClientStore via +page.svelte. Full Tracer Bullet workflows: workspace add/select/remove, session create/select/archive, composer send/cancel, model provider/model/thinking selection, live timeline streaming. Known-gap labels footer for terminal, extensions, worktree, commit/push. 16 new UI integration tests (4 workspace + 3 session + 2 composer + 2 model + 4 timeline + 1 snapshot). 30/30 total tests pass. Build produces static dist. svelte-check: 0 errors, 0 warnings. Uses relative imports with .js extension after $lib alias failed in svelte-check. CoreWorkspaceRecord/CoreSessionRecord re-exported from desktop-client.ts for component imports."
-    },
-    {
-      "category": "functional",
-      "description": "Preserve JSON catalog/session persistence across Svelte Desktop app restart.",
-      "steps": [
-        "Use the existing JSON catalog/session persistence path through Desktop Core or compatible adapters.",
-        "Create a workspace and session in the Svelte Desktop, quit or restart the app, and verify the same workspace/session state is restored.",
-        "Ensure no migration to SQLite or Tauri key-value storage is introduced for this milestone.",
-        "Run persistence tests plus the required verification gates."
-      ],
-      "passes": true,
-      "regression_notes": "4 new DesktopCore persistence tests: workspace persists across restart, session persists across restart, multiple workspaces/sessions persist, initialWorkspacePaths auto-adds on first init then restores from catalog on subsequent. 1 new Sidecar persistence test: workspace persists across sidecar restart (add workspace via WS, stop server, restart with same dataDir, verify via WS). DesktopCore: 15/15 pass. Sidecar: 17/17 pass. Svelte Desktop: 30/30 pass. No SQLite or Tauri KV introduced — uses existing catalogs.json from PiSdkDriver."
-    },
-    {
-      "category": "functional",
-      "description": "Add the Svelte/Tauri Playwright desktop core smoke lane.",
-      "steps": [
-        "Add Playwright helpers that launch the real Svelte Desktop Tauri surface with controlled Sidecar fixtures or test runtime configuration.",
-        "Cover launch/reopen, workspace menu, session create/select/archive, composer send/cancel, timeline streaming, model selection, and persistence.",
-        "Make the lane bounded and non-interactive on macOS.",
-        "Run the new smoke lane plus the required verification gates."
-      ],
-      "passes": true,
-      "regression_notes": "Playwright smoke lane: 8 tests (shell render, connect to Sidecar, workspace add/select, session create, composer disabled/enabled states, model settings panel, known-gap labels). Uses real Sidecar (startSidecarServer) + SvelteKit static dist served via vite preview. Test mode: URL params sidecarPort/sidecarToken bypass Tauri bridge. playwright.config.ts with webServer auto-build+preview. All 8 pass in 9.5s on Chromium."
-    },
-    {
-      "category": "functional",
-      "description": "Add a local macOS packaged `.app` smoke path for the Svelte Desktop.",
-      "steps": [
-        "Add package scripts that build a local unsigned macOS `.app` for development smoke only.",
-        "Verify the packaged app launches the Sidecar, completes token handshake, opens the Desktop Client, restores persisted state, and cleans up the Sidecar on quit.",
-        "Do not require signing, notarization, keychain access, admin prompts, or Apple credentials.",
-        "Run the package smoke command plus the required verification gates."
-      ],
-      "passes": true,
-      "regression_notes": "smoke:app script verifies build pipeline: SvelteKit static build (vite build) + Tauri Rust compilation (cargo check). Both pass in ~3.5s. No codesign required. Full Tauri .app bundle (pnpm tauri build) requires Apple codesign credentials which are deferred per scope-out. Bundle config added to tauri.conf.json (macOS minimum 14.0, icon entry)."
-    },
-    {
-      "category": "functional",
-      "description": "Document canonical promotion status, known gaps, and follow-up issue seeds for post-Tracer parity work.",
-      "steps": [
-        "Add developer/user-facing documentation that explains when the Svelte Desktop is eligible to become the Canonical App.",
-        "List explicit known gaps for terminal UI, extension UI rendering, worktree create/remove, commit/push, signed releases, Linux, Windows, and auto-update.",
-        "Ensure missing features are not exposed as half-working controls in the Svelte UI.",
-        "Run documentation-adjacent checks and the required verification gates."
-      ],
-      "passes": true,
-      "regression_notes": "README.md with architecture diagram, quick start, test coverage table (87 total tests), promotion criteria, known-gaps table (12 items with issue seeds), follow-up issue seeds for terminal, extension dock, worktree, signed releases, Linux/Windows. All known-gap features show labels in UI footer — no half-working controls exposed. Verification: typecheck + lint clean."
+      "regression_notes": "Extracted queued message delivery concern from `session-supervisor.ts` into `packages/pi-sdk-driver/src/queued-message-delivery.ts` with a narrower Interface: `cloneQueuedMessage`, `queuedMessageFromInput`, `queuedPromptImagesFromAttachments`, `promptTextForQueuedDelivery`, `deliverQueuedPrompt`, `deliverQueuedMessage`, and `reconcileQueuedMessagesForStartedUserMessage`. Replaced inline queued-message mutation in `sendUserMessage`, `replaceQueuedMessages`, and `mapAgentEvent` with calls to the extracted Module; removed the private `queuePrompt` method. Added `packages/pi-sdk-driver/test/queued-message-delivery.test.ts` with 6 Interface tests covering clone Locality, image extraction, file preamble, steer/followUp dispatch, full deliverQueuedMessage pipeline, and steer-before-follow-up reconciliation. Focused tests passed: `pnpm exec tsx --test packages/pi-sdk-driver/test/queued-message-delivery.test.ts`; `pnpm --filter @pi-gui/pi-sdk-driver build`. Required gates passed: `pnpm typecheck`; `pnpm --filter @pi-gui/desktop test:unit`. External `PiSdkDriver` Interface unchanged; `SessionSupervisor` callers only interact through the existing public method Interface."
     }
   ]
 }

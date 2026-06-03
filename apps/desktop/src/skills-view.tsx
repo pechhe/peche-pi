@@ -338,12 +338,7 @@ function SkillDetail({ skill, onOpenFolder, onToggle, onTry }: SkillDetailProps)
       </header>
 
       <div className="skill-detail__grid">
-        <div className="skill-detail__panel">
-          <h3 className="skill-detail__panel-title">About</h3>
-          <p className="skill-detail__panel-body">{skill.description}</p>
-        </div>
-
-        <div className="skill-detail__panel">
+        <div className="skill-detail__panel skill-detail__panel--details">
           <h3 className="skill-detail__panel-title">Details</h3>
           <dl className="skill-detail__meta">
             <div>

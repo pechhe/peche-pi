@@ -485,16 +485,21 @@
 }
 
 .timeline-item--just-sent .timeline-item__bubble {
-  animation: user-bubble-in 520ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  animation: user-bubble-in 640ms cubic-bezier(0.22, 1.45, 0.36, 1) both;
   will-change: transform, opacity;
 }
 
 @keyframes user-bubble-in {
   0% {
-    transform: translateY(14px) scale(0.94);
+    transform: translateY(22px) scale(0.9);
     opacity: 0;
   }
-  60% {
+  42% {
+    transform: translateY(-3px) scale(1.025);
+    opacity: 1;
+  }
+  68% {
+    transform: translateY(1px) scale(0.995);
     opacity: 1;
   }
   100% {
@@ -1993,6 +1998,84 @@
   }
 }
 
+/* Create-PR / View-PR pill variants: same pill shape as dirty, but softer
+ * tints so the three states read distinctly in the topbar. */
+.commit-push--create-pr .commit-push__button--pill,
+.commit-push--view-pr .commit-push__button--pill {
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface) 92%);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.commit-push--create-pr .commit-push__button--pill:hover:not(:disabled),
+.commit-push--view-pr .commit-push__button--pill:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface) 84%);
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+/* ── PR dialog ────────────────────────────────────── */
+
+.pr-dialog {
+  width: min(720px, 100%);
+  max-height: min(820px, calc(100vh - 48px));
+}
+
+.pr-dialog__form {
+  display: grid;
+  gap: 14px;
+  overflow: auto;
+}
+
+.pr-dialog__field {
+  display: grid;
+  gap: 6px;
+}
+
+.pr-dialog__field--inline {
+  flex: 1;
+}
+
+.pr-dialog__label {
+  color: var(--muted-soft);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.pr-dialog__input,
+.pr-dialog__textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid #d9e0ec;
+  background: #f8fafc;
+  color: var(--text-strong);
+  font: inherit;
+}
+
+.pr-dialog__textarea {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.5;
+  resize: vertical;
+  min-height: 220px;
+}
+
+.pr-dialog__row {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+}
+
+.pr-dialog__checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-strong);
+  font-size: 13px;
+  padding-bottom: 10px;
+}
+
 .commit-push__gear {
   width: 24px;
   height: 24px;
@@ -3138,7 +3221,7 @@
 
 .skills-main-grid {
   display: grid;
-  grid-template-columns: minmax(320px, 0.9fr) minmax(420px, 1.1fr);
+  grid-template-columns: minmax(300px, 0.8fr) minmax(560px, 1.2fr);
   gap: 18px;
   min-height: 0;
 }
@@ -3297,6 +3380,9 @@
   border: 1px solid var(--line);
   background: var(--surface);
   min-height: 320px;
+  min-width: 0;
+  max-height: calc(100vh - 220px);
+  overflow: auto;
 }
 
 .skill-detail__header {
@@ -3375,16 +3461,17 @@
 }
 
 .skill-detail__description {
+  max-width: 72ch;
   margin: 0;
   color: var(--muted-strong);
   font-size: 14px;
   line-height: 1.6;
 }
 
-/* Grid of about / details / actions */
+/* Details + actions */
 .skill-detail__grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(200px, 0.8fr);
+  grid-template-columns: minmax(0, 1fr) 220px;
   gap: 14px;
   align-items: start;
 }
@@ -3421,7 +3508,7 @@
 
 .skill-detail__meta > div {
   display: grid;
-  grid-template-columns: 90px 1fr;
+  grid-template-columns: 92px minmax(0, 1fr);
   gap: 10px;
   align-items: baseline;
 }
@@ -3446,6 +3533,8 @@
 
 .skill-detail__path {
   color: var(--muted-strong);
+  overflow-wrap: anywhere;
+  word-break: normal;
 }
 
 .skill-detail__action-stack {
@@ -3460,6 +3549,18 @@
 
 .skill-detail__danger {
   color: #c0392b;
+}
+
+@media (max-width: 1180px) {
+  .skills-main-grid,
+  .skill-detail__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .skill-detail,
+  .skills-main-list {
+    max-height: none;
+  }
 }
 
 /* Legacy classes shared with extensions-view. Keep them backwards-compatible
@@ -4748,8 +4849,8 @@ mark.thread-find-active {
 /* ---------------------------------------------------------------- */
 /* The chassis is the ONE device surface. The screen (textarea) and  */
 /* the controls (context bar + chip row) are both regions of this    */
-/* surface. There is no separate outer container, and no separate    */
-/* inner panel for the controls — just one chassis with screws.     */
+/* surface. The chassis is the device. The CRT screen + chip row     */
+/* sit inside it.                                                    */
 
 .composer-device .composer__surface {
   position: relative;
@@ -4760,25 +4861,27 @@ mark.thread-find-active {
     var(--crt-body-bottom) 100%
   );
   border: 0;
-  border-radius: 14px;
-  padding: 14px 16px 14px;
+  border-radius: 20px;
+  padding: 22px 26px 24px;
   box-shadow:
     /* Top edge: bright highlight (light catches the rim) */
-    inset 0 1px 0 var(--crt-edge-highlight),
+    0 1px 0 var(--crt-edge-highlight) inset,
     /* Left edge: subtle highlight */
-    inset 1px 0 0 oklch(0.48 0.006 250 / 0.75),
+    1px 0 0 oklch(0.48 0.006 250 / 0.75) inset,
     /* Right edge: dark shadow */
-    inset -1px 0 0 oklch(0.08 0 0 / 0.75),
+    -1px 0 0 oklch(0.08 0 0 / 0.75) inset,
     /* Bottom edge: deepest shadow */
-    inset 0 -1px 0 oklch(0.06 0 0),
+    0 -1px 0 oklch(0.06 0 0) inset,
+    /* Outer bezel hairline */
+    0 0 0 1px oklch(0.32 0.005 250 / 0.5),
     /* Drop shadows */
-    0 18px 40px -16px oklch(0 0 0 / 0.6),
-    0 6px 16px -8px oklch(0 0 0 / 0.45);
+    0 24px 60px -20px oklch(0 0 0 / 0.7),
+    0 8px 20px -8px oklch(0 0 0 / 0.5);
   isolation: isolate;
   overflow: visible;
 }
 
-/* Top-left highlight + subtle pinstripe finish */
+/* Overhead light from top-left (chassis sheen) */
 .composer-device .composer__surface::before {
   content: "";
   position: absolute;
@@ -4787,6 +4890,7 @@ mark.thread-find-active {
   z-index: 0;
   border-radius: inherit;
   background:
+    /* Brushed pinstripe */
     repeating-linear-gradient(
       90deg,
       oklch(1 0 0 / 0.012) 0px,
@@ -4794,6 +4898,7 @@ mark.thread-find-active {
       transparent 1px,
       transparent 3px
     ),
+    /* Top-left highlight */
     radial-gradient(
       ellipse at 25% -10%,
       oklch(0.34 0.006 250 / 0.55) 0%,
@@ -4802,8 +4907,8 @@ mark.thread-find-active {
   opacity: 0.85;
 }
 
-/* Four corner screws. Each is a small radial gradient — a sunken
-   Phillips head with a bright spot at top-left fading to dark rim. */
+/* Four corner screws. Each is a small radial gradient — light from
+   top-left to dark on the rim, mimicking a sunken Phillips head. */
 .composer-device .composer__surface::after {
   content: "";
   position: absolute;
@@ -4820,12 +4925,12 @@ mark.thread-find-active {
   );
   background-image: var(--screw), var(--screw), var(--screw), var(--screw);
   background-repeat: no-repeat;
-  background-size: 8px 8px;
+  background-size: 9px 9px;
   background-position:
-    8px 8px,
-    calc(100% - 8px) 8px,
-    8px calc(100% - 8px),
-    calc(100% - 8px) calc(100% - 8px);
+    10px 10px,
+    calc(100% - 10px) 10px,
+    10px calc(100% - 10px),
+    calc(100% - 10px) calc(100% - 10px);
 }
 
 /* Keep all composer interior children above the chassis ::before/::after. */
@@ -5063,19 +5168,21 @@ mark.thread-find-active {
 }
 
 /* ================================================================ */
-/* Variant 2 — Modular: chassis houses a smaller screen, physical   */
-/* keys sit directly on the chassis below the screen.                */
+/* Variant 2 - Modular: screen above, physical keys on a controls   */
+/* strip painted onto the bottom of the editor.                      */
 /* ================================================================ */
-/* DOM layout (after refactor): .composer__bar is a sibling of      */
-/* .composer__editor inside .composer__surface, so the chassis      */
-/* padding naturally separates the screen from the controls.        */
-/*                                                                  */
-/*   .composer__surface (chassis)                                   */
-/*   ├── .composer__editor   (the CRT screen — textarea only)      */
-/*   └── .composer__bar      (chassis-side; ctx bar + chip row)     */
+/* DOM: .composer__bar is INSIDE .composer__editor. The footer-row   */
+/* paints its own chassis-toned background that bleeds edge-to-edge  */
+/* via negative margins so it reads as a "controls strip" below the  */
+/* screen. Scanline + beam pseudo-layers are masked to fade out      */
+/* above the strip so they don't bleed through. */
 
-/* Screen gets scanlines + beam like the screen variant, but the
-   screen now covers ONLY the textarea area. */
+.composer-device--modular .composer__editor {
+  padding: 14px 14px 0;
+  overflow: visible;
+}
+
+/* Fade scanline grid (::before) above the controls strip */
 .composer-device--modular .composer__editor::before {
   content: "";
   position: absolute;
@@ -5092,8 +5199,13 @@ mark.thread-find-active {
     var(--crt-grid-bg) var(--crt-px)
   );
   background-size: 100% var(--crt-px);
+  --modular-screen-cutoff: calc(100% - var(--crt-modular-controls-h, 56px) - 16px);
+  mask-image: linear-gradient(to bottom, #000 0, #000 var(--modular-screen-cutoff), transparent var(--modular-screen-cutoff));
+  -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 var(--modular-screen-cutoff), transparent var(--modular-screen-cutoff));
 }
 
+/* Fade scanbeam (::after) using composited dual mask: scanbeam stripe
+   AND bottom cutoff. */
 .composer-device--modular .composer__editor::after {
   content: "";
   position: absolute;
@@ -5102,56 +5214,69 @@ mark.thread-find-active {
   z-index: 4;
   border-radius: inherit;
   background: radial-gradient(ellipse at 50% 40%, transparent 50%, oklch(0 0 0 / 0.48) 100%);
-  mask-image: linear-gradient(
-    to bottom,
-    transparent 45%,
-    rgba(0, 0, 0, 0.12) 49%,
-    rgba(0, 0, 0, 0.12) 51%,
-    transparent 55%
-  );
-  -webkit-mask-image: linear-gradient(
-    to bottom,
-    transparent 45%,
-    rgba(0, 0, 0, 0.12) 49%,
-    rgba(0, 0, 0, 0.12) 51%,
-    transparent 55%
-  );
-  mask-size: 100% 6%;
-  -webkit-mask-size: 100% 6%;
-  mask-repeat: no-repeat;
-  -webkit-mask-repeat: no-repeat;
+  --modular-screen-cutoff: calc(100% - var(--crt-modular-controls-h, 56px) - 16px);
+  mask-image:
+    linear-gradient(
+      to bottom,
+      transparent 45%,
+      rgba(0, 0, 0, 0.12) 49%,
+      rgba(0, 0, 0, 0.12) 51%,
+      transparent 55%
+    ),
+    linear-gradient(to bottom, #000 0, #000 var(--modular-screen-cutoff), transparent var(--modular-screen-cutoff));
+  -webkit-mask-image:
+    linear-gradient(
+      to bottom,
+      transparent 45%,
+      rgba(0, 0, 0, 0.12) 49%,
+      rgba(0, 0, 0, 0.12) 51%,
+      transparent 55%
+    ),
+    linear-gradient(to bottom, #000 0, #000 var(--modular-screen-cutoff), transparent var(--modular-screen-cutoff));
+  mask-size: 100% 6%, 100% 100%;
+  -webkit-mask-size: 100% 6%, 100% 100%;
+  mask-composite: intersect;
+  -webkit-mask-composite: source-in;
   animation: composer-crt-scanbeam 17ms linear infinite;
 }
 
-/* .composer__bar is the lower region of the chassis. The chassis IS
-   the one device surface; there is no separate panel. We just give
-   it some breathing space below the screen. */
+/* The bar wraps context bar + footer-row. Give it a small top gap. */
 .composer-device--modular .composer__bar {
-  position: relative;
   margin-top: 12px;
 }
 
-/* Context bar = telemetry strip. Green phosphor on dark chassis reads
-   as a small LCD readout. A hairline divider beneath separates it
-   from the chip row. */
+/* Context bar stays on the screen (phosphor green) */
 .composer-device--modular .composer__context {
   color: rgb(var(--crt-phosphor) / 0.78);
   font-family: ui-monospace, "SF Mono", Menlo, "Roboto Mono", monospace;
   font-size: 11px;
   letter-spacing: 0.02em;
-  padding: 0 4px 12px;
-  border-bottom: 1px solid oklch(0 0 0 / 0.45);
-  margin-bottom: 12px;
-  box-shadow: 0 1px 0 oklch(0.28 0.005 250 / 0.25);
+  padding-bottom: 14px;
 }
 
-/* Footer-row = 3-zone grid on the controls panel. */
+/* Footer-row = controls strip. Paints its own chassis-toned background
+   over the bottom of the screen and extends edge-to-edge by negative-
+   margining left/right to cancel .composer__editor's horizontal padding. */
 .composer-device--modular .composer__footer-row {
+  --crt-modular-controls-h: 56px;
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 14px;
-  min-height: 44px;
+  min-height: var(--crt-modular-controls-h);
+  margin: 0 -16px -2px;
+  padding: 12px 18px;
+  background: linear-gradient(
+    180deg,
+    var(--crt-body) 0%,
+    var(--crt-body-bottom) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 oklch(0 0 0 / 0.5),
+    inset 0 2px 0 var(--crt-edge-highlight),
+    inset 0 0 0 1px oklch(0 0 0 / 0.0);
+  border-radius: 0 0 6px 6px;
 }
 
 /* In modular mode the .composer__hint contains two siblings:
@@ -5193,6 +5318,20 @@ mark.thread-find-active {
   font-size: 11px;
   line-height: 1;
   white-space: nowrap;
+}
+
+/* The .model-selector wrapper holds TWO badges (model + thinking).
+   Make it a flex container so the two keys are spaced like all the
+   other top-level keys, with a consistent gap. */
+.composer-device--modular .model-selector {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.composer-device--modular .model-selector__anchor {
+  display: inline-flex;
+  align-items: center;
 }
 
 /* Send button: right grid column */

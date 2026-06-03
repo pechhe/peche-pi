@@ -18,7 +18,6 @@ import type { SessionCatalogSnapshot, WorkspaceCatalogSnapshot } from "@pi-gui/c
 import type {
   NavigateSessionTreeOptions,
   NavigateSessionTreeResult,
-  SessionMessageDeliveryMode,
   SessionMessageInput,
   SessionQueuedMessage,
   SessionTreeNodeSnapshot,
@@ -61,8 +60,6 @@ import {
   determineRunOutcome,
   extractPreview,
   forcePersistSession,
-  injectFileAttachmentPreamble,
-  messageText,
   nowIso,
   previewFromSessionInfo,
   sessionKey,
@@ -74,6 +71,15 @@ import {
 } from "./session-supervisor-utils.js";
 import type { SessionTranscriptMessage } from "./transcript.js";
 import { createAgentSessionRuntimeWithNpmFallback } from "./npm-package-fallback.js";
+import {
+  cloneQueuedMessage,
+  deliverQueuedMessage,
+  deliverQueuedPrompt,
+  promptTextForQueuedDelivery,
+  queuedMessageFromInput,
+  queuedPromptImagesFromAttachments,
+  reconcileQueuedMessagesForStartedUserMessage as reconcileQueuedMessagesForStartedUserMessageCore,
+} from "./queued-message-delivery.js";
 
 export interface PiSdkDriverOptions {
   readonly catalogFilePath?: string;
@@ -385,18 +391,10 @@ export class SessionSupervisor {
     await this.emit(record, sessionUpdatedEvent(record));
 
     try {
-      const images = input.attachments?.flatMap((attachment: NonNullable<SessionMessageInput["attachments"]>[number]) =>
-        attachment.kind === "image"
-          ? [{
-              type: "image" as const,
-              data: attachment.data,
-              mimeType: attachment.mimeType,
-            }]
-          : [],
-      );
-      const promptText = injectFileAttachmentPreamble(input.text, input.attachments);
+      const images = queuedPromptImagesFromAttachments(input.attachments);
+      const promptText = promptTextForQueuedDelivery(input.text, input.attachments);
       if (isQueuedMessage) {
-        await this.queuePrompt(session, promptText, input.deliverAs!, images);
+        await deliverQueuedPrompt(session, promptText, input.deliverAs!, images);
       } else {
         await session.prompt(promptText, {
           ...(images && images.length > 0 ? { images } : {}),
@@ -437,17 +435,7 @@ export class SessionSupervisor {
 
     record.queuedMessages = messages.map((message) => cloneQueuedMessage(message));
     for (const message of record.queuedMessages) {
-      const images = message.attachments?.flatMap((attachment: NonNullable<SessionQueuedMessage["attachments"]>[number]) =>
-        attachment.kind === "image"
-          ? [{
-              type: "image" as const,
-              data: attachment.data,
-              mimeType: attachment.mimeType,
-            }]
-          : [],
-      );
-      const promptText = injectFileAttachmentPreamble(message.text, message.attachments);
-      await this.queuePrompt(session, promptText, message.mode, images);
+      await deliverQueuedMessage(session, message);
     }
 
     record.updatedAt = nowIso();
@@ -1090,23 +1078,6 @@ export class SessionSupervisor {
     const spaceIndex = trimmed.indexOf(" ");
     const commandName = spaceIndex === -1 ? trimmed.slice(1) : trimmed.slice(1, spaceIndex);
     return Boolean(session.extensionRunner?.getCommand(commandName));
-  }
-
-  private async queuePrompt(
-    session: AgentSession,
-    text: string,
-    deliverAs: SessionMessageDeliveryMode,
-    images?: readonly {
-      readonly type: "image";
-      readonly data: string;
-      readonly mimeType: string;
-    }[],
-  ): Promise<void> {
-    if (deliverAs === "steer") {
-      await session.steer(text, images ? [...images] : undefined);
-      return;
-    }
-    await session.followUp(text, images ? [...images] : undefined);
   }
 
   private resolveModel(provider: string, modelId: string) {
@@ -1966,61 +1937,17 @@ const extensionUiThemeStub = new Proxy(
   },
 ) as ExtensionUIContext["theme"];
 
-function cloneQueuedMessage(message: SessionQueuedMessage): SessionQueuedMessage {
-  return {
-    ...message,
-    ...(message.attachments
-      ? {
-          attachments: message.attachments.map((attachment: NonNullable<SessionQueuedMessage["attachments"]>[number]) => ({ ...attachment })),
-        }
-      : {}),
-  };
-}
-
-function queuedMessageFromInput(input: SessionMessageInput, timestamp: string): SessionQueuedMessage {
-  return {
-    id: crypto.randomUUID(),
-    mode: input.deliverAs!,
-    text: input.text,
-    ...(input.attachments
-      ? {
-          attachments: input.attachments.map((attachment) => ({ ...attachment })),
-        }
-      : {}),
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  };
-}
-
 function reconcileQueuedMessagesForStartedUserMessage(
   record: ManagedSessionRecord,
   message: unknown,
   timestamp: string,
 ): SessionQueuedMessage | undefined {
-  if (typeof message !== "object" || message === null) {
-    return undefined;
-  }
-
-  const text = messageText(message as Record<string, unknown>);
-  if (!text) {
-    return undefined;
-  }
-
-  const steeringIndex = record.queuedMessages.findIndex((item) => item.mode === "steer" && item.text === text);
-  if (steeringIndex !== -1) {
-    const [started] = record.queuedMessages.splice(steeringIndex, 1);
+  const result = reconcileQueuedMessagesForStartedUserMessageCore(record.queuedMessages, message);
+  record.queuedMessages = result.queuedMessages;
+  if (result.started) {
     record.updatedAt = timestamp;
-    return started;
   }
-
-  const followUpIndex = record.queuedMessages.findIndex((item) => item.mode === "followUp" && item.text === text);
-  if (followUpIndex !== -1) {
-    const [started] = record.queuedMessages.splice(followUpIndex, 1);
-    record.updatedAt = timestamp;
-    return started;
-  }
-
-  return undefined;
+  return result.started;
 }
 
 function snapshotForRecord(record: ManagedSessionRecord): SessionSnapshot {

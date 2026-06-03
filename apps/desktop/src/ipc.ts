@@ -120,6 +120,9 @@ export const desktopIpc = {
   stageFile: "pi-gui:stage-file",
   commitPushExecute: "pi-gui:commit-push-execute",
   setCommitPushModel: "pi-gui:set-commit-push-model",
+  getWorkspacePrInfo: "pi-gui:get-workspace-pr-info",
+  generatePrDraft: "pi-gui:generate-pr-draft",
+  prCreate: "pi-gui:pr-create",
   getThemeMode: "pi-gui:get-theme-mode",
   getResolvedTheme: "pi-gui:get-resolved-theme",
   setThemeMode: "pi-gui:set-theme-mode",
@@ -134,6 +137,108 @@ export const desktopCommands = {
   toggleTerminal: "toggle-terminal",
   toggleSidebar: "toggle-sidebar",
   commitAndPush: "commit-and-push",
+} as const;
+
+export const piDesktopApiLocalEntries = [
+  "platform",
+  "versions",
+  "getPathForFile",
+] as const;
+
+export const piDesktopApiIpcBridge = {
+  ping: { kind: "invoke", channel: desktopIpc.ping },
+  getState: { kind: "invoke", channel: desktopIpc.stateRequest },
+  onStateChanged: { kind: "event", channel: desktopIpc.stateChanged },
+  getSelectedTranscript: { kind: "invoke", channel: desktopIpc.selectedTranscriptRequest },
+  onSelectedTranscriptChanged: { kind: "event", channel: desktopIpc.selectedTranscriptChanged },
+  onCommand: { kind: "event", channel: desktopIpc.appCommand },
+  onWorkspacePicked: { kind: "event", channel: desktopIpc.workspacePicked },
+  onClipboardImagePasted: { kind: "event", channel: desktopIpc.clipboardImagePasted },
+  addWorkspacePath: { kind: "invoke", channel: desktopIpc.addWorkspacePath },
+  pickWorkspace: { kind: "invoke", channel: desktopIpc.pickWorkspace },
+  selectWorkspace: { kind: "invoke", channel: desktopIpc.selectWorkspace },
+  renameWorkspace: { kind: "invoke", channel: desktopIpc.renameWorkspace },
+  removeWorkspace: { kind: "invoke", channel: desktopIpc.removeWorkspace },
+  reorderWorkspaces: { kind: "invoke", channel: desktopIpc.reorderWorkspaces },
+  openWorkspaceInFinder: { kind: "invoke", channel: desktopIpc.openWorkspaceInFinder },
+  createWorktree: { kind: "invoke", channel: desktopIpc.createWorktree },
+  removeWorktree: { kind: "invoke", channel: desktopIpc.removeWorktree },
+  openSkillInFinder: { kind: "invoke", channel: desktopIpc.openSkillInFinder },
+  openExtensionInFinder: { kind: "invoke", channel: desktopIpc.openExtensionInFinder },
+  syncCurrentWorkspace: { kind: "invoke", channel: desktopIpc.syncCurrentWorkspace },
+  selectSession: { kind: "invoke", channel: desktopIpc.selectSession },
+  archiveSession: { kind: "invoke", channel: desktopIpc.archiveSession },
+  unarchiveSession: { kind: "invoke", channel: desktopIpc.unarchiveSession },
+  createSession: { kind: "invoke", channel: desktopIpc.createSession },
+  startThread: { kind: "invoke", channel: desktopIpc.startThread },
+  cancelCurrentRun: { kind: "invoke", channel: desktopIpc.cancelCurrentRun },
+  setActiveView: { kind: "invoke", channel: desktopIpc.setActiveView },
+  setSidebarCollapsed: { kind: "invoke", channel: desktopIpc.setSidebarCollapsed },
+  refreshRuntime: { kind: "invoke", channel: desktopIpc.refreshRuntime },
+  setModelSettingsScopeMode: { kind: "invoke", channel: desktopIpc.setModelSettingsScopeMode },
+  setDefaultModel: { kind: "invoke", channel: desktopIpc.setDefaultModel },
+  setDefaultThinkingLevel: { kind: "invoke", channel: desktopIpc.setDefaultThinkingLevel },
+  getCavemanConfig: { kind: "invoke", channel: desktopIpc.getCavemanConfig },
+  setCavemanDefaultLevel: { kind: "invoke", channel: desktopIpc.setCavemanDefaultLevel },
+  setSessionModel: { kind: "invoke", channel: desktopIpc.setSessionModel },
+  setSessionThinkingLevel: { kind: "invoke", channel: desktopIpc.setSessionThinkingLevel },
+  loginProvider: { kind: "invoke", channel: desktopIpc.loginProvider },
+  logoutProvider: { kind: "invoke", channel: desktopIpc.logoutProvider },
+  setProviderApiKey: { kind: "invoke", channel: desktopIpc.setProviderApiKey },
+  setEnableSkillCommands: { kind: "invoke", channel: desktopIpc.setEnableSkillCommands },
+  setScopedModelPatterns: { kind: "invoke", channel: desktopIpc.setScopedModelPatterns },
+  setSkillEnabled: { kind: "invoke", channel: desktopIpc.setSkillEnabled },
+  setExtensionEnabled: { kind: "invoke", channel: desktopIpc.setExtensionEnabled },
+  deleteExtension: { kind: "invoke", channel: desktopIpc.deleteExtension },
+  respondToHostUiRequest: { kind: "invoke", channel: desktopIpc.respondToHostUiRequest },
+  setNotificationPreferences: { kind: "invoke", channel: desktopIpc.setNotificationPreferences },
+  setIntegratedTerminalShell: { kind: "invoke", channel: desktopIpc.setIntegratedTerminalShell },
+  setEnableTransparency: { kind: "invoke", channel: desktopIpc.setEnableTransparency },
+  setComposerDeviceMode: { kind: "invoke", channel: desktopIpc.setComposerDeviceMode },
+  ensureTerminalPanel: { kind: "invoke", channel: desktopIpc.terminalEnsurePanel },
+  createTerminalSession: { kind: "invoke", channel: desktopIpc.terminalCreateSession },
+  setActiveTerminalSession: { kind: "invoke", channel: desktopIpc.terminalSetActiveSession },
+  writeTerminal: { kind: "invoke", channel: desktopIpc.terminalWrite },
+  resizeTerminal: { kind: "invoke", channel: desktopIpc.terminalResize },
+  restartTerminalSession: { kind: "invoke", channel: desktopIpc.terminalRestartSession },
+  closeTerminalSession: { kind: "invoke", channel: desktopIpc.terminalCloseSession },
+  setTerminalTitle: { kind: "invoke", channel: desktopIpc.terminalSetTitle },
+  setTerminalFocused: { kind: "send", channel: desktopIpc.terminalSetFocused },
+  onTerminalData: { kind: "event", channel: desktopIpc.terminalData },
+  onTerminalExit: { kind: "event", channel: desktopIpc.terminalExit },
+  onTerminalError: { kind: "event", channel: desktopIpc.terminalError },
+  getNotificationPermissionStatus: { kind: "invoke", channel: desktopIpc.getNotificationPermissionStatus },
+  requestNotificationPermission: { kind: "invoke", channel: desktopIpc.requestNotificationPermission },
+  openSystemNotificationSettings: { kind: "invoke", channel: desktopIpc.openSystemNotificationSettings },
+  onNotificationPermissionStatusChanged: { kind: "event", channel: desktopIpc.notificationPermissionStatusChanged },
+  pickComposerAttachments: { kind: "invoke", channel: desktopIpc.pickComposerAttachments },
+  readClipboardImage: { kind: "sendSync", channel: desktopIpc.readClipboardImage },
+  addComposerAttachments: { kind: "invoke", channel: desktopIpc.addComposerAttachments },
+  removeComposerAttachment: { kind: "invoke", channel: desktopIpc.removeComposerAttachment },
+  editQueuedComposerMessage: { kind: "invoke", channel: desktopIpc.editQueuedComposerMessage },
+  cancelQueuedComposerEdit: { kind: "invoke", channel: desktopIpc.cancelQueuedComposerEdit },
+  removeQueuedComposerMessage: { kind: "invoke", channel: desktopIpc.removeQueuedComposerMessage },
+  steerQueuedComposerMessage: { kind: "invoke", channel: desktopIpc.steerQueuedComposerMessage },
+  updateComposerDraft: { kind: "invoke", channel: desktopIpc.updateComposerDraft },
+  submitComposer: { kind: "invoke", channel: desktopIpc.submitComposer },
+  getSessionTree: { kind: "invoke", channel: desktopIpc.getSessionTree },
+  navigateSessionTree: { kind: "invoke", channel: desktopIpc.navigateSessionTree },
+  listWorkspaceFiles: { kind: "invoke", channel: desktopIpc.listWorkspaceFiles },
+  getChangedFiles: { kind: "invoke", channel: desktopIpc.getChangedFiles },
+  getWorkspaceGitInfo: { kind: "invoke", channel: desktopIpc.getWorkspaceGitInfo },
+  getFileDiff: { kind: "invoke", channel: desktopIpc.getFileDiff },
+  stageFile: { kind: "invoke", channel: desktopIpc.stageFile },
+  commitPushExecute: { kind: "invoke", channel: desktopIpc.commitPushExecute },
+  setCommitPushModel: { kind: "invoke", channel: desktopIpc.setCommitPushModel },
+  getWorkspacePrInfo: { kind: "invoke", channel: desktopIpc.getWorkspacePrInfo },
+  generatePrDraft: { kind: "invoke", channel: desktopIpc.generatePrDraft },
+  prCreate: { kind: "invoke", channel: desktopIpc.prCreate },
+  toggleWindowMaximize: { kind: "invoke", channel: desktopIpc.toggleWindowMaximize },
+  openExternal: { kind: "invoke", channel: desktopIpc.openExternal },
+  getThemeMode: { kind: "invoke", channel: desktopIpc.getThemeMode },
+  getResolvedTheme: { kind: "invoke", channel: desktopIpc.getResolvedTheme },
+  setThemeMode: { kind: "invoke", channel: desktopIpc.setThemeMode },
+  onThemeChanged: { kind: "event", channel: desktopIpc.themeChanged },
 } as const;
 
 export function getDesktopShortcutLabel(platform: NodeJS.Platform, key: string): string {
@@ -227,6 +332,41 @@ export function getDesktopCommandFromShortcut(input: DesktopShortcutInput): PiDe
   }
 
   return undefined;
+}
+
+export type PrState = "none" | "open" | "closed" | "merged";
+
+export interface WorkspacePrInfo {
+  readonly ghAvailable: boolean;
+  readonly isGitRepo: boolean;
+  readonly hasUpstream: boolean;
+  readonly headBranch: string;
+  readonly defaultBranch: string;
+  readonly prState: PrState;
+  readonly prUrl?: string;
+  readonly prNumber?: number;
+  readonly baseBranch?: string;
+}
+
+export interface PrDraftResult {
+  readonly success: boolean;
+  readonly title: string;
+  readonly body: string;
+  readonly message?: string;
+}
+
+export interface CreatePrInput {
+  readonly title: string;
+  readonly body: string;
+  readonly base: string;
+  readonly draft: boolean;
+}
+
+export interface CreatePrResult {
+  readonly success: boolean;
+  readonly message: string;
+  readonly url?: string;
+  readonly number?: number;
 }
 
 export interface PiDesktopApi {
@@ -355,6 +495,9 @@ export interface PiDesktopApi {
   stageFile(workspaceId: string, filePath: string): Promise<void>;
   commitPushExecute(workspaceId: string): Promise<{ readonly success: boolean; readonly message: string; readonly commitMessage?: string }>;
   setCommitPushModel(workspaceId: string, model: string): Promise<DesktopAppState>;
+  getWorkspacePrInfo(workspaceId: string): Promise<WorkspacePrInfo>;
+  generatePrDraft(workspaceId: string, baseBranch?: string): Promise<PrDraftResult>;
+  prCreate(workspaceId: string, input: CreatePrInput): Promise<CreatePrResult>;
   toggleWindowMaximize(): Promise<void>;
   openExternal(url: string): Promise<void>;
   getThemeMode(): Promise<"system" | "light" | "dark" | "dracula">;

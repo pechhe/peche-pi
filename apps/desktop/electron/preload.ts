@@ -2,13 +2,17 @@ import { contextBridge, ipcRenderer, webUtils } from "electron";
 import { PRELOAD_DEV_RELOAD_MARKER } from "./dev-reload-preload-probe";
 import {
   desktopIpc,
+  type CreatePrInput,
+  type CreatePrResult,
   type DesktopNotificationPermissionStatus,
   type PiDesktopCommand,
+  type PrDraftResult,
   type TerminalDataEvent,
   type TerminalErrorEvent,
   type TerminalExitEvent,
   type TerminalPanelSnapshot,
   type TerminalSize,
+  type WorkspacePrInfo,
 } from "../src/ipc";
 import type { ComposerMode } from "../src/composer-mode";
 import type {
@@ -270,6 +274,12 @@ contextBridge.exposeInMainWorld("piApp", {
     ipcRenderer.invoke(desktopIpc.commitPushExecute, workspaceId) as Promise<{ readonly success: boolean; readonly message: string; readonly commitMessage?: string }>,
   setCommitPushModel: (workspaceId: string, model: string) =>
     ipcRenderer.invoke(desktopIpc.setCommitPushModel, workspaceId, model) as Promise<DesktopAppState>,
+  getWorkspacePrInfo: (workspaceId: string) =>
+    ipcRenderer.invoke(desktopIpc.getWorkspacePrInfo, workspaceId) as Promise<WorkspacePrInfo>,
+  generatePrDraft: (workspaceId: string, baseBranch?: string) =>
+    ipcRenderer.invoke(desktopIpc.generatePrDraft, workspaceId, baseBranch) as Promise<PrDraftResult>,
+  prCreate: (workspaceId: string, input: CreatePrInput) =>
+    ipcRenderer.invoke(desktopIpc.prCreate, workspaceId, input) as Promise<CreatePrResult>,
   toggleWindowMaximize: () => ipcRenderer.invoke(desktopIpc.toggleWindowMaximize) as Promise<void>,
   openExternal: (url: string) => ipcRenderer.invoke(desktopIpc.openExternal, url) as Promise<void>,
   getThemeMode: () => ipcRenderer.invoke(desktopIpc.getThemeMode) as Promise<"system" | "light" | "dark" | "dracula">,

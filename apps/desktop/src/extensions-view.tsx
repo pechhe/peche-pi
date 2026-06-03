@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import type { RuntimeExtensionRecord, RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
 import type { ExtensionCommandCompatibilityRecord, WorkspaceRecord } from "./desktop-state";
-import { RefreshIcon } from "./icons";
+import { ExtensionIcon, FolderIcon, RefreshIcon } from "./icons";
 
 interface ExtensionsViewProps {
   readonly workspace?: WorkspaceRecord;
@@ -60,20 +60,17 @@ export function ExtensionsView({
 
   if (!workspace) {
     return (
-      <section className="canvas canvas--empty">
-        <div className="empty-panel">
-          <div className="session-header__eyebrow">Extensions</div>
-          <h1>Select a workspace</h1>
-          <p>Extensions are discovered from the selected workspace plus your user-level extension directories.</p>
-        </div>
-      </section>
+      <div className="empty-panel">
+        <div className="session-header__eyebrow">Extensions</div>
+        <h1>Select a workspace</h1>
+        <p>Extensions are discovered from the selected workspace plus your user-level extension directories.</p>
+      </div>
     );
   }
 
   return (
-    <section className="canvas">
-      <div className="conversation skills-view">
-        <header className="view-header">
+    <div className="skills-content skills-view">
+      <header className="view-header">
           <div>
             <div className="chat-header__eyebrow">Extensions</div>
             <h1 className="view-header__title">Extensions</h1>
@@ -87,98 +84,116 @@ export function ExtensionsView({
               <span>Refresh</span>
             </button>
           </div>
-        </header>
+      </header>
 
-        <div className="skills-toolbar">
-          <input
-            aria-label="Search extensions"
-            className="skills-search"
-            placeholder="Search extensions"
-            value={query}
-            onChange={(event) => {
-              setQuery(event.target.value);
-            }}
-          />
-        </div>
-
-        <div className="skills-layout">
-          <div className="skills-grid" data-testid="extensions-list">
-            {filteredExtensions.length === 0 ? (
-              <ExtensionsEmptyState message="Refresh runtime discovery to load workspace and user-level extensions." />
-            ) : (
-              filteredExtensions.map((extension) => (
-                <button
-                  className={`skill-card ${selectedExtension?.path === extension.path ? "skill-card--active" : ""}`}
-                  key={extension.path}
-                  type="button"
-                  onClick={() => {
-                    setSelectedExtensionPath(extension.path);
-                  }}
-                >
-                  <span className="skill-card__title-row">
-                    <span className="skill-card__title">{extension.displayName}</span>
-                    <span className={`skill-card__badge ${extension.enabled ? "skill-card__badge--enabled" : ""}`}>
-                      {extension.enabled ? "Enabled" : "Disabled"}
-                    </span>
-                  </span>
-                  <span className="skill-card__description">
-                    {extension.sourceInfo.scope} · {extension.sourceInfo.origin}
-                  </span>
-                  <span className="skill-card__meta">
-                    <span>{extension.sourceInfo.source}</span>
-                    {extension.commands.length > 0 ? <span>{extension.commands.length} commands</span> : null}
-                    {extension.tools.length > 0 ? <span>{extension.tools.length} tools</span> : null}
-                    {extension.diagnostics.length > 0 ? <span>{extension.diagnostics.length} issues</span> : null}
-                  </span>
-                  <span
-                    className="skill-card__delete"
-                    title="Delete extension"
-                    aria-label={`Delete ${extension.displayName}`}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onDeleteExtension(extension.path);
+      <div className="skills-main-grid">
+        <section className="skills-main-list" aria-label="Extensions list">
+          <div className="skills-rail">
+            <div className="skills-rail__search">
+              <input
+                aria-label="Search extensions"
+                className="skills-rail__search-input"
+                placeholder="Search extensions, commands, or tools…"
+                value={query}
+                onChange={(event) => {
+                  setQuery(event.target.value);
+                }}
+              />
+            </div>
+            <div className="skills-rail__list" data-testid="extensions-list">
+              {filteredExtensions.length === 0 ? (
+                <ExtensionsEmptyState message="Refresh runtime discovery to load workspace and user-level extensions." />
+              ) : (
+                filteredExtensions.map((extension) => (
+                  <button
+                    className={`skill-row ${selectedExtension?.path === extension.path ? "skill-row--active" : ""}`}
+                    key={extension.path}
+                    type="button"
+                    onClick={() => {
+                      setSelectedExtensionPath(extension.path);
                     }}
                   >
-                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M2 4.5h10M5.5 4.5V3a1 1 0 0 1 1-1h1a1 1 0 0 1 1 1v1.5M3.5 4.5v7a1 1 0 0 0 1 1h5a1 1 0 0 0 1-1v-7M6 7v3.5M8 7v3.5" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                  </span>
-                </button>
-              ))
-            )}
+                    <span className="skill-row__avatar">
+                      <ExtensionIcon />
+                    </span>
+                    <span className="skill-row__body">
+                      <span className="skill-row__title">{extension.displayName}</span>
+                      <span className="skill-row__description">
+                        {extension.sourceInfo.scope} · {extension.sourceInfo.origin}
+                      </span>
+                    </span>
+                    <span className={`skill-status ${extension.enabled ? "skill-status--enabled" : "skill-status--disabled"}`}>
+                      <span className="skill-status__dot" />
+                      {extension.enabled ? "Enabled" : "Disabled"}
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
+            <footer className="skills-rail__footer">
+              <span>{extensions.length} extensions</span>
+            </footer>
           </div>
+        </section>
 
-          <div className="skill-detail">
+        <div className="skill-detail">
             {selectedExtension ? (
               <>
-                <div className="skill-detail__header">
-                  <div>
-                    <h2>{selectedExtension.displayName}</h2>
-                    <div className="skill-detail__slash">{selectedExtension.sourceInfo.source}</div>
+                <header className="skill-detail__header">
+                  <div className="skill-detail__identity">
+                    <span className="skill-detail__avatar">
+                      <ExtensionIcon />
+                    </span>
+                    <div className="skill-detail__heading">
+                      <div className="skill-detail__title-row">
+                        <h2>{selectedExtension.displayName}</h2>
+                        <span className={`skill-status ${selectedExtension.enabled ? "skill-status--enabled" : "skill-status--disabled"}`}>
+                          <span className="skill-status__dot" />
+                          {selectedExtension.enabled ? "Enabled" : "Disabled"}
+                        </span>
+                      </div>
+                      <div className="skill-detail__tags">
+                        <span className="skill-tag">{selectedExtension.sourceInfo.source}</span>
+                        <span className="skill-tag skill-tag--muted">{selectedExtension.sourceInfo.scope}</span>
+                      </div>
+                    </div>
                   </div>
-                  <span className={`skill-detail__status ${selectedExtension.enabled ? "skill-detail__status--enabled" : ""}`}>
-                    {selectedExtension.enabled ? "Enabled" : "Disabled"}
-                  </span>
-                </div>
-                <div className="skill-detail__meta-list">
+                </header>
+                <div className="skill-detail__grid">
+                  <div className="skill-detail__panel skill-detail__panel--details">
+                    <h3 className="skill-detail__panel-title">Details</h3>
+                    <div className="skill-detail__meta-list">
                   <DetailItem label="Scope" value={selectedExtension.sourceInfo.scope} />
                   <DetailItem label="Origin" value={selectedExtension.sourceInfo.origin} />
                   <DetailItem label="Path" value={selectedExtension.path} mono />
                   {selectedExtension.sourceInfo.baseDir ? (
                     <DetailItem label="Base dir" value={selectedExtension.sourceInfo.baseDir} mono />
                   ) : null}
-                </div>
-                <div className="skill-detail__actions">
-                  <button className="button button--secondary" type="button" onClick={() => onOpenExtensionFolder(selectedExtension.path)}>
-                    Open folder
-                  </button>
-                  <button
-                    className="button button--secondary"
-                    type="button"
-                    onClick={() => onToggleExtension(selectedExtension.path, !selectedExtension.enabled)}
-                  >
-                    {selectedExtension.enabled ? "Disable" : "Enable"}
-                  </button>
+                    </div>
+                  </div>
+                  <div className="skill-detail__panel skill-detail__panel--actions">
+                    <h3 className="skill-detail__panel-title">Actions</h3>
+                    <div className="skill-detail__action-stack">
+                      <button className="button button--secondary" type="button" onClick={() => onOpenExtensionFolder(selectedExtension.path)}>
+                        <FolderIcon />
+                        <span>Open folder</span>
+                      </button>
+                      <button
+                        className={`button button--secondary ${selectedExtension.enabled ? "skill-detail__danger" : ""}`}
+                        type="button"
+                        onClick={() => onToggleExtension(selectedExtension.path, !selectedExtension.enabled)}
+                      >
+                        {selectedExtension.enabled ? "Disable" : "Enable"}
+                      </button>
+                      <button
+                        className="button button--secondary skill-detail__danger"
+                        type="button"
+                        onClick={() => onDeleteExtension(selectedExtension.path)}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
                 </div>
 
                 <ExtensionContributionSection title="Commands" items={selectedExtension.commands} emptyLabel="No commands contributed." />
@@ -195,9 +210,8 @@ export function ExtensionsView({
               <ExtensionsEmptyState message="Refresh runtime discovery to inspect extension metadata and diagnostics." />
             )}
           </div>
-        </div>
       </div>
-    </section>
+    </div>
   );
 }
 

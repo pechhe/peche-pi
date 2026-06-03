@@ -125,10 +125,26 @@
   border-color: rgba(0, 0, 0, 0.06);
 }
 
+.sidebar__nav-item--active,
+.sidebar__nav-item--active:hover:not(:disabled),
+.sidebar__nav-item--active:focus-visible {
+  background: rgba(106, 85, 242, 0.12);
+  border-color: rgba(106, 85, 242, 0.26);
+  color: var(--accent);
+}
+
 :root.dark .sidebar__nav-item:hover:not(:disabled),
 :root.dark .sidebar__nav-item:focus-visible {
   background: rgba(255, 255, 255, 0.06);
   border-color: rgba(255, 255, 255, 0.08);
+}
+
+:root.dark .sidebar__nav-item--active,
+:root.dark .sidebar__nav-item--active:hover:not(:disabled),
+:root.dark .sidebar__nav-item--active:focus-visible {
+  background: rgba(187, 134, 252, 0.16);
+  border-color: rgba(187, 134, 252, 0.36);
+  color: var(--accent);
 }
 
 .sidebar__nav-item svg {
