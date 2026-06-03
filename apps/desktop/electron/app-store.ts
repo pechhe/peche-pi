@@ -1139,6 +1139,31 @@ export class DesktopAppStore implements AppStoreInternals {
     await this.ensureSessionSubscribed(sessionRef);
   }
 
+  /**
+   * Build a composite transcript for a loop thread by stitching the
+   * parentSession iteration chain, inserting a divider before each iteration.
+   * Returns null when the session is not a loop iteration, so callers fall
+   * back to a plain transcript.
+   */
+  private async loadLoopTranscript(sessionRef: SessionRef): Promise<TranscriptMessage[] | null> {
+    const iterations = await this.driver.getLoopIterations(sessionRef);
+    if (!iterations) {
+      return null;
+    }
+    const rows: TranscriptMessage[] = [];
+    for (const iteration of iterations) {
+      rows.push({
+        kind: "summary",
+        id: `loop-divider-${iteration.sessionId}`,
+        createdAt: iteration.messages[0]?.createdAt ?? new Date().toISOString(),
+        label: iteration.label,
+        presentation: "divider",
+      });
+      rows.push(...iteration.messages);
+    }
+    return rows;
+  }
+
   private async ensureTranscriptLoaded(sessionRef: SessionRef): Promise<void> {
     const key = sessionKey(sessionRef);
     if (this.sessionState.loadedTranscriptKeys.has(key)) {
@@ -1148,7 +1173,7 @@ export class DesktopAppStore implements AppStoreInternals {
     const cachedTranscript = await this.readPersistedTranscript(key);
     const transcript = cachedTranscript
       ? await this.resolveLoadedTranscript(sessionRef, cachedTranscript)
-      : await this.driver.getTranscript(sessionRef);
+      : (await this.loadLoopTranscript(sessionRef)) ?? (await this.driver.getTranscript(sessionRef));
 
     if (!cachedTranscript || cachedTranscript.format === "legacy") {
       await this.writePersistedTranscript(key, transcript);
@@ -1160,7 +1185,8 @@ export class DesktopAppStore implements AppStoreInternals {
 
   async reloadTranscriptFromDriver(sessionRef: SessionRef): Promise<void> {
     const key = sessionKey(sessionRef);
-    const transcript = await this.driver.getTranscript(sessionRef);
+    const transcript =
+      (await this.loadLoopTranscript(sessionRef)) ?? (await this.driver.getTranscript(sessionRef));
     this.sessionState.loadedTranscriptKeys.add(key);
     this.sessionState.transcriptCache.set(key, transcript);
     void this.writePersistedTranscript(key, transcript);
