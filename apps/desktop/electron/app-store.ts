@@ -1930,18 +1930,17 @@ export class DesktopAppStore implements AppStoreInternals {
 
   private applyFastSessionSelection(sessionRef: SessionRef): DesktopAppState {
     this.restoredSelectedSessionKeysAwaitingSelection.delete(sessionKey(sessionRef));
-    this.state = {
-      ...this.state,
-      selectedWorkspaceId: sessionRef.workspaceId,
-      selectedSessionId: sessionRef.sessionId,
-      activeView: "threads",
+    const nextState = reduce(this.state, {
+      type: "selection/selectSession",
+      workspaceId: sessionRef.workspaceId,
+      sessionId: sessionRef.sessionId,
       composerDraft: this.resolveComposerDraft(sessionRef.workspaceId, sessionRef.sessionId),
-      composerDraftSyncSource: "selection",
-      composerDraftSyncNonce: this.state.composerDraftSyncNonce + 1,
       composerAttachments: this.resolveComposerAttachments(sessionRef.workspaceId, sessionRef.sessionId),
-      lastError: undefined,
-      revision: this.state.revision + 1,
-    };
+    });
+    if (nextState === this.state) {
+      return structuredClone(this.state);
+    }
+    this.state = nextState;
     this.markSessionViewed(sessionRef);
     this.schedulePersistUiState();
     const snapshot = this.emit();

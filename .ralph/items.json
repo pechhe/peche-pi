@@ -45,8 +45,8 @@
         "Add unit tests at the state transition Interface proving no-op behavior, revision/error conventions, and selected-session/composer consistency.",
         "Run the required verification gates and any focused tests for the touched state slice."
       ],
-      "passes": false,
-      "regression_notes": ""
+      "passes": true,
+      "regression_notes": "Extended `apps/desktop/electron/app-state-reducer.ts` so the Desktop App state transition Module owns composer draft sync, composer attachment replacement, and selected-session/composer consistency invariants. Updated composer and selected-session callers to use the reducer Seam while keeping driver calls, persistence, transcript publication, and other side-effect Implementations outside it. Added reducer Interface tests for no-op identity, revision/lastError conventions, attachment equality, and selection-to-threads composer state consistency. Focused and required gates passed: `pnpm --filter @pi-gui/desktop test:unit -- app-state-reducer`; `pnpm typecheck`; `pnpm --filter @pi-gui/desktop test:unit`."
     },
     {
       "category": "functional",

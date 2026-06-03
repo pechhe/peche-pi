@@ -1,4 +1,13 @@
-import type { AppView, ComposerDeviceMode, DesktopAppState, ModelSettingsScopeMode, NotificationPreferences, ThemeMode } from "../src/desktop-state";
+import type {
+  AppView,
+  ComposerAttachment,
+  ComposerDeviceMode,
+  ComposerDraftSyncSource,
+  DesktopAppState,
+  ModelSettingsScopeMode,
+  NotificationPreferences,
+  ThemeMode,
+} from "../src/desktop-state";
 
 /**
  * Pure state-transition layer for the desktop app.
@@ -16,10 +25,10 @@ import type { AppView, ComposerDeviceMode, DesktopAppState, ModelSettingsScopeMo
  * `lastError` and bumps `revision`. Those cross-cutting concerns belong
  * to the reducer, not to each caller.
  *
- * This module is the seam being grown. Today it handles the trivial
- * single-field settings setters; orchestrators with real side effects
- * (composer submit, session lifecycle, runtime refresh) will arrive in
- * later slices of candidate #2.
+ * This Module is the Seam being grown. It keeps pure composer and
+ * selected-session invariants local while callers retain side-effect
+ * Implementation ownership (driver calls, persistence, transcript
+ * publication).
  */
 
 export type DesktopAction =
@@ -31,7 +40,20 @@ export type DesktopAction =
   | { readonly type: "settings/setCommitPushModel"; readonly commitPushModel: string }
   | { readonly type: "settings/mergeNotificationPreferences"; readonly preferences: Partial<NotificationPreferences> }
   | { readonly type: "view/setActiveView"; readonly activeView: AppView }
-  | { readonly type: "settings/setModelSettingsScopeMode"; readonly modelSettingsScopeMode: ModelSettingsScopeMode };
+  | { readonly type: "settings/setModelSettingsScopeMode"; readonly modelSettingsScopeMode: ModelSettingsScopeMode }
+  | {
+      readonly type: "composer/setDraft";
+      readonly composerDraft: string;
+      readonly syncSource: ComposerDraftSyncSource;
+    }
+  | { readonly type: "composer/setAttachments"; readonly attachments: readonly ComposerAttachment[] }
+  | {
+      readonly type: "selection/selectSession";
+      readonly workspaceId: string;
+      readonly sessionId: string;
+      readonly composerDraft: string;
+      readonly composerAttachments: readonly ComposerAttachment[];
+    };
 
 export function reduce(state: DesktopAppState, action: DesktopAction): DesktopAppState {
   switch (action.type) {
@@ -95,6 +117,45 @@ export function reduce(state: DesktopAppState, action: DesktopAction): DesktopAp
       }
       return bump({ ...state, modelSettingsScopeMode: action.modelSettingsScopeMode });
     }
+    case "composer/setDraft": {
+      if (state.composerDraft === action.composerDraft && state.composerDraftSyncSource === action.syncSource) {
+        return state;
+      }
+      return bump({
+        ...state,
+        composerDraft: action.composerDraft,
+        composerDraftSyncSource: action.syncSource,
+        composerDraftSyncNonce: state.composerDraftSyncNonce + 1,
+      });
+    }
+    case "composer/setAttachments": {
+      if (composerAttachmentsEqual(state.composerAttachments, action.attachments)) {
+        return state;
+      }
+      return bump({ ...state, composerAttachments: [...action.attachments] });
+    }
+    case "selection/selectSession": {
+      if (
+        state.selectedWorkspaceId === action.workspaceId &&
+        state.selectedSessionId === action.sessionId &&
+        state.activeView === "threads" &&
+        state.composerDraft === action.composerDraft &&
+        state.composerDraftSyncSource === "selection" &&
+        composerAttachmentsEqual(state.composerAttachments, action.composerAttachments)
+      ) {
+        return state;
+      }
+      return bump({
+        ...state,
+        selectedWorkspaceId: action.workspaceId,
+        selectedSessionId: action.sessionId,
+        activeView: "threads",
+        composerDraft: action.composerDraft,
+        composerDraftSyncSource: "selection",
+        composerDraftSyncNonce: state.composerDraftSyncNonce + 1,
+        composerAttachments: [...action.composerAttachments],
+      });
+    }
   }
 }
 
@@ -105,4 +166,24 @@ export function reduce(state: DesktopAppState, action: DesktopAction): DesktopAp
  */
 function bump(state: DesktopAppState): DesktopAppState {
   return { ...state, lastError: undefined, revision: state.revision + 1 };
+}
+
+function composerAttachmentsEqual(
+  left: readonly ComposerAttachment[],
+  right: readonly ComposerAttachment[],
+): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  return left.every((attachment, index) => {
+    const other = right[index];
+    if (!other || attachment.id !== other.id || attachment.kind !== other.kind || attachment.name !== other.name || attachment.mimeType !== other.mimeType) {
+      return false;
+    }
+    if (attachment.kind === "image") {
+      return other.kind === "image" && attachment.data === other.data;
+    }
+    return other.kind === "file" && attachment.fsPath === other.fsPath && attachment.sizeBytes === other.sizeBytes;
+  });
 }

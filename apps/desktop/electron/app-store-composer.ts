@@ -20,6 +20,7 @@ import {
   toSessionQueuedMessages,
   toTranscriptAttachments,
 } from "./app-store-utils";
+import { reduce } from "./app-state-reducer";
 import type { AppStoreInternals } from "./app-store-internals";
 
 /* ── Public methods ─────────────────────────────────────── */
@@ -38,14 +39,15 @@ export async function updateComposerDraft(
       store.sessionState.composerDraftsBySession.delete(key);
     }
   }
-  store.state = {
-    ...store.state,
+  const nextState = reduce(store.state, {
+    type: "composer/setDraft",
     composerDraft,
-    composerDraftSyncSource: "persist",
-    composerDraftSyncNonce: store.state.composerDraftSyncNonce + 1,
-    lastError: undefined,
-    revision: store.state.revision + 1,
-  };
+    syncSource: "persist",
+  });
+  if (nextState === store.state) {
+    return structuredClone(store.state);
+  }
+  store.state = nextState;
   store.schedulePersistUiState();
   return store.emit();
 }
@@ -64,11 +66,10 @@ export async function addComposerAttachments(
   const existing = store.sessionState.composerAttachmentsBySession.get(key) ?? [];
   const next = [...existing, ...attachments];
   store.sessionState.composerAttachmentsBySession.set(key, next);
-  store.state = {
-    ...store.state,
-    composerAttachments: cloneComposerAttachments(next),
-    revision: store.state.revision + 1,
-  };
+  store.state = reduce(store.state, {
+    type: "composer/setAttachments",
+    attachments: cloneComposerAttachments(next),
+  });
   await store.persistComposerAttachments(key, next);
   return store.emit();
 }
@@ -91,11 +92,14 @@ export async function removeComposerAttachment(
   } else {
     store.sessionState.composerAttachmentsBySession.delete(key);
   }
-  store.state = {
-    ...store.state,
-    composerAttachments: cloneComposerAttachments(next),
-    revision: store.state.revision + 1,
-  };
+  const nextState = reduce(store.state, {
+    type: "composer/setAttachments",
+    attachments: cloneComposerAttachments(next),
+  });
+  if (nextState === store.state) {
+    return structuredClone(store.state);
+  }
+  store.state = nextState;
   await store.persistComposerAttachments(key, next);
   return store.emit();
 }

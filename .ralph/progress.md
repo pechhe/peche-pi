@@ -48,3 +48,31 @@ Decisions made:
 
 Next-iteration notes:
 - Next item should be selected from `.ralph/items.json`; plan priority now points to deeper Desktop App state or IPC Seam work.
+
+## 2026-06-03 — Deepen Desktop App state transition seam
+
+Selected item: Deepen the Desktop App state transition module for composer and selected-session state invariants.
+
+Why chosen: Prioritization Strategy now points to deeper Desktop App state and IPC Seams after abandoned-port residue and duplicated type contracts passed. This was the highest-priority unfinished item and reduces cross-file mutation drift for common composer and selection paths.
+
+Changed files:
+- `apps/desktop/electron/app-state-reducer.ts`
+- `apps/desktop/electron/app-state-reducer.test.ts`
+- `apps/desktop/electron/app-store-composer.ts`
+- `apps/desktop/electron/app-store.ts`
+- `.ralph/items.json`
+- `.ralph/progress.md`
+
+Verification commands and results:
+- `pnpm --filter @pi-gui/desktop test:unit -- app-state-reducer`: passed. 27 tests passed, including focused reducer Interface coverage.
+- `pnpm typecheck`: passed. Built `session-driver`, `catalogs`, `pi-sdk-driver`, then all workspace typecheck scripts.
+- `pnpm --filter @pi-gui/desktop test:unit`: passed. 27 tests passed.
+
+Decisions made:
+- Grew the existing reducer Module instead of adding another Adapter, keeping Depth at the state transition Seam with minimal new surface area.
+- Kept persistence, driver calls, transcript publication, and session-viewed side effects in caller Implementations so the reducer remains pure and testable.
+- Moved composer draft sync, attachment replacement, and selected-session composer consistency behind the reducer Interface to improve Locality without changing renderer or preload behavior.
+- Did not add Electron UI smoke coverage because this slice changes main-process state invariants and no visible Desktop App behavior was intended.
+
+Next-iteration notes:
+- Next item should be selected from `.ralph/items.json`; plan priority now points to the Desktop App IPC command Seam.
