@@ -2142,7 +2142,9 @@ export default function App() {
   // (hidden while a loop already owns the thread). Beginning starts a fresh
   // thread — the special loop thread — and runs the bundle-mode loop there.
   const selectedRalphPlan: RalphPlanSummary | undefined =
-    !loopControl && selectedSession ? selectedWorkspace?.ralphPlans?.[0] : undefined;
+    !loopControl && selectedSession && snapshot?.selectedSessionCreatedRalphPlan
+      ? selectedWorkspace?.ralphPlans?.[0]
+      : undefined;
   const handleBeginRalphLoop = (plan: RalphPlanSummary) => {
     const workspaceId = selectedWorkspace?.id;
     if (!workspaceId) {

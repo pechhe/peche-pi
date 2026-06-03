@@ -54,6 +54,7 @@ import {
   type StartChatInput,
   type StartThreadInput,
   type TranscriptMessage,
+  type WorkspaceRecord,
   type WorkspaceSessionTarget,
 } from "../src/desktop-state";
 import type { ClaimSessionResult, SessionLockSnapshot } from "../src/ipc";
@@ -1115,9 +1116,16 @@ export class DesktopAppStore implements AppStoreInternals {
       const activeView = options.activeView ?? this.state.activeView;
       const composerDraftSync = this.resolveComposerDraftSync(selectedWorkspaceId, selectedSessionId, options);
       const selectedLoopStatus = this.resolveSelectedLoopStatus(workspaces, selectedWorkspaceId, selectedSessionId);
+      const selectedSessionCreatedRalphPlan = await this.resolveSelectedSessionCreatedRalphPlan(
+        workspaces,
+        selectedWorkspaceId,
+        selectedSessionId,
+        selectedLoopStatus,
+      );
       this.state = {
         ...this.state,
         selectedLoopStatus,
+        selectedSessionCreatedRalphPlan,
         workspaces,
         worktreesByWorkspace,
         selectedWorkspaceId,
@@ -1244,6 +1252,35 @@ export class DesktopAppStore implements AppStoreInternals {
       return undefined;
     }
     return readRalphLoopStatus(workspace.path, selectedSessionId) ?? undefined;
+  }
+
+  /**
+   * Whether the selected chat is the one that wrote the workspace's Ralph plan,
+   * so the "Begin Ralph loop" banner shows only there. Gated to avoid scanning
+   * session entries unless there is actually a plan to run and the thread is
+   * not already a loop thread.
+   */
+  private async resolveSelectedSessionCreatedRalphPlan(
+    workspaces: readonly WorkspaceRecord[],
+    selectedWorkspaceId: string,
+    selectedSessionId: string,
+    selectedLoopStatus: RalphLoopStatus | undefined,
+  ): Promise<boolean> {
+    if (!selectedWorkspaceId || !selectedSessionId || selectedLoopStatus?.isSelectedSessionActive) {
+      return false;
+    }
+    const workspace = workspaces.find((entry) => entry.id === selectedWorkspaceId);
+    if (!workspace?.ralphPlans?.length) {
+      return false;
+    }
+    try {
+      return await this.driver.sessionEditedRalphPlan({
+        workspaceId: selectedWorkspaceId,
+        sessionId: selectedSessionId,
+      });
+    } catch {
+      return false;
+    }
   }
 
   private async ensureTranscriptLoaded(sessionRef: SessionRef): Promise<void> {

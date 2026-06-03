@@ -261,6 +261,9 @@ export interface DesktopAppState {
   readonly chats: readonly ChatRecord[];
   readonly selectedChatId: string;
   readonly selectedLoopStatus?: RalphLoopStatus;
+  // True when the selected chat is the one that wrote the workspace's Ralph
+  // plan; scopes the "Begin Ralph loop" banner to the creating chat.
+  readonly selectedSessionCreatedRalphPlan?: boolean;
   readonly revision: number;
   readonly lastError?: string;
 }
