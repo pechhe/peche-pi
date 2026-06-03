@@ -27,6 +27,12 @@ export interface LoopControlProps {
   readonly onRestart: () => void;
 }
 
+export interface BeginRalphLoopProps {
+  /** Title of the incomplete plan found in this workspace. */
+  readonly planTitle: string;
+  readonly onBegin: () => void;
+}
+
 interface ComposerPanelProps {
   readonly selectedSession: SessionRecord;
   /**
@@ -35,6 +41,11 @@ interface ComposerPanelProps {
    * interrupted by typing into the active iteration.
    */
   readonly loopControl?: LoopControlProps;
+  /**
+   * When present, this workspace has an incomplete Ralph plan ready to run. A
+   * "Begin Ralph loop" banner appears above the composer to launch it.
+   */
+  readonly beginRalphLoop?: BeginRalphLoopProps;
   readonly lastError?: string;
   readonly runtime?: RuntimeSnapshot;
   readonly activeSlashCommand?: ComposerSlashCommand;
@@ -160,6 +171,7 @@ export function ComposerPanel({
   selectedMentionIndex,
   onSelectMention,
   loopControl,
+  beginRalphLoop,
 }: ComposerPanelProps) {
   if (loopControl) {
     return <LoopControlBar {...loopControl} />;
@@ -186,6 +198,16 @@ export function ComposerPanel({
 
   return (
     <footer className="composer">
+      {beginRalphLoop ? (
+        <div className="composer__begin-loop">
+          <span className="composer__begin-loop-label">
+            Ralph plan ready: {beginRalphLoop.planTitle}
+          </span>
+          <button type="button" className="composer__begin-loop-button" onClick={beginRalphLoop.onBegin}>
+            Begin Ralph loop
+          </button>
+        </div>
+      ) : null}
       <div className="conversation conversation--composer">
         <ComposerSurface
           lastError={lastError}
