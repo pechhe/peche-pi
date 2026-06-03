@@ -71,8 +71,8 @@
         "Update Desktop App callers to use the owning timeline model module without changing visible conversation-first behavior.",
         "Run the required verification gates and focused timeline tests."
       ],
-      "passes": false,
-      "regression_notes": ""
+      "passes": true,
+      "regression_notes": "Added `apps/desktop/src/timeline-model.ts` as the owning Desktop App timeline Module. It now assembles runtime transcript rows from live `SessionDriverEvent` inputs and builds renderer grouping/meta view models from persisted transcript rows behind one Interface, while `timeline-grouping.ts` remains a compatibility re-export Seam and `app-store-timeline.ts` delegates to the model Implementation. Added Interface tests covering assistant deltas, queued user messages with attachments, tool lifecycle rows, run summaries, run failures, reopened transcript meta extraction, non-trailing tool bursts, and trailing active tool rows. Focused and required gates passed: `pnpm --filter @pi-gui/desktop test:unit -- timeline-model`; `pnpm typecheck`; `pnpm --filter @pi-gui/desktop test:unit`."
     },
     {
       "category": "functional",

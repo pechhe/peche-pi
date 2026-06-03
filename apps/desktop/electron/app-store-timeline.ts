@@ -2,7 +2,15 @@ import { sessionKey } from "@pi-gui/pi-sdk-driver";
 import type { SessionDriverEvent, SessionQueuedMessage, SessionRef } from "@pi-gui/session-driver";
 import type { TranscriptMessage } from "../src/desktop-state";
 import {
-  formatElapsedDuration,
+  appendAssistantDeltaToTimeline,
+  appendQueuedUserMessageToTimeline,
+  appendUserMessageToTimeline,
+  applySessionEventToTimeline,
+  type RunMetrics,
+  type SessionTimelineRuntimeState,
+  type TimelineItemFactory,
+} from "../src/timeline-model";
+import {
   makeActivityItem,
   makeSummaryItem,
   makeToolItem,
@@ -10,18 +18,21 @@ import {
   makeTranscriptMessageWithAttachments,
 } from "./app-store-utils";
 
-export interface RunMetrics {
-  readonly startedAt: string;
-  toolCount: number;
-  searchCount: number;
-  fileCount: number;
-}
+export type { RunMetrics } from "../src/timeline-model";
 
 interface TimelineRuntimeState {
   readonly runMetricsBySession: Map<string, RunMetrics>;
   readonly runningSinceBySession: Map<string, string>;
   readonly activeAssistantMessageBySession: Map<string, string>;
 }
+
+const timelineItemFactory: TimelineItemFactory = {
+  message: makeTranscriptMessage,
+  messageWithAttachments: makeTranscriptMessageWithAttachments,
+  activity: makeActivityItem,
+  summary: makeSummaryItem,
+  tool: makeToolItem,
+};
 
 export function appendUserMessage(
   transcriptCache: Map<string, TranscriptMessage[]>,
@@ -30,10 +41,7 @@ export function appendUserMessage(
   attachments: NonNullable<Extract<TranscriptMessage, { kind: "message" }>["attachments"]> = [],
 ): TranscriptMessage[] {
   const key = sessionKey(sessionRef);
-  const transcript = [...(transcriptCache.get(key) ?? [])];
-  transcript.push(
-    attachments.length > 0 ? makeTranscriptMessageWithAttachments("user", text, attachments) : makeTranscriptMessage("user", text),
-  );
+  const transcript = appendUserMessageToTimeline(transcriptCache.get(key) ?? [], text, attachments, timelineItemFactory);
   transcriptCache.set(key, transcript);
   return transcript;
 }
@@ -44,27 +52,7 @@ export function appendQueuedUserMessage(
   message: SessionQueuedMessage,
 ): void {
   const key = sessionKey(sessionRef);
-  const transcript = [...(transcriptCache.get(key) ?? [])];
-  const existingIndex = transcript.findIndex((item) => item.kind === "message" && item.id === message.id);
-  const nextMessage = {
-    kind: "message" as const,
-    id: message.id,
-    role: "user" as const,
-    text: message.text,
-    createdAt: message.createdAt,
-    ...(message.attachments?.length
-      ? {
-          attachments: message.attachments.map((attachment) => ({ ...attachment })),
-        }
-      : {}),
-  };
-
-  if (existingIndex >= 0) {
-    transcript[existingIndex] = nextMessage;
-  } else {
-    transcript.push(nextMessage);
-  }
-  transcriptCache.set(key, transcript);
+  transcriptCache.set(key, appendQueuedUserMessageToTimeline(transcriptCache.get(key) ?? [], message));
 }
 
 export function appendAssistantDelta(
@@ -74,28 +62,15 @@ export function appendAssistantDelta(
   text: string,
 ): void {
   const key = sessionKey(sessionRef);
-  const transcript = [...(transcriptCache.get(key) ?? [])];
-  const activeId = activeAssistantMessageBySession.get(key);
-
-  if (activeId) {
-    const index = transcript.findIndex((message) => message.id === activeId);
-    const current = index >= 0 ? transcript[index] : undefined;
-    if (current?.kind === "message") {
-      transcript[index] = {
-        ...current,
-        text: `${current.text}${text}`,
-      };
-    } else {
-      const message = makeTranscriptMessage("assistant", text);
-      transcript.push(message);
-      activeAssistantMessageBySession.set(key, message.id);
-    }
-  } else {
-    const message = makeTranscriptMessage("assistant", text);
-    transcript.push(message);
-    activeAssistantMessageBySession.set(key, message.id);
-  }
-
+  const runtime: SessionTimelineRuntimeState = {
+    activeAssistantMessageId: activeAssistantMessageBySession.get(key),
+  };
+  const transcript = appendAssistantDeltaToTimeline(transcriptCache.get(key) ?? [], runtime, text, timelineItemFactory);
+  syncSessionRuntimeState(key, runtime, {
+    runMetricsBySession: new Map(),
+    runningSinceBySession: new Map(),
+    activeAssistantMessageBySession,
+  });
   transcriptCache.set(key, transcript);
 }
 
@@ -111,266 +86,37 @@ export function applyTimelineEvent(
   event: SessionDriverEvent,
   state: TimelineRuntimeState,
 ): void {
-  if (event.type === "assistantDelta") {
-    return;
-  }
-
   const key = sessionKey(event.sessionRef);
-  const transcript = [...(transcriptCache.get(key) ?? [])];
-  const currentMetrics = state.runMetricsBySession.get(key);
-
-  switch (event.type) {
-    case "sessionOpened":
-      transcript.push(makeActivityItem("Resumed session", { metadata: relativeDetail(event.timestamp) }));
-      break;
-    case "sessionUpdated":
-      if (event.snapshot.status === "running" && event.snapshot.runningRunId && !state.runningSinceBySession.has(key)) {
-        state.runningSinceBySession.set(key, event.timestamp);
-        state.runMetricsBySession.set(key, {
-          startedAt: event.timestamp,
-          toolCount: 0,
-          searchCount: 0,
-          fileCount: 0,
-        });
-      }
-      break;
-    case "queuedMessageStarted":
-      clearActiveAssistantMessage(state.activeAssistantMessageBySession, event.sessionRef);
-      appendQueuedUserMessage(transcriptCache, event.sessionRef, event.message);
-      return;
-    case "toolStarted": {
-      clearActiveAssistantMessage(state.activeAssistantMessageBySession, event.sessionRef);
-      const metrics = currentMetrics ?? {
-        startedAt: event.timestamp,
-        toolCount: 0,
-        searchCount: 0,
-        fileCount: 0,
-      };
-      metrics.toolCount += 1;
-      if (looksLikeSearch(event.toolName, event.input)) {
-        metrics.searchCount += 1;
-      }
-      if (looksLikeFileExplore(event.toolName, event.input)) {
-        metrics.fileCount += 1;
-      }
-      state.runMetricsBySession.set(key, metrics);
-      upsertToolRow(transcript, event.callId, event.toolName, "running", toolLabel(event.toolName, event.input), undefined, event.input);
-      break;
-    }
-    case "toolUpdated":
-      upsertToolRow(transcript, event.callId, undefined, "running", undefined, event.text ?? progressLabel(event.progress));
-      break;
-    case "toolFinished":
-      upsertToolRow(
-        transcript,
-        event.callId,
-        undefined,
-        event.success ? "success" : "error",
-        undefined,
-        detailFromOutput(event.output),
-        undefined,
-        event.output,
-      );
-      break;
-    case "runCompleted": {
-      const metrics = currentMetrics;
-      clearRunState(transcript, key, event.sessionRef, state);
-      if (metrics) {
-        const label = summaryLabel(metrics);
-        if (label) {
-          transcript.push(makeSummaryItem(label, { presentation: "inline" }));
-        }
-        transcript.push(makeSummaryItem(workedForLabel(metrics.startedAt, event.timestamp), { presentation: "divider" }));
-      } else {
-        transcript.push(makeSummaryItem("Completed", {
-          presentation: "divider",
-          metadata: relativeDetail(event.timestamp),
-        }));
-      }
-      break;
-    }
-    case "runFailed": {
-      const metrics = currentMetrics;
-      clearRunState(transcript, key, event.sessionRef, state);
-      transcript.push(
-        makeActivityItem(event.error.message, {
-          tone: "error",
-          metadata: metrics ? workedForLabel(metrics.startedAt, event.timestamp) : undefined,
-          detail: event.error.code,
-        }),
-      );
-      break;
-    }
-    case "sessionClosed":
-      clearRunState(transcript, key, event.sessionRef, state);
-      transcript.push(makeActivityItem("Stopped", { metadata: relativeDetail(event.timestamp) }));
-      break;
-    case "hostUiRequest":
-      if (event.request.kind === "notify") {
-        transcript.push(makeActivityItem(event.request.message, { metadata: relativeDetail(event.timestamp) }));
-      }
-      break;
-    default:
-      break;
-  }
-
+  const runtime = readSessionRuntimeState(key, state);
+  const transcript = applySessionEventToTimeline(transcriptCache.get(key) ?? [], event, runtime, timelineItemFactory);
+  syncSessionRuntimeState(key, runtime, state);
   transcriptCache.set(key, transcript);
 }
 
-function upsertToolRow(
-  transcript: TranscriptMessage[],
-  callId: string,
-  toolName?: string,
-  status?: "running" | "success" | "error",
-  label?: string,
-  detail?: string,
-  input?: unknown,
-  output?: unknown,
-) {
-  const index = transcript.findIndex((item) => item.kind === "tool" && item.callId === callId);
-  const existing = index >= 0 ? transcript[index] : undefined;
-  const existingTool = existing?.kind === "tool" ? existing : undefined;
-  const next = makeToolItem(
-    callId,
-    toolName ?? (existingTool?.toolName ?? "tool"),
-    status ?? (existingTool?.status ?? "running"),
-    label ?? (existingTool?.label ?? "Working"),
-    {
-      detail: detail ?? existingTool?.detail,
-      metadata: existingTool?.metadata,
-      input: input ?? existingTool?.input,
-      output: output ?? existingTool?.output,
-    },
-  );
-
-  if (index >= 0) {
-    transcript[index] = {
-      ...next,
-      createdAt: existing?.createdAt ?? next.createdAt,
-    };
-    return;
-  }
-
-  transcript.push(next);
+function readSessionRuntimeState(key: string, state: TimelineRuntimeState): SessionTimelineRuntimeState {
+  return {
+    runMetrics: state.runMetricsBySession.get(key),
+    runningSince: state.runningSinceBySession.get(key),
+    activeAssistantMessageId: state.activeAssistantMessageBySession.get(key),
+  };
 }
 
-function clearRunState(
-  _transcript: TranscriptMessage[],
-  key: string,
-  sessionRef: SessionRef,
-  state: TimelineRuntimeState,
-): void {
-  clearActiveAssistantMessage(state.activeAssistantMessageBySession, sessionRef);
-  state.runningSinceBySession.delete(key);
-  state.runMetricsBySession.delete(key);
-}
-
-function toolLabel(toolName: string, input: unknown): string {
-  const detail = inputLabel(input);
-  if (looksLikeSearch(toolName, input)) {
-    return detail ? `Searched ${detail}` : `Searched with ${toolName}`;
-  }
-  if (looksLikeFileExplore(toolName, input)) {
-    if (toolName.toLowerCase() === "read") {
-      return detail ? `Read ${detail}` : "Read a file";
-    }
-    return detail ? `Explored ${detail}` : `Explored files with ${toolName}`;
-  }
-  return detail ? `Ran ${toolName}: ${detail}` : `Ran ${toolName}`;
-}
-
-function progressLabel(progress: number | undefined): string | undefined {
-  if (progress === undefined) {
-    return undefined;
-  }
-  if (progress <= 1) {
-    return `${Math.round(progress * 100)}%`;
-  }
-  return String(progress);
-}
-
-function detailFromOutput(output: unknown): string | undefined {
-  if (isRecord(output) && Array.isArray(output.content)) {
-    const text = output.content
-      .map((part) => (isRecord(part) && part.type === "text" && typeof part.text === "string" ? part.text : ""))
-      .join(" ")
-      .trim();
-    if (text) {
-      return truncate(text);
-    }
-  }
-  if (typeof output === "string") {
-    return truncate(output);
-  }
-  if (output === undefined || output === null) {
-    return undefined;
-  }
-  return truncate(JSON.stringify(output));
-}
-
-function looksLikeSearch(toolName: string, input: unknown): boolean {
-  if (toolName.toLowerCase().includes("search")) {
-    return true;
-  }
-  return typeof input === "string" && /https?:\/\/|site:|query|search/i.test(input);
-}
-
-function looksLikeFileExplore(toolName: string, input: unknown): boolean {
-  if (/(read|glob|ls|list|open)/i.test(toolName)) {
-    return true;
-  }
-  return typeof input === "string" && /\/|\.md|\.ts|file/i.test(input);
-}
-
-function summaryLabel(metrics: RunMetrics): string | undefined {
-  const parts: string[] = [];
-  if (metrics.fileCount > 0) {
-    parts.push(`Explored ${metrics.fileCount} file${metrics.fileCount === 1 ? "" : "s"}`);
-  }
-  if (metrics.searchCount > 0) {
-    parts.push(`${metrics.searchCount} search${metrics.searchCount === 1 ? "" : "es"}`);
-  }
-  if (parts.length === 0 && metrics.toolCount > 0) {
-    parts.push(`Used ${metrics.toolCount} tool${metrics.toolCount === 1 ? "" : "s"}`);
-  }
-  return parts.length > 0 ? parts.join(", ") : undefined;
-}
-
-function workedForLabel(startedAt: string, endedAt: string): string {
-  return `Worked for ${formatElapsedDuration(startedAt, endedAt)}`;
-}
-
-function relativeDetail(timestamp: string): string {
-  return new Date(timestamp).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-}
-
-function truncate(value: string, limit = 160): string {
-  const normalized = value.replace(/\s+/g, " ").trim();
-  if (normalized.length <= limit) {
-    return normalized;
-  }
-  return `${normalized.slice(0, limit - 1)}…`;
-}
-
-function inputLabel(input: unknown): string | undefined {
-  if (typeof input === "string") {
-    return truncate(input, 80);
-  }
-  if (!isRecord(input)) {
-    return undefined;
+function syncSessionRuntimeState(key: string, runtime: SessionTimelineRuntimeState, state: TimelineRuntimeState): void {
+  if (runtime.runMetrics) {
+    state.runMetricsBySession.set(key, runtime.runMetrics);
+  } else {
+    state.runMetricsBySession.delete(key);
   }
 
-  const candidates = ["path", "filePath", "query", "q", "url", "command", "text", "title"];
-  for (const key of candidates) {
-    const value = input[key];
-    if (typeof value === "string" && value.trim()) {
-      return truncate(value, 80);
-    }
+  if (runtime.runningSince) {
+    state.runningSinceBySession.set(key, runtime.runningSince);
+  } else {
+    state.runningSinceBySession.delete(key);
   }
 
-  return undefined;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
+  if (runtime.activeAssistantMessageId) {
+    state.activeAssistantMessageBySession.set(key, runtime.activeAssistantMessageId);
+  } else {
+    state.activeAssistantMessageBySession.delete(key);
+  }
 }

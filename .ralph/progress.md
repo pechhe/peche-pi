@@ -102,3 +102,31 @@ Decisions made:
 
 Next-iteration notes:
 - Next item should be selected from `.ralph/items.json`; plan priority now points to the Desktop App timeline model Module.
+
+## 2026-06-03 — Create Desktop App timeline model module
+
+Selected item: Create one owning Desktop App timeline model module for persisted transcript rows and live session events.
+
+Why chosen: Prioritization Strategy points to transcript/timeline Depth after abandoned-port residue, duplicated type contracts, state transition, and IPC Seam work passed. This was the highest-priority unfinished item and targets a core Desktop App product feature.
+
+Changed files:
+- `apps/desktop/src/timeline-model.ts`
+- `apps/desktop/src/timeline-model.test.ts`
+- `apps/desktop/src/timeline-grouping.ts`
+- `apps/desktop/electron/app-store-timeline.ts`
+- `.ralph/items.json`
+- `.ralph/progress.md`
+
+Verification commands and results:
+- `pnpm --filter @pi-gui/desktop test:unit -- timeline-model`: passed. 35 tests passed, including focused timeline model Interface coverage.
+- `pnpm typecheck`: passed after fixing the typed test event helper. Built `session-driver`, `catalogs`, `pi-sdk-driver`, then all workspace typecheck scripts.
+- `pnpm --filter @pi-gui/desktop test:unit`: passed. 35 tests passed.
+
+Decisions made:
+- Added `timeline-model.ts` as the owning Desktop App timeline Module instead of leaving behavior split between main-process timeline mutation and renderer grouping Implementations.
+- Kept renderer and main callers on narrow Interfaces: `app-store-timeline.ts` delegates live `SessionDriverEvent` assembly through the model Seam, and `timeline-grouping.ts` remains a compatibility re-export for existing renderer imports.
+- Preserved current conversation-first rendering output: persisted transcript rows, live assistant deltas, queued user messages, tool lifecycle rows, summaries, meta activity extraction, reopened transcript behavior, and active trailing tool rows keep existing visible behavior.
+- No preload or broad Node exposure changed. No Electron UI smoke was needed because this refactor moved timeline model Locality without intended Desktop App behavior change.
+
+Next-iteration notes:
+- Next item should be selected from `.ralph/items.json`; plan priority now points to the remaining `SessionSupervisor` internal Locality item.
