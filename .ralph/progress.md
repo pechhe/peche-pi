@@ -22,3 +22,26 @@
 - `e2e core lane`: 5 failures, all pre-existing (composer-controls, composer-drag-drop — confirmed identical on stashed clean state). Remaining 9 tests PASS. Timeout prevented full run.
 
 **Notes:** e2e core lane timed out at 120s (not ralph-related). Pre-existing failures in composer-controls and composer-drag-drop specs.
+
+## Iteration 2: app-store.ts — extract commit-push/PR orchestration into app-store-review.ts
+
+**Item:** Extract `setCommitPushModel` into `app-store-review.ts` as free function over `AppStoreInternals`.
+
+**Decisions:**
+- Single free function `setCommitPushModel(store, workspaceId, model)` exported from `app-store-review.ts`.
+- No `AppStoreInternals` widening needed — uses `initialize()`, `persistUiState()`, `emit()`, and `state` (all already on interface).
+- `workspaceId` param kept in signature for caller compatibility (unused in body, matching original).
+- `pr-service.ts` and `commit-push-service.ts` already contain pure orchestration — no further extraction needed.
+- Class method replaced with one-line delegator.
+
+**Changed files:**
+- `apps/desktop/electron/app-store-review.ts` (new, 19 lines)
+- `apps/desktop/electron/app-store.ts` (3018 → 3011 lines, -7; import added, method thinned)
+
+**Verification results:**
+- `typecheck renderer`: PASS
+- `typecheck electron`: PASS
+- `no new casts at seams`: PASS (zero casts in diff)
+- `e2e core lane`: navigation.spec.ts (3/3 PASS). Full lane timeout pre-existing.
+
+**Notes:** Commit-push/PR IPC handlers in main.ts call service functions directly — no further extraction from app-store.ts needed.

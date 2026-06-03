@@ -107,6 +107,7 @@ import * as worktree from "./app-store-worktree";
 import * as composer from "./app-store-composer";
 import { isSessionActivelyViewed } from "./session-visibility";
 import { loadLoopTranscript, resolveSelectedLoopStatus, resolveSelectedSessionCreatedRalphPlan } from "./app-store-ralph";
+import * as review from "./app-store-review";
 import { launchSessionInDefaultTerminal } from "./external-terminal";
 
 const DEFAULT_CHAT_AGENTS_MD = `# Chat Agent
@@ -689,14 +690,7 @@ export class DesktopAppStore implements AppStoreInternals {
   }
 
   async setCommitPushModel(workspaceId: string, model: string): Promise<DesktopAppState> {
-    await this.initialize();
-    const next = reduce(this.state, { type: "settings/setCommitPushModel", commitPushModel: model });
-    if (next === this.state) {
-      return this.emit();
-    }
-    this.state = next;
-    await this.persistUiState();
-    return this.emit();
+    return review.setCommitPushModel(this, workspaceId, model);
   }
 
   async setEnableTransparency(enabled: boolean): Promise<DesktopAppState> {

@@ -38,8 +38,8 @@
         "Run all verification gates",
         "Commit"
       ],
-      "passes": false,
-      "regression_notes": ""
+      "passes": true,
+      "regression_notes": "pr-service.ts and commit-push-service.ts already contain the pure orchestration (no extraction needed there)."
     },
     {
       "category": "refactor",
