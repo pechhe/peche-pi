@@ -1448,6 +1448,23 @@ export async function startThreadViaIpc(
   await expect(window.getByTestId("composer")).toBeVisible({ timeout: 15_000 });
 }
 
+export async function startChatViaIpc(
+  window: Page,
+  options: {
+    readonly prompt?: string;
+  } = {},
+): Promise<void> {
+  const { prompt = "Start chat" } = options;
+  await window.evaluate(async ({ nextPrompt }) => {
+    const app = (window as PiAppWindow).piApp;
+    if (!app) {
+      throw new Error("piApp IPC bridge is unavailable");
+    }
+    await app.startChat({ prompt: nextPrompt });
+  }, { nextPrompt: prompt });
+  await expect(window.getByTestId("composer")).toBeVisible({ timeout: 15_000 });
+}
+
 export async function createNamedThread(
   window: Page,
   title: string,

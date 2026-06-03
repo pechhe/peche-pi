@@ -739,6 +739,7 @@ app.whenReady().then(async () => {
     await shell.openPath(path.dirname(resolved));
   });
   ipcMain.handle(desktopIpc.cancelCurrentRun, () => store.cancelCurrentRun());
+  ipcMain.handle(desktopIpc.openSessionInDefaultTerminal, () => store.openSessionInDefaultTerminal());
   ipcMain.handle(desktopIpc.pickComposerAttachments, async () => {
     const result = await dialog.showOpenDialog({
       properties: ["openFile", "multiSelections"],

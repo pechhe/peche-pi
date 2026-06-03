@@ -6,7 +6,7 @@ import type { TimelineRow, TimelineToolBurst } from "./timeline-grouping";
 import { summariseToolBurst } from "./timeline-grouping";
 import { MessageMarkdown, StreamingMessageText } from "./message-markdown";
 import { InlineDiff, extractDiffFromOutput } from "./diff-inline";
-import { ChevronRightIcon, CopyIcon, DiffIcon, FileIcon, FolderIcon, TerminalIcon } from "./icons";
+import { ChevronRightIcon, CopyIcon, DiffIcon, EditedFilesIcon, FileIcon, FolderIcon, TerminalIcon } from "./icons";
 import { openImageLightbox } from "./image-lightbox";
 import { extensionToLanguage } from "./syntax-highlight";
 
@@ -415,34 +415,58 @@ function TimelineEditedFilesItem({
   if (files.length === 0) {
     return null;
   }
+  const multiple = files.length > 1;
+  const totalAdded = files.reduce((sum, file) => sum + file.added, 0);
+  const totalRemoved = files.reduce((sum, file) => sum + file.removed, 0);
+  const reviewPath = files[0]!.path;
   return (
     <article className="timeline-edited-files" data-testid="timeline-edited-files">
-      {files.length > 1 ? (
-        <div className="timeline-edited-files__title">{`Edited ${files.length} files`}</div>
-      ) : null}
-      {files.map((file) => (
-        <div className="timeline-edited-files__row" key={file.path}>
-          <span className="timeline-edited-files__icon" aria-hidden="true">
-            <FileIcon />
+      <div className="timeline-edited-files__header">
+        <span className="timeline-edited-files__icon" aria-hidden="true">
+          <EditedFilesIcon />
+        </span>
+        <div className="timeline-edited-files__heading">
+          <span className="timeline-edited-files__title">
+            {multiple ? `Edited ${files.length} files` : `Edited ${shortenPath(reviewPath)}`}
           </span>
-          <span className="timeline-edited-files__path">{`Edited ${shortenPath(file.path)}`}</span>
           <span className="timeline-edited-files__stats">
-            <span className="timeline-tool__stat-add">{`+${file.added}`}</span>{" "}
-            <span className="timeline-tool__stat-del">{`-${file.removed}`}</span>
+            <span className="timeline-tool__stat-add">{`+${totalAdded}`}</span>{" "}
+            <span className="timeline-tool__stat-del">{`-${totalRemoved}`}</span>
           </span>
-          {onViewFileInDiff ? (
-            <button
-              aria-label={`View ${file.path} in changes`}
-              className="icon-button timeline-edited-files__view"
-              data-testid="timeline-edited-files-view"
-              type="button"
-              onClick={() => onViewFileInDiff(file.path)}
-            >
-              <DiffIcon />
-            </button>
-          ) : null}
         </div>
-      ))}
+        {onViewFileInDiff ? (
+          <button
+            aria-label="Review changes"
+            className="timeline-edited-files__review"
+            data-testid="timeline-edited-files-review"
+            type="button"
+            onClick={() => onViewFileInDiff(reviewPath)}
+          >
+            Review
+          </button>
+        ) : null}
+      </div>
+      {multiple ? (
+        <div className="timeline-edited-files__list">
+          {files.map((file) => (
+            <button
+              className="timeline-edited-files__row"
+              key={file.path}
+              type="button"
+              data-testid="timeline-edited-files-row"
+              aria-label={`View ${file.path} in changes`}
+              disabled={!onViewFileInDiff}
+              onClick={onViewFileInDiff ? () => onViewFileInDiff(file.path) : undefined}
+            >
+              <span className="timeline-edited-files__path">{shortenPath(file.path)}</span>
+              <span className="timeline-edited-files__stats">
+                <span className="timeline-tool__stat-add">{`+${file.added}`}</span>{" "}
+                <span className="timeline-tool__stat-del">{`-${file.removed}`}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : null}
     </article>
   );
 }

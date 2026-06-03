@@ -71,7 +71,7 @@ export function PendingThreadView({
 }: PendingThreadViewProps) {
   return (
     <>
-      <section className="canvas canvas--thread canvas--pending">
+      <section className="canvas canvas--thread">
         <div className="conversation conversation--thread">
           <div className="timeline-pane timeline-pane--thread" data-testid="timeline-pane">
             <div className="timeline" data-testid="transcript">

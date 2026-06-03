@@ -1,6 +1,6 @@
 import type { MouseEvent as ReactMouseEvent, Dispatch, SetStateAction } from "react";
 import type { AppView, DesktopAppState, SessionRecord, WorkspaceRecord, WorktreeRecord } from "./desktop-state";
-import { DiffIcon, FolderIcon, TerminalIcon } from "./icons";
+import { DiffIcon, ExternalTerminalIcon, FolderIcon, TerminalIcon } from "./icons";
 import { getDesktopShortcutLabel, type PiDesktopApi } from "./ipc";
 import type { WorkspaceMenuState } from "./hooks/use-workspace-menu";
 import { CommitPushButton } from "./commit-push-button";
@@ -26,6 +26,8 @@ interface TopbarProps {
   readonly terminalAvailable: boolean;
   readonly terminalVisible: boolean;
   readonly onToggleTerminal: () => void;
+  readonly externalTerminalAvailable: boolean;
+  readonly onOpenExternalTerminal: () => void;
   readonly showDiffPanel: boolean;
   readonly onToggleDiffPanel: () => void;
   readonly selectedRuntime?: RuntimeSnapshot;
@@ -49,6 +51,8 @@ export function Topbar(props: TopbarProps) {
     terminalAvailable,
     terminalVisible,
     onToggleTerminal,
+    externalTerminalAvailable,
+    onOpenExternalTerminal,
     showDiffPanel,
     onToggleDiffPanel,
     selectedRuntime,
@@ -153,6 +157,20 @@ export function Topbar(props: TopbarProps) {
           <span className="shortcut-tooltip topbar__tooltip" role="tooltip">
             <span>Toggle terminal</span>
             <kbd>{terminalShortcut}</kbd>
+          </span>
+        </div>
+        <div className="shortcut-tooltip-wrap topbar__tooltip-wrap">
+          <button
+            aria-label="Open in external terminal"
+            className="icon-button topbar__icon"
+            type="button"
+            disabled={!externalTerminalAvailable}
+            onClick={onOpenExternalTerminal}
+          >
+            <ExternalTerminalIcon />
+          </button>
+          <span className="shortcut-tooltip topbar__tooltip" role="tooltip">
+            <span>Open in external terminal</span>
           </span>
         </div>
         <div className="shortcut-tooltip-wrap topbar__tooltip-wrap">

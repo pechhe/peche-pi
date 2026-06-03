@@ -322,9 +322,6 @@ export default function App() {
   // while the main process spins up the agent runtime. Cleared when
   // startThread resolves and the real snapshot takes over.
   const [pendingThreadStart, setPendingThreadStart] = useState<{
-    readonly workspaceId: string;
-    readonly workspaceName: string;
-    readonly environment: NewThreadEnvironment;
     readonly prompt: string;
     readonly attachments: readonly ComposerAttachment[];
     readonly provider: string | undefined;
@@ -704,6 +701,12 @@ export default function App() {
     }
     setOpenTerminalSessionKey(selectedSessionKey);
   }, [openTerminalSessionKey, selectedSessionKey]);
+  const openExternalTerminal = useCallback(() => {
+    if (!api) {
+      return;
+    }
+    void updateSnapshot(api, setSnapshot, () => api.openSessionInDefaultTerminal());
+  }, [api, setSnapshot]);
   const focusNewThreadComposer = () => {
     window.requestAnimationFrame(() => {
       newThreadComposerRef.current?.focus();
@@ -2154,9 +2157,6 @@ export default function App() {
     const capturedPrompt = newThreadPrompt;
     const capturedAttachments = newThreadAttachments;
     setPendingThreadStart({
-      workspaceId: "",
-      workspaceName: "New chat",
-      environment: "local",
       prompt: capturedPrompt,
       attachments: capturedAttachments,
       provider: resolvedNewThreadProvider,
@@ -2227,9 +2227,6 @@ export default function App() {
     // the .then) so the new-thread surface won't briefly reappear with
     // stale text if startThread resolves slowly.
     setPendingThreadStart({
-      workspaceId: newThreadRootWorkspaceId,
-      workspaceName: newThreadWorkspace?.name ?? "New thread",
-      environment: newThreadEnvironment,
       prompt: newThreadPrompt,
       attachments: newThreadAttachments,
       provider: resolvedNewThreadProvider,
@@ -2695,6 +2692,8 @@ export default function App() {
           terminalAvailable={Boolean(selectedSessionKey)}
           terminalVisible={isTerminalVisibleForSelectedThread}
           onToggleTerminal={toggleTerminal}
+          externalTerminalAvailable={Boolean(selectedSessionKey) && selectedSession?.status !== "running"}
+          onOpenExternalTerminal={openExternalTerminal}
           showDiffPanel={showDiffPanel}
           onToggleDiffPanel={toggleDiffPanel}
           selectedRuntime={rootRuntime}

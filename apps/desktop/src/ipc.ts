@@ -62,6 +62,7 @@ export const desktopIpc = {
   createSession: "pi-gui:create-session",
   startThread: "pi-gui:start-thread",
   cancelCurrentRun: "pi-gui:cancel-current-run",
+  openSessionInDefaultTerminal: "pi-gui:open-session-in-default-terminal",
   setActiveView: "pi-gui:set-active-view",
   setSidebarCollapsed: "pi-gui:set-sidebar-collapsed",
   refreshRuntime: "pi-gui:refresh-runtime",
@@ -182,6 +183,7 @@ export const piDesktopApiIpcBridge = {
   createSession: { kind: "invoke", channel: desktopIpc.createSession },
   startThread: { kind: "invoke", channel: desktopIpc.startThread },
   cancelCurrentRun: { kind: "invoke", channel: desktopIpc.cancelCurrentRun },
+  openSessionInDefaultTerminal: { kind: "invoke", channel: desktopIpc.openSessionInDefaultTerminal },
   setActiveView: { kind: "invoke", channel: desktopIpc.setActiveView },
   setSidebarCollapsed: { kind: "invoke", channel: desktopIpc.setSidebarCollapsed },
   refreshRuntime: { kind: "invoke", channel: desktopIpc.refreshRuntime },
@@ -418,6 +420,7 @@ export interface PiDesktopApi {
   createSession(input: CreateSessionInput): Promise<DesktopAppState>;
   startThread(input: StartThreadInput): Promise<DesktopAppState>;
   cancelCurrentRun(): Promise<DesktopAppState>;
+  openSessionInDefaultTerminal(): Promise<DesktopAppState>;
   setActiveView(view: AppView): Promise<DesktopAppState>;
   setSidebarCollapsed(collapsed: boolean): Promise<DesktopAppState>;
   refreshRuntime(workspaceId?: string): Promise<DesktopAppState>;

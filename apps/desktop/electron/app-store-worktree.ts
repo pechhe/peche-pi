@@ -243,6 +243,11 @@ export async function startChat(store: AppStoreInternals, input: StartChatInput)
         ...(initialModel ? { model: initialModel } : {}),
         ...(initialThinkingLevel ? { thinkingLevel: initialThinkingLevel } : {}),
         onTitleApplied: (title) => {
+          // Don't clobber a manual rename the user made before the title resolved.
+          const current = store.state.chats.find((c) => c.id === id);
+          if (current && current.title !== "New chat") {
+            return;
+          }
           store.state = reduce(store.state, { type: "chats/rename", chatId: id, title });
           void store.persistUiState();
           store.emit();
@@ -387,6 +392,7 @@ async function generateAndApplyAutoTitle(
     readonly signal: AbortSignal;
     readonly model?: { provider: string; modelId: string };
     readonly thinkingLevel?: string;
+    readonly onTitleApplied?: (title: string) => void;
   },
 ): Promise<void> {
   const clearMatchingPendingTitle = () => {
@@ -419,6 +425,7 @@ async function generateAndApplyAutoTitle(
 
     store.clearPendingAutoTitle(sessionRef);
     await store.driver.renameSession(sessionRef, generatedTitle);
+    options.onTitleApplied?.(generatedTitle);
   } catch {
     clearMatchingPendingTitle();
   }

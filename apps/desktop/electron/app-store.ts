@@ -101,6 +101,7 @@ import * as workspace from "./app-store-workspace";
 import * as worktree from "./app-store-worktree";
 import * as composer from "./app-store-composer";
 import { isSessionActivelyViewed } from "./session-visibility";
+import { launchSessionInDefaultTerminal } from "./external-terminal";
 
 const DEFAULT_CHAT_AGENTS_MD = `# Chat Agent
 
@@ -404,6 +405,38 @@ export class DesktopAppStore implements AppStoreInternals {
 
   async cancelCurrentRun(): Promise<DesktopAppState> {
     return composer.cancelCurrentRun(this);
+  }
+
+  async openSessionInDefaultTerminal(): Promise<DesktopAppState> {
+    await this.initialize();
+    const sessionRef = this.selectedSessionRef();
+    if (!sessionRef) {
+      return this.emit();
+    }
+    const session = this.sessionFromState(sessionRef);
+    if (session?.status === "running") {
+      return this.withError("Stop the running model before opening this session in a terminal.");
+    }
+    const cwd = this.getWorkspacePath(sessionRef.workspaceId);
+    if (!cwd) {
+      return this.withError("Cannot resolve the workspace folder for this session.");
+    }
+
+    return this.withErrorHandling(async () => {
+      const catalog = await this.driver.listSessions(sessionRef.workspaceId);
+      const sessionFilePath = catalog.sessions.find(
+        (entry) => entry.sessionRef.sessionId === sessionRef.sessionId,
+      )?.sessionFilePath;
+      if (!sessionFilePath) {
+        return this.withError("This session has no saved file to resume.");
+      }
+      await launchSessionInDefaultTerminal({ cwd, sessionFilePath });
+      // Hand off ownership: drop the in-memory runtime so the external pi
+      // process is the sole writer of the session file.
+      await this.driver.closeSession(sessionRef);
+      await this.reloadSessionsForWorkspace(sessionRef.workspaceId);
+      return this.refreshState({ clearLastError: true });
+    });
   }
 
   async getSessionTree(target: WorkspaceSessionTarget): Promise<SessionTreeSnapshot> {
