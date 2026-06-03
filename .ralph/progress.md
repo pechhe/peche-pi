@@ -130,3 +130,32 @@ Decisions made:
 
 Next-iteration notes:
 - Next item should be selected from `.ralph/items.json`; plan priority now points to the remaining `SessionSupervisor` internal Locality item.
+
+## 2026-06-03 — Deepen SessionSupervisor queued message delivery locality
+
+Selected item: Deepen one internal `SessionSupervisor` concern while preserving the external `PiSdkDriver` Interface.
+
+Why chosen: Last unfinished item in `.ralph/items.json`. Prioritization Strategy ranks `pi-sdk-driver` internals last after abandoned-port residue, type contract drift, Desktop state, IPC, and timeline Depth items all passed. Queued message delivery is a high-friction concern with inline image extraction, file-preamble injection, steer/followUp dispatch, and record mutation spread across `sendUserMessage`, `replaceQueuedMessages`, and `mapAgentEvent`.
+
+Changed files:
+- `packages/pi-sdk-driver/src/queued-message-delivery.ts`
+- `packages/pi-sdk-driver/test/queued-message-delivery.test.ts`
+- `packages/pi-sdk-driver/src/session-supervisor.ts`
+- `.ralph/items.json`
+- `.ralph/progress.md`
+
+Verification commands and results:
+- `pnpm exec tsx --test packages/pi-sdk-driver/test/queued-message-delivery.test.ts`: 6 tests passed (clone Locality, image extraction, file preamble, steer dispatch, full deliverQueuedMessage pipeline, steer-before-followUp reconciliation).
+- `pnpm --filter @pi-gui/pi-sdk-driver build`: passed.
+- `pnpm typecheck`: passed. Built `session-driver`, `catalogs`, `pi-sdk-driver`, then workspace typecheck scripts.
+- `pnpm --filter @pi-gui/desktop test:unit`: passed. 35 tests passed.
+
+Decisions made:
+- Extracted `queued-message-delivery.ts` as an internal Module with one concern and one test file instead of keeping queued-message logic split across `SessionSupervisor` methods and a utils helper. This improves Locality without changing the external `PiSdkDriver` Interface.
+- Kept `SessionSupervisor` methods `sendUserMessage`, `replaceQueuedMessages`, and `mapAgentEvent` as the public Seam; internal detail now delegates to the extracted Module instead of hand-mutating record fields directly.
+- Removed the private `queuePrompt` method because `deliverQueuedPrompt` and `deliverQueuedMessage` now own steer/followUp dispatch.
+- Added 6 Interface tests covering the extracted Module public API; external `PiSdkDriver` caller behavior verified through required gates passing unchanged.
+- Used `injectFileAttachmentPreamble` and `messageText` from the parent `session-supervisor-utils` Module via import because these are shared utility Implementations, not queued-delivery-specific logic.
+
+Next-iteration notes:
+- All items in `.ralph/items.json` now pass. Next iteration should emit COMPLETE.

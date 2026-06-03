@@ -84,8 +84,8 @@
         "Add or update tests that exercise the extracted concern through its Interface and through the public driver path where practical.",
         "Run focused `pi-sdk-driver` tests or builds plus the required verification gates."
       ],
-      "passes": false,
-      "regression_notes": ""
+      "passes": true,
+      "regression_notes": "Extracted queued message delivery concern from `session-supervisor.ts` into `packages/pi-sdk-driver/src/queued-message-delivery.ts` with a narrower Interface: `cloneQueuedMessage`, `queuedMessageFromInput`, `queuedPromptImagesFromAttachments`, `promptTextForQueuedDelivery`, `deliverQueuedPrompt`, `deliverQueuedMessage`, and `reconcileQueuedMessagesForStartedUserMessage`. Replaced inline queued-message mutation in `sendUserMessage`, `replaceQueuedMessages`, and `mapAgentEvent` with calls to the extracted Module; removed the private `queuePrompt` method. Added `packages/pi-sdk-driver/test/queued-message-delivery.test.ts` with 6 Interface tests covering clone Locality, image extraction, file preamble, steer/followUp dispatch, full deliverQueuedMessage pipeline, and steer-before-follow-up reconciliation. Focused tests passed: `pnpm exec tsx --test packages/pi-sdk-driver/test/queued-message-delivery.test.ts`; `pnpm --filter @pi-gui/pi-sdk-driver build`. Required gates passed: `pnpm typecheck`; `pnpm --filter @pi-gui/desktop test:unit`. External `PiSdkDriver` Interface unchanged; `SessionSupervisor` callers only interact through the existing public method Interface."
     }
   ]
 }
