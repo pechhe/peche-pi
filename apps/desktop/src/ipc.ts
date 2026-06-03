@@ -120,6 +120,9 @@ export const desktopIpc = {
   stageFile: "pi-gui:stage-file",
   commitPushExecute: "pi-gui:commit-push-execute",
   setCommitPushModel: "pi-gui:set-commit-push-model",
+  getWorkspacePrInfo: "pi-gui:get-workspace-pr-info",
+  generatePrDraft: "pi-gui:generate-pr-draft",
+  prCreate: "pi-gui:pr-create",
   getThemeMode: "pi-gui:get-theme-mode",
   getResolvedTheme: "pi-gui:get-resolved-theme",
   setThemeMode: "pi-gui:set-theme-mode",
@@ -227,6 +230,9 @@ export const piDesktopApiIpcBridge = {
   stageFile: { kind: "invoke", channel: desktopIpc.stageFile },
   commitPushExecute: { kind: "invoke", channel: desktopIpc.commitPushExecute },
   setCommitPushModel: { kind: "invoke", channel: desktopIpc.setCommitPushModel },
+  getWorkspacePrInfo: { kind: "invoke", channel: desktopIpc.getWorkspacePrInfo },
+  generatePrDraft: { kind: "invoke", channel: desktopIpc.generatePrDraft },
+  prCreate: { kind: "invoke", channel: desktopIpc.prCreate },
   toggleWindowMaximize: { kind: "invoke", channel: desktopIpc.toggleWindowMaximize },
   openExternal: { kind: "invoke", channel: desktopIpc.openExternal },
   getThemeMode: { kind: "invoke", channel: desktopIpc.getThemeMode },
@@ -326,6 +332,41 @@ export function getDesktopCommandFromShortcut(input: DesktopShortcutInput): PiDe
   }
 
   return undefined;
+}
+
+export type PrState = "none" | "open" | "closed" | "merged";
+
+export interface WorkspacePrInfo {
+  readonly ghAvailable: boolean;
+  readonly isGitRepo: boolean;
+  readonly hasUpstream: boolean;
+  readonly headBranch: string;
+  readonly defaultBranch: string;
+  readonly prState: PrState;
+  readonly prUrl?: string;
+  readonly prNumber?: number;
+  readonly baseBranch?: string;
+}
+
+export interface PrDraftResult {
+  readonly success: boolean;
+  readonly title: string;
+  readonly body: string;
+  readonly message?: string;
+}
+
+export interface CreatePrInput {
+  readonly title: string;
+  readonly body: string;
+  readonly base: string;
+  readonly draft: boolean;
+}
+
+export interface CreatePrResult {
+  readonly success: boolean;
+  readonly message: string;
+  readonly url?: string;
+  readonly number?: number;
 }
 
 export interface PiDesktopApi {
@@ -454,6 +495,9 @@ export interface PiDesktopApi {
   stageFile(workspaceId: string, filePath: string): Promise<void>;
   commitPushExecute(workspaceId: string): Promise<{ readonly success: boolean; readonly message: string; readonly commitMessage?: string }>;
   setCommitPushModel(workspaceId: string, model: string): Promise<DesktopAppState>;
+  getWorkspacePrInfo(workspaceId: string): Promise<WorkspacePrInfo>;
+  generatePrDraft(workspaceId: string, baseBranch?: string): Promise<PrDraftResult>;
+  prCreate(workspaceId: string, input: CreatePrInput): Promise<CreatePrResult>;
   toggleWindowMaximize(): Promise<void>;
   openExternal(url: string): Promise<void>;
   getThemeMode(): Promise<"system" | "light" | "dark" | "dracula">;

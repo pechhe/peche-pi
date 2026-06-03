@@ -538,11 +538,11 @@ function WorkspaceGroupContent(
 /* ── Thread session row ────────────────────────────────── */
 
 function sessionIndicatorVariant(thread: ThreadListEntry): "running" | "unseen" | "none" {
-  // Codex-style: only show the spinner while the assistant hasn't started
-  // producing visible output for the current turn. Once text streams in or a
-  // tool call lands, the indicator goes away even though status is still
-  // "running".
-  if (thread.session.status === "running" && thread.session.isAwaitingAssistantText) {
+  // Show the braille spinner continuously on the sidebar while the session
+  // is running, regardless of whether the assistant has started producing
+  // visible output. The spinner only stops when the task finishes (status
+  // transitions away from "running").
+  if (thread.session.status === "running") {
     return "running";
   }
   if (thread.session.hasUnseenUpdate) {

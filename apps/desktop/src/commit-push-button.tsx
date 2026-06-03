@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
+import { CommitPushPrDialog } from "./commit-push-pr-dialog";
 import { buildModelOptions, type ComposerModelOption } from "./composer-commands";
-import type { PiDesktopApi } from "./ipc";
+import type { PiDesktopApi, WorkspacePrInfo } from "./ipc";
 import { SettingsIcon } from "./icons";
 import { showToast } from "./toast";
 
@@ -31,6 +32,8 @@ interface GitInfo {
   readonly changedCount: number;
 }
 
+type ButtonMode = "commit-push" | "create-pr" | "view-pr";
+
 const SHORTCUT_EVENT = "pi:commit-and-push";
 
 export function CommitPushButton({
@@ -45,6 +48,8 @@ export function CommitPushButton({
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [gitInfo, setGitInfo] = useState<GitInfo>({ isGitRepo: false, changedCount: 0 });
+  const [prInfo, setPrInfo] = useState<WorkspacePrInfo | undefined>(undefined);
+  const [prDialogOpen, setPrDialogOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   const modelOptions = useMemo(() => buildModelOptions(runtime), [runtime]);
@@ -71,10 +76,28 @@ export function CommitPushButton({
     });
   }, [api, workspaceId]);
 
+  const refreshPrInfo = useCallback(() => {
+    if (!workspaceId) {
+      setPrInfo(undefined);
+      return;
+    }
+    void api
+      .getWorkspacePrInfo(workspaceId)
+      .then((info) => {
+        setPrInfo(info);
+      })
+      .catch(() => {
+        // Non-fatal: PR state is derived, so falling back to undefined keeps
+        // the button in its commit-push-only behavior.
+        setPrInfo(undefined);
+      });
+  }, [api, workspaceId]);
+
   // Initial fetch + on workspace change
   useEffect(() => {
     refreshGitInfo();
-  }, [refreshGitInfo]);
+    refreshPrInfo();
+  }, [refreshGitInfo, refreshPrInfo]);
 
   // Refresh when a session finishes (running -> not running)
   const prevStatusRef = useRef(sessionStatus);
@@ -83,8 +106,9 @@ export function CommitPushButton({
     prevStatusRef.current = sessionStatus;
     if (prev === "running" && sessionStatus !== "running") {
       refreshGitInfo();
+      refreshPrInfo();
     }
-  }, [sessionStatus, refreshGitInfo]);
+  }, [sessionStatus, refreshGitInfo, refreshPrInfo]);
 
   // Close dropdown on click outside
   useEffect(() => {
@@ -135,8 +159,9 @@ export function CommitPushButton({
     } finally {
       setBusy(false);
       refreshGitInfo();
+      refreshPrInfo();
     }
-  }, [api, busy, commitPushModel, gitInfo.isGitRepo, refreshGitInfo, workspaceId]);
+  }, [api, busy, commitPushModel, gitInfo.isGitRepo, refreshGitInfo, refreshPrInfo, workspaceId]);
 
   // Trigger via global shortcut event (dispatched by App.tsx Cmd+Shift+K handler)
   useEffect(() => {
@@ -158,35 +183,85 @@ export function CommitPushButton({
   if (!gitInfo.isGitRepo) return null;
 
   const hasChanges = gitInfo.changedCount > 0;
+  const ghAvailable = prInfo?.ghAvailable ?? false;
+  const prState = prInfo?.prState ?? "none";
+  const mode: ButtonMode = hasChanges || !ghAvailable
+    ? "commit-push"
+    : prState === "open"
+      ? "view-pr"
+      : "create-pr";
+  const isPill = mode !== "commit-push" || hasChanges;
+  const containerClass =
+    mode === "view-pr"
+      ? "commit-push commit-push--view-pr"
+      : mode === "create-pr"
+        ? "commit-push commit-push--create-pr"
+        : hasChanges
+          ? "commit-push commit-push--dirty"
+          : "commit-push";
+
+  const handlePrimaryClick = () => {
+    if (busy || disabled) return;
+    if (mode === "commit-push") {
+      void handleCommitPush();
+      return;
+    }
+    if (mode === "create-pr") {
+      setPrDialogOpen(true);
+      return;
+    }
+    if (mode === "view-pr" && prInfo?.prUrl) {
+      void api.openExternal(prInfo.prUrl);
+    }
+  };
+
+  const primaryLabel =
+    mode === "view-pr"
+      ? prInfo?.prNumber ? `View PR #${prInfo.prNumber}` : "View PR"
+      : mode === "create-pr"
+        ? "Create PR"
+        : hasChanges
+          ? `Commit & Push (${gitInfo.changedCount} changed)`
+          : "Commit & Push";
+
+  const tooltipText =
+    mode === "view-pr"
+      ? prInfo?.prNumber ? `View PR #${prInfo.prNumber}` : "View PR"
+      : mode === "create-pr"
+        ? "Create pull request"
+        : "Commit & Push";
 
   return (
-    <div
-      className={`commit-push${hasChanges ? " commit-push--dirty" : ""}`}
-      ref={containerRef}
-    >
+    <div className={containerClass} ref={containerRef}>
       <div className="shortcut-tooltip-wrap topbar__tooltip-wrap">
         <button
-          aria-label={hasChanges ? `Commit & Push (${gitInfo.changedCount} changed)` : "Commit & Push"}
-          className={`commit-push__button${busy ? " commit-push__button--busy" : ""}${hasChanges ? " commit-push__button--pill" : " icon-button topbar__icon"}`}
+          aria-label={primaryLabel}
+          className={`commit-push__button${busy ? " commit-push__button--busy" : ""}${isPill ? " commit-push__button--pill" : " icon-button topbar__icon"}`}
           type="button"
           disabled={disabled || busy}
-          onClick={handleCommitPush}
+          onClick={handlePrimaryClick}
         >
           {busy ? (
             <span className="commit-push__spinner" />
           ) : (
             <GitCommitIcon />
           )}
-          {hasChanges && !busy ? (
+          {isPill && !busy ? (
             <span className="commit-push__pill-label">
-              <span className="commit-push__pill-count">{gitInfo.changedCount}</span>
-              <span className="commit-push__pill-text">Commit &amp; Push</span>
+              {mode === "commit-push" && hasChanges ? (
+                <>
+                  <span className="commit-push__pill-count">{gitInfo.changedCount}</span>
+                  <span className="commit-push__pill-text">Commit &amp; Push</span>
+                </>
+              ) : (
+                <span className="commit-push__pill-text">{primaryLabel}</span>
+              )}
             </span>
           ) : null}
         </button>
         <span className="shortcut-tooltip topbar__tooltip" role="tooltip">
-          <span>Commit &amp; Push</span>
-          <kbd>{shortcutLabel}</kbd>
+          <span>{tooltipText}</span>
+          {mode === "commit-push" ? <kbd>{shortcutLabel}</kbd> : null}
         </span>
       </div>
       <div className="shortcut-tooltip-wrap topbar__tooltip-wrap">
@@ -202,6 +277,22 @@ export function CommitPushButton({
           <span>Commit model: {selectedLabel}</span>
         </span>
       </div>
+      {prDialogOpen && prInfo ? (
+        <CommitPushPrDialog
+          api={api}
+          defaultBase={prInfo.defaultBranch || "main"}
+          headBranch={prInfo.headBranch}
+          workspaceId={workspaceId}
+          onClose={() => setPrDialogOpen(false)}
+          onSuccess={(url) => {
+            showToast({
+              variant: "success",
+              message: url ? `Pull request created: ${url}` : "Pull request created.",
+            });
+            refreshPrInfo();
+          }}
+        />
+      ) : null}
       {open ? (
         <div className="model-selector__dropdown commit-push__dropdown">
           <div className="model-selector__group-title">

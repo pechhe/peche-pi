@@ -1998,6 +1998,84 @@
   }
 }
 
+/* Create-PR / View-PR pill variants: same pill shape as dirty, but softer
+ * tints so the three states read distinctly in the topbar. */
+.commit-push--create-pr .commit-push__button--pill,
+.commit-push--view-pr .commit-push__button--pill {
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface) 92%);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.commit-push--create-pr .commit-push__button--pill:hover:not(:disabled),
+.commit-push--view-pr .commit-push__button--pill:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface) 84%);
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+/* ── PR dialog ────────────────────────────────────── */
+
+.pr-dialog {
+  width: min(720px, 100%);
+  max-height: min(820px, calc(100vh - 48px));
+}
+
+.pr-dialog__form {
+  display: grid;
+  gap: 14px;
+  overflow: auto;
+}
+
+.pr-dialog__field {
+  display: grid;
+  gap: 6px;
+}
+
+.pr-dialog__field--inline {
+  flex: 1;
+}
+
+.pr-dialog__label {
+  color: var(--muted-soft);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.pr-dialog__input,
+.pr-dialog__textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid #d9e0ec;
+  background: #f8fafc;
+  color: var(--text-strong);
+  font: inherit;
+}
+
+.pr-dialog__textarea {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.5;
+  resize: vertical;
+  min-height: 220px;
+}
+
+.pr-dialog__row {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+}
+
+.pr-dialog__checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-strong);
+  font-size: 13px;
+  padding-bottom: 10px;
+}
+
 .commit-push__gear {
   width: 24px;
   height: 24px;

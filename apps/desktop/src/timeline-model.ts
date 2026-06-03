@@ -52,7 +52,7 @@ export interface TimelineItemFactory {
   ) => TranscriptMessage;
   readonly activity: (
     label: string,
-    options?: Pick<Extract<TranscriptMessage, { kind: "activity" }>, "detail" | "metadata" | "tone">,
+    options?: Pick<Extract<TranscriptMessage, { kind: "activity" }>, "detail" | "metadata" | "tone" | "noise">,
   ) => TranscriptMessage;
   readonly summary: (
     label: string,
@@ -236,7 +236,20 @@ export function applySessionEventToTimeline(
       break;
     case "hostUiRequest":
       if (event.request.kind === "notify") {
-        next.push(factory.activity(event.request.message, { metadata: relativeDetail(event.timestamp) }));
+        // info-level notify events are background extension chatter
+        // (pi-blackhole OM progress, pi-cymbal nudges, etc.). Tag them as
+        // noise so the renderer can hide them in clean mode while still
+        // keeping warnings/errors visible.
+        const level = event.request.level ?? "info";
+        const noise = level === "info";
+        next.push(
+          factory.activity(event.request.message, {
+            metadata: relativeDetail(event.timestamp),
+            ...(level === "warning" ? { tone: "warning" as const } : {}),
+            ...(level === "error" ? { tone: "error" as const } : {}),
+            ...(noise ? { noise: true } : {}),
+          }),
+        );
       }
       break;
     default:

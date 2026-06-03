@@ -18,6 +18,12 @@ import { pathToFileURL } from "node:url";
 import { DesktopAppStore } from "./app-store";
 import { getChangedFiles, getFileDiff, getWorkspaceGitInfo, stageFile } from "./app-store-diff";
 import { configureCommitPushLogDir, executeCommitPush } from "./commit-push-service";
+import {
+  configurePrLogDir,
+  createPullRequest,
+  generatePrDraft,
+  getWorkspacePrInfo,
+} from "./pr-service";
 import { listWorkspaceFiles } from "./app-store-files";
 import { MAIN_DEV_RELOAD_MARKER } from "./dev-reload-main-probe";
 import { NotificationManager } from "./notification-manager";
@@ -397,6 +403,7 @@ app.setName(process.env.PI_APP_NAME?.trim() || "pi");
 const configuredUserDataDir = process.env.PI_APP_USER_DATA_DIR?.trim() || app.getPath("userData");
 app.setPath("userData", configuredUserDataDir);
 configureCommitPushLogDir(configuredUserDataDir);
+configurePrLogDir(configuredUserDataDir);
 
 // Crash log: write uncaught errors to a persistent file in userData.
 // This survives before-quit and lets the dev script point users at it.
@@ -811,6 +818,35 @@ app.whenReady().then(async () => {
     }));
     return executeCommitPush(workspacePath, modelString);
   });
+  ipcMain.handle(desktopIpc.getWorkspacePrInfo, async (_event, workspaceId: string) => {
+    const workspacePath = store.getWorkspacePath(workspaceId);
+    if (!workspacePath) {
+      throw new Error(`Unknown workspace: ${workspaceId}`);
+    }
+    return getWorkspacePrInfo(workspacePath);
+  });
+  ipcMain.handle(desktopIpc.generatePrDraft, async (_event, workspaceId: string, baseBranch?: string) => {
+    const workspacePath = store.getWorkspacePath(workspaceId);
+    if (!workspacePath) {
+      throw new Error(`Unknown workspace: ${workspaceId}`);
+    }
+    const modelString = store.state.commitPushModel ?? "deepseek:deepseek-chat";
+    return generatePrDraft(workspacePath, modelString, baseBranch);
+  });
+  ipcMain.handle(
+    desktopIpc.prCreate,
+    async (
+      _event,
+      workspaceId: string,
+      input: { title: string; body: string; base: string; draft: boolean },
+    ) => {
+      const workspacePath = store.getWorkspacePath(workspaceId);
+      if (!workspacePath) {
+        return { success: false, message: `Unknown workspace: ${workspaceId}` };
+      }
+      return createPullRequest(workspacePath, input);
+    },
+  );
   ipcMain.handle(desktopIpc.toggleWindowMaximize, (event) => {
     const window = BrowserWindow.fromWebContents(event.sender);
     if (!window) {

@@ -92,14 +92,66 @@ function useDesktopAppState() {
         setSnapshot(state);
       }
     });
+
+    // Coalesce transcript updates: streaming deltas can fire many times per
+    // frame (each text_delta from the model triggers a full-transcript IPC
+    // publish on the main side). Without coalescing, React re-renders and
+    // ReactMarkdown re-parses the entire active message per delta, which
+    // visibly chunks long streamed replies. Buffer the latest payload and
+    // flush at most once per animation frame.
+    //
+    // Session switches (payload === null, or a different sessionId) are
+    // flushed immediately so a stale transcript can never leak into the next
+    // session's view.
+    let pendingTranscript: SelectedTranscriptRecord | null | undefined = undefined;
+    let rafHandle: number | null = null;
+    let lastAppliedSessionKey: string | null = null;
+
+    const flushTranscript = () => {
+      rafHandle = null;
+      if (!active || pendingTranscript === undefined) {
+        pendingTranscript = undefined;
+        return;
+      }
+      const next = pendingTranscript;
+      pendingTranscript = undefined;
+      lastAppliedSessionKey = next ? `${next.workspaceId}::${next.sessionId}` : null;
+      setSelectedTranscript(next);
+    };
+
+    const applyTranscriptImmediately = (payload: SelectedTranscriptRecord | null) => {
+      if (rafHandle !== null) {
+        cancelAnimationFrame(rafHandle);
+        rafHandle = null;
+      }
+      pendingTranscript = undefined;
+      lastAppliedSessionKey = payload ? `${payload.workspaceId}::${payload.sessionId}` : null;
+      setSelectedTranscript(payload);
+    };
+
     const unsubscribeTranscript = api.onSelectedTranscriptChanged((payload) => {
-      if (active) {
-        setSelectedTranscript(payload);
+      if (!active) {
+        return;
+      }
+      const payloadKey = payload ? `${payload.workspaceId}::${payload.sessionId}` : null;
+      // Session switch (including clear): apply immediately, never coalesce
+      // across sessions.
+      if (payloadKey !== lastAppliedSessionKey) {
+        applyTranscriptImmediately(payload);
+        return;
+      }
+      pendingTranscript = payload;
+      if (rafHandle === null) {
+        rafHandle = requestAnimationFrame(flushTranscript);
       }
     });
 
     return () => {
       active = false;
+      if (rafHandle !== null) {
+        cancelAnimationFrame(rafHandle);
+        rafHandle = null;
+      }
       unsubscribeState();
       unsubscribeTranscript();
     };
