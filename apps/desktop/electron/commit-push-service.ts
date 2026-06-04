@@ -1,6 +1,11 @@
-import { execFile } from "node:child_process";
 import { appendFile, mkdir } from "node:fs/promises";
 import path from "node:path";
+import { execGit } from "./git-runner";
+import {
+  PROVIDER_CONFIGS,
+  parseProviderAndModel,
+  resolveProviderConfig,
+} from "./llm-helpers";
 
 export interface CommitPushResult {
   readonly success: boolean;
@@ -49,43 +54,6 @@ const COMMIT_SYSTEM_PROMPT = [
   "- Output ONLY the commit message. No quotes, no markdown, no explanation.",
   "- Do not wrap in backticks or code fences.",
 ].join("\n");
-
-interface ProviderConfig {
-  apiBase: string;
-  apiKeyEnv: string;
-  modelPrefix?: string;
-}
-
-const PROVIDER_CONFIGS: Record<string, ProviderConfig> = {
-  "openai-codex": {
-    apiBase: "https://api.openai.com/v1",
-    apiKeyEnv: "OPENAI_API_KEY",
-  },
-  "openai": {
-    apiBase: "https://api.openai.com/v1",
-    apiKeyEnv: "OPENAI_API_KEY",
-  },
-  anthropic: {
-    apiBase: "https://api.anthropic.com/v1",
-    apiKeyEnv: "ANTHROPIC_API_KEY",
-  },
-  deepseek: {
-    apiBase: "https://api.deepseek.com/v1",
-    apiKeyEnv: "DEEPSEEK_API_KEY",
-  },
-  groq: {
-    apiBase: "https://api.groq.com/v1",
-    apiKeyEnv: "GROQ_API_KEY",
-  },
-  "google-genai": {
-    apiBase: "https://generativelanguage.googleapis.com/v1beta",
-    apiKeyEnv: "GOOGLE_API_KEY",
-  },
-};
-
-function resolveProviderConfig(providerId: string): ProviderConfig | undefined {
-  return PROVIDER_CONFIGS[providerId];
-}
 
 async function generateCommitMessage(
   diff: string,
@@ -186,35 +154,7 @@ function cleanCommitMessage(raw: string): string {
   return cleaned || "chore: update";
 }
 
-function execGit(args: string[], cwd: string): Promise<{ stdout: string; stderr: string; code: number }> {
-  return new Promise((resolve) => {
-    execFile("git", args, { cwd, maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
-      if (!error) {
-        resolve({ stdout: stdout?.trim() ?? "", stderr: stderr?.trim() ?? "", code: 0 });
-        return;
-      }
-      const errnoCode = (error as NodeJS.ErrnoException).code;
-      if (errnoCode === "ENOENT") {
-        resolve({ stdout: "", stderr: "git not found", code: 127 });
-        return;
-      }
-      // git exits with non-zero for normal operations (e.g., diff --no-index)
-      const exitCode = typeof (error as any).code === "number" ? (error as any).code as number : 1;
-      resolve({ stdout: stdout?.trim() ?? "", stderr: stderr?.trim() ?? "", code: exitCode });
-    });
-  });
-}
 
-function parseProviderAndModel(modelString: string): { providerId: string; modelId: string } {
-  const colonIndex = modelString.indexOf(":");
-  if (colonIndex === -1) {
-    return { providerId: "openai-codex", modelId: modelString };
-  }
-  return {
-    providerId: modelString.slice(0, colonIndex),
-    modelId: modelString.slice(colonIndex + 1),
-  };
-}
 
 export async function executeCommitPush(
   workspacePath: string,
