@@ -17,7 +17,7 @@ function setOptionalEnv(name: string, enabled: boolean): void {
 
 /* ── Exported free helpers ──────────────────────────────────────── */
 
-export function defaultSubagentPiCommand(): string {
+function defaultSubagentPiCommand(): string {
   try {
     const packageJson = require.resolve("@earendil-works/pi-coding-agent/package.json");
     const cliPath = join(dirname(packageJson), "dist/cli.js");
@@ -37,11 +37,11 @@ export function applySubagentEnvironment(settings: SubagentSettingsRecord): void
   else process.env.PI_SUBAGENT_MUX = settings.mux;
 }
 
-export function getSubagentGlobalAgentsDir(): string {
+function getSubagentGlobalAgentsDir(): string {
   return join(process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent"), "agents");
 }
 
-export function parseSubagentAgentFile(filePath: string, raw: string, scope: "project" | "global"): SubagentAgentRecord {
+function parseSubagentAgentFile(filePath: string, raw: string, scope: "project" | "global"): SubagentAgentRecord {
   const nameFromFile = basename(filePath, ".md");
   const frontmatter = raw.match(/^---\n([\s\S]*?)\n---\n?/);
   const fields = new Map<string, string>();
@@ -72,7 +72,7 @@ export function parseSubagentAgentFile(filePath: string, raw: string, scope: "pr
 
 /* ── Directory scan helpers ──────────────────────────────────────── */
 
-export async function readSubagentAgentsFromDir(
+async function readSubagentAgentsFromDir(
   dir: string,
   scope: "project" | "global",
   agents: Map<string, SubagentAgentRecord>,

@@ -50,7 +50,7 @@ export const BUTTON_CATEGORY_DESCRIPTIONS: Record<ButtonCategory, string> = {
 
 let currentSettings: ButtonSoundSettings = { ...DEFAULT_BUTTON_SOUND_SETTINGS };
 
-export function setButtonSoundSettings(settings: ButtonSoundSettings): void {
+function setButtonSoundSettings(settings: ButtonSoundSettings): void {
   currentSettings = { ...settings };
 }
 
@@ -97,7 +97,7 @@ function ensureSettingsLoaded(): void {
 }
 
 /** Persist settings to localStorage */
-export function saveButtonSoundSettings(settings: ButtonSoundSettings): void {
+function saveButtonSoundSettings(settings: ButtonSoundSettings): void {
   setButtonSoundSettings(settings);
   try {
     localStorage.setItem("pi:button-sound-settings", JSON.stringify(settings));
@@ -349,7 +349,7 @@ export function playKey(phase: KeyPhase = "press"): void {
 }
 
 /** Unlock audio context (call on first user interaction) */
-export async function unlockClickAudio(): Promise<void> {
+async function unlockClickAudio(): Promise<void> {
   const ctx = getContext();
   if (ctx) await ensureContextRunning(ctx);
   await loadAll();
@@ -358,7 +358,7 @@ export async function unlockClickAudio(): Promise<void> {
 /* ── Public API for button categories ──────────────────────────────────── */
 
 /** Play sound for a specific button category */
-export function playButtonForCategory(category: ButtonCategory): void {
+function playButtonForCategory(category: ButtonCategory): void {
   ensureSettingsLoaded();
   const variant = currentSettings[category];
   if (variant === "none") return;

@@ -209,7 +209,7 @@ export function SparkIcon() {
   );
 }
 
-export function PiGlyphIcon() {
+function PiGlyphIcon() {
   return (
     <Icon>
       <path
@@ -354,7 +354,7 @@ export function WorktreeIcon() {
   );
 }
 
-export function GripIcon() {
+function GripIcon() {
   return (
     <Icon>
       <circle cx="8" cy="7" r="1.2" fill="currentColor" />
@@ -408,7 +408,7 @@ export function ComposeIcon() {
   );
 }
 
-export function QueueIcon() {
+function QueueIcon() {
   return (
     <Icon>
       <path d="M4.25 5h11.5" stroke="currentColor" strokeLinecap="round" strokeWidth="1.3" />

@@ -353,7 +353,7 @@ export async function syncAndListWorktrees(
  * Build default worktree options — used both by `createWorktree` and `startThread`
  * (which lives in the main store).
  */
-export function buildWorktreeOptions(
+function buildWorktreeOptions(
   store: AppStoreInternals,
   workspace: WorkspaceRef,
   fromSessionWorkspaceId?: string,

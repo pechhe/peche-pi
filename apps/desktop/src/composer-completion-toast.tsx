@@ -16,7 +16,7 @@ export interface ThreadCompletePayload {
  * a toast up out of the top of the composer, plays a chime, and on click fires
  * `pi:open-session` so App.tsx can navigate to the finished thread.
  */
-export const THREAD_COMPLETE_EVENT = "pi:thread-complete";
+const THREAD_COMPLETE_EVENT = "pi:thread-complete";
 export const OPEN_SESSION_EVENT = "pi:open-session";
 
 export interface OpenSessionDetail {

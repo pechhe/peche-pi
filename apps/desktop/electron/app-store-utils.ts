@@ -14,7 +14,7 @@ import type {
 import { isMetaActivity } from "../src/timeline-grouping.ts";
 import { listRalphPlans } from "./ralph-plans.ts";
 
-export const LEGACY_TRANSCRIPT_HISTORY_LIMIT = 180;
+const LEGACY_TRANSCRIPT_HISTORY_LIMIT = 180;
 
 export function mapToRecord<V>(map: Map<string, V>): Record<string, V> {
   return Object.fromEntries(map.entries());
@@ -581,7 +581,7 @@ export function previewFromTranscript(transcript: readonly TranscriptMessage[]):
   return undefined;
 }
 
-export function formatElapsedDuration(startedAt: string, endedAt: string): string {
+function formatElapsedDuration(startedAt: string, endedAt: string): string {
   const diffMs = Math.max(0, Date.parse(endedAt) - Date.parse(startedAt));
   const seconds = Math.max(1, Math.round(diffMs / 1000));
   if (seconds < 60) {

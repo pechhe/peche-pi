@@ -16,7 +16,7 @@ export interface ToastPayload {
  * the singleton `<ToastHost />` renders at most one at a time. New toasts
  * replace the current one (no stacking — keeps cognitive load low).
  */
-export const TOAST_EVENT = "pi:toast";
+const TOAST_EVENT = "pi:toast";
 
 export function showToast(payload: ToastPayload): void {
   window.dispatchEvent(new CustomEvent<ToastPayload>(TOAST_EVENT, { detail: payload }));

@@ -16,7 +16,7 @@
 export type DoneSoundVariant = "arpeggio" | "marimba" | "bell" | "pop" | "coin" | "chord";
 
 // 🔊 Change this to audition a different cue.
-export const DONE_SOUND_VARIANT: DoneSoundVariant = "arpeggio";
+const DONE_SOUND_VARIANT: DoneSoundVariant = "arpeggio";
 
 let sharedAudioContext: AudioContext | null = null;
 

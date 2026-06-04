@@ -66,7 +66,7 @@ interface SkillsSidebarProps {
   readonly onSelectSkill: (filePath: string) => void;
 }
 
-export function SkillsSidebar({
+function SkillsSidebar({
   runtime,
   query,
   onQueryChange,

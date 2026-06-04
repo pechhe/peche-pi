@@ -22,7 +22,7 @@ const MAX_BUFFER = 10 * 1024 * 1024; // 10 MB
  * Run an arbitrary command and return a typed result.
  * Never throws — errors surface as non-zero `code`.
  */
-export function execCmd(
+function execCmd(
   cmd: string,
   args: string[],
   cwd: string,

@@ -20,7 +20,7 @@ export function openImageLightbox(image: LightboxImage): void {
   emit();
 }
 
-export function closeImageLightbox(): void {
+function closeImageLightbox(): void {
   if (current === null) return;
   current = null;
   emit();

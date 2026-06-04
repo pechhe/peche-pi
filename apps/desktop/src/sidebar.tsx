@@ -64,10 +64,14 @@ function MovingSidebarHighlight({
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
   const hoveredItem = useRef<HTMLElement | null>(null);
-  const [indicator, setIndicator] = useState<MovingHighlightState>(hiddenMovingHighlight);
+  const [hoverIndicator, setHoverIndicator] = useState<MovingHighlightState>(hiddenMovingHighlight);
+  const [activeIndicator, setActiveIndicator] = useState<MovingHighlightState>(hiddenMovingHighlight);
   const [shouldAnimate, setShouldAnimate] = useState(false);
 
-  function setTarget(target: HTMLElement | null) {
+  function setTarget(
+    target: HTMLElement | null,
+    setIndicator: (value: MovingHighlightState | ((previous: MovingHighlightState) => MovingHighlightState)) => void,
+  ) {
     const container = ref.current;
     if (!container || !target) {
       setIndicator((previous) => previous.ready ? { ...previous, visible: false } : hiddenMovingHighlight());
@@ -77,13 +81,27 @@ function MovingSidebarHighlight({
     setIndicator(measureMovingHighlight(container, target));
   }
 
+  function updateActiveTarget() {
+    const active = ref.current?.querySelector<HTMLElement>(".session-row--active, .sidebar__nav-item--active") ?? null;
+    setTarget(active, setActiveIndicator);
+    if (active && active === hoveredItem.current) {
+      hoveredItem.current = null;
+      setTarget(null, setHoverIndicator);
+    }
+  }
+
   function itemFromTarget(target: EventTarget | null): HTMLElement | null {
     if (!(target instanceof Element)) return null;
-    return target.closest<HTMLElement>(itemSelector);
+    const item = target.closest<HTMLElement>(itemSelector);
+    if (!item) return null;
+    if (item.classList.contains("session-row--active") || item.classList.contains("sidebar__nav-item--active")) {
+      return null;
+    }
+    return item;
   }
 
   useEffect(() => {
-    if (shouldAnimate || !indicator.ready) return;
+    if (shouldAnimate || (!hoverIndicator.ready && !activeIndicator.ready)) return;
     let firstFrame = 0;
     let secondFrame = 0;
     firstFrame = requestAnimationFrame(() => {
@@ -93,13 +111,19 @@ function MovingSidebarHighlight({
       cancelAnimationFrame(firstFrame);
       cancelAnimationFrame(secondFrame);
     };
-  }, [indicator.ready, shouldAnimate]);
+  }, [activeIndicator.ready, hoverIndicator.ready, shouldAnimate]);
 
   useEffect(() => {
     const container = ref.current;
-    if (!container || typeof ResizeObserver === "undefined") return;
+    if (!container) return;
 
-    const observer = new ResizeObserver(() => setTarget(hoveredItem.current));
+    updateActiveTarget();
+    if (typeof ResizeObserver === "undefined") return;
+
+    const observer = new ResizeObserver(() => {
+      setTarget(hoveredItem.current, setHoverIndicator);
+      updateActiveTarget();
+    });
     observer.observe(container);
     for (const item of container.querySelectorAll<HTMLElement>(itemSelector)) {
       observer.observe(item);
@@ -115,32 +139,45 @@ function MovingSidebarHighlight({
         const next = itemFromTarget(event.target);
         if (next === hoveredItem.current) return;
         hoveredItem.current = next;
-        setTarget(next);
+        setTarget(next, setHoverIndicator);
       }}
       onPointerLeave={() => {
         hoveredItem.current = null;
-        setTarget(null);
+        setTarget(null, setHoverIndicator);
       }}
       onFocus={(event) => {
         const next = itemFromTarget(event.target);
         hoveredItem.current = next;
-        setTarget(next);
+        setTarget(next, setHoverIndicator);
       }}
       onBlur={(event) => {
         const container = ref.current;
         if (container && event.relatedTarget instanceof Node && container.contains(event.relatedTarget)) return;
         hoveredItem.current = null;
-        setTarget(null);
+        setTarget(null, setHoverIndicator);
       }}
     >
       <div
         aria-hidden="true"
-        className="sidebar-moving-highlight__indicator"
+        className="sidebar-moving-highlight__indicator sidebar-moving-highlight__indicator--hover"
         style={{
-          transform: `translate3d(${indicator.left}px, ${indicator.top}px, 0)`,
-          width: indicator.width,
-          height: indicator.height,
-          opacity: indicator.visible ? 1 : 0,
+          transform: `translate3d(${hoverIndicator.left + 2}px, ${hoverIndicator.top + 1}px, 0)`,
+          width: Math.max(0, hoverIndicator.width - 4),
+          height: Math.max(0, hoverIndicator.height - 2),
+          opacity: hoverIndicator.visible ? 1 : 0,
+          transition: shouldAnimate
+            ? "transform 350ms cubic-bezier(0.32, 1.15, 0.60, 1.00), width 250ms cubic-bezier(0.22, 1, 0.36, 1), height 250ms cubic-bezier(0.22, 1, 0.36, 1), opacity 150ms ease"
+            : "opacity 150ms ease",
+        }}
+      />
+      <div
+        aria-hidden="true"
+        className="sidebar-moving-highlight__indicator sidebar-moving-highlight__indicator--active"
+        style={{
+          transform: `translate3d(${activeIndicator.left + 2}px, ${activeIndicator.top + 1}px, 0)`,
+          width: Math.max(0, activeIndicator.width - 4),
+          height: Math.max(0, activeIndicator.height - 2),
+          opacity: activeIndicator.visible ? 1 : 0,
           transition: shouldAnimate
             ? "transform 350ms cubic-bezier(0.32, 1.15, 0.60, 1.00), width 250ms cubic-bezier(0.22, 1, 0.36, 1), height 250ms cubic-bezier(0.22, 1, 0.36, 1), opacity 150ms ease"
             : "opacity 150ms ease",

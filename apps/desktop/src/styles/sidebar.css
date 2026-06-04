@@ -133,9 +133,19 @@
   z-index: 0;
   pointer-events: none;
   border-radius: 10px;
-  background: rgba(0, 0, 0, 0.05);
-  border: 1px solid rgba(0, 0, 0, 0.06);
+  border: 1px solid transparent;
   will-change: transform, width, height, opacity;
+}
+
+.sidebar-moving-highlight__indicator--hover {
+  background: rgba(0, 0, 0, 0.05);
+  border-color: rgba(0, 0, 0, 0.06);
+}
+
+.sidebar-moving-highlight__indicator--active {
+  background: var(--surface-overlay);
+  border-color: var(--line);
+  box-shadow: 0 1px 2px rgba(20, 27, 45, 0.04);
 }
 
 .sidebar-moving-highlight > :not(.sidebar-moving-highlight__indicator) {
@@ -143,9 +153,15 @@
   z-index: 1;
 }
 
-:root.dark .sidebar-moving-highlight__indicator {
+:root.dark .sidebar-moving-highlight__indicator--hover {
   background: rgba(255, 255, 255, 0.06);
   border-color: rgba(255, 255, 255, 0.08);
+}
+
+:root.dark .sidebar-moving-highlight__indicator--active {
+  background: var(--surface);
+  border-color: var(--line);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
 .sidebar__nav-item {
@@ -314,7 +330,7 @@
   border-color: rgba(210, 215, 226, 0.85);
 }
 
-.session-row:hover {
+.session-row:hover:not(.session-row--active) {
   background: transparent;
   border-color: transparent;
 }
@@ -659,11 +675,12 @@
   cursor: pointer;
 }
 
-.session-row--active {
-  background: var(--surface-overlay);
-  border-color: var(--line);
+.session-row--active,
+.session-row--active:hover {
+  background: transparent;
+  border-color: transparent;
   color: var(--text-strong);
-  box-shadow: 0 1px 2px rgba(20, 27, 45, 0.04);
+  box-shadow: none;
 }
 
 /* Finished thread with unseen output: highlight the whole row in the accent
@@ -1136,17 +1153,22 @@
 
 
 :root.dark .workspace-row:hover,
-:root.dark .session-row:hover,
 :root.dark .icon-button:hover:not(:disabled):not(.session-row__action):not(.workspace-row__menu-button):not(.workspace-row__compose-button):not(.sidebar-toggle__button),
 :root.dark .sidebar__settings:hover {
   background: rgba(255, 255, 255, 0.06);
   border-color: rgba(255, 255, 255, 0.08);
 }
 
-:root.dark .session-row--active {
-  background: var(--surface);
-  border-color: var(--line);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+:root.dark .session-row:hover:not(.session-row--active) {
+  background: transparent;
+  border-color: transparent;
+}
+
+:root.dark .session-row--active,
+:root.dark .session-row--active:hover {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
 }
 
 :root.dark .workspace-menu {

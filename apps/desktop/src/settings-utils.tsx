@@ -38,7 +38,7 @@ export function sectionTitle(section: SettingsSection): string {
   }
 }
 
-export function sectionDescription(section: SettingsSection, workspaceName: string): string {
+function sectionDescription(section: SettingsSection, workspaceName: string): string {
   switch (section) {
     case "appearance":
       return "Choose between light, dark, Dracula, or automatic system theme.";

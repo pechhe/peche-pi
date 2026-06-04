@@ -64,7 +64,7 @@ export interface ComposerProviderOption extends ComposerSlashOption {
 }
 
 export const MODEL_OPTIONS_EMPTY_TITLE = "No models available";
-export const MODEL_OPTIONS_EMPTY_DESCRIPTION = "Open Settings to enable a model or log in to a provider.";
+const MODEL_OPTIONS_EMPTY_DESCRIPTION = "Open Settings to enable a model or log in to a provider.";
 
 export type ParsedComposerCommand =
   | { type: "model"; provider: string; modelId: string }
@@ -283,7 +283,7 @@ export function buildSlashCommandSections(
   return sections.filter((section) => section.items.length > 0);
 }
 
-export function resolveRuntimeCommands(
+function resolveRuntimeCommands(
   runtime: RuntimeSnapshot | undefined,
   sessionCommands: readonly RuntimeCommandRecord[],
 ): readonly RuntimeCommandRecord[] {
@@ -361,7 +361,7 @@ export function flattenSlashSections(
   return sections.flatMap((section) => section.items);
 }
 
-export function buildProviderOptions(
+function buildProviderOptions(
   providers: readonly RuntimeProviderRecord[],
   filter: (provider: RuntimeProviderRecord) => boolean = () => true,
 ): readonly ComposerProviderOption[] {

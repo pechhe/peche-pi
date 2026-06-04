@@ -240,7 +240,7 @@ export class DesktopSessionState {
   }
 }
 
-export function applySessionEventState(
+function applySessionEventState(
   state: DesktopAppState,
   event: SessionDriverEvent,
   transcriptCache: Map<string, TranscriptMessage[]>,

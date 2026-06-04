@@ -19,7 +19,7 @@ import { markUserMessagesAnimated } from "../timeline-item";
 // an indefinite stuck placeholder.
 // ---------------------------------------------------------------------------
 
-export const PENDING_USER_MESSAGE_ID = "__pending_user_message__";
+const PENDING_USER_MESSAGE_ID = "__pending_user_message__";
 
 // Option 1 — "Curve": easeOutExpo launches at full speed, then lands slowly.
 // Longer than the old 280ms so the slow tail is actually visible.

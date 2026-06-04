@@ -40,7 +40,7 @@ export async function acceptOpenFolderDialog(pathValue: string): Promise<void> {
   await runAppleScript(OPEN_PANEL_SCRIPT, [pathValue], DEFAULT_TIMEOUT_MS);
 }
 
-export async function acceptOpenImageDialog(pathValue: string): Promise<void> {
+async function acceptOpenImageDialog(pathValue: string): Promise<void> {
   await assertAccessibilityReady();
   await runAppleScript(OPEN_PANEL_SCRIPT, [pathValue], DEFAULT_TIMEOUT_MS);
 }

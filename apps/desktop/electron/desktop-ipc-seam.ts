@@ -101,7 +101,7 @@ export function validateTerminalId(terminalId: unknown): void {
   validateNonEmptyString(terminalId, "terminalId");
 }
 
-export function validateWorkspaceId(workspaceId: unknown): void {
+function validateWorkspaceId(workspaceId: unknown): void {
   validateNonEmptyString(workspaceId, "workspaceId");
 }
 
@@ -235,7 +235,7 @@ export const desktopIpc = {
 // Local-only methods (no IPC channel)
 // ---------------------------------------------------------------------------
 
-export const piDesktopApiLocalEntries = ["platform", "versions", "getPathForFile"] as const;
+const piDesktopApiLocalEntries = ["platform", "versions", "getPathForFile"] as const;
 
 // ---------------------------------------------------------------------------
 // Contract registry
@@ -404,7 +404,7 @@ export const desktopIpcContracts: readonly IpcContractEntry[] = [
 
 type BridgeKind = "invoke" | "send" | "sendSync" | "event";
 
-export const piDesktopApiIpcBridge: Record<string, { kind: BridgeKind; channel: string }> = {};
+const piDesktopApiIpcBridge: Record<string, { kind: BridgeKind; channel: string }> = {};
 for (const contract of desktopIpcContracts) {
   piDesktopApiIpcBridge[contract.methodName] = {
     kind: contract.kind,
@@ -427,7 +427,7 @@ export function getContractByChannel(channel: string): IpcContractEntry | undefi
 }
 
 /** Get all contracts for a given adapter group. */
-export function getContractsByAdapter(adapter: AdapterGroup): readonly IpcContractEntry[] {
+function getContractsByAdapter(adapter: AdapterGroup): readonly IpcContractEntry[] {
   return desktopIpcContracts.filter((c) => c.adapter === adapter);
 }
 
@@ -518,14 +518,14 @@ export function buildPreloadApi(
  * Get all unique channel values from the registry.
  * Used by the contract test to verify uniqueness and completeness.
  */
-export function getAllChannelValues(): readonly string[] {
+function getAllChannelValues(): readonly string[] {
   return [...new Set(desktopIpcContracts.map((c) => c.channel))];
 }
 
 /**
  * Get all method names from the registry.
  */
-export function getAllMethodNames(): readonly string[] {
+function getAllMethodNames(): readonly string[] {
   return desktopIpcContracts.map((c) => c.methodName);
 }
 

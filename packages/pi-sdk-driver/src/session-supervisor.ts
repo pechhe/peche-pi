@@ -66,7 +66,6 @@ import {
   toSessionErrorInfo,
   transcriptFromMessages,
   truncate,
-  workspaceToRef,
 } from "./session-supervisor-utils.js";
 import type { LoopIterationTranscript, SessionTranscriptMessage } from "./transcript.js";
 import { createAgentSessionRuntimeWithNpmFallback } from "./npm-package-fallback.js";

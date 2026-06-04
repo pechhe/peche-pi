@@ -95,7 +95,7 @@ export async function checkForUpdate(): Promise<UpdateCheckResult> {
 }
 
 /** Trigger download of a pending update (called after user confirms). */
-export async function downloadUpdate(): Promise<void> {
+async function downloadUpdate(): Promise<void> {
   try {
     await autoUpdater.downloadUpdate();
   } catch (err: unknown) {
