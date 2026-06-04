@@ -190,6 +190,30 @@ export class RuntimeSupervisor implements RuntimeResourceDriver {
     return this.buildSnapshot(context);
   }
 
+  async setRetrySettings(
+    workspace: WorkspaceRef,
+    settings: { enabled: boolean; maxRetries: number; baseDelayMs: number },
+  ): Promise<RuntimeSnapshot> {
+    const context = await this.ensureContext(workspace);
+    const sm = context.settingsManager as unknown as { globalSettings: Record<string, unknown>; markModified: (field: string) => void; save: () => void };
+    if (!sm.globalSettings.retry) {
+      sm.globalSettings.retry = {};
+    }
+    const retry = sm.globalSettings.retry as Record<string, unknown>;
+    retry.enabled = settings.enabled;
+    retry.maxRetries = settings.maxRetries;
+    retry.baseDelayMs = settings.baseDelayMs;
+    sm.markModified("retry");
+    sm.save();
+    await context.settingsManager.flush();
+    return this.buildSnapshot(context);
+  }
+
+  async getRetrySettings(workspace: WorkspaceRef): Promise<{ enabled: boolean; maxRetries: number; baseDelayMs: number }> {
+    const context = await this.ensureContext(workspace);
+    return context.settingsManager.getRetrySettings();
+  }
+
   async setScopedModelPatterns(workspace: WorkspaceRef, patterns: readonly string[]): Promise<RuntimeSnapshot> {
     const context = await this.ensureContext(workspace);
     context.settingsManager.setEnabledModels(patterns.length > 0 ? [...patterns] : undefined);
@@ -472,6 +496,7 @@ export class RuntimeSupervisor implements RuntimeResourceDriver {
       .getAll()
       .map<RuntimeModelRecord>((model) => {
         const provider = providers.get(model.provider);
+        const availableThinkingLevels = getAvailableThinkingLevels(model);
         return {
           providerId: model.provider,
           providerName: provider?.name ?? model.provider,
@@ -482,6 +507,7 @@ export class RuntimeSupervisor implements RuntimeResourceDriver {
           reasoning: Boolean(model.reasoning),
           supportsImages: model.input.includes("image"),
           contextWindow: model.contextWindow,
+          availableThinkingLevels,
         };
       })
       .sort((left, right) =>
@@ -966,4 +992,28 @@ function firstNonEmptyLine(value: string): string | undefined {
     .split(/\r?\n/)
     .map((line) => line.trim())
     .find(Boolean);
+}
+
+/**
+ * Compute the thinking levels supported by a model.
+ * Mirrors getSupportedThinkingLevels from @earendil-works/pi-ai/models
+ * without adding a direct dependency on pi-ai.
+ */
+function getAvailableThinkingLevels(model: { reasoning?: boolean; thinkingLevelMap?: Record<string, string | null> }): readonly string[] {
+  const ALL_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh"];
+  if (!model.reasoning) return ["off"];
+  // If no thinkingLevelMap, all non-xhigh levels are available by default
+  if (!model.thinkingLevelMap) {
+    return ALL_LEVELS.filter((level) => level !== "xhigh");
+  }
+  // With thinkingLevelMap: only levels with non-null mappings are available
+  // (xhigh requires explicit non-null entry, other levels also require explicit entry)
+  // 'off' is always available for reasoning models (to disable thinking)
+  return ["off", ...ALL_LEVELS.filter((level) => {
+    if (level === "off") return false; // Already included
+    const mapped = model.thinkingLevelMap?.[level];
+    if (mapped === null) return false; // Explicitly disabled
+    if (mapped !== undefined) return true; // Explicitly mapped to a value
+    return false; // Not in map = not available
+  })];
 }

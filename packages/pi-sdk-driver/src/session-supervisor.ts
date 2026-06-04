@@ -1,7 +1,6 @@
 import { access, realpath } from "node:fs/promises";
 import { resolve } from "node:path";
 import {
-  estimateTokens,
   ModelRegistry,
   SessionManager,
   type AgentSessionRuntime,
@@ -29,13 +28,11 @@ import type {
   HostUiResponse,
   HostUiQuestionnaireQuestion,
   SessionConfig,
-  SessionContextUsage,
   SessionDriverEvent,
   SessionEventListener,
   SessionModelSelection,
   SessionRef,
   SessionSnapshot,
-  SessionStatus,
   Unsubscribe,
   WorkspaceId,
   WorkspaceRef,
@@ -82,6 +79,10 @@ import {
   queuedPromptImagesFromAttachments,
   reconcileQueuedMessagesForStartedUserMessage as reconcileQueuedMessagesForStartedUserMessageCore,
 } from "./queued-message-delivery.js";
+import {
+  SessionRuntimeRegistry,
+  type ManagedSessionRecord,
+} from "./session-runtime-registry.js";
 
 export interface PiSdkDriverOptions {
   readonly catalogFilePath?: string;
@@ -96,37 +97,6 @@ export interface PiSdkDriverOptions {
 export interface SyncWorkspaceResult {
   readonly workspace: WorkspaceRef;
   readonly sessions: SessionCatalogSnapshot["sessions"];
-}
-
-interface ManagedSessionRecord {
-  ref: SessionRef;
-  workspace: WorkspaceRef;
-  title: string;
-  runtime: AgentSessionRuntime | undefined;
-  session: AgentSession | undefined;
-  sessionFile: string | undefined;
-  status: SessionStatus;
-  updatedAt: string;
-  archivedAt: string | undefined;
-  preview: string | undefined;
-  config: SessionConfig | undefined;
-  runningRunId: string | undefined;
-  queuedMessages: SessionQueuedMessage[];
-  contextUsage: SessionContextUsage | undefined;
-  closed: boolean;
-  listeners: Set<SessionEventListener>;
-  eventQueue: Promise<void>;
-  unsubscribeAgent: (() => void) | undefined;
-  pendingHostUiRequests: Map<
-    string,
-    {
-      resolve: (response: HostUiResponse) => void;
-      reject: (error: Error) => void;
-    }
-  >;
-  extensionUiState: ExtensionUiState;
-  bindingExtensions: boolean;
-  sessionCommands: RuntimeCommandRecord[];
 }
 
 interface RegisteredCommandAdapter {
@@ -158,7 +128,7 @@ export class SessionSupervisor {
   private readonly catalogs: SessionFileCatalogStorage;
   private readonly createAgentSessionRuntimeImpl: (options?: CreateAgentSessionOptions) => Promise<AgentSessionRuntime>;
   private readonly modelRegistry: ModelRegistry | undefined;
-  private readonly records = new Map<string, ManagedSessionRecord>();
+  private readonly registry: SessionRuntimeRegistry;
   constructor(options: PiSdkDriverOptions = {}) {
     this.catalogs = options.catalogFilePath
       ? new JsonCatalogStore({ catalogFilePath: options.catalogFilePath })
@@ -166,6 +136,11 @@ export class SessionSupervisor {
     this.createAgentSessionRuntimeImpl =
       options.createAgentSessionRuntimeImpl ?? ((createOptions) => createAgentSessionRuntimeWithNpmFallback(createOptions));
     this.modelRegistry = options.modelRegistry;
+    this.registry = new SessionRuntimeRegistry({
+      runtimeFactory: this.createAgentSessionRuntimeImpl,
+      modelRegistry: options.modelRegistry,
+      catalogs: this.catalogs,
+    });
   }
 
   listWorkspaces(): Promise<WorkspaceCatalogSnapshot> {
@@ -191,7 +166,7 @@ export class SessionSupervisor {
       this.sessionEntryFromInfo(
         workspace,
         info,
-        this.records.get(sessionKey({ workspaceId: workspace.workspaceId, sessionId: info.id })),
+        this.registry.getRecord({ workspaceId: workspace.workspaceId, sessionId: info.id }),
         existingByKey.get(sessionKey({ workspaceId: workspace.workspaceId, sessionId: info.id })),
       ),
     );
@@ -228,16 +203,7 @@ export class SessionSupervisor {
       }
 
       await this.catalogs.sessions.deleteSession(session.sessionRef);
-      const record = this.records.get(key);
-      if (!record) {
-        continue;
-      }
-
-      record.unsubscribeAgent?.();
-      record.unsubscribeAgent = undefined;
-      record.listeners.clear();
-      await this.disposeRecordRuntime(record);
-      this.records.delete(key);
+      await this.cleanupRecord(session.sessionRef);
     }
 
     return {
@@ -255,10 +221,8 @@ export class SessionSupervisor {
     const nextWorkspace = await createCanonicalWorkspaceRef(existing.path, displayName.trim() || undefined);
     await this.touchWorkspace(nextWorkspace);
 
-    for (const record of this.records.values()) {
-      if (record.workspace.workspaceId === workspaceId) {
-        record.workspace = nextWorkspace;
-      }
+    for (const record of this.registry.getRecordsForWorkspace(workspaceId)) {
+      record.workspace = nextWorkspace;
     }
   }
 
@@ -267,17 +231,7 @@ export class SessionSupervisor {
     await this.catalogs.workspaces.deleteWorkspace(workspaceId);
 
     for (const session of sessions) {
-      const key = sessionKey(session.sessionRef);
-      const record = this.records.get(key);
-      if (!record) {
-        continue;
-      }
-
-      record.unsubscribeAgent?.();
-      record.unsubscribeAgent = undefined;
-      record.listeners.clear();
-      await this.disposeRecordRuntime(record);
-      this.records.delete(key);
+      await this.cleanupRecord(session.sessionRef);
     }
   }
 
@@ -370,7 +324,7 @@ export class SessionSupervisor {
     const runtime = await this.createAgentSessionRuntimeImpl(createOptions);
     const session = runtime.session;
 
-    const record = this.createRecord(workspace, runtime, options?.title ?? deriveWorkspaceTitle(workspace));
+    const record = this.registry.createRecord(workspace, runtime, options?.title ?? deriveWorkspaceTitle(workspace));
     session.sessionManager.appendSessionInfo(record.title);
     forcePersistSession(session.sessionManager);
     record.config = deriveSessionConfig(session.sessionManager);
@@ -380,10 +334,10 @@ export class SessionSupervisor {
       await this.catalogs.setSessionFile(record.ref, sessionFile);
     }
 
-    this.records.set(sessionKey(record.ref), record);
+    this.registry.registerRecord(record);
     await this.bindSessionRuntime(record);
     await this.persistSnapshot(record);
-    const snapshot = snapshotForRecord(record);
+    const snapshot = this.registry.snapshotForRecord(record);
     await this.emit(record, {
       type: "sessionOpened",
       sessionRef: record.ref,
@@ -396,7 +350,7 @@ export class SessionSupervisor {
   async openSession(sessionRef: SessionRef): Promise<SessionSnapshot> {
     const record = await this.ensureRecord(sessionRef);
     await this.touchWorkspace(record.workspace);
-    const snapshot = snapshotForRecord(record);
+    const snapshot = this.registry.snapshotForRecord(record);
     await this.emit(record, {
       type: "sessionOpened",
       sessionRef: record.ref,
@@ -436,7 +390,7 @@ export class SessionSupervisor {
       ];
     }
     await this.persistSnapshot(record);
-    await this.emit(record, sessionUpdatedEvent(record));
+    await this.emit(record, sessionUpdatedEvent(record, this.registry));
 
     try {
       const images = queuedPromptImagesFromAttachments(input.attachments);
@@ -471,7 +425,7 @@ export class SessionSupervisor {
         error: toSessionErrorInfo(error, "SEND_FAILED"),
         ...(runId ? { runId } : {}),
       });
-      await this.emit(record, sessionUpdatedEvent(record));
+      await this.emit(record, sessionUpdatedEvent(record, this.registry));
       throw error;
     }
   }
@@ -488,11 +442,11 @@ export class SessionSupervisor {
 
     record.updatedAt = nowIso();
     await this.persistSnapshot(record);
-    await this.emit(record, sessionUpdatedEvent(record));
+    await this.emit(record, sessionUpdatedEvent(record, this.registry));
   }
 
   async cancelCurrentRun(sessionRef: SessionRef): Promise<void> {
-    const record = this.records.get(sessionKey(sessionRef));
+    const record = this.registry.getRecord(sessionRef);
     if (!record?.session) {
       return;
     }
@@ -501,7 +455,7 @@ export class SessionSupervisor {
     record.runningRunId = undefined;
     record.status = "idle";
     await this.persistSnapshot(record);
-    await this.emit(record, sessionUpdatedEvent(record));
+    await this.emit(record, sessionUpdatedEvent(record, this.registry));
   }
 
   async setSessionModel(sessionRef: SessionRef, selection: SessionModelSelection): Promise<void> {
@@ -529,7 +483,7 @@ export class SessionSupervisor {
     forcePersistSession(session.sessionManager);
     record.config = deriveSessionConfig(session.sessionManager);
     await this.persistSnapshot(record);
-    await this.emit(record, sessionUpdatedEvent(record));
+    await this.emit(record, sessionUpdatedEvent(record, this.registry));
   }
 
   async setSessionThinkingLevel(sessionRef: SessionRef, thinkingLevel: string): Promise<void> {
@@ -539,7 +493,7 @@ export class SessionSupervisor {
     forcePersistSession(session.sessionManager);
     record.config = deriveSessionConfig(session.sessionManager);
     await this.persistSnapshot(record);
-    await this.emit(record, sessionUpdatedEvent(record));
+    await this.emit(record, sessionUpdatedEvent(record, this.registry));
   }
 
   async renameSession(sessionRef: SessionRef, title: string): Promise<void> {
@@ -554,7 +508,7 @@ export class SessionSupervisor {
     forcePersistSession(sessionManager);
     record.title = nextTitle;
     await this.persistSnapshot(record);
-    await this.emit(record, sessionUpdatedEvent(record));
+    await this.emit(record, sessionUpdatedEvent(record, this.registry));
   }
 
   async compactSession(sessionRef: SessionRef, customInstructions?: string): Promise<void> {
@@ -569,7 +523,7 @@ export class SessionSupervisor {
     record.config = deriveSessionConfig(record.session.sessionManager);
     record.preview = extractPreview(record.session.messages) ?? record.preview;
     await this.persistSnapshot(record);
-    await this.emit(record, sessionUpdatedEvent(record));
+    await this.emit(record, sessionUpdatedEvent(record, this.registry));
   }
 
   async reloadSession(sessionRef: SessionRef): Promise<void> {
@@ -617,44 +571,27 @@ export class SessionSupervisor {
   }
 
   subscribe(sessionRef: SessionRef, listener: SessionEventListener): Unsubscribe {
-    const record = this.records.get(sessionKey(sessionRef));
+    const record = this.registry.getRecord(sessionRef);
     if (!record) {
       throw new Error(`Unknown session ${sessionKey(sessionRef)}.`);
     }
 
-    record.listeners.add(listener);
-    void Promise.resolve(listener(sessionUpdatedEvent(record))).catch(() => {});
+    const unsubscribe = this.registry.subscribe(record, listener);
+    void Promise.resolve(listener(sessionUpdatedEvent(record, this.registry))).catch(() => {});
     this.replayExtensionUiState(record, listener);
 
-    return () => {
-      for (const currentRecord of this.records.values()) {
-        currentRecord.listeners.delete(listener);
-      }
-    };
+    return unsubscribe;
   }
 
   async closeSession(sessionRef: SessionRef): Promise<void> {
-    const record = this.records.get(sessionKey(sessionRef));
+    const record = this.registry.getRecord(sessionRef);
     if (!record) {
       return;
     }
 
-    record.closed = true;
-    record.runningRunId = undefined;
-    record.status = "idle";
     this.clearExtensionUiState(record);
-    this.cancelPendingHostUiRequests(record);
-
-    if (record.session) {
-      try {
-        await record.session.abort();
-      } catch {
-        // Best effort.
-      }
-      record.unsubscribeAgent?.();
-      record.unsubscribeAgent = undefined;
-      await this.disposeRecordRuntime(record);
-    }
+    this.registry.cancelPendingHostUiRequests(record);
+    await this.registry.closeSession(sessionRef);
 
     await this.persistSnapshot(record);
     await this.emit(record, {
@@ -666,85 +603,13 @@ export class SessionSupervisor {
   }
 
   private async ensureRecord(sessionRef: SessionRef): Promise<ManagedSessionRecord> {
-    const key = sessionKey(sessionRef);
-    const existing = this.records.get(key);
-    if (existing && existing.session && !existing.closed) {
-      return existing;
-    }
-
-    const sessionEntry = await this.catalogs.sessions.getSession(sessionRef);
-    if (!sessionEntry) {
-      throw new Error(`Session ${key} is not in the catalog.`);
-    }
-
-    const workspace = await this.catalogs.workspaces.getWorkspace(sessionEntry.workspaceId);
-    if (!workspace) {
-      throw new Error(`Workspace ${sessionEntry.workspaceId} is not in the catalog.`);
-    }
-    await this.touchWorkspace(workspaceToRef(workspace));
-
-    const sessionFile = existing?.sessionFile ?? sessionEntry.sessionFilePath ?? (await this.catalogs.getSessionFile(sessionRef));
-    if (!sessionFile) {
-      throw new Error(`Session ${key} cannot be reopened because no session file is tracked.`);
-    }
-
-    const runtime = await this.createAgentSessionRuntimeImpl({
-      cwd: workspace.path,
-      sessionManager: SessionManager.open(sessionFile),
-      ...(this.modelRegistry ? { modelRegistry: this.modelRegistry } : {}),
-    });
-    const session = runtime.session;
-
-    const record = existing ?? this.createRecord(workspaceToRef(workspace), runtime, sessionEntry.title);
-    record.runtime = runtime;
-    record.session = session;
-    record.sessionFile = sessionFile;
-    record.title = sessionEntry.title;
-    record.status = sessionEntry.status;
-    record.updatedAt = sessionEntry.updatedAt;
-    record.archivedAt = sessionEntry.archivedAt;
-    record.preview = sessionEntry.previewSnippet ?? undefined;
-    record.config = deriveSessionConfig(session.sessionManager);
-    record.closed = false;
-
-    this.records.set(key, record);
+    const record = await this.registry.ensureRecord(sessionRef);
+    await this.touchWorkspace(record.workspace);
     await this.bindSessionRuntime(record);
     return record;
   }
 
-  private createRecord(workspace: WorkspaceRef, runtime: AgentSessionRuntime, title: string): ManagedSessionRecord {
-    const session = runtime.session;
-    const ref = {
-      workspaceId: workspace.workspaceId,
-      sessionId: session.sessionId,
-    };
 
-    const record: ManagedSessionRecord = {
-      ref,
-      workspace: { ...workspace },
-      title,
-      runtime,
-      session,
-      sessionFile: session.sessionFile ?? session.sessionManager.getSessionFile(),
-      status: "idle",
-      updatedAt: nowIso(),
-      archivedAt: undefined,
-      preview: undefined,
-      config: deriveSessionConfig(session.sessionManager),
-      runningRunId: undefined,
-      queuedMessages: [],
-      contextUsage: undefined,
-      closed: false,
-      listeners: new Set<SessionEventListener>(),
-      eventQueue: Promise.resolve(),
-      unsubscribeAgent: undefined,
-      pendingHostUiRequests: new Map(),
-      extensionUiState: createEmptyExtensionUiState(),
-      bindingExtensions: false,
-      sessionCommands: [],
-    };
-    return record;
-  }
 
   private getWritableSessionManager(record: ManagedSessionRecord): SessionManager {
     const sessionManager = record.session?.sessionManager;
@@ -768,45 +633,8 @@ export class SessionSupervisor {
     return record.runtime;
   }
 
-  private async disposeRecordRuntime(record: ManagedSessionRecord): Promise<void> {
-    const runtime = record.runtime;
-    const session = record.session;
-    record.runtime = undefined;
-    record.session = undefined;
-    record.sessionCommands = [];
-    if (runtime) {
-      await runtime.dispose();
-      return;
-    }
-    session?.dispose();
-  }
-
   private async rebindRuntimeSession(record: ManagedSessionRecord, session: AgentSession): Promise<void> {
-    const previousKey = sessionKey(record.ref);
-    const nextRef = {
-      workspaceId: record.workspace.workspaceId,
-      sessionId: session.sessionId,
-    } satisfies SessionRef;
-    const nextKey = sessionKey(nextRef);
-
-    if (previousKey !== nextKey) {
-      const existingTarget = this.records.get(nextKey);
-      if (existingTarget && existingTarget !== record) {
-        for (const listener of existingTarget.listeners) {
-          record.listeners.add(listener);
-        }
-        existingTarget.unsubscribeAgent?.();
-        existingTarget.unsubscribeAgent = undefined;
-        this.cancelPendingHostUiRequests(existingTarget);
-        await this.disposeRecordRuntime(existingTarget);
-      }
-      this.records.delete(previousKey);
-      record.ref = nextRef;
-      this.records.set(nextKey, record);
-    }
-
-    record.session = session;
-    record.sessionFile = session.sessionFile ?? session.sessionManager.getSessionFile();
+    this.registry.rebind(record, session);
     record.unsubscribeAgent?.();
     record.unsubscribeAgent = session.subscribe((event) => {
       void this.handleAgentEvent(record, event);
@@ -839,7 +667,7 @@ export class SessionSupervisor {
     const runtime = this.requireRuntime(record);
     runtime.setRebindSession(async (session) => {
       this.clearExtensionUiState(record);
-      this.cancelPendingHostUiRequests(record);
+      this.registry.cancelPendingHostUiRequests(record);
       await this.rebindRuntimeSession(record, session);
     });
     await this.rebindRuntimeSession(record, runtime.session);
@@ -1228,15 +1056,10 @@ export class SessionSupervisor {
       requestId: crypto.randomUUID(),
     });
     this.clearExtensionUiState(record);
-    this.cancelPendingHostUiRequests(record);
+    this.registry.cancelPendingHostUiRequests(record);
   }
 
-  private cancelPendingHostUiRequests(record: ManagedSessionRecord): void {
-    for (const [requestId, pending] of [...record.pendingHostUiRequests.entries()]) {
-      record.pendingHostUiRequests.delete(requestId);
-      pending.resolve({ requestId, cancelled: true });
-    }
-  }
+
 
   private replayExtensionUiState(record: ManagedSessionRecord, listener: SessionEventListener): void {
     const timestamp = nowIso();
@@ -1318,9 +1141,7 @@ export class SessionSupervisor {
     const nextKey = sessionKey(nextRef);
 
     if (previousKey !== nextKey) {
-      this.records.delete(previousKey);
-      record.ref = nextRef;
-      this.records.set(nextKey, record);
+      this.registry.rebind(record, session);
     }
 
     record.sessionFile = session.sessionFile ?? session.sessionManager.getSessionFile();
@@ -1333,7 +1154,7 @@ export class SessionSupervisor {
     record.sessionCommands = this.collectSessionCommands(session);
     await this.persistSnapshot(record);
     if (options.emitUpdate) {
-      await this.emit(record, sessionUpdatedEvent(record));
+      await this.emit(record, sessionUpdatedEvent(record, this.registry));
     }
   }
 
@@ -1359,6 +1180,22 @@ export class SessionSupervisor {
     record.eventQueue.catch(() => {});
   }
 
+  private async cleanupRecord(sessionRef: SessionRef): Promise<void> {
+    const record = this.registry.getRecord(sessionRef);
+    if (!record) {
+      return;
+    }
+
+    record.unsubscribeAgent?.();
+    record.unsubscribeAgent = undefined;
+    record.listeners.clear();
+    await this.registry.disposeRuntime(record);
+    this.registry.getRecord(sessionRef); // ensure still tracked
+    // Remove from registry by creating a new record lookup and deleting
+    // The registry doesn't expose delete, so we clear the session to mark as closed
+    record.closed = true;
+  }
+
   private async handleAgentEvent(record: ManagedSessionRecord, event: AgentSessionEvent): Promise<void> {
     const mapped = this.mapAgentEvent(record, event);
     if (mapped.length === 0) {
@@ -1375,7 +1212,7 @@ export class SessionSupervisor {
       case "agent_start":
       case "turn_start":
         record.status = "running";
-        return [sessionUpdatedEvent(record)];
+        return [sessionUpdatedEvent(record, this.registry)];
       case "message_start":
       case "message_end":
         if (event.message.role === "user") {
@@ -1387,11 +1224,11 @@ export class SessionSupervisor {
               sessionRef: record.ref,
               timestamp,
               message: queuedMessage,
-            }, sessionUpdatedEvent(record)];
+            }, sessionUpdatedEvent(record, this.registry)];
           }
         }
         this.updatePreviewFromMessage(record, event.message);
-        return [sessionUpdatedEvent(record)];
+        return [sessionUpdatedEvent(record, this.registry)];
       case "message_update":
         this.updatePreviewFromMessage(record, event.message);
         if (event.message.role === "assistant" && event.assistantMessageEvent.type === "text_delta") {
@@ -1400,7 +1237,7 @@ export class SessionSupervisor {
             sessionRef: record.ref,
             timestamp,
             text: event.assistantMessageEvent.delta ?? "",
-          }, record);
+          }, record, undefined, this.registry);
         }
         if (event.message.role === "assistant" && event.assistantMessageEvent.type === "thinking_delta") {
           return toDriverEvents({
@@ -1408,9 +1245,9 @@ export class SessionSupervisor {
             sessionRef: record.ref,
             timestamp,
             text: event.assistantMessageEvent.delta ?? "",
-          }, record);
+          }, record, undefined, this.registry);
         }
-        return [sessionUpdatedEvent(record)];
+        return [sessionUpdatedEvent(record, this.registry)];
       case "tool_execution_start":
         record.status = "running";
         return toDriverEvents({
@@ -1420,7 +1257,7 @@ export class SessionSupervisor {
           toolName: event.toolName,
           callId: event.toolCallId,
           input: event.args,
-        }, record);
+        }, record, undefined, this.registry);
       case "tool_execution_update":
         return toDriverEvents({
           type: "toolUpdated" as const,
@@ -1429,7 +1266,7 @@ export class SessionSupervisor {
           callId: event.toolCallId,
           ...(typeof event.partialResult === "string" ? { text: event.partialResult } : {}),
           ...(typeof event.partialResult === "number" ? { progress: event.partialResult } : {}),
-        }, record);
+        }, record, undefined, this.registry);
       case "tool_execution_end":
         return toDriverEvents({
           type: "toolFinished" as const,
@@ -1438,9 +1275,9 @@ export class SessionSupervisor {
           callId: event.toolCallId,
           success: !event.isError,
           output: event.result,
-        }, record);
+        }, record, undefined, this.registry);
       case "turn_end":
-        return [sessionUpdatedEvent(record)];
+        return [sessionUpdatedEvent(record, this.registry)];
       case "agent_end": {
         const outcome = determineRunOutcome(event.messages);
         const runId = record.runningRunId;
@@ -1460,7 +1297,7 @@ export class SessionSupervisor {
                 type: "runCompleted" as const,
                 sessionRef: record.ref,
                 timestamp,
-                snapshot: snapshotForRecord(record),
+                snapshot: this.registry.snapshotForRecord(record),
               }
             : {
                 type: "runFailed" as const,
@@ -1470,6 +1307,7 @@ export class SessionSupervisor {
               },
           record,
           runId,
+          this.registry,
         );
       }
       default:
@@ -1491,7 +1329,7 @@ export class SessionSupervisor {
   }
 
   private async persistSnapshot(record: ManagedSessionRecord): Promise<void> {
-    const snapshot = snapshotForRecord(record);
+    const snapshot = this.registry.snapshotForRecord(record);
     await this.catalogs.sessions.upsertSession({
       sessionRef: snapshot.ref,
       workspaceId: snapshot.ref.workspaceId,
@@ -1602,14 +1440,14 @@ export class SessionSupervisor {
 
   private async updateArchivedState(sessionRef: SessionRef, archivedAt: string | undefined): Promise<void> {
     const key = sessionKey(sessionRef);
-    const record = this.records.get(key);
+    const record = this.registry.getRecord(sessionRef);
     if (record) {
       if (record.archivedAt === archivedAt) {
         return;
       }
       record.archivedAt = archivedAt;
       await this.persistSnapshot(record);
-      await this.emit(record, sessionUpdatedEvent(record));
+      await this.emit(record, sessionUpdatedEvent(record, this.registry));
       return;
     }
 
@@ -2006,27 +1844,12 @@ function reconcileQueuedMessagesForStartedUserMessage(
   return result.started;
 }
 
-function snapshotForRecord(record: ManagedSessionRecord): SessionSnapshot {
-  record.contextUsage = computeContextUsage(record.session);
-  return buildSnapshot(record);
-}
-
-function computeContextUsage(session: AgentSession | undefined): SessionContextUsage | undefined {
-  const contextWindow = session?.model?.contextWindow;
-  if (!session || typeof contextWindow !== "number" || contextWindow <= 0) {
-    return undefined;
-  }
-
-  const tokens = session.messages.reduce((sum, m) => sum + estimateTokens(m), 0);
-  return { usedTokens: Math.max(0, tokens), contextWindow };
-}
-
-function sessionUpdatedEvent(record: ManagedSessionRecord): SessionDriverEvent {
+function sessionUpdatedEvent(record: ManagedSessionRecord, registry?: SessionRuntimeRegistry): SessionDriverEvent {
   return {
     type: "sessionUpdated",
     sessionRef: record.ref,
     timestamp: record.updatedAt,
-    snapshot: snapshotForRecord(record),
+    snapshot: registry ? registry.snapshotForRecord(record) : buildSnapshot(record),
   };
 }
 
@@ -2034,8 +1857,9 @@ function toDriverEvents(
   base: SessionDriverEvent,
   record: ManagedSessionRecord,
   runId?: string,
+  registry?: SessionRuntimeRegistry,
 ): SessionDriverEvent[] {
   const id = runId ?? record.runningRunId;
   const event = id ? { ...base, runId: id } : base;
-  return [event, sessionUpdatedEvent(record)];
+  return [event, sessionUpdatedEvent(record, registry)];
 }

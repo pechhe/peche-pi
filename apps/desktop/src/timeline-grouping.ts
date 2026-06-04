@@ -11,4 +11,4 @@ export {
   type TimelineToolBurst,
   type TimelineViewModel,
   type ToolItem,
-} from "./timeline-model";
+} from "./timeline-model.ts";

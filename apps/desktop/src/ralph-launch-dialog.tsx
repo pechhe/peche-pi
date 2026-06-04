@@ -1,5 +1,6 @@
 import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
 import { ModelSelector } from "./model-selector";
+import { playButtonClick, playButtonSecondary } from "./button-click-sound";
 
 export interface RalphLaunchDialogProps {
   readonly planTitle: string;
@@ -67,10 +68,10 @@ export function RalphLaunchDialog({
         </div>
 
         <div className="extension-dialog__actions">
-          <button type="button" className="button" onClick={onCancel}>
+          <button type="button" className="button" onClick={() => { playButtonSecondary(); onCancel(); }}>
             Cancel
           </button>
-          <button type="button" className="button button--primary" onClick={onRun}>
+          <button type="button" className="button button--primary" onClick={() => { playButtonClick(); onRun(); }}>
             Run loop
           </button>
         </div>

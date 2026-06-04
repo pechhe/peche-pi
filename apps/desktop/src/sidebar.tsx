@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { memo, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -14,15 +14,142 @@ import {
 import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { AppView, ChatRecord, SessionRecord, WorkspaceRecord, WorktreeRecord } from "./desktop-state";
-import { ArchiveIcon, ChevronDownIcon, ChevronRightIcon, ComposeIcon, ExtensionIcon, FolderIcon, RestoreIcon, SettingsIcon, SkillIcon, WorktreeIcon } from "./icons";
+import { ArchiveIcon, ChevronDownIcon, ChevronRightIcon, ComposeIcon, ContextIcon, DoneIcon, ExtensionIcon, FolderIcon, RestoreIcon, SettingsIcon, SkillIcon, WorktreeIcon } from "./icons";
 import { WorkingSpinner } from "./working-label";
 import type { PiDesktopApi } from "./ipc";
 import { formatRelativeTime } from "./string-utils";
+import { playDoneSound } from "./done-sound";
+import { fireDoneCelebration } from "./done-celebration";
+import { playButtonClick } from "./button-click-sound";
 import type { WorkspaceMenuState } from "./hooks/use-workspace-menu";
 import { PENDING_THREAD_SESSION_ID, type ThreadGroup, type ThreadListEntry } from "./thread-groups";
 import type { Dispatch, SetStateAction } from "react";
 import type { DesktopAppState } from "./desktop-state";
 import type { SidebarResize } from "./hooks/use-sidebar-width";
+
+interface MovingHighlightState {
+  readonly left: number;
+  readonly top: number;
+  readonly width: number;
+  readonly height: number;
+  readonly ready: boolean;
+  readonly visible: boolean;
+}
+
+function hiddenMovingHighlight(): MovingHighlightState {
+  return { left: 0, top: 0, width: 0, height: 0, ready: false, visible: false };
+}
+
+function measureMovingHighlight(container: HTMLElement, target: HTMLElement): MovingHighlightState {
+  const containerRect = container.getBoundingClientRect();
+  const targetRect = target.getBoundingClientRect();
+  return {
+    left: targetRect.left - containerRect.left,
+    top: targetRect.top - containerRect.top,
+    width: targetRect.width,
+    height: targetRect.height,
+    ready: true,
+    visible: true,
+  };
+}
+
+function MovingSidebarHighlight({
+  children,
+  className,
+  itemSelector,
+}: {
+  readonly children: ReactNode;
+  readonly className: string;
+  readonly itemSelector: string;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const hoveredItem = useRef<HTMLElement | null>(null);
+  const [indicator, setIndicator] = useState<MovingHighlightState>(hiddenMovingHighlight);
+  const [shouldAnimate, setShouldAnimate] = useState(false);
+
+  function setTarget(target: HTMLElement | null) {
+    const container = ref.current;
+    if (!container || !target) {
+      setIndicator((previous) => previous.ready ? { ...previous, visible: false } : hiddenMovingHighlight());
+      return;
+    }
+
+    setIndicator(measureMovingHighlight(container, target));
+  }
+
+  function itemFromTarget(target: EventTarget | null): HTMLElement | null {
+    if (!(target instanceof Element)) return null;
+    return target.closest<HTMLElement>(itemSelector);
+  }
+
+  useEffect(() => {
+    if (shouldAnimate || !indicator.ready) return;
+    let firstFrame = 0;
+    let secondFrame = 0;
+    firstFrame = requestAnimationFrame(() => {
+      secondFrame = requestAnimationFrame(() => setShouldAnimate(true));
+    });
+    return () => {
+      cancelAnimationFrame(firstFrame);
+      cancelAnimationFrame(secondFrame);
+    };
+  }, [indicator.ready, shouldAnimate]);
+
+  useEffect(() => {
+    const container = ref.current;
+    if (!container || typeof ResizeObserver === "undefined") return;
+
+    const observer = new ResizeObserver(() => setTarget(hoveredItem.current));
+    observer.observe(container);
+    for (const item of container.querySelectorAll<HTMLElement>(itemSelector)) {
+      observer.observe(item);
+    }
+    return () => observer.disconnect();
+  });
+
+  return (
+    <div
+      ref={ref}
+      className={`${className} sidebar-moving-highlight`}
+      onPointerMove={(event) => {
+        const next = itemFromTarget(event.target);
+        if (next === hoveredItem.current) return;
+        hoveredItem.current = next;
+        setTarget(next);
+      }}
+      onPointerLeave={() => {
+        hoveredItem.current = null;
+        setTarget(null);
+      }}
+      onFocus={(event) => {
+        const next = itemFromTarget(event.target);
+        hoveredItem.current = next;
+        setTarget(next);
+      }}
+      onBlur={(event) => {
+        const container = ref.current;
+        if (container && event.relatedTarget instanceof Node && container.contains(event.relatedTarget)) return;
+        hoveredItem.current = null;
+        setTarget(null);
+      }}
+    >
+      <div
+        aria-hidden="true"
+        className="sidebar-moving-highlight__indicator"
+        style={{
+          transform: `translate3d(${indicator.left}px, ${indicator.top}px, 0)`,
+          width: indicator.width,
+          height: indicator.height,
+          opacity: indicator.visible ? 1 : 0,
+          transition: shouldAnimate
+            ? "transform 350ms cubic-bezier(0.32, 1.15, 0.60, 1.00), width 250ms cubic-bezier(0.22, 1, 0.36, 1), height 250ms cubic-bezier(0.22, 1, 0.36, 1), opacity 150ms ease"
+            : "opacity 150ms ease",
+        }}
+      />
+      {children}
+    </div>
+  );
+}
 
 interface SidebarProps {
   readonly resize: SidebarResize;
@@ -45,7 +172,10 @@ interface SidebarProps {
   readonly onSetActiveView: (view: AppView) => void;
   readonly onOpenSkills: (workspaceId?: string) => void;
   readonly onOpenExtensions: (workspaceId?: string) => void;
+  readonly onOpenContext: (workspaceId?: string) => void;
   readonly onOpenSettings: (workspaceId?: string) => void;
+  readonly queueMode: boolean;
+  readonly onSetQueueMode: (enabled: boolean) => void;
   readonly onArchiveSession: (target: { workspaceId: string; sessionId: string }) => void;
   readonly onArchiveAllNonRunningSessions: (workspaceId: string, olderThanMs?: number) => void;
   readonly onSelectSession: (target: { workspaceId: string; sessionId: string }) => void;
@@ -75,7 +205,10 @@ export function Sidebar(props: SidebarProps) {
     onSetActiveView,
     onOpenSkills,
     onOpenExtensions,
+    onOpenContext,
     onOpenSettings,
+    queueMode,
+    onSetQueueMode,
     onArchiveSession,
     onArchiveAllNonRunningSessions,
     onSelectSession,
@@ -145,11 +278,11 @@ export function Sidebar(props: SidebarProps) {
         aria-orientation="vertical"
       />
       <div className="sidebar__top">
-        <div className="sidebar__nav">
+        <MovingSidebarHighlight className="sidebar__nav" itemSelector=".sidebar__nav-item">
           <button
             className={`sidebar__nav-item ${activeView === "skills" ? "sidebar__nav-item--active" : ""}`}
             type="button"
-            onClick={() => onOpenSkills(selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id)}
+            onClick={() => { playButtonClick(); onOpenSkills(selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id); }}
           >
             <SkillIcon />
             <span>Skills</span>
@@ -157,25 +290,45 @@ export function Sidebar(props: SidebarProps) {
           <button
             className={`sidebar__nav-item ${activeView === "extensions" ? "sidebar__nav-item--active" : ""}`}
             type="button"
-            onClick={() => onOpenExtensions(selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id)}
+            onClick={() => { playButtonClick(); onOpenExtensions(selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id); }}
           >
             <ExtensionIcon />
             <span>Extensions</span>
           </button>
           <button
+            className={`sidebar__nav-item ${activeView === "context" ? "sidebar__nav-item--active" : ""}`}
+            type="button"
+            onClick={() => { playButtonClick(); onOpenContext(selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id); }}
+          >
+            <ContextIcon />
+            <span>Context</span>
+          </button>
+          <button
             className={`sidebar__nav-item ${activeView === "settings" ? "sidebar__nav-item--active" : ""}`}
             type="button"
-            onClick={() => onOpenSettings(selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id)}
+            onClick={() => { playButtonClick(); onOpenSettings(selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id); }}
           >
             <SettingsIcon />
             <span>Settings</span>
           </button>
-        </div>
+        </MovingSidebarHighlight>
       </div>
 
       <div className="sidebar__section">
         <div className="section__head">
-          <span>Threads</span>
+          <div className="section__title-row">
+            <span className="section__title">{queueMode ? "Queue" : "Threads"}</span>
+            <button
+              className={`queue-toggle ${queueMode ? "queue-toggle--on" : ""}`}
+              type="button"
+              onClick={() => { playButtonClick(); onSetQueueMode(!queueMode); }}
+              aria-label={queueMode ? "Switch to threads view" : "Switch to queue mode"}
+            >
+              <span className="queue-toggle__track">
+                <span className="queue-toggle__thumb" />
+              </span>
+            </button>
+          </div>
           <div className="section__tools">
             <button
               aria-label="Open folder"
@@ -544,7 +697,7 @@ function WorkspaceGroupContent(
       ) : null}
       {!isCollapsed ? (
         <>
-          <div className="session-list">
+          <MovingSidebarHighlight className="session-list" itemSelector=".session-row">
             {threads.map((thread) => {
               const active =
                 thread.session.id === PENDING_THREAD_SESSION_ID ||
@@ -566,7 +719,7 @@ function WorkspaceGroupContent(
                 />
               );
             })}
-          </div>
+          </MovingSidebarHighlight>
           {archivedThreads.length > 0 ? (
             <div className="archived-thread-group">
               <button
@@ -581,11 +734,11 @@ function WorkspaceGroupContent(
                 >
                   <ChevronDownIcon />
                 </span>
-                <span>Archived</span>
+                <span>Done</span>
                 <span className="archived-thread-group__count">{archivedThreads.length}</span>
               </button>
               {archivedSectionOpen ? (
-                <div className="session-list session-list--archived">
+                <MovingSidebarHighlight className="session-list session-list--archived" itemSelector=".session-row">
                   {archivedThreads.map((thread) => {
                     const active =
                       activeView === "threads" &&
@@ -607,7 +760,7 @@ function WorkspaceGroupContent(
                       />
                     );
                   })}
-                </div>
+                </MovingSidebarHighlight>
               ) : null}
             </div>
           ) : null}
@@ -633,23 +786,51 @@ function sessionIndicatorVariant(thread: ThreadListEntry): "running" | "unseen" 
   return "none";
 }
 
-function ThreadSessionRow({
-  active,
-  archived = false,
-  thread,
-  onAction,
-  onSelect,
-}: {
+/* ── Done moment (animation + sound + celebration) ───────────── */
+
+// Total time the row animates before it leaves the active list. Keep in sync
+// with the .session-row--completing animation in sidebar.css.
+const DONE_ANIMATION_MS = 500;
+
+interface ThreadSessionRowProps {
   readonly active: boolean;
   readonly archived?: boolean;
   readonly thread: ThreadListEntry;
   readonly onAction: () => void;
   readonly onSelect: () => void;
-}) {
+}
+
+const ThreadSessionRow = memo(function ThreadSessionRow({
+  active,
+  archived = false,
+  thread,
+  onAction,
+  onSelect,
+}: ThreadSessionRowProps) {
   const indicatorVariant = sessionIndicatorVariant(thread);
+  const [completing, setCompleting] = useState(false);
+
+  const handleDone = (event: ReactMouseEvent) => {
+    event.stopPropagation();
+    if (archived) {
+      // Restore is instant; no celebratory moment needed.
+      onAction();
+      return;
+    }
+    if (completing) {
+      return;
+    }
+    const rect = event.currentTarget.getBoundingClientRect();
+    fireDoneCelebration(rect.left + rect.width / 2, rect.top + rect.height / 2);
+    setCompleting(true);
+    playDoneSound();
+    // Let the "done" animation play before the row leaves the active list.
+    window.setTimeout(() => onAction(), DONE_ANIMATION_MS);
+  };
+
   return (
     <div
-      className={`session-row ${active ? "session-row--active" : ""}`}
+      className={`session-row ${active ? "session-row--active" : ""} ${completing ? "session-row--completing" : ""}`}
       data-sidebar-indicator={indicatorVariant}
       data-session-id={thread.session.id}
       onClick={onSelect}
@@ -675,18 +856,29 @@ function ThreadSessionRow({
         ) : null}
         <span className="session-row__time">{formatRelativeTime(thread.session.updatedAt)}</span>
         <button
-          aria-label={`${archived ? "Restore" : "Archive"} ${thread.session.title}`}
-          className="icon-button session-row__action"
+          aria-label={`${archived ? "Restore" : "Mark done"} ${thread.session.title}`}
+          className={`icon-button session-row__action ${archived ? "" : "session-row__action--done"}`}
           type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            onAction();
-          }}
+          onClick={handleDone}
         >
-          {archived ? <RestoreIcon /> : <ArchiveIcon />}
+          {archived ? <RestoreIcon /> : <DoneIcon />}
         </button>
       </span>
     </div>
+  );
+}, sameThreadSessionRowProps);
+
+function sameThreadSessionRowProps(previous: ThreadSessionRowProps, next: ThreadSessionRowProps): boolean {
+  return (
+    previous.active === next.active &&
+    previous.archived === next.archived &&
+    previous.thread.workspaceId === next.thread.workspaceId &&
+    previous.thread.environment.kind === next.thread.environment.kind &&
+    previous.thread.session.id === next.thread.session.id &&
+    previous.thread.session.title === next.thread.session.title &&
+    previous.thread.session.status === next.thread.session.status &&
+    previous.thread.session.hasUnseenUpdate === next.thread.session.hasUnseenUpdate &&
+    previous.thread.session.updatedAt === next.thread.session.updatedAt
   );
 }
 
@@ -713,7 +905,7 @@ function SidebarChatsList({
 
   return (
     <>
-      <div className="session-list">
+      <MovingSidebarHighlight className="session-list" itemSelector=".session-row">
         {activeChats.map((chat) => {
           const isActive = Boolean(chat.chatWorkspaceId) && chat.chatWorkspaceId === selectedWorkspaceId;
           return (
@@ -726,7 +918,7 @@ function SidebarChatsList({
             />
           );
         })}
-      </div>
+      </MovingSidebarHighlight>
       {archivedChats.length > 0 ? (
         <div className="archived-thread-group">
           <button
@@ -745,7 +937,7 @@ function SidebarChatsList({
             <span className="archived-thread-group__count">{archivedChats.length}</span>
           </button>
           {showArchived ? (
-            <div className="session-list session-list--archived">
+            <MovingSidebarHighlight className="session-list session-list--archived" itemSelector=".session-row">
               {archivedChats.map((chat) => {
                 const isActive = Boolean(chat.chatWorkspaceId) && chat.chatWorkspaceId === selectedWorkspaceId;
                 return (
@@ -760,7 +952,7 @@ function SidebarChatsList({
                   />
                 );
               })}
-            </div>
+            </MovingSidebarHighlight>
           ) : null}
         </div>
       ) : null}
@@ -768,15 +960,7 @@ function SidebarChatsList({
   );
 }
 
-function ChatRow({
-  chat,
-  isActive,
-  archived = false,
-  onSelect,
-  onArchive,
-  onUnarchive,
-  onRemove,
-}: {
+interface ChatRowProps {
   readonly chat: ChatRecord;
   readonly isActive: boolean;
   readonly archived?: boolean;
@@ -784,7 +968,17 @@ function ChatRow({
   readonly onArchive?: () => void;
   readonly onUnarchive?: () => void;
   readonly onRemove?: () => void;
-}) {
+}
+
+const ChatRow = memo(function ChatRow({
+  chat,
+  isActive,
+  archived = false,
+  onSelect,
+  onArchive,
+  onUnarchive,
+  onRemove,
+}: ChatRowProps) {
   const indicatorVariant: "running" | "unseen" | "none" =
     chat.status === "running" ? "running" : chat.hasUnseenUpdate ? "unseen" : "none";
 
@@ -851,5 +1045,19 @@ function ChatRow({
         )}
       </span>
     </div>
+  );
+}, sameChatRowProps);
+
+function sameChatRowProps(previous: ChatRowProps, next: ChatRowProps): boolean {
+  return (
+    previous.isActive === next.isActive &&
+    previous.archived === next.archived &&
+    previous.chat.id === next.chat.id &&
+    previous.chat.title === next.chat.title &&
+    previous.chat.updatedAt === next.chat.updatedAt &&
+    previous.chat.status === next.chat.status &&
+    previous.chat.hasUnseenUpdate === next.chat.hasUnseenUpdate &&
+    previous.chat.archivedAt === next.chat.archivedAt &&
+    previous.chat.chatWorkspaceId === next.chat.chatWorkspaceId
   );
 }

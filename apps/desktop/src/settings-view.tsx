@@ -1,11 +1,13 @@
 import type { RuntimeSettingsSnapshot, RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
-import type { ModelSettingsScopeMode, NotificationPreferences, SubagentAgentRecord, SubagentSettingsRecord, WorkspaceRecord } from "./desktop-state";
+import type { ModelSettingsScopeMode, NotificationPreferences, SubagentAgentRecord, SubagentSettingsRecord, ThreadTransitionSettings, WorkspaceRecord } from "./desktop-state";
+import type { ButtonSoundSettings } from "./button-click-sound";
 import type { DesktopNotificationPermissionStatus } from "./ipc";
 import { SettingsAppearanceSection } from "./settings-appearance-section";
 import { SettingsGeneralSection } from "./settings-general-section";
 import { SettingsModelsSection } from "./settings-models-section";
 import { SettingsNotificationsSection } from "./settings-notifications-section";
 import { SettingsProvidersSection } from "./settings-providers-section";
+import { SettingsSoundsSection } from "./settings-sounds-section";
 import { SettingsSubagentsSection } from "./settings-subagents-section";
 import { type SettingsSection, sectionTitle } from "./settings-utils";
 
@@ -27,6 +29,8 @@ interface SettingsViewProps {
   readonly enableTransparency: boolean;
   readonly transcriptVerbose: boolean;
   readonly composerDeviceMode: import("./desktop-state").ComposerDeviceMode;
+  readonly threadTransition: ThreadTransitionSettings;
+  readonly buttonSoundSettings: ButtonSoundSettings;
   readonly subagentSettings: SubagentSettingsRecord;
   readonly subagentAgents: readonly SubagentAgentRecord[];
   readonly onSetModelSettingsScopeMode: (mode: ModelSettingsScopeMode) => void;
@@ -48,10 +52,16 @@ interface SettingsViewProps {
   readonly onSetEnableTransparency: (enabled: boolean) => void;
   readonly onSetTranscriptVerbose: (enabled: boolean) => void;
   readonly onSetComposerDeviceMode: (mode: import("./desktop-state").ComposerDeviceMode) => void;
+  readonly onSetThreadTransition: (settings: Partial<ThreadTransitionSettings>) => void;
+  readonly onSetButtonSoundSettings: (settings: ButtonSoundSettings) => void;
   readonly onSetSubagentSettings: (settings: Partial<SubagentSettingsRecord>) => void;
   readonly onRefreshSubagentAgents: (workspaceId: string) => void;
   readonly onSaveSubagentAgent: (workspaceId: string, input: { readonly name: string; readonly raw: string }) => void;
   readonly onDeleteSubagentAgent: (workspaceId: string, name: string) => void;
+  readonly retrySettings: { readonly enabled: boolean; readonly maxRetries: number; readonly baseDelayMs: number };
+  readonly onSetRetrySettings: (settings: { readonly enabled: boolean; readonly maxRetries: number; readonly baseDelayMs: number }) => void;
+  readonly commitPushModel?: string;
+  readonly onSetCommitPushModel: (model: string) => void;
 }
 
 export function SettingsView({
@@ -70,6 +80,8 @@ export function SettingsView({
   enableTransparency,
   transcriptVerbose,
   composerDeviceMode,
+  threadTransition,
+  buttonSoundSettings,
   subagentSettings,
   subagentAgents,
   onSetModelSettingsScopeMode,
@@ -91,12 +103,18 @@ export function SettingsView({
   onSetEnableTransparency,
   onSetTranscriptVerbose,
   onSetComposerDeviceMode,
+  onSetThreadTransition,
+  onSetButtonSoundSettings,
   onSetSubagentSettings,
   onRefreshSubagentAgents,
   onSaveSubagentAgent,
   onDeleteSubagentAgent,
+  retrySettings,
+  onSetRetrySettings,
+  commitPushModel,
+  onSetCommitPushModel,
 }: SettingsViewProps) {
-  if (!workspace && section !== "general" && section !== "notifications" && section !== "appearance") {
+  if (!workspace && section !== "general" && section !== "notifications" && section !== "appearance" && section !== "sounds") {
     return (
       <div className="empty-panel">
         <div className="session-header__eyebrow">Settings</div>
@@ -109,7 +127,7 @@ export function SettingsView({
   return (
     <div className="settings-view">
       <nav className="settings-sidebar">
-        {(["appearance", "general", "providers", "models", "notifications"] as const).map((item) => (
+        {(["appearance", "general", "providers", "models", "notifications", "sounds"] as const).map((item) => (
           <button
             key={item}
             className={`settings-sidebar__item${section === item ? " settings-sidebar__item--active" : ""}`}
@@ -134,6 +152,8 @@ export function SettingsView({
               onSetTranscriptVerbose={onSetTranscriptVerbose}
               composerDeviceMode={composerDeviceMode}
               onSetComposerDeviceMode={onSetComposerDeviceMode}
+              threadTransition={threadTransition}
+              onSetThreadTransition={onSetThreadTransition}
             />
           ) : null}
 
@@ -143,11 +163,15 @@ export function SettingsView({
               modelSettingsScopeMode={modelSettingsScopeMode}
               integratedTerminalShell={integratedTerminalShell}
               externalTerminalApp={externalTerminalApp}
+              retrySettings={retrySettings}
+              commitPushModel={commitPushModel}
+              onSetCommitPushModel={onSetCommitPushModel}
               onSetModelSettingsScopeMode={onSetModelSettingsScopeMode}
               onSetIntegratedTerminalShell={onSetIntegratedTerminalShell}
               onChooseExternalTerminalApp={onChooseExternalTerminalApp}
               onClearExternalTerminalApp={onClearExternalTerminalApp}
               onToggleSkillCommands={onToggleSkillCommands}
+              onSetRetrySettings={onSetRetrySettings}
             />
           ) : null}
 
@@ -190,6 +214,13 @@ export function SettingsView({
               onSetNotificationPreferences={onSetNotificationPreferences}
               onRequestNotificationPermission={onRequestNotificationPermission}
               onOpenSystemNotificationSettings={onOpenSystemNotificationSettings}
+            />
+          ) : null}
+
+          {section === "sounds" ? (
+            <SettingsSoundsSection
+              soundSettings={buttonSoundSettings}
+              onSetSoundSettings={onSetButtonSoundSettings}
             />
           ) : null}
         </div>

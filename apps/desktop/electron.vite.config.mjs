@@ -2,7 +2,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "electron-vite";
 import react from "@vitejs/plugin-react";
-import tsconfigPaths from "vite-tsconfig-paths";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = __dirname;
@@ -13,7 +12,9 @@ export default defineConfig(({ command }) => {
 
   return {
     main: {
-      plugins: [tsconfigPaths({ projects: [pathsProject] })],
+      resolve: {
+        tsconfigPaths: true,
+      },
       build: {
         outDir: "out/main",
         emptyOutDir: cleanOutputs,
@@ -25,7 +26,9 @@ export default defineConfig(({ command }) => {
       },
     },
     preload: {
-      plugins: [tsconfigPaths({ projects: [pathsProject] })],
+      resolve: {
+        tsconfigPaths: true,
+      },
       build: {
         outDir: "out/preload",
         emptyOutDir: cleanOutputs,
@@ -39,7 +42,10 @@ export default defineConfig(({ command }) => {
     renderer: {
       root: projectRoot,
       base: "./",
-      plugins: [react(), tsconfigPaths({ projects: [pathsProject] })],
+      plugins: [react()],
+      resolve: {
+        tsconfigPaths: true,
+      },
       server: {
         port: devPort,
         strictPort: true,

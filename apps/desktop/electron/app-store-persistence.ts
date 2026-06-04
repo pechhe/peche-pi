@@ -6,6 +6,7 @@ import type {
   NotificationPreferences,
   SubagentSettingsRecord,
   ThemeMode,
+  ThreadTransitionSettings,
 } from "../src/desktop-state";
 import type { ModelSettingsSnapshot } from "@pi-gui/session-driver/runtime-types";
 import { randomUUID } from "node:crypto";
@@ -25,6 +26,7 @@ export interface PersistedUiState {
   readonly subagentSettings?: Partial<SubagentSettingsRecord>;
   readonly integratedTerminalShell?: string;
   readonly externalTerminalApp?: string;
+  readonly retrySettings?: { readonly enabled: boolean; readonly maxRetries: number; readonly baseDelayMs: number };
   readonly lastViewedAtBySession?: Record<string, string>;
   readonly workspaceOrder?: readonly string[];
   readonly modelSettingsScopeMode?: ModelSettingsScopeMode;
@@ -33,7 +35,8 @@ export interface PersistedUiState {
   readonly allowMultiple?: boolean;
   readonly enableTransparency?: boolean;
   readonly transcriptVerbose?: boolean;
-  readonly composerDeviceMode?: "off" | "screen" | "modular" | "screen-neon";
+  readonly composerDeviceMode?: "off" | "screen" | "modular" | "modular-metal" | "screen-neon";
+  readonly threadTransition?: ThreadTransitionSettings;
   readonly themeMode?: ThemeMode;
   readonly commitPushModel?: string;
   readonly chats?: readonly ChatRecord[];
@@ -94,12 +97,13 @@ export async function readPersistedUiState(uiStateFilePath: string): Promise<Leg
       enableTransparency: typeof parsed.enableTransparency === "boolean" ? parsed.enableTransparency : undefined,
       transcriptVerbose: typeof parsed.transcriptVerbose === "boolean" ? parsed.transcriptVerbose : undefined,
       composerDeviceMode:
-        parsed.composerDeviceMode === "screen" || parsed.composerDeviceMode === "modular" || parsed.composerDeviceMode === "screen-neon" || parsed.composerDeviceMode === "off"
+        parsed.composerDeviceMode === "screen" || parsed.composerDeviceMode === "modular" || parsed.composerDeviceMode === "modular-metal" || parsed.composerDeviceMode === "screen-neon" || parsed.composerDeviceMode === "off"
           ? parsed.composerDeviceMode
           : // Migrate legacy boolean: true → screen, false/undefined → off
             (parsed as { composerDeviceMode?: unknown }).composerDeviceMode === true
             ? "screen"
             : undefined,
+      threadTransition: normalizeThreadTransition(parsed.threadTransition),
       themeMode:
         parsed.themeMode === "dracula" || parsed.themeMode === "dark" || parsed.themeMode === "light" || parsed.themeMode === "system"
           ? parsed.themeMode
@@ -157,6 +161,23 @@ export async function writePersistedUiState(
       }
     }
   });
+}
+
+function normalizeThreadTransition(value: unknown): ThreadTransitionSettings | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const candidate = value as Record<string, unknown>;
+  const motion =
+    candidate.motion === "off" ||
+    candidate.motion === "curve" ||
+    candidate.motion === "dock" ||
+    candidate.motion === "spring"
+      ? candidate.motion
+      : "curve";
+  return {
+    motion,
+    heroExit: candidate.heroExit === true,
+    bubbleHandoff: candidate.bubbleHandoff === true,
+  };
 }
 
 function normalizeSubagentSettings(value: unknown): Partial<SubagentSettingsRecord> | undefined {

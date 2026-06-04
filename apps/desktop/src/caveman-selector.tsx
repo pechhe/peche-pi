@@ -1,4 +1,5 @@
 import type { CavemanLevel } from "./ipc";
+import { useButtonSound } from "./use-button-sound";
 
 // Click cycles through these three levels only.
 const CAVEMAN_CYCLE: readonly CavemanLevel[] = ["off", "micro", "ultra"];
@@ -33,6 +34,7 @@ interface CavemanSelectorProps {
 }
 
 export function CavemanSelector({ level, disabled = false, onSetLevel }: CavemanSelectorProps) {
+  const buttonSound = useButtonSound({ category: "toggle", disabled });
   return (
     <span className="caveman-selector" title="Caveman output compression level (click to cycle: off → micro → ultra)">
       <span aria-hidden="true">🪨</span>
@@ -43,6 +45,7 @@ export function CavemanSelector({ level, disabled = false, onSetLevel }: Caveman
           className="caveman-selector__select"
           disabled={disabled}
           type="button"
+          {...buttonSound}
           onClick={() => onSetLevel(nextCavemanLevel(level))}
         >
           {cavemanLabel(level)}

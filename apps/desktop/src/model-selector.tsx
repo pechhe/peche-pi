@@ -33,12 +33,16 @@ function modelKey(providerId: string, modelId: string): string {
   return `${providerId}:${modelId}`;
 }
 
-function nextThinkingLevel(level: string): string {
-  const index = THINKING_OPTIONS.findIndex((option) => option.value === level);
+function nextThinkingLevel(level: string, availableLevels: readonly string[]): string {
+  // Only cycle through non-off levels (off is excluded from the cycle)
+  const cycleable = availableLevels.filter((l) => l !== "off");
+  if (cycleable.length === 0) return availableLevels[0] ?? "off";
+  const index = cycleable.indexOf(level);
   if (index === -1) {
-    return THINKING_OPTIONS[0]!.value;
+    // Current level not in cycleable list — clamp to nearest available
+    return cycleable[0]!;
   }
-  return THINKING_OPTIONS[(index + 1) % THINKING_OPTIONS.length]!.value;
+  return cycleable[(index + 1) % cycleable.length]!;
 }
 
 export const ModelSelector = forwardRef<ModelSelectorHandle, ModelSelectorProps>(
@@ -72,6 +76,14 @@ export const ModelSelector = forwardRef<ModelSelectorHandle, ModelSelectorProps>
     }));
 
     const modelOptions = useMemo(() => buildModelOptions(runtime), [runtime]);
+
+    // Look up the current model's supported thinking levels from the runtime snapshot.
+    // Falls back to a reasonable default if the model isn't found.
+    const availableThinkingLevels = useMemo(() => {
+      if (!runtime || !provider || !modelId) return ["off", "minimal", "low", "medium", "high", "xhigh"];
+      const record = runtime.models.find((m) => m.providerId === provider && m.modelId === modelId);
+      return record?.availableThinkingLevels ?? ["off"];
+    }, [runtime, provider, modelId]);
 
     const visibleModelOptions = useMemo(() => {
       if (showHiddenModels || hiddenModelKeys.size === 0) return modelOptions;
@@ -178,6 +190,8 @@ export const ModelSelector = forwardRef<ModelSelectorHandle, ModelSelectorProps>
               <button
                 className="model-selector__badge"
                 type="button"
+                data-physical-key="model"
+                aria-expanded={open === "model"}
                 disabled={disabled}
                 onClick={() => setOpen(open === "model" ? "none" : "model")}
               >
@@ -278,9 +292,10 @@ export const ModelSelector = forwardRef<ModelSelectorHandle, ModelSelectorProps>
               <button
                 className="model-selector__badge"
                 type="button"
+                data-physical-key="thinking"
                 disabled={disabled}
                 title="Thinking level (click to cycle)"
-                onClick={() => onSetThinking(nextThinkingLevel(thinkingLevel))}
+                onClick={() => onSetThinking(nextThinkingLevel(thinkingLevel, availableThinkingLevels))}
               >
                 <ReasoningMeter level={thinkingLevel} size={12} />
               </button>

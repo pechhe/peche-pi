@@ -6,6 +6,7 @@ import type {
 } from "@pi-gui/session-driver/types";
 import type {
   AppView,
+  ContextSnapshot,
   ComposerAttachment,
   ComposerDeviceMode,
   ComposerImageAttachment,
@@ -16,8 +17,11 @@ import type {
   NotificationPreferences,
   RemoveWorktreeInput,
   SelectedTranscriptRecord,
+  SessionRecord,
   StartChatInput,
   StartThreadInput,
+  ThreadTransitionSettings,
+  TranscriptMessage,
   WorkspaceSessionTarget,
 } from "./desktop-state";
 import type { ComposerMode } from "./composer-mode";
@@ -39,6 +43,8 @@ export interface CavemanConfigSnapshot {
 export const desktopIpc = {
   stateRequest: "pi-gui:state-request",
   stateChanged: "pi-gui:state-changed",
+  statePatch: "pi-gui:state-patch",
+  transcriptDelta: "pi-gui:transcript-delta",
   selectedTranscriptRequest: "pi-gui:selected-transcript-request",
   selectedTranscriptChanged: "pi-gui:selected-transcript-changed",
   appCommand: "pi-gui:app-command",
@@ -68,6 +74,7 @@ export const desktopIpc = {
   clearExternalTerminalApp: "pi-gui:clear-external-terminal-app",
   setActiveView: "pi-gui:set-active-view",
   setSidebarCollapsed: "pi-gui:set-sidebar-collapsed",
+  setQueueMode: "pi-gui:set-queue-mode",
   refreshRuntime: "pi-gui:refresh-runtime",
   setModelSettingsScopeMode: "pi-gui:set-model-settings-scope-mode",
   setDefaultModel: "pi-gui:set-default-model",
@@ -87,6 +94,8 @@ export const desktopIpc = {
   respondToHostUiRequest: "pi-gui:respond-to-host-ui-request",
   setNotificationPreferences: "pi-gui:set-notification-preferences",
   setIntegratedTerminalShell: "pi-gui:set-integrated-terminal-shell",
+  setRetrySettings: "pi-gui:set-retry-settings",
+  getRetrySettings: "pi-gui:get-retry-settings",
   setSubagentSettings: "pi-gui:set-subagent-settings",
   refreshSubagentAgents: "pi-gui:refresh-subagent-agents",
   saveSubagentAgent: "pi-gui:save-subagent-agent",
@@ -94,6 +103,7 @@ export const desktopIpc = {
   setEnableTransparency: "pi-gui:set-enable-transparency",
   setTranscriptVerbose: "pi-gui:set-transcript-verbose",
   setComposerDeviceMode: "pi-gui:set-composer-device-mode",
+  setThreadTransition: "pi-gui:set-thread-transition",
   terminalEnsurePanel: "pi-gui:terminal-ensure-panel",
   terminalCreateSession: "pi-gui:terminal-create-session",
   terminalSetActiveSession: "pi-gui:terminal-set-active-session",
@@ -143,6 +153,7 @@ export const desktopIpc = {
   writeChatAgentsMd: "pi-gui:write-chat-agents-md",
   generatePrDraft: "pi-gui:generate-pr-draft",
   prCreate: "pi-gui:pr-create",
+  getContextSnapshot: "pi-gui:get-context-snapshot",
   getThemeMode: "pi-gui:get-theme-mode",
   getResolvedTheme: "pi-gui:get-resolved-theme",
   setThemeMode: "pi-gui:set-theme-mode",
@@ -169,6 +180,8 @@ export const piDesktopApiIpcBridge = {
   ping: { kind: "invoke", channel: desktopIpc.ping },
   getState: { kind: "invoke", channel: desktopIpc.stateRequest },
   onStateChanged: { kind: "event", channel: desktopIpc.stateChanged },
+  onStatePatch: { kind: "event", channel: desktopIpc.statePatch },
+  onTranscriptDelta: { kind: "event", channel: desktopIpc.transcriptDelta },
   getSelectedTranscript: { kind: "invoke", channel: desktopIpc.selectedTranscriptRequest },
   onSelectedTranscriptChanged: { kind: "event", channel: desktopIpc.selectedTranscriptChanged },
   onCommand: { kind: "event", channel: desktopIpc.appCommand },
@@ -198,6 +211,7 @@ export const piDesktopApiIpcBridge = {
   clearExternalTerminalApp: { kind: "invoke", channel: desktopIpc.clearExternalTerminalApp },
   setActiveView: { kind: "invoke", channel: desktopIpc.setActiveView },
   setSidebarCollapsed: { kind: "invoke", channel: desktopIpc.setSidebarCollapsed },
+  setQueueMode: { kind: "invoke", channel: desktopIpc.setQueueMode },
   refreshRuntime: { kind: "invoke", channel: desktopIpc.refreshRuntime },
   setModelSettingsScopeMode: { kind: "invoke", channel: desktopIpc.setModelSettingsScopeMode },
   setDefaultModel: { kind: "invoke", channel: desktopIpc.setDefaultModel },
@@ -217,6 +231,8 @@ export const piDesktopApiIpcBridge = {
   respondToHostUiRequest: { kind: "invoke", channel: desktopIpc.respondToHostUiRequest },
   setNotificationPreferences: { kind: "invoke", channel: desktopIpc.setNotificationPreferences },
   setIntegratedTerminalShell: { kind: "invoke", channel: desktopIpc.setIntegratedTerminalShell },
+  setRetrySettings: { kind: "invoke", channel: desktopIpc.setRetrySettings },
+  getRetrySettings: { kind: "invoke", channel: desktopIpc.getRetrySettings },
   setSubagentSettings: { kind: "invoke", channel: desktopIpc.setSubagentSettings },
   refreshSubagentAgents: { kind: "invoke", channel: desktopIpc.refreshSubagentAgents },
   saveSubagentAgent: { kind: "invoke", channel: desktopIpc.saveSubagentAgent },
@@ -224,6 +240,7 @@ export const piDesktopApiIpcBridge = {
   setEnableTransparency: { kind: "invoke", channel: desktopIpc.setEnableTransparency },
   setTranscriptVerbose: { kind: "invoke", channel: desktopIpc.setTranscriptVerbose },
   setComposerDeviceMode: { kind: "invoke", channel: desktopIpc.setComposerDeviceMode },
+  setThreadTransition: { kind: "invoke", channel: desktopIpc.setThreadTransition },
   ensureTerminalPanel: { kind: "invoke", channel: desktopIpc.terminalEnsurePanel },
   createTerminalSession: { kind: "invoke", channel: desktopIpc.terminalCreateSession },
   setActiveTerminalSession: { kind: "invoke", channel: desktopIpc.terminalSetActiveSession },
@@ -264,6 +281,7 @@ export const piDesktopApiIpcBridge = {
   getWorkspacePrInfo: { kind: "invoke", channel: desktopIpc.getWorkspacePrInfo },
   generatePrDraft: { kind: "invoke", channel: desktopIpc.generatePrDraft },
   prCreate: { kind: "invoke", channel: desktopIpc.prCreate },
+  getContextSnapshot: { kind: "invoke", channel: desktopIpc.getContextSnapshot },
   toggleWindowMaximize: { kind: "invoke", channel: desktopIpc.toggleWindowMaximize },
   startChat: { kind: "invoke", channel: desktopIpc.startChat },
   selectChat: { kind: "invoke", channel: desktopIpc.selectChat },
@@ -424,12 +442,27 @@ export interface CreatePrResult {
   readonly number?: number;
 }
 
+export interface DesktopLivePatch {
+  readonly workspaceId: string;
+  readonly session: SessionRecord | null;
+}
+
+export interface TranscriptDelta {
+  readonly sessionId: string;
+  readonly workspaceId: string;
+  readonly initial: boolean;
+  readonly messages: readonly TranscriptMessage[];
+}
+
 export interface PiDesktopApi {
   platform: NodeJS.Platform;
   versions: NodeJS.ProcessVersions;
   ping(): Promise<string>;
   getState(): Promise<DesktopAppState>;
   onStateChanged(listener: PiDesktopStateListener): () => void;
+  onStatePatch(listener: (patch: DesktopLivePatch) => void): () => void;
+  onTranscriptDelta(listener: (delta: TranscriptDelta) => void): () => void;
+
   getSelectedTranscript(): Promise<SelectedTranscriptRecord | null>;
   onSelectedTranscriptChanged(listener: PiDesktopSelectedTranscriptListener): () => void;
   onCommand(listener: (command: PiDesktopCommand) => void): () => void;
@@ -460,6 +493,7 @@ export interface PiDesktopApi {
   clearExternalTerminalApp(): Promise<DesktopAppState>;
   setActiveView(view: AppView): Promise<DesktopAppState>;
   setSidebarCollapsed(collapsed: boolean): Promise<DesktopAppState>;
+  setQueueMode(enabled: boolean): Promise<DesktopAppState>;
   refreshRuntime(workspaceId?: string): Promise<DesktopAppState>;
   setModelSettingsScopeMode(mode: ModelSettingsScopeMode): Promise<DesktopAppState>;
   setDefaultModel(workspaceId: string, provider: string, modelId: string): Promise<DesktopAppState>;
@@ -499,6 +533,8 @@ export interface PiDesktopApi {
   ): Promise<DesktopAppState>;
   setNotificationPreferences(preferences: Partial<NotificationPreferences>): Promise<DesktopAppState>;
   setIntegratedTerminalShell(shell: string): Promise<DesktopAppState>;
+  setRetrySettings(settings: { enabled: boolean; maxRetries: number; baseDelayMs: number }): Promise<DesktopAppState>;
+  getRetrySettings(): Promise<{ enabled: boolean; maxRetries: number; baseDelayMs: number }>;
   setSubagentSettings(settings: Partial<import("./desktop-state").SubagentSettingsRecord>): Promise<DesktopAppState>;
   refreshSubagentAgents(workspaceId: string): Promise<DesktopAppState>;
   saveSubagentAgent(workspaceId: string, input: { readonly name: string; readonly raw: string; readonly scope?: "project" | "global" }): Promise<DesktopAppState>;
@@ -506,6 +542,7 @@ export interface PiDesktopApi {
   setEnableTransparency(enabled: boolean): Promise<DesktopAppState>;
   setTranscriptVerbose(enabled: boolean): Promise<DesktopAppState>;
   setComposerDeviceMode(mode: ComposerDeviceMode): Promise<DesktopAppState>;
+  setThreadTransition(settings: Partial<ThreadTransitionSettings>): Promise<DesktopAppState>;
   ensureTerminalPanel(
     workspaceId: string,
     terminalScopeId: string,
@@ -572,6 +609,7 @@ export interface PiDesktopApi {
   writeChatAgentsMd(chatId: string, content: string): Promise<void>;
   generatePrDraft(workspaceId: string, baseBranch?: string): Promise<PrDraftResult>;
   prCreate(workspaceId: string, input: CreatePrInput): Promise<CreatePrResult>;
+  getContextSnapshot(workspaceId: string, sessionId?: string): Promise<ContextSnapshot>;
   toggleWindowMaximize(): Promise<void>;
   openExternal(url: string): Promise<void>;
   getThemeMode(): Promise<"system" | "light" | "dark" | "dracula">;

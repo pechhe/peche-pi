@@ -7,16 +7,18 @@ import {
   type AppView,
   type ComposerAttachment,
   type ComposerImageAttachment,
+  type ContextSnapshot,
   type DesktopAppState,
   type NewThreadEnvironment,
   type SelectedTranscriptRecord,
+  type SessionStatus,
   type StartChatInput,
   type StartThreadInput,
   type TranscriptMessage,
   type WorktreeRecord,
   type WorkspaceRecord,
 } from "./desktop-state";
-import { ComposerPanel } from "./composer-panel";
+import { SessionComposer, type SessionComposerHandle } from "./session-composer";
 import { buildPlanModePrompt, type ComposerMode } from "./composer-mode";
 import { DiffPanel, type DiffPanelFileRequest } from "./diff-panel";
 import { buildModelOptions, THINKING_OPTIONS } from "./composer-commands";
@@ -34,13 +36,15 @@ import { deriveModelOnboardingState } from "./model-onboarding";
 import { type ModelSelectorHandle } from "./model-selector";
 import { SkillsView } from "./skills-view";
 import { ExtensionsView } from "./extensions-view";
+import { ContextView } from "./context-view";
 import { SettingsView, type SettingsSection } from "./settings-view";
 import { NewThreadView } from "./new-thread-view";
 import { PendingComposer } from "./pending-thread-view";
 import { buildThreadGroups, PENDING_THREAD_SESSION_ID, type ThreadListEntry } from "./thread-groups";
-import { usePendingThreadGoLive, type PendingThreadStart } from "./hooks/use-pending-thread-go-live";
+import { usePendingThreadGoLive, captureHeroFlip, type PendingThreadStart } from "./hooks/use-pending-thread-go-live";
 import { Sidebar } from "./sidebar";
 import { SidebarToggleButton } from "./sidebar-toggle-button";
+import { playButtonClick, DEFAULT_BUTTON_SOUND_SETTINGS, type ButtonSoundSettings } from "./button-click-sound";
 import { Topbar } from "./topbar";
 import { TerminalPanel } from "./terminal-panel";
 import { ConversationTimeline, VIRTUALIZATION_THRESHOLD } from "./conversation-timeline";
@@ -50,6 +54,7 @@ import { useMentionMenu } from "./hooks/use-mention-menu";
 import { useThreadSearch } from "./hooks/use-thread-search";
 import { useWorkspaceMenu } from "./hooks/use-workspace-menu";
 import { useNavigationHistory } from "./hooks/use-navigation-history";
+import { installPhysicalKeyFeedback } from "./physical-key-feedback";
 import { useRalphLoop, type RalphLaunch } from "./hooks/use-ralph-loop";
 import { useSelfHealTranscript } from "./hooks/use-self-heal-transcript";
 import { useSidebarWidth } from "./hooks/use-sidebar-width";
@@ -60,6 +65,7 @@ import { TreeModal } from "./tree-modal";
 import { ImageLightbox } from "./image-lightbox";
 import { Agentation } from "agentation";
 import { ToastHost, showToast } from "./toast";
+import { notifyThreadComplete, OPEN_SESSION_EVENT, type OpenSessionDetail } from "./composer-completion-toast";
 import { getEffectiveModelRuntime } from "./model-settings";
 import { resolveRepoWorkspaceId } from "./workspace-roots";
 import {
@@ -67,13 +73,8 @@ import {
   extractFilesFromDataTransfer,
   readComposerAttachmentsFromFiles,
 } from "./composer-attachments";
+import { applyDesktopLiveUpdate, applySelectedTranscriptLiveUpdate, applyTranscriptDelta, type TranscriptDelta } from "./live-update";
 
-// Stable reference for the "no transcript yet" fallback. A fresh `[]` each
-// render caused an infinite loop: ConversationTimeline's groupTranscript ran
-// every render, producing a new metaEvents array, which fired
-// onMetaEventsChange → setTimelineMetaEvents → App re-render → new `[]` →
-// repeat, until React tripped the max-update-depth guard and the tree
-// unmounted (the "black screen on thread switch" symptom).
 const EMPTY_TRANSCRIPT: readonly TranscriptMessage[] = Object.freeze([]) as readonly TranscriptMessage[];
 
 // Title for the optimistic sidebar row, derived from the prompt the user just
@@ -82,10 +83,15 @@ const EMPTY_TRANSCRIPT: readonly TranscriptMessage[] = Object.freeze([]) as read
 // new thread is being created. Lets the placeholder transcript and the live
 // transcript share one ConversationTimeline so going live reconciles instead
 // of remounting.
+// Default title the main process assigns a freshly created session until its
+// auto-generated title resolves. Keep in sync with the source of truth in
+// electron/thread-title-constants.ts (NEW_THREAD_PLACEHOLDER_TITLE).
+const NEW_THREAD_PLACEHOLDER_TITLE = "New thread";
+
 function deriveThreadTitle(prompt: string): string {
   const firstLine = prompt.split("\n").map((line) => line.trim()).find(Boolean) ?? "";
   if (!firstLine) {
-    return "New thread";
+    return NEW_THREAD_PLACEHOLDER_TITLE;
   }
   return firstLine.length > 60 ? `${firstLine.slice(0, 57)}\u2026` : firstLine;
 }
@@ -101,12 +107,36 @@ function useDesktopAppState() {
       return undefined;
     }
 
+    let pendingState: DesktopAppState | undefined;
+    let stateTimer: ReturnType<typeof setTimeout> | null = null;
+    let lastAppliedStateRoute = "";
+    const stateRoute = (state: DesktopAppState) =>
+      `${state.activeView}:${state.selectedWorkspaceId ?? ""}:${state.selectedSessionId ?? ""}:${state.selectedChatId ?? ""}`;
+    const clearStateCoalesce = () => {
+      if (stateTimer !== null) {
+        clearTimeout(stateTimer);
+        stateTimer = null;
+      }
+    };
+    const flushState = () => {
+      clearStateCoalesce();
+      if (!active || !pendingState) {
+        pendingState = undefined;
+        return;
+      }
+      const next = pendingState;
+      pendingState = undefined;
+      lastAppliedStateRoute = stateRoute(next);
+      setSnapshot((current) => applyDesktopLiveUpdate(current, { type: "snapshot", state: next }));
+    };
+
     void Promise.all([api.getState(), api.getSelectedTranscript()])
       .then(([state, transcript]) => {
         if (!active) return;
-        setSnapshot(state);
+        setSnapshot((current) => applyDesktopLiveUpdate(current, { type: "snapshot", state }));
+        lastAppliedStateRoute = stateRoute(state);
         lastAppliedSessionKey = transcript ? `${transcript.workspaceId}::${transcript.sessionId}` : null;
-        setSelectedTranscript(transcript);
+        setSelectedTranscript((current) => applySelectedTranscriptLiveUpdate(current, { type: "selected-transcript", payload: transcript }));
         // If a session is selected but transcript came back null, retry.
         if (!transcript && state.selectedSessionId) {
           void api.getSelectedTranscript().then((retried) => {
@@ -123,12 +153,13 @@ function useDesktopAppState() {
         if (!active) return;
         void api.getState().then((state) => {
           if (!active) return;
-          setSnapshot(state);
+          setSnapshot((current) => applyDesktopLiveUpdate(current, { type: "snapshot", state }));
+          lastAppliedStateRoute = stateRoute(state);
           if (state.selectedSessionId) {
             void api.getSelectedTranscript().then((transcript) => {
               if (active && transcript) {
                 lastAppliedSessionKey = `${transcript.workspaceId}::${transcript.sessionId}`;
-                setSelectedTranscript(transcript);
+                setSelectedTranscript((current) => applySelectedTranscriptLiveUpdate(current, { type: "selected-transcript", payload: transcript }));
               }
             });
           }
@@ -136,8 +167,20 @@ function useDesktopAppState() {
       });
 
     const unsubscribeState = api.onStateChanged((state) => {
-      if (active) {
-        setSnapshot(state);
+      if (!active) {
+        return;
+      }
+      const nextRoute = stateRoute(state);
+      if (nextRoute !== lastAppliedStateRoute) {
+        pendingState = undefined;
+        clearStateCoalesce();
+        lastAppliedStateRoute = nextRoute;
+        setSnapshot((current) => applyDesktopLiveUpdate(current, { type: "navigation", state }));
+        return;
+      }
+      pendingState = state;
+      if (stateTimer === null) {
+        stateTimer = setTimeout(flushState, 100);
       }
     });
 
@@ -176,14 +219,14 @@ function useDesktopAppState() {
       const next = pendingTranscript;
       pendingTranscript = undefined;
       lastAppliedSessionKey = next ? `${next.workspaceId}::${next.sessionId}` : null;
-      setSelectedTranscript(next);
+      setSelectedTranscript((current) => applySelectedTranscriptLiveUpdate(current, { type: "selected-transcript", payload: next }));
     };
 
     const applyTranscriptImmediately = (payload: SelectedTranscriptRecord | null) => {
       clearCoalesce();
       pendingTranscript = undefined;
       lastAppliedSessionKey = payload ? `${payload.workspaceId}::${payload.sessionId}` : null;
-      setSelectedTranscript(payload);
+      setSelectedTranscript((current) => applySelectedTranscriptLiveUpdate(current, { type: "selected-transcript", payload }));
     };
 
     const unsubscribeTranscript = api.onSelectedTranscriptChanged((payload) => {
@@ -210,11 +253,48 @@ function useDesktopAppState() {
       }
     });
 
+    const unsubscribeStatePatch = api.onStatePatch((patch) => {
+      if (!active) {
+        return;
+      }
+      setSnapshot((current) => applyDesktopLiveUpdate(current, { type: "workspace-session", workspaceId: patch.workspaceId, session: patch.session }));
+    });
+
+    // Transcript delta streaming: for the selected session, the main process
+    // emits an initial full transcript followed by incremental deltas (new
+    // messages only). This avoids re-sending the full transcript on every
+    // streaming delta.
+    let deltaTranscript: readonly TranscriptMessage[] | null = null;
+    let deltaSessionKey: string | null = null;
+    const unsubscribeTranscriptDelta = api.onTranscriptDelta((delta) => {
+      if (!active) {
+        return;
+      }
+      const incomingKey = `${delta.workspaceId}::${delta.sessionId}`;
+      if (deltaSessionKey !== incomingKey) {
+        deltaSessionKey = incomingKey;
+        deltaTranscript = delta.messages;
+      } else if (delta.initial) {
+        deltaTranscript = delta.messages;
+      } else {
+        deltaTranscript = applyTranscriptDelta(deltaTranscript ?? [], delta);
+      }
+      // Update the transcript state with the delta-merged result.
+      setSelectedTranscript(() => ({
+        workspaceId: delta.workspaceId,
+        sessionId: delta.sessionId,
+        transcript: deltaTranscript!,
+      }));
+    });
+
     return () => {
       active = false;
+      clearStateCoalesce();
       clearCoalesce();
       unsubscribeState();
       unsubscribeTranscript();
+      unsubscribeStatePatch();
+      unsubscribeTranscriptDelta();
     };
   }, []);
 
@@ -230,6 +310,39 @@ function updateSnapshot(
     setSnapshot(state);
     return state;
   });
+}
+
+function doneSessionKey(workspaceId: string, sessionId: string): string {
+  return `${workspaceId}:${sessionId}`;
+}
+
+// Force the given sessions to read as archived in a snapshot. Used as an
+// optimistic guard while a "done" action is in flight: it keeps the row out of
+// the active list even if a stale live-update patch (captured before the
+// archive landed) briefly reports the session as un-archived, which otherwise
+// makes the row flicker back.
+function forceSessionsArchived(state: DesktopAppState, doneKeys: ReadonlySet<string>): DesktopAppState {
+  if (doneKeys.size === 0) {
+    return state;
+  }
+  const archivedAt = new Date().toISOString();
+  let changed = false;
+  const workspaces = state.workspaces.map((workspace) => {
+    let workspaceChanged = false;
+    const sessions = workspace.sessions.map((session) => {
+      if (session.archivedAt || !doneKeys.has(doneSessionKey(workspace.id, session.id))) {
+        return session;
+      }
+      workspaceChanged = true;
+      return { ...session, archivedAt };
+    });
+    if (!workspaceChanged) {
+      return workspace;
+    }
+    changed = true;
+    return { ...workspace, sessions };
+  });
+  return changed ? { ...state, workspaces } : state;
 }
 
 function isEventInsideTerminal(event: globalThis.KeyboardEvent): boolean {
@@ -280,8 +393,6 @@ function formatRunningLabel(startedAt: string | undefined): string {
 
 export default function App() {
   const [snapshot, setSnapshot, selectedTranscript, setSelectedTranscript] = useDesktopAppState();
-  const [composerDraft, setComposerDraft] = useState("");
-  const [composerMode, setComposerMode] = useState<ComposerMode>("build");
   const [newThreadComposerMode, setNewThreadComposerMode] = useState<ComposerMode>("build");
   const [settingsSection, setSettingsSection] = useState<SettingsSection>("general");
   const [cavemanLevel, setCavemanLevel] = useState<CavemanLevel>("off");
@@ -291,6 +402,15 @@ export default function App() {
   const [skillsShowDisabled, setSkillsShowDisabled] = useState(true);
   const [skillsSelectedPath, setSkillsSelectedPath] = useState<string | undefined>();
   const [skillsCollapsedGroups, setSkillsCollapsedGroups] = useState<ReadonlySet<string>>(new Set());
+  // Session keys (workspaceId:sessionId) marked "done" whose archive is still
+  // being confirmed by the backend. Kept out of the active thread list to
+  // avoid an optimistic-vs-live-update flicker.
+  const [recentlyDone, setRecentlyDone] = useState<ReadonlySet<string>>(new Set());
+  // sessionId → prompt-derived title for freshly created threads. Shown in the
+  // sidebar while the session's title is still the "New thread" placeholder so
+  // the title doesn't flash to "New thread" between the prompt title and the
+  // auto-generated one. Pruned once the real title lands.
+  const [newThreadTitleFallback, setNewThreadTitleFallback] = useState<Readonly<Record<string, string>>>({});
   const [extensionsWorkspaceId, setExtensionsWorkspaceId] = useState("");
   const [pendingNewThreadWorkspaceId, setPendingNewThreadWorkspaceId] = useState("");
   const [newThreadRootWorkspaceId, setNewThreadRootWorkspaceId] = useState("");
@@ -339,6 +459,9 @@ export default function App() {
   const [newThreadThinkingLevel, setNewThreadThinkingLevel] = useState<string | undefined>();
   const [newThreadComposerError, setNewThreadComposerError] = useState<string | undefined>();
   const [themeMode, setThemeMode] = useState<"system" | "light" | "dark" | "dracula">("system");
+  const [buttonSoundSettings, setButtonSoundSettings] = useState<ButtonSoundSettings>(
+    () => ({ ...DEFAULT_BUTTON_SOUND_SETTINGS })
+  );
   const [notificationPermissionStatus, setNotificationPermissionStatus] =
     useState<DesktopNotificationPermissionStatus>("unknown");
   const [notificationPermissionPending, setNotificationPermissionPending] = useState(false);
@@ -366,9 +489,9 @@ export default function App() {
   const deferredPinnedBottomAlignmentRef = useRef(false);
   const pendingPinnedBottomBehaviorRef = useRef<ScrollBehavior>("auto");
   const previousActiveViewRef = useRef<AppView | null>(null);
-  const hydratedComposerSessionKeyRef = useRef("");
-  const handledComposerSyncNonceRef = useRef(0);
-  const lastAbortToastKeyRef = useRef("");
+  const sessionComposerRef = useRef<SessionComposerHandle>(null);
+  const prevSessionStatusRef = useRef<Map<string, SessionStatus>>(new Map());
+  const lastErrorToastKeyRef = useRef("");
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
   const [showDiffPanel, setShowDiffPanel] = useState(false);
   const [openTerminalSessionKey, setOpenTerminalSessionKey] = useState("");
@@ -378,9 +501,6 @@ export default function App() {
   const [diffRefreshNonce, setDiffRefreshNonce] = useState(0);
   const [timelinePaneMountVersion, setTimelinePaneMountVersion] = useState(0);
   const [disableTimelineVirtualization, setDisableTimelineVirtualization] = useState(true);
-  const [timelineMetaEvents, setTimelineMetaEvents] = useState<
-    readonly import("./timeline-grouping").TimelineMetaEvent[]
-  >(() => []);
   const threadSearch = useThreadSearch(timelinePaneRef);
   const api = window.piApp;
   const sidebarToggleStateRef = useRef<{
@@ -434,7 +554,8 @@ export default function App() {
     const mode = snapshot.composerDeviceMode;
     root.classList.toggle("composer-device", mode !== "off");
     root.classList.toggle("composer-device--screen", mode === "screen" || mode === "screen-neon");
-    root.classList.toggle("composer-device--modular", mode === "modular");
+    root.classList.toggle("composer-device--modular", mode === "modular" || mode === "modular-metal");
+    root.classList.toggle("composer-device--metal-keys", mode === "modular-metal");
     root.classList.toggle("composer-device--neon", mode === "screen-neon");
   }, [snapshot?.composerDeviceMode]);
 
@@ -552,6 +673,29 @@ export default function App() {
   const settingsModelRuntime = snapshot ? getEffectiveModelRuntime(snapshot, settingsWorkspace) : undefined;
   const skillsRuntime = skillsWorkspace ? snapshot?.runtimeByWorkspace[skillsWorkspace.id] : undefined;
   const extensionsRuntime = extensionsWorkspace ? snapshot?.runtimeByWorkspace[extensionsWorkspace.id] : undefined;
+  const contextWorkspace = selectedWorkspace
+    ? rootWorkspaceOptions.find((workspace) => workspace.id === (selectedWorkspace.rootWorkspaceId ?? selectedWorkspace.id)) ?? selectedWorkspace
+    : undefined;
+  const contextRuntime = contextWorkspace ? snapshot?.runtimeByWorkspace[contextWorkspace.id] : undefined;
+  const [contextSnapshot, setContextSnapshot] = useState<ContextSnapshot | null>(null);
+  const [contextLoading, setContextLoading] = useState(false);
+  const loadContextSnapshot = useCallback(() => {
+    if (!contextWorkspace || !api) {
+      setContextSnapshot(null);
+      return;
+    }
+    setContextLoading(true);
+    void api
+      .getContextSnapshot(contextWorkspace.id, selectedSession?.id)
+      .then((snap) => setContextSnapshot(snap))
+      .catch(() => setContextSnapshot(null))
+      .finally(() => setContextLoading(false));
+  }, [api, contextWorkspace, selectedSession?.id]);
+  useEffect(() => {
+    if (snapshot?.activeView === "context") {
+      loadContextSnapshot();
+    }
+  }, [snapshot?.activeView, loadContextSnapshot]);
   const extensionsCommandCompatibility = extensionsWorkspace
     ? snapshot?.extensionCommandCompatibilityByWorkspace[extensionsWorkspace.id] ?? []
     : [];
@@ -590,20 +734,7 @@ export default function App() {
     provider: resolvedNewThreadProvider,
     modelId: resolvedNewThreadModelId,
   });
-  // While a submit is in flight we optimistically hide the attachments that
-  // were captured by that submit, so the chips disappear immediately on send.
-  // But if the user pastes/drops a NEW attachment during that window, it must
-  // still render — otherwise the chip is invisible even though the backend
-  // already stored it (and a subsequent send would include it silently).
-  const [submitClearedAttachmentIds, setSubmitClearedAttachmentIds] = useState<readonly string[] | null>(null);
-  const composerAttachments = (() => {
-    const all = snapshot?.composerAttachments ?? [];
-    if (!submitClearedAttachmentIds) {
-      return all;
-    }
-    const cleared = new Set(submitClearedAttachmentIds);
-    return all.filter((attachment) => !cleared.has(attachment.id));
-  })();
+  const snapshotComposerAttachments = snapshot?.composerAttachments ?? [];
   const queuedComposerMessages = snapshot?.queuedComposerMessages ?? [];
   const editingQueuedMessageId = snapshot?.editingQueuedMessageId;
   const runningLabel = useRunningLabel(selectedSession?.status === "running" ? selectedSession.runningSince : undefined);
@@ -642,7 +773,14 @@ export default function App() {
     threadViewTranscript,
     threadViewIsRunning,
     composerFlipFromRef,
-  } = usePendingThreadGoLive(selectedTranscript, selectedSession, visibleTranscript, composerRef);
+    heroFlipFromRef,
+  } = usePendingThreadGoLive(
+    selectedTranscript,
+    selectedSession,
+    visibleTranscript,
+    composerRef,
+    snapshot?.threadTransition,
+  );
   useSelfHealTranscript(isTranscriptLoading, selectedWorkspace?.id, selectedSession?.id, setSelectedTranscript);
   const selectedSessionCommands = selectedSession ? snapshot?.sessionCommandsBySession[selectedSessionKey] ?? [] : [];
   const blackholeAvailable = selectedSessionCommands.some((command) => command.name === "blackhole");
@@ -657,16 +795,64 @@ export default function App() {
     }
   }, [snapshot]);
   useEffect(() => {
-    if (!snapshotLastError || !isRequestAbortedError(snapshotLastError)) {
+    if (!snapshotLastError) {
       return;
     }
     const toastKey = `${selectedSessionKey}:${snapshotLastError}`;
-    if (lastAbortToastKeyRef.current === toastKey) {
+    if (lastErrorToastKeyRef.current === toastKey) {
       return;
     }
-    lastAbortToastKeyRef.current = toastKey;
-    showToast({ variant: "error", message: snapshotLastError, autoDismissMs: 4000 });
+    lastErrorToastKeyRef.current = toastKey;
+    showToast({ variant: "error", message: snapshotLastError, autoDismissMs: 6000 });
   }, [selectedSessionKey, snapshotLastError]);
+  // In-app "thread finished" detection: fire a composer toast + chime when a
+  // background thread transitions out of "running". Edge-detection on the
+  // previous snapshot's status naturally dedupes; the currently-selected
+  // thread is skipped (you're already watching it).
+  useEffect(() => {
+    if (!snapshot) return;
+    const previousStatuses = prevSessionStatusRef.current;
+    const nextStatuses = new Map<string, SessionStatus>();
+    const preferences = snapshot.notificationPreferences;
+    const selectedKey = `${snapshot.selectedWorkspaceId}:${snapshot.selectedSessionId}`;
+    let firstFinishedSession: { workspaceId: string; sessionId: string } | null = null;
+    for (const workspace of snapshot.workspaces) {
+      for (const session of workspace.sessions) {
+        const key = `${workspace.id}:${session.id}`;
+        nextStatuses.set(key, session.status);
+        const before = previousStatuses.get(key);
+        if (before !== "running" || session.status === "running" || key === selectedKey) {
+          continue;
+        }
+        // Queue mode: auto-navigate to first finished session with unseen update
+        if (snapshot.queueMode && session.hasUnseenUpdate && !firstFinishedSession) {
+          firstFinishedSession = { workspaceId: workspace.id, sessionId: session.id };
+        }
+        if (session.status === "idle" && preferences.backgroundCompletion) {
+          notifyThreadComplete({
+            variant: "completion",
+            title: session.title,
+            workspaceId: workspace.id,
+            sessionId: session.id,
+          });
+        } else if (session.status === "failed" && preferences.backgroundFailure) {
+          notifyThreadComplete({
+            variant: "failure",
+            title: session.title,
+            workspaceId: workspace.id,
+            sessionId: session.id,
+          });
+        }
+      }
+    }
+    // Navigate to first finished session in queue mode
+    if (firstFinishedSession) {
+      void api?.selectSession(firstFinishedSession).then(() => {
+        focusComposer();
+      });
+    }
+    prevSessionStatusRef.current = nextStatuses;
+  }, [snapshot]);
   useEffect(() => {
     setOpenTerminalSessionKey("");
     setTakeoverTerminalSessionKey("");
@@ -674,16 +860,110 @@ export default function App() {
   const displayedSessionTitle = selectedExtensionUi?.title ?? selectedSession?.title ?? "";
   const activeExtensionDialog = selectedExtensionUi?.pendingDialogs[0];
   const persistedComposerDraft = snapshot?.composerDraft ?? "";
+  // Drop "done" guards once the snapshot confirms the session is archived (or
+  // gone), so the real backend state takes over from the optimistic override.
+  useEffect(() => {
+    if (recentlyDone.size === 0 || !snapshot) {
+      return;
+    }
+    const stillPending = new Set<string>();
+    for (const key of recentlyDone) {
+      const session = snapshot.workspaces
+        .flatMap((workspace) => workspace.sessions.map((s) => ({ workspaceId: workspace.id, session: s })))
+        .find((entry) => doneSessionKey(entry.workspaceId, entry.session.id) === key);
+      if (session && !session.session.archivedAt) {
+        stillPending.add(key);
+      }
+    }
+    if (stillPending.size !== recentlyDone.size) {
+      setRecentlyDone(stillPending);
+    }
+  }, [snapshot, recentlyDone]);
+
+  // Drop prompt-title fallbacks once the auto-generated title lands (or the
+  // session disappears).
+  useEffect(() => {
+    const ids = Object.keys(newThreadTitleFallback);
+    if (ids.length === 0 || !snapshot) {
+      return;
+    }
+    const titleById = new Map(
+      snapshot.workspaces.flatMap((workspace) => workspace.sessions.map((s) => [s.id, s.title] as const)),
+    );
+    const next: Record<string, string> = {};
+    for (const id of ids) {
+      const title = titleById.get(id);
+      // Keep the fallback only while the session still shows the placeholder.
+      if (title === NEW_THREAD_PLACEHOLDER_TITLE) {
+        next[id] = newThreadTitleFallback[id]!;
+      }
+    }
+    if (Object.keys(next).length !== ids.length) {
+      setNewThreadTitleFallback(next);
+    }
+  }, [snapshot, newThreadTitleFallback]);
+
   const threadGroups = useMemo(
     () => {
-      const groups = snapshot ? buildThreadGroups(snapshot) : [];
-      // Optimistic sidebar row: while a new thread is still being created (no
-      // real session id yet), show a running placeholder in its workspace so
-      // the thread appears immediately rather than after it goes live. Once
-      // the real session exists it is already in `groups`, so we stop
-      // injecting the placeholder.
-      if (!pendingThreadStart || pendingThreadStart.sessionId || !pendingThreadStart.rootWorkspaceId) {
+      const effective = snapshot ? forceSessionsArchived(snapshot, recentlyDone) : null;
+      const built = effective ? buildThreadGroups(effective) : [];
+      // Replace the "New thread" placeholder title with the prompt-derived one
+      // until the auto-generated title resolves.
+      const groups =
+        Object.keys(newThreadTitleFallback).length === 0
+          ? built
+          : built.map((group) => ({
+              ...group,
+              threads: group.threads.map((thread) => {
+                const fallback = newThreadTitleFallback[thread.session.id];
+                return fallback && thread.session.title === NEW_THREAD_PLACEHOLDER_TITLE
+                  ? { ...thread, session: { ...thread.session, title: fallback } }
+                  : thread;
+              }),
+            }));
+      // Optimistic sidebar row: while a new thread is still being created,
+      // show a running placeholder in its workspace so the thread appears
+      // immediately rather than after it goes live.
+      if (!pendingThreadStart || !pendingThreadStart.rootWorkspaceId) {
         return groups;
+      }
+      // Once the real session materialises in the snapshot, drop the sentinel
+      // and instead overlay the real row (see below). The main process selects
+      // the new session and can push it via a live-update *before* startThread's
+      // promise sets `sessionId`; matching on the freshly selected session
+      // avoids the placeholder and real row coexisting for a frame.
+      const selectedId = effective?.selectedSessionId;
+      const realId =
+        pendingThreadStart.sessionId ??
+        (selectedId &&
+        selectedId !== PENDING_THREAD_SESSION_ID &&
+        selectedId !== pendingThreadStart.priorSelectedSessionId &&
+        groups.some((group) => group.threads.some((thread) => thread.session.id === selectedId))
+          ? selectedId
+          : undefined);
+      if (realId) {
+        // The real session exists. Don't inject the sentinel row; instead keep
+        // its row "running" through the create→first-token gap (the backend
+        // emits the new session before the message dispatch flips it to
+        // running) and keep the prompt title until the generated one lands, so
+        // the spinner never pauses and the title never flashes "New thread".
+        const pendingTitle = pendingThreadStart.title;
+        return groups.map((group) => ({
+          ...group,
+          threads: group.threads.map((thread) =>
+            thread.session.id === realId
+              ? {
+                  ...thread,
+                  session: {
+                    ...thread.session,
+                    status: "running" as const,
+                    title:
+                      thread.session.title === NEW_THREAD_PLACEHOLDER_TITLE ? pendingTitle : thread.session.title,
+                  },
+                }
+              : thread,
+          ),
+        }));
       }
       const optimistic: ThreadListEntry = {
         workspaceId: pendingThreadStart.rootWorkspaceId,
@@ -704,7 +984,7 @@ export default function App() {
           : group,
       );
     },
-    [snapshot?.workspaces, snapshot?.worktreesByWorkspace, snapshot?.workspaceOrder, snapshot?.chats, pendingThreadStart],
+    [snapshot?.workspaces, snapshot?.worktreesByWorkspace, snapshot?.workspaceOrder, snapshot?.chats, snapshot?.selectedSessionId, pendingThreadStart, recentlyDone, newThreadTitleFallback],
   );
   const focusComposer = () => {
     window.requestAnimationFrame(() => {
@@ -1013,7 +1293,7 @@ export default function App() {
       loading: true,
       submitting: false,
     });
-    setComposerDraft("");
+    sessionComposerRef.current?.setDraft("");
 
     void api
       .getSessionTree({
@@ -1061,7 +1341,7 @@ export default function App() {
             loading: false,
             submitting: false,
           });
-          setComposerDraft((current) =>
+          sessionComposerRef.current?.setDraft((current) =>
             !current.trim() && result.editorText ? result.editorText : state.composerDraft,
           );
           focusComposer();
@@ -1076,34 +1356,6 @@ export default function App() {
     },
     [api, selectedSession, selectedWorkspace],
   );
-
-  const slashMenu = useSlashMenu({
-    composerDraft,
-    setComposerDraft,
-    selectedRuntime,
-    selectedModelRuntime,
-    sessionCommands: selectedSessionCommands,
-    commandCompatibility: selectedWorkspaceCommandCompatibility,
-    selectedSessionKey,
-    selectedSession,
-    selectedWorkspace,
-    isRunning: selectedSession?.status === "running",
-    api,
-    setSnapshot,
-    focusComposer,
-    openSettings,
-    updateSnapshot,
-    allowTreeCommand: true,
-    onRunTreeCommand: openTreeModal,
-  });
-
-  const mentionMenu = useMentionMenu({
-    composerDraft,
-    setComposerDraft,
-    composerRef,
-    workspaceId: selectedWorkspace?.id,
-    api,
-  });
 
   const newThreadSlashMenu = useSlashMenu({
     composerDraft: newThreadPrompt,
@@ -1155,35 +1407,6 @@ export default function App() {
     setSnapshot,
     updateSnapshot,
   });
-
-  useEffect(() => {
-    if (!snapshot) {
-      return;
-    }
-
-    if (hydratedComposerSessionKeyRef.current !== selectedSessionKey) {
-      hydratedComposerSessionKeyRef.current = selectedSessionKey;
-      handledComposerSyncNonceRef.current = snapshot.composerDraftSyncNonce;
-      setComposerDraft(snapshot.composerDraft);
-      return;
-    }
-
-    if (snapshot.composerDraftSyncNonce === handledComposerSyncNonceRef.current) {
-      return;
-    }
-
-    handledComposerSyncNonceRef.current = snapshot.composerDraftSyncNonce;
-    if (snapshot.composerDraftSyncSource === "persist" || snapshot.composerDraftSyncSource === "state") {
-      return;
-    }
-
-    setComposerDraft(snapshot.composerDraft);
-  }, [
-    selectedSessionKey,
-    snapshot?.composerDraft,
-    snapshot?.composerDraftSyncNonce,
-    snapshot?.composerDraftSyncSource,
-  ]);
 
   useEffect(() => {
     if (rootWorkspaceOptions.length === 0) {
@@ -1286,15 +1509,25 @@ export default function App() {
     [api],
   );
 
+  useEffect(() => installPhysicalKeyFeedback(), []);
+
   useEffect(() => {
     const cycleThinking = () => {
       const session = selectedSessionRef.current;
       const workspace = selectedWorkspaceRef.current;
       if (!session || !workspace || !api) return;
-      const currentLevel = session.config?.thinkingLevel;
-      const currentIndex = THINKING_OPTIONS.findIndex((opt) => opt.value === currentLevel);
-      const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % THINKING_OPTIONS.length : 0;
-      const next = THINKING_OPTIONS[nextIndex];
+      const currentLevel = session.config?.thinkingLevel ?? "off";
+      // Filter THINKING_OPTIONS to only include levels the current model supports
+      const runtime = workspace ? snapshot?.runtimeByWorkspace[workspace.id] : undefined;
+      const modelRecord = runtime?.models.find(
+        (m) => m.providerId === session.config?.provider && m.modelId === session.config?.modelId,
+      );
+      const availableLevels = modelRecord?.availableThinkingLevels ?? ["off", "low", "medium", "high", "xhigh"];
+      const cycleable = THINKING_OPTIONS.filter((opt) => availableLevels.includes(opt.value));
+      if (cycleable.length === 0) return;
+      const currentIndex = cycleable.findIndex((opt) => opt.value === currentLevel);
+      const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % cycleable.length : 0;
+      const next = cycleable[nextIndex];
       if (next) {
         void api.setSessionThinkingLevel(workspace.id, session.id, next.value as NonNullable<RuntimeSnapshot["settings"]["defaultThinkingLevel"]>);
       }
@@ -1465,10 +1698,14 @@ export default function App() {
     }
 
     if (snapshot.activeView === "new-thread" && previousActiveViewRef.current !== "new-thread") {
-      const nextRootWorkspaceId = resolveRepoWorkspaceId(snapshot.workspaces, selectedWorkspace?.id);
-      if (nextRootWorkspaceId) {
-        setNewThreadRootWorkspaceId(nextRootWorkspaceId);
-      }
+      // Only set the workspace if it wasn't already set by openNewThreadSurface
+      setNewThreadRootWorkspaceId((current) => {
+        if (current) {
+          return current;
+        }
+        const nextRootWorkspaceId = resolveRepoWorkspaceId(snapshot.workspaces, selectedWorkspace?.id);
+        return nextRootWorkspaceId || current;
+      });
     }
 
     if (snapshot.activeView !== "threads") {
@@ -1490,50 +1727,6 @@ export default function App() {
 
     previousActiveViewRef.current = snapshot.activeView;
   }, [schedulePinnedBottomRealignment, selectedSession, selectedWorkspace?.id, snapshot]);
-
-  useEffect(() => {
-    if (!api || composerDraft === persistedComposerDraft) {
-      return undefined;
-    }
-
-    const timeout = window.setTimeout(() => {
-      void api.updateComposerDraft(composerDraft);
-    }, 350);
-
-    return () => {
-      window.clearTimeout(timeout);
-    };
-  }, [api, composerDraft, persistedComposerDraft, setSnapshot]);
-
-  useLayoutEffect(() => {
-    const composer = composerRef.current;
-    if (!composer) {
-      return undefined;
-    }
-
-    const pane = timelinePaneRef.current;
-    const previousHeight = composer.getBoundingClientRect().height;
-    const shouldPreserveBottom = pane
-      ? isNearBottom(pane) || pinnedToBottomRef.current || preserveBottomOnNextPaneResizeRef.current
-      : pinnedToBottomRef.current || preserveBottomOnNextPaneResizeRef.current;
-
-    composer.style.height = "0px";
-    composer.style.height = `${Math.min(composer.scrollHeight, 400)}px`;
-
-    const nextHeight = composer.getBoundingClientRect().height;
-    if (Math.abs(nextHeight - previousHeight) >= 1 && shouldPreserveBottom) {
-      preserveBottomOnNextPaneResizeRef.current = true;
-      requestPinnedBottomAlignment("auto", { preferExactRestore: true });
-      window.requestAnimationFrame(() => {
-        window.requestAnimationFrame(() => {
-          preserveBottomOnNextPaneResizeRef.current = false;
-          if (pinnedToBottomRef.current) {
-            requestPinnedBottomAlignment("auto", { preferExactRestore: true });
-          }
-        });
-      });
-    }
-  }, [composerDraft, requestPinnedBottomAlignment]);
 
   useLayoutEffect(() => {
     if (snapshot?.activeView !== "threads" || !selectedSession) {
@@ -1634,6 +1827,34 @@ export default function App() {
     });
   }, [requestPinnedBottomAlignment]);
 
+  // Click-through from the composer "thread finished" toast.
+  // Must be declared before the early return below to preserve hook order.
+  const handleSelectSession = (target: { workspaceId: string; sessionId: string }) => {
+    // The optimistic placeholder row isn't a real session yet — ignore clicks.
+    if (target.sessionId === PENDING_THREAD_SESSION_ID) {
+      return;
+    }
+    setOpenTerminalSessionKey("");
+    setTakeoverTerminalSessionKey("");
+    // Don't double-setSnapshot: the main process already pushes state via
+    // onStateChanged inside selectSession (applyFastSessionSelection → emit).
+    // Calling setSnapshot again on the IPC return value caused a second full
+    // re-render with a structurally-equal-but-fresh object.
+    void api?.selectSession(target).then(() => {
+      focusComposer();
+    });
+  };
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<OpenSessionDetail>).detail;
+      if (!detail) return;
+      handleSelectSession({ workspaceId: detail.workspaceId, sessionId: detail.sessionId });
+    };
+    window.addEventListener(OPEN_SESSION_EVENT, handler);
+    return () => window.removeEventListener(OPEN_SESSION_EVENT, handler);
+  }, []);
+
   if (!api || !snapshot) {
     return (
       <div className="shell shell--loading">
@@ -1707,6 +1928,14 @@ export default function App() {
     setActiveView("new-thread");
   };
 
+  const openContext = () => {
+    setActiveView("context");
+  };
+
+  const setQueueMode = (enabled: boolean) => {
+    void updateSnapshot(api, setSnapshot, () => api.setQueueMode(enabled));
+  };
+
   const openNewChatSurface = () => {
     setPendingNewThreadWorkspaceId("");
     setNewThreadIsChat(true);
@@ -1718,99 +1947,6 @@ export default function App() {
     setNewThreadComposerError(undefined);
     setActiveView("new-thread");
     focusNewThreadComposer();
-  };
-
-  const handleSelectNewThreadWorkspace = (workspaceId: string) => {
-    setPendingNewThreadWorkspaceId("");
-    setNewThreadRootWorkspaceId(workspaceId);
-    // Draft text + attachments are per-workspace (newThreadPromptByWorkspace,
-    // newThreadAttachmentsByWorkspace) so switching just swaps which draft
-    // is visible; leave both alone.
-    setNewThreadProvider(undefined);
-    setNewThreadModelId(undefined);
-    setNewThreadThinkingLevel(undefined);
-    setNewThreadComposerError(undefined);
-  };
-
-  const submitComposerDraft = (options: { readonly deliverAs?: "steer" | "followUp" } = {}) => {
-    if (!selectedSession) {
-      return;
-    }
-
-    const hasComposerInput = composerDraft.trim().length > 0 || composerAttachments.length > 0;
-    if (selectedSession.status === "running" && !hasComposerInput) {
-      void updateSnapshot(api, setSnapshot, () => api.cancelCurrentRun());
-      return;
-    }
-
-    if (!hasComposerInput) {
-      return;
-    }
-    if (selectedSessionModelOnboarding.requiresModelSelection) {
-      return;
-    }
-
-    const treeCommand = parseTreeComposerCommand(composerDraft);
-    if (treeCommand?.type === "error") {
-      setSnapshot((current) =>
-        current
-          ? {
-              ...current,
-              lastError: treeCommand.message,
-            }
-          : current,
-      );
-      return;
-    }
-    if (treeCommand?.type === "tree") {
-      openTreeModal();
-      return;
-    }
-
-    const previousDraft = composerDraft;
-    const submitMode = composerMode;
-    const clearedIds = composerAttachments.map((attachment) => attachment.id);
-    setComposerDraft("");
-    setSubmitClearedAttachmentIds(clearedIds);
-    void (async () => {
-      const nextState = await updateSnapshot(api, setSnapshot, () =>
-        api.submitComposer(
-          previousDraft,
-          selectedSession.status === "running"
-            ? { deliverAs: options.deliverAs ?? "followUp", mode: submitMode }
-            : { mode: submitMode },
-        ),
-      );
-      setComposerDraft(nextState.composerDraft);
-      setSubmitClearedAttachmentIds(null);
-    })().catch(() => {
-      setComposerDraft(previousDraft);
-      setSubmitClearedAttachmentIds(null);
-    });
-  };
-
-  const handleRemoveAttachment = (attachmentId: string) => {
-    void updateSnapshot(api, setSnapshot, () => api.removeComposerAttachment(attachmentId));
-  };
-
-  const handleEditQueuedMessage = (messageId: string) => {
-    void updateSnapshot(api, setSnapshot, () => api.editQueuedComposerMessage(messageId, composerDraft)).then(() => {
-      composerRef.current?.focus();
-    });
-  };
-
-  const handleCancelQueuedEdit = () => {
-    void updateSnapshot(api, setSnapshot, () => api.cancelQueuedComposerEdit()).then(() => {
-      composerRef.current?.focus();
-    });
-  };
-
-  const handleRemoveQueuedMessage = (messageId: string) => {
-    void updateSnapshot(api, setSnapshot, () => api.removeQueuedComposerMessage(messageId));
-  };
-
-  const handleSteerQueuedMessage = (messageId: string) => {
-    void updateSnapshot(api, setSnapshot, () => api.steerQueuedComposerMessage(messageId));
   };
 
   const handleNewThreadAddAttachments = (files: File[]) => {
@@ -1844,36 +1980,13 @@ export default function App() {
     onFiles(files);
   };
 
-  const handleComposerPaste = (event: ClipboardEvent<HTMLDivElement>) => {
-    handleImagePaste(event, (files) => {
-      void addAttachmentsToSessionComposer(files);
-    });
-  };
-
   const handleNewThreadComposerPaste = (event: ClipboardEvent<HTMLDivElement>) => {
     handleImagePaste(event, handleNewThreadAddAttachments);
-  };
-
-  const handleComposerDrop = (event: DragEvent<HTMLDivElement>) => {
-    handleAttachmentDrop(event, (files) => {
-      void addAttachmentsToSessionComposer(files);
-    });
   };
 
   const handleNewThreadComposerDrop = (event: DragEvent<HTMLDivElement>) => {
     handleAttachmentDrop(event, handleNewThreadAddAttachments);
   };
-
-  async function addAttachmentsToSessionComposer(files: File[]) {
-    if (!api) {
-      return;
-    }
-    const valid = await readComposerAttachmentsFromFiles(files);
-    if (valid.length === 0) {
-      return;
-    }
-    void updateSnapshot(api, setSnapshot, () => api.addComposerAttachments(valid));
-  }
 
   const handleClipboardImageShortcut = (
     event: KeyboardEvent<HTMLTextAreaElement>,
@@ -2087,7 +2200,7 @@ export default function App() {
 
   const handleTrySkill = (command: string) => {
     void updateSnapshot(api, setSnapshot, () => api.setActiveView("threads"));
-    slashMenu.fillComposerFromSlash(command);
+    sessionComposerRef.current?.fillFromSlash(command);
   };
 
   const handleSetThemeMode = (mode: "system" | "light" | "dark" | "dracula") => {
@@ -2157,27 +2270,18 @@ export default function App() {
   };
 
   const handleArchiveSession = (target: { workspaceId: string; sessionId: string }) => {
+    // Optimistically guard the row out of the active list immediately; the
+    // guard is dropped once the backend snapshot confirms the archive.
+    setRecentlyDone((prev) => {
+      const next = new Set(prev);
+      next.add(doneSessionKey(target.workspaceId, target.sessionId));
+      return next;
+    });
     void updateSnapshot(api, setSnapshot, () => api.archiveSession(target));
   };
 
   const handleArchiveAllNonRunningSessions = (workspaceId: string, olderThanMs?: number) => {
     void updateSnapshot(api, setSnapshot, () => api.archiveAllNonRunningSessions(workspaceId, olderThanMs));
-  };
-
-  const handleSelectSession = (target: { workspaceId: string; sessionId: string }) => {
-    // The optimistic placeholder row isn't a real session yet — ignore clicks.
-    if (target.sessionId === PENDING_THREAD_SESSION_ID) {
-      return;
-    }
-    setOpenTerminalSessionKey("");
-    setTakeoverTerminalSessionKey("");
-    // Don't double-setSnapshot: the main process already pushes state via
-    // onStateChanged inside selectSession (applyFastSessionSelection → emit).
-    // Calling setSnapshot again on the IPC return value caused a second full
-    // re-render with a structurally-equal-but-fresh object.
-    void api.selectSession(target).then(() => {
-      focusComposer();
-    });
   };
 
   const handleRespondToExtensionDialog = (
@@ -2224,14 +2328,15 @@ export default function App() {
     void updateSnapshot(api, setSnapshot, () => api.removeChat(chatId));
   };
 
-  const handleStartChat = () => {
-    if (!newThreadPrompt.trim() && newThreadAttachments.length === 0) {
+  const handleStartChat = (promptOverride?: string) => {
+    const submittedPrompt = promptOverride ?? newThreadPrompt;
+    if (!submittedPrompt.trim() && newThreadAttachments.length === 0) {
       return;
     }
     if (newThreadModelOnboarding.requiresModelSelection) {
       return;
     }
-    const treeCommand = parseTreeComposerCommand(newThreadPrompt);
+    const treeCommand = parseTreeComposerCommand(submittedPrompt);
     if (treeCommand?.type === "error") {
       setNewThreadComposerError(treeCommand.message);
       return;
@@ -2241,16 +2346,17 @@ export default function App() {
       return;
     }
     const input: StartChatInput = {
-      prompt: newThreadComposerMode === "plan" ? buildPlanModePrompt(newThreadPrompt) : newThreadPrompt,
+      prompt: newThreadComposerMode === "plan" ? buildPlanModePrompt(submittedPrompt) : submittedPrompt,
       attachments: newThreadAttachments,
       provider: resolvedNewThreadProvider,
       modelId: resolvedNewThreadModelId,
       thinkingLevel: resolvedNewThreadThinkingLevel,
     };
-    const capturedPrompt = newThreadPrompt;
+    const capturedPrompt = submittedPrompt;
     const capturedAttachments = newThreadAttachments;
     composerFlipFromRef.current =
       document.querySelector(".new-thread__composer")?.getBoundingClientRect() ?? null;
+    heroFlipFromRef.current = captureHeroFlip();
     setPendingThreadStart({
       rootWorkspaceId: "",
       title: deriveThreadTitle(capturedPrompt),
@@ -2292,18 +2398,19 @@ export default function App() {
       });
   };
 
-  const handleStartThread = () => {
+  const handleStartThread = (promptOverride?: string) => {
+    const submittedPrompt = promptOverride ?? newThreadPrompt;
     if (newThreadIsChat) {
-      handleStartChat();
+      handleStartChat(submittedPrompt);
       return;
     }
-    if (!newThreadRootWorkspaceId || (!newThreadPrompt.trim() && newThreadAttachments.length === 0)) {
+    if (!newThreadRootWorkspaceId || (!submittedPrompt.trim() && newThreadAttachments.length === 0)) {
       return;
     }
     if (newThreadModelOnboarding.requiresModelSelection) {
       return;
     }
-    const treeCommand = parseTreeComposerCommand(newThreadPrompt);
+    const treeCommand = parseTreeComposerCommand(submittedPrompt);
     if (treeCommand?.type === "error") {
       setNewThreadComposerError(treeCommand.message);
       return;
@@ -2313,7 +2420,7 @@ export default function App() {
       return;
     }
     const modelConfig = {
-      prompt: newThreadComposerMode === "plan" ? buildPlanModePrompt(newThreadPrompt) : newThreadPrompt,
+      prompt: newThreadComposerMode === "plan" ? buildPlanModePrompt(submittedPrompt) : submittedPrompt,
       attachments: newThreadAttachments,
       provider: resolvedNewThreadProvider,
       modelId: resolvedNewThreadModelId,
@@ -2332,11 +2439,13 @@ export default function App() {
     // stale text if startThread resolves slowly.
     composerFlipFromRef.current =
       document.querySelector(".new-thread__composer")?.getBoundingClientRect() ?? null;
+    heroFlipFromRef.current = captureHeroFlip();
     setPendingThreadStart({
       rootWorkspaceId: newThreadRootWorkspaceId,
-      title: deriveThreadTitle(newThreadPrompt),
+      title: deriveThreadTitle(submittedPrompt),
+      priorSelectedSessionId: snapshot?.selectedSessionId,
       createdAt: new Date().toISOString(),
-      prompt: newThreadPrompt,
+      prompt: submittedPrompt,
       attachments: newThreadAttachments,
       provider: resolvedNewThreadProvider,
       modelId: resolvedNewThreadModelId,
@@ -2362,13 +2471,20 @@ export default function App() {
           ? { ...prev, sessionId: state.selectedSessionId, workspaceId: state.selectedWorkspaceId }
           : prev,
       );
+      // Keep showing the prompt title until the auto-generated one resolves.
+      if (state.selectedSessionId) {
+        setNewThreadTitleFallback((prev) => ({
+          ...prev,
+          [state.selectedSessionId]: deriveThreadTitle(submittedPrompt),
+        }));
+      }
     }).catch((error: unknown) => {
       // startThread can reject if the main process fails to register/handle
       // the IPC (e.g. a runtime spin-up error). Without this the pending
       // "Preparing your thread…" view would hang forever with no feedback.
       // Clear the placeholder, restore the composer input, and surface the error.
       setPendingThreadStart(null);
-      setNewThreadPrompt(newThreadPrompt);
+      setNewThreadPrompt(submittedPrompt);
       setNewThreadAttachments(newThreadAttachments);
       setNewThreadComposerError(
         error instanceof Error ? error.message : "Failed to start thread.",
@@ -2399,48 +2515,6 @@ export default function App() {
     requestPinnedBottomAlignment("smooth", { preferExactRestore: true });
   };
 
-  const handleComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (handleClipboardImageShortcut(event, (clipboardImage) => {
-      void updateSnapshot(api, setSnapshot, () => api.addComposerAttachments([clipboardImage]));
-    })) {
-      return;
-    }
-
-    if (mentionMenu.handleMentionKeyDown(event)) {
-      return;
-    }
-
-    if (slashMenu.handleSlashKeyDown(event)) {
-      return;
-    }
-
-    if (event.key === "Escape" && selectedSession?.status === "running") {
-      event.preventDefault();
-      void updateSnapshot(api, setSnapshot, () => api.cancelCurrentRun());
-      return;
-    }
-
-    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing && selectedSession?.status === "running") {
-      event.preventDefault();
-      submitComposerDraft({ deliverAs: (event.metaKey || event.ctrlKey) ? "steer" : "followUp" });
-      return;
-    }
-
-    if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) {
-      return;
-    }
-
-    event.preventDefault();
-    if (!composerDraft.trim() && composerAttachments.length === 0) {
-      return;
-    }
-    if (selectedSessionModelOnboarding.requiresModelSelection) {
-      return;
-    }
-
-    submitComposerDraft();
-  };
-
   const handleNewThreadComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (handleClipboardImageShortcut(event, (clipboardImage) => {
       setNewThreadAttachments((current) => [...current, clipboardImage]);
@@ -2456,19 +2530,7 @@ export default function App() {
       return;
     }
 
-    if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) {
-      return;
-    }
-
-    event.preventDefault();
-    if (!newThreadPrompt.trim() && newThreadAttachments.length === 0) {
-      return;
-    }
-    if (newThreadModelOnboarding.requiresModelSelection) {
-      return;
-    }
-
-    handleStartThread();
+    return;
   };
 
   if (snapshot.activeView === "settings") {
@@ -2504,6 +2566,9 @@ export default function App() {
             onOpenSkills={openSkills}
             onOpenExtensions={openExtensions}
             onOpenSettings={openSettings}
+            onOpenContext={openContext}
+            queueMode={snapshot.queueMode}
+            onSetQueueMode={setQueueMode}
             onArchiveSession={handleArchiveSession}
             onArchiveAllNonRunningSessions={handleArchiveAllNonRunningSessions}
             onSelectSession={handleSelectSession}
@@ -2550,7 +2615,13 @@ export default function App() {
             enableTransparency={snapshot.enableTransparency}
             transcriptVerbose={snapshot.transcriptVerbose}
             composerDeviceMode={snapshot.composerDeviceMode}
+            threadTransition={snapshot.threadTransition}
+            buttonSoundSettings={buttonSoundSettings}
             subagentSettings={snapshot.subagentSettings}
+            retrySettings={snapshot.retrySettings}
+            onSetRetrySettings={(settings) => {
+              void updateSnapshot(api, setSnapshot, () => api.setRetrySettings(settings));
+            }}
             subagentAgents={settingsWorkspace ? snapshot.subagentAgentsByWorkspace[settingsWorkspace.id] ?? [] : []}
             onLoginProvider={handleLoginProvider}
             onLogoutProvider={handleLogoutProvider}
@@ -2580,6 +2651,14 @@ export default function App() {
             }}
             onSetComposerDeviceMode={(enabled) => {
               void updateSnapshot(api, setSnapshot, () => api.setComposerDeviceMode(enabled));
+            }}
+            onSetThreadTransition={(settings) => {
+              void updateSnapshot(api, setSnapshot, () => api.setThreadTransition(settings));
+            }}
+            onSetButtonSoundSettings={setButtonSoundSettings}
+            commitPushModel={snapshot.commitPushModel}
+            onSetCommitPushModel={(model) => {
+              void updateSnapshot(api, setSnapshot, () => api.setCommitPushModel(rootWorkspace?.id ?? "", model));
             }}
           />
         </main>
@@ -2632,6 +2711,9 @@ export default function App() {
             onOpenSkills={openSkills}
             onOpenExtensions={openExtensions}
             onOpenSettings={openSettings}
+            onOpenContext={openContext}
+            queueMode={snapshot.queueMode}
+            onSetQueueMode={setQueueMode}
             onArchiveSession={handleArchiveSession}
             onArchiveAllNonRunningSessions={handleArchiveAllNonRunningSessions}
             onSelectSession={handleSelectSession}
@@ -2727,6 +2809,9 @@ export default function App() {
             onOpenSkills={openSkills}
             onOpenExtensions={openExtensions}
             onOpenSettings={openSettings}
+            onOpenContext={openContext}
+            queueMode={snapshot.queueMode}
+            onSetQueueMode={setQueueMode}
             onArchiveSession={handleArchiveSession}
             onArchiveAllNonRunningSessions={handleArchiveAllNonRunningSessions}
             onSelectSession={handleSelectSession}
@@ -2752,6 +2837,68 @@ export default function App() {
             }}
             onToggleExtension={handleToggleExtension}
             onDeleteExtension={handleDeleteExtension}
+          />
+        </main>
+        {import.meta.env.DEV && <Agentation />}
+      </div>
+    );
+  }
+
+  if (snapshot.activeView === "context") {
+    const contextShellClass = `shell shell--skills${snapshot.sidebarCollapsed ? " shell--sidebar-collapsed" : ""}${sidebarResize.isResizing ? " shell--sidebar-resizing" : ""}`;
+    const contextShellStyle = snapshot.sidebarCollapsed
+      ? undefined
+      : ({ ["--sidebar-width" as string]: `${sidebarResize.width}px` } as React.CSSProperties);
+    return (
+      <div className={contextShellClass} style={contextShellStyle} data-testid="context-surface">
+        {primarySidebarToggleVisible ? (
+          <SidebarToggleButton
+            collapsed={snapshot.sidebarCollapsed}
+            shortcutLabel={sidebarToggleShortcutLabel}
+            onToggle={handleTogglePrimarySidebar}
+          />
+        ) : null}
+        {!snapshot.sidebarCollapsed ? (
+          <Sidebar
+            resize={sidebarResize}
+            activeView={snapshot.activeView}
+            selectedWorkspace={selectedWorkspace}
+            selectedSession={selectedSession}
+            chats={chats}
+            visibleWorkspaces={visibleWorkspaces}
+            threadGroups={threadGroups}
+            linkedWorktreeByWorkspaceId={linkedWorktreeByWorkspaceId}
+            wsMenu={wsMenu}
+            api={api}
+            setSnapshot={setSnapshot}
+            updateSnapshot={updateSnapshot}
+            onNewThreadForWorkspace={(rootWorkspaceId) => openNewThreadSurface(rootWorkspaceId)}
+            onSetActiveView={setActiveView}
+            onOpenSkills={openSkills}
+            onOpenExtensions={openExtensions}
+            onOpenSettings={openSettings}
+            onOpenContext={openContext}
+            queueMode={snapshot.queueMode}
+            onSetQueueMode={setQueueMode}
+            onArchiveSession={handleArchiveSession}
+            onArchiveAllNonRunningSessions={handleArchiveAllNonRunningSessions}
+            onSelectSession={handleSelectSession}
+            onUnarchiveSession={handleUnarchiveSession}
+            onCreateChat={handleCreateChat}
+            onSelectChat={handleSelectChat}
+            onArchiveChat={handleArchiveChat}
+            onUnarchiveChat={handleUnarchiveChat}
+            onRemoveChat={handleRemoveChat}
+          />
+        ) : null}
+        <main className="main main--skills">
+          <ContextView
+            workspace={contextWorkspace}
+            runtime={contextRuntime}
+            snapshot={contextSnapshot}
+            loading={contextLoading}
+            onRefresh={loadContextSnapshot}
+            api={api}
           />
         </main>
         {import.meta.env.DEV && <Agentation />}
@@ -2792,6 +2939,9 @@ export default function App() {
           onOpenSkills={openSkills}
           onOpenExtensions={openExtensions}
           onOpenSettings={openSettings}
+          onOpenContext={openContext}
+            queueMode={snapshot.queueMode}
+            onSetQueueMode={setQueueMode}
           onArchiveSession={handleArchiveSession}
             onArchiveAllNonRunningSessions={handleArchiveAllNonRunningSessions}
           onSelectSession={handleSelectSession}
@@ -2816,8 +2966,6 @@ export default function App() {
           workspaces={snapshot.workspaces}
           wsMenu={wsMenu}
           api={api}
-          setSnapshot={setSnapshot}
-          updateSnapshot={updateSnapshot}
           terminalAvailable={Boolean(selectedSessionKey)}
           terminalVisible={isTerminalVisibleForSelectedThread}
           onToggleTerminal={toggleTerminal}
@@ -2866,7 +3014,6 @@ export default function App() {
               selectedMentionIndex={newThreadMentionMenu.selectedIndex}
               onChangePrompt={setNewThreadPrompt}
               onSelectEnvironment={setNewThreadEnvironment}
-              onSelectWorkspace={handleSelectNewThreadWorkspace}
               onSetModel={(provider, modelId) => { setNewThreadProvider(provider); setNewThreadModelId(modelId); }}
               onSetThinking={setNewThreadThinkingLevel}
               onSetCavemanLevel={handleSetDefaultCavemanLevel}
@@ -2916,7 +3063,6 @@ export default function App() {
                   onViewFileInDiff={handleViewFileInDiff}
                   onUndoEdits={handleUndoEdits}
                   onRedoEdits={handleRedoEdits}
-                  onMetaEventsChange={setTimelineMetaEvents}
                   isRunning={threadViewIsRunning}
                   workingLabel={pendingThreadStart ? "Preparing your thread…" : undefined}
                 />
@@ -2924,65 +3070,51 @@ export default function App() {
               </div>
             </section>
             {selectedWorkspace && selectedSession ? (
-            <ComposerPanel
-              key={selectedSessionKey}
-              loopControl={loopControl}
-              beginRalphLoop={beginRalphLoop}
-              activeSlashCommand={slashMenu.activeSlashFlow?.command}
-              activeSlashCommandMeta={slashMenu.activeSlashFlow?.command?.description}
-              attachments={composerAttachments}
+            <SessionComposer
+              ref={sessionComposerRef}
+              api={api}
+              setSnapshot={setSnapshot}
+              updateSnapshot={updateSnapshot}
+              selectedSession={selectedSession}
+              selectedWorkspace={selectedWorkspace}
+              selectedSessionKey={selectedSessionKey}
+              selectedRuntime={selectedRuntime}
+              selectedModelRuntime={selectedModelRuntime}
+              resolvedSessionProvider={resolvedSessionProvider}
+              resolvedSessionModelId={resolvedSessionModelId}
+              resolvedSessionThinkingLevel={resolvedSessionThinkingLevel}
+              modelOnboarding={selectedSessionModelOnboarding}
+              selectedSessionCommands={selectedSessionCommands}
+              selectedWorkspaceCommandCompatibility={selectedWorkspaceCommandCompatibility}
+              blackholeAvailable={blackholeAvailable}
+              snapshotComposerAttachments={snapshotComposerAttachments}
               queuedMessages={queuedComposerMessages}
               editingQueuedMessageId={editingQueuedMessageId}
-              composerDraft={composerDraft}
+              cavemanLevel={cavemanLevel}
+              runningLabel={runningLabel}
+              loopControl={loopControl}
+              beginRalphLoop={beginRalphLoop}
+              lastError={composerLastError}
+              hasSnapshot={Boolean(snapshot)}
+              persistedComposerDraft={persistedComposerDraft}
+              composerDraftSyncNonce={snapshot?.composerDraftSyncNonce ?? 0}
+              composerDraftSyncSource={snapshot?.composerDraftSyncSource}
               composerRef={composerRef}
               modelSelectorRef={modelSelectorRef}
-              runtime={selectedModelRuntime}
-              provider={resolvedSessionProvider}
-              modelId={resolvedSessionModelId}
-              thinkingLevel={resolvedSessionThinkingLevel}
-              cavemanLevel={cavemanLevel}
-              composerMode={composerMode}
-              blackholeAvailable={blackholeAvailable}
-              metaEvents={timelineMetaEvents}
-              onClearSlashCommand={slashMenu.resetSlashUi}
-              onComposerKeyDown={handleComposerKeyDown}
-              onComposerPaste={handleComposerPaste}
-              onComposerDrop={handleComposerDrop}
-              onRemoveAttachment={handleRemoveAttachment}
-              onEditQueuedMessage={handleEditQueuedMessage}
-              onCancelQueuedEdit={handleCancelQueuedEdit}
-              onRemoveQueuedMessage={handleRemoveQueuedMessage}
-              onSteerQueuedMessage={handleSteerQueuedMessage}
-              onSelectSlashCommand={(command) => {
-                slashMenu.applySlashCommandSelection(command, "click");
-              }}
-              onSelectSlashOption={(option) => {
-                slashMenu.applySlashOptionSelection(option);
-              }}
+              timelinePaneRef={timelinePaneRef}
+              pinnedToBottomRef={pinnedToBottomRef}
+              preserveBottomOnNextPaneResizeRef={preserveBottomOnNextPaneResizeRef}
+              requestPinnedBottomAlignment={requestPinnedBottomAlignment}
+              focusComposer={focusComposer}
+              openTreeModal={openTreeModal}
+              openSettings={openSettings}
               onSetModel={handleSetSessionModel}
               onSetThinking={handleSetSessionThinking}
               onSetCavemanLevel={handleSetSessionCavemanLevel}
-              onSetComposerMode={setComposerMode}
-              modelOnboarding={selectedSessionModelOnboarding}
               onOpenModelSettings={(section) =>
                 openSettings(selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id, section)
               }
-              onSubmit={submitComposerDraft}
-              runningLabel={runningLabel}
-              selectedSession={selectedSession}
-              lastError={composerLastError}
-              selectedSlashCommand={slashMenu.activeSlashOptionCommand ?? slashMenu.selectedSlashCommand}
-              selectedSlashOption={slashMenu.selectedSlashOption}
-              slashOptionEmptyState={slashMenu.slashOptionEmptyState}
-              setComposerDraft={setComposerDraft}
-              showSlashOptionMenu={slashMenu.showSlashOptionMenu}
-              showSlashMenu={slashMenu.showSlashMenu}
-              slashOptions={slashMenu.slashOptions}
-              slashSections={slashMenu.slashSections}
-              showMentionMenu={mentionMenu.showMentionMenu}
-              mentionOptions={mentionMenu.mentionOptions}
-              selectedMentionIndex={mentionMenu.selectedIndex}
-              onSelectMention={mentionMenu.insertMention}
+              handleClipboardImageShortcut={handleClipboardImageShortcut}
             />
             ) : (
               <PendingComposer
@@ -3039,7 +3171,7 @@ export default function App() {
                 <button
                   className="button button--primary"
                   type="button"
-                  onClick={() => openNewThreadSurface(selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id)}
+                  onClick={() => { playButtonClick(); openNewThreadSurface(selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id); }}
                 >
                   New thread
                 </button>

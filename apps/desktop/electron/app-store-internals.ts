@@ -79,6 +79,7 @@ export interface AppStoreInternals {
   publishSelectedTranscriptFor(sessionRef: SessionRef): void;
   buildCreateSessionOptions(workspaceId: string): Promise<CreateSessionOptions | undefined>;
   ensureChatWorkspace(chat: import("../src/desktop-state").ChatRecord): Promise<WorkspaceRef>;
+  findNextQueuedSession(excludeWorkspaceId?: string, excludeSessionId?: string): { readonly workspaceId: string; readonly sessionId: string } | undefined;
 }
 
 export interface RefreshStateOptions {

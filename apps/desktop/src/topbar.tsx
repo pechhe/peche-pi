@@ -1,6 +1,7 @@
-import type { MouseEvent as ReactMouseEvent, Dispatch, SetStateAction } from "react";
-import type { AppView, DesktopAppState, SessionRecord, WorkspaceRecord, WorktreeRecord } from "./desktop-state";
+import type { MouseEvent as ReactMouseEvent } from "react";
+import type { AppView, SessionRecord, WorkspaceRecord, WorktreeRecord } from "./desktop-state";
 import { DiffIcon, ExternalTerminalIcon, FolderIcon, TerminalIcon } from "./icons";
+import { playButtonClick } from "./button-click-sound";
 import { getDesktopShortcutLabel, type PiDesktopApi } from "./ipc";
 import type { WorkspaceMenuState } from "./hooks/use-workspace-menu";
 import { CommitPushButton } from "./commit-push-button";
@@ -17,12 +18,6 @@ interface TopbarProps {
   readonly workspaces: readonly WorkspaceRecord[];
   readonly wsMenu: WorkspaceMenuState;
   readonly api: PiDesktopApi;
-  readonly setSnapshot: Dispatch<SetStateAction<DesktopAppState | null>>;
-  readonly updateSnapshot: (
-    api: PiDesktopApi,
-    setSnapshot: Dispatch<SetStateAction<DesktopAppState | null>>,
-    action: () => Promise<DesktopAppState>,
-  ) => Promise<DesktopAppState>;
   readonly terminalAvailable: boolean;
   readonly terminalVisible: boolean;
   readonly onToggleTerminal: () => void;
@@ -46,8 +41,7 @@ export function Topbar(props: TopbarProps) {
     workspaces,
     wsMenu,
     api,
-    setSnapshot,
-    updateSnapshot,
+
     terminalAvailable,
     terminalVisible,
     onToggleTerminal,
@@ -144,13 +138,21 @@ export function Topbar(props: TopbarProps) {
       </div>
 
       <div className="topbar__actions">
+        <CommitPushButton
+          workspaceId={rootWorkspace?.id ?? ""}
+          runtime={selectedRuntime}
+          commitPushModel={commitPushModel}
+          api={api}
+          sessionStatus={selectedSession?.status}
+          shortcutLabel={commitShortcut}
+        />
         <div className="shortcut-tooltip-wrap topbar__tooltip-wrap">
           <button
             aria-label="Toggle terminal"
             className={`icon-button topbar__icon ${terminalVisible ? "icon-button--active" : ""}`}
             type="button"
             disabled={!terminalAvailable}
-            onClick={onToggleTerminal}
+            onClick={() => { playButtonClick(); onToggleTerminal(); }}
           >
             <TerminalIcon />
           </button>
@@ -165,7 +167,7 @@ export function Topbar(props: TopbarProps) {
             className="icon-button topbar__icon"
             type="button"
             disabled={!externalTerminalAvailable}
-            onClick={onOpenExternalTerminal}
+            onClick={() => { playButtonClick(); onOpenExternalTerminal(); }}
           >
             <ExternalTerminalIcon />
           </button>
@@ -178,7 +180,7 @@ export function Topbar(props: TopbarProps) {
             aria-label="Toggle changes"
             className={`icon-button topbar__icon ${showDiffPanel ? "icon-button--active" : ""}`}
             type="button"
-            onClick={onToggleDiffPanel}
+            onClick={() => { playButtonClick(); onToggleDiffPanel(); }}
           >
             <DiffIcon />
           </button>
@@ -187,24 +189,21 @@ export function Topbar(props: TopbarProps) {
             <kbd>{diffShortcut}</kbd>
           </span>
         </div>
-        <CommitPushButton
-          workspaceId={rootWorkspace?.id ?? ""}
-          runtime={selectedRuntime}
-          commitPushModel={commitPushModel}
-          api={api}
-          sessionStatus={selectedSession?.status}
-          shortcutLabel={commitShortcut}
-        />
-        <button
-          aria-label="Add folder"
-          className="icon-button topbar__icon"
-          type="button"
-          onClick={() => {
-            void updateSnapshot(api, setSnapshot, () => api.pickWorkspace());
-          }}
-        >
-          <FolderIcon />
-        </button>
+        {rootWorkspace ? (
+          <div className="shortcut-tooltip-wrap topbar__tooltip-wrap">
+            <button
+              aria-label="Open project in Finder"
+              className="icon-button topbar__icon"
+              type="button"
+              onClick={() => { playButtonClick(); void api.openWorkspaceInFinder(rootWorkspace.id); }}
+            >
+              <FolderIcon />
+            </button>
+            <span className="shortcut-tooltip topbar__tooltip" role="tooltip">
+              <span>Open in Finder</span>
+            </span>
+          </div>
+        ) : null}
       </div>
     </header>
   );

@@ -374,6 +374,15 @@ export async function submitComposer(
     if (runtimeSlashCommand) {
       await store.refreshSessionCommandsFor(sessionRef);
     }
+
+    // Queue mode: advance to next queued session after submit
+    if (store.state.queueMode) {
+      const nextQueued = store.findNextQueuedSession(sessionRef.workspaceId, sessionRef.sessionId);
+      if (nextQueued) {
+        await store.selectSessionFast(nextQueued);
+      }
+    }
+
     return store.refreshState({
       clearLastError: !runtimeCommandOutcome?.blockedMessage,
       markSelectedSessionViewed: false,

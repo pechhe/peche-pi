@@ -3,6 +3,7 @@ import type { RuntimeSkillRecord, RuntimeSnapshot } from "@pi-gui/session-driver
 import type { WorkspaceRecord } from "./desktop-state";
 import { ChevronDownIcon, ChevronRightIcon, FolderIcon, PlusIcon, RefreshIcon, SkillIcon } from "./icons";
 import { titleCase } from "./string-utils";
+import { playButtonClick } from "./button-click-sound";
 
 interface SkillGroup {
   readonly key: string;
@@ -116,7 +117,7 @@ export function SkillsSidebar({
                 <button
                   type="button"
                   className="skills-group__header"
-                  onClick={() => onToggleGroup(group.key)}
+                  onClick={() => { playButtonClick(); onToggleGroup(group.key); }}
                   aria-expanded={!collapsed}
                 >
                   {collapsed ? <ChevronRightIcon /> : <ChevronDownIcon />}
@@ -132,7 +133,7 @@ export function SkillsSidebar({
                         className={`skill-row ${
                           selectedSkillPath === skill.filePath ? "skill-row--active" : ""
                         }`}
-                        onClick={() => onSelectSkill(skill.filePath)}
+                        onClick={() => { playButtonClick(); onSelectSkill(skill.filePath); }}
                       >
                         <span className="skill-row__avatar">
                           <SkillIcon />
@@ -236,14 +237,15 @@ export function SkillsView({
           </p>
         </div>
         <div className="view-header__actions">
-          <button className="button button--secondary" type="button" onClick={onRefresh}>
+          <button className="button button--secondary" type="button" onClick={() => { playButtonClick(); onRefresh(); }}>
             <RefreshIcon />
             <span>Refresh</span>
           </button>
           <button
             className="button button--primary"
             type="button"
-            onClick={() =>
+            onClick={() => {
+              playButtonClick();
               onTrySkill({
                 name: "new-skill",
                 description: "Create a new skill for this workspace",
@@ -253,8 +255,8 @@ export function SkillsView({
                 enabled: true,
                 disableModelInvocation: false,
                 slashCommand: "/skill:new-skill",
-              })
-            }
+              });
+            }}
           >
             <PlusIcon />
             <span>New skill</span>

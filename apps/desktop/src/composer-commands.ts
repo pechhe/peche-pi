@@ -228,8 +228,8 @@ export const THINKING_OPTIONS: readonly ComposerSlashOption[] = [
   },
   {
     value: "xhigh",
-    label: "Extra High",
-    description: "Extra high reasoning depth for complex problems",
+    label: "Max",
+    description: "Maximum reasoning depth (Anthropic Max / OpenAI xhigh)",
   },
 ] as const;
 

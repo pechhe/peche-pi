@@ -34,6 +34,8 @@ export interface RuntimeModelRecord {
   readonly reasoning: boolean;
   readonly supportsImages: boolean;
   readonly contextWindow: number;
+  /** Thinking levels supported by this model (computed from model.thinkingLevelMap). */
+  readonly availableThinkingLevels: readonly string[];
 }
 
 export interface RuntimeSkillRecord {

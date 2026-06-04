@@ -17,6 +17,10 @@
     "./runtime-types": {
       "types": "./dist/runtime-types.d.ts",
       "default": "./dist/runtime-types.js"
+    },
+    "./dev-reload-probe": {
+      "types": "./dist/dev-reload-probe.d.ts",
+      "default": "./dist/dev-reload-probe.js"
     }
   },
   "files": [

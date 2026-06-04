@@ -7,6 +7,8 @@ export interface ToastPayload {
   readonly message: string;
   /** Optional millisecond auto-dismiss override. Failures default to sticky; successes default to 4000ms. */
   readonly autoDismissMs?: number;
+  /** Optional secondary text shown after a dot separator. */
+  readonly secondary?: string;
 }
 
 /**
@@ -52,16 +54,41 @@ export function ToastHost() {
 
   if (!toast) return null;
 
+  const icon =
+    toast.variant === "success" ? (
+      <svg className="toast__icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <circle cx="8" cy="8" r="8" fill="var(--accent)" />
+        <path
+          d="M4.5 8.5L6.5 10.5L11.5 5.5"
+          stroke="white"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    ) : (
+      <svg className="toast__icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <circle cx="8" cy="8" r="8" fill="var(--error-ink)" />
+        <path
+          d="M5.5 5.5L10.5 10.5M10.5 5.5L5.5 10.5"
+          stroke="white"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+        />
+      </svg>
+    );
+
   return (
     <div className={`toast toast--${toast.variant}`} role={toast.variant === "error" ? "alert" : "status"}>
-      <span className="toast__message">{toast.message}</span>
-      <button
-        aria-label="Dismiss"
-        className="toast__close"
-        type="button"
-        onClick={() => setToast(null)}
-      >
-        ×
+      {icon}
+      <span className="toast__message">
+        {toast.message}
+        {toast.secondary ? <span className="toast__secondary"> · {toast.secondary}</span> : null}
+      </span>
+      <button aria-label="Dismiss" className="toast__close" type="button" onClick={() => setToast(null)}>
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+          <path d="M3 3L9 9M9 3L3 9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+        </svg>
       </button>
     </div>
   );

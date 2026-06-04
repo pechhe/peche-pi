@@ -1,6 +1,6 @@
 import { sessionKey } from "@pi-gui/pi-sdk-driver";
 import type { SessionDriverEvent, SessionQueuedMessage, SessionRef } from "@pi-gui/session-driver";
-import type { TranscriptMessage } from "../src/desktop-state";
+import type { TranscriptMessage } from "../src/desktop-state.ts";
 import {
   appendAssistantDeltaToTimeline,
   appendQueuedUserMessageToTimeline,
@@ -10,7 +10,7 @@ import {
   type RunMetrics,
   type SessionTimelineRuntimeState,
   type TimelineItemFactory,
-} from "../src/timeline-model";
+} from "../src/timeline-model.ts";
 import {
   makeActivityItem,
   makeReasoningItem,
@@ -18,9 +18,9 @@ import {
   makeToolItem,
   makeTranscriptMessage,
   makeTranscriptMessageWithAttachments,
-} from "./app-store-utils";
+} from "./app-store-utils.ts";
 
-export type { RunMetrics } from "../src/timeline-model";
+export type { RunMetrics } from "../src/timeline-model.ts";
 
 interface TimelineRuntimeState {
   readonly runMetricsBySession: Map<string, RunMetrics>;

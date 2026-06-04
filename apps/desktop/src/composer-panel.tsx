@@ -13,12 +13,13 @@ import type {
   ComposerSlashOptionEmptyState,
 } from "./composer-commands";
 import { ComposerAttachments, ComposerSurface } from "./composer-surface";
+import { ComposerCompletionToastHost } from "./composer-completion-toast";
+import { QueuedComposerMessages } from "./queued-composer-messages";
 import { ModelOnboardingNoticeBanner } from "./model-onboarding-notice";
 import type { ModelOnboardingState, ModelOnboardingSettingsSection } from "./model-onboarding";
 import { ModelSelector } from "./model-selector";
 import type { ModelSelectorHandle } from "./model-selector";
 import type { CavemanLevel } from "./ipc";
-import type { TimelineMetaEvent } from "./timeline-grouping";
 
 export interface LoopControlProps {
   readonly status: RalphLoopStatus;
@@ -64,7 +65,6 @@ interface ComposerPanelProps {
   readonly cavemanLevel: CavemanLevel;
   readonly composerMode: ComposerMode;
   readonly blackholeAvailable: boolean;
-  readonly metaEvents?: readonly TimelineMetaEvent[];
   readonly slashSections: readonly ComposerSlashCommandSection[];
   readonly slashOptions: readonly ComposerSlashOption[];
   readonly selectedSlashCommand?: ComposerSlashCommand;
@@ -140,7 +140,6 @@ export function ComposerPanel({
   cavemanLevel,
   composerMode,
   blackholeAvailable,
-  metaEvents,
   slashSections,
   slashOptions,
   selectedSlashCommand,
@@ -198,6 +197,7 @@ export function ComposerPanel({
 
   return (
     <footer className="composer">
+      <ComposerCompletionToastHost />
       {beginRalphLoop ? (
         <div className="composer__begin-loop">
           <button
@@ -215,6 +215,18 @@ export function ComposerPanel({
           <ComposerAttachments attachments={attachments} onRemoveAttachment={onRemoveAttachment} />
         </div>
       ) : null}
+      {queuedMessages.length > 0 || editingQueuedMessageId ? (
+        <div className="composer__queued-shelf">
+          <QueuedComposerMessages
+            messages={queuedMessages}
+            editingQueuedMessageId={editingQueuedMessageId}
+            onEditMessage={onEditQueuedMessage}
+            onCancelEdit={onCancelQueuedEdit}
+            onRemoveMessage={onRemoveQueuedMessage}
+            onSteerMessage={onSteerQueuedMessage}
+          />
+        </div>
+      ) : null}
       <div className="conversation conversation--composer">
         <ComposerSurface
           lastError={lastError}
@@ -227,8 +239,6 @@ export function ComposerPanel({
           setComposerDraft={setComposerDraft}
           composerRef={composerRef}
           attachments={attachments}
-          queuedMessages={queuedMessages}
-          editingQueuedMessageId={editingQueuedMessageId}
           slashSections={slashSections}
           slashOptions={slashOptions}
           selectedSlashCommand={selectedSlashCommand}
@@ -241,10 +251,6 @@ export function ComposerPanel({
           onComposerPaste={onComposerPaste}
           onComposerDrop={onComposerDrop}
           onRemoveAttachment={onRemoveAttachment}
-          onEditQueuedMessage={onEditQueuedMessage}
-          onCancelQueuedEdit={onCancelQueuedEdit}
-          onRemoveQueuedMessage={onRemoveQueuedMessage}
-          onSteerQueuedMessage={onSteerQueuedMessage}
           onSelectSlashCommand={onSelectSlashCommand}
           onSelectSlashOption={onSelectSlashOption}
           showMentionMenu={showMentionMenu}
@@ -280,31 +286,9 @@ export function ComposerPanel({
                       : "Blackhole ready"}
                   </span>
                 ) : null}
-                {metaEvents && metaEvents.length > 0 ? (
-                  <span className="composer__context-meta-count">{`· ${metaEvents.length} event${metaEvents.length === 1 ? "" : "s"}`}</span>
-                ) : null}
+
               </span>
-              <div className="composer__context-popover" role="tooltip">
-                <div className="composer__context-popover-section">
-                  <div className="composer__context-popover-title">Context</div>
-                  {contextUsage
-                    ? <div className="composer__context-popover-detail">{`${formatTokenCount(contextUsage.usedTokens)} / ${formatTokenCount(contextUsage.contextWindow)} tokens`}</div>
-                    : <div className="composer__context-popover-detail">Unavailable until a model-backed turn runs</div>}
-                </div>
-                {metaEvents && metaEvents.length > 0 ? (
-                  <div className="composer__context-popover-section">
-                    <div className="composer__context-popover-title">Recent session events</div>
-                    <ul className="composer__context-popover-list">
-                      {metaEvents.slice(-20).reverse().map((event) => (
-                        <li key={event.id} className="composer__context-popover-item">
-                          <span className="composer__context-popover-label">{event.label}</span>
-                          {event.metadata ? <span className="composer__context-popover-meta">{event.metadata}</span> : null}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null}
-              </div>
+
             </div>
           )}
           footer={(

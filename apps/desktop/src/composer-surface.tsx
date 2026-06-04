@@ -8,8 +8,8 @@ import type {
 } from "./composer-commands";
 import { hasFilesInDataTransfer } from "./composer-attachments";
 import { FileIcon, ModelIcon, ReasoningIcon, SettingsIcon, SkillIcon, SparkIcon, StatusIcon } from "./icons";
-import { QueuedComposerMessages } from "./queued-composer-messages";
 import { openImageLightbox } from "./image-lightbox";
+import { playButtonClick } from "./button-click-sound";
 
 interface ComposerSurfaceProps {
   readonly lastError?: string;
@@ -20,8 +20,7 @@ interface ComposerSurfaceProps {
   readonly setComposerDraft: (draft: string) => void;
   readonly composerRef: RefObject<HTMLTextAreaElement | null>;
   readonly attachments: readonly ComposerAttachment[];
-  readonly queuedMessages: readonly import("./desktop-state").QueuedComposerMessage[];
-  readonly editingQueuedMessageId?: string;
+
   readonly slashSections: readonly ComposerSlashCommandSection[];
   readonly slashOptions: readonly ComposerSlashOption[];
   readonly selectedSlashCommand?: ComposerSlashCommand;
@@ -34,10 +33,6 @@ interface ComposerSurfaceProps {
   readonly onComposerPaste: (event: ClipboardEvent<HTMLDivElement>) => void;
   readonly onComposerDrop: (event: DragEvent<HTMLDivElement>) => void;
   readonly onRemoveAttachment: (attachmentId: string) => void;
-  readonly onEditQueuedMessage: (messageId: string) => void;
-  readonly onCancelQueuedEdit: () => void;
-  readonly onRemoveQueuedMessage: (messageId: string) => void;
-  readonly onSteerQueuedMessage: (messageId: string) => void;
   readonly onSelectSlashCommand: (command: ComposerSlashCommand) => void;
   readonly onSelectSlashOption: (option: ComposerSlashOption) => void;
   readonly showMentionMenu: boolean;
@@ -90,7 +85,7 @@ export function ComposerAttachments({
                 aria-label={`Remove ${attachment.name}`}
                 className="composer-attachment__remove"
                 type="button"
-                onClick={() => onRemoveAttachment(attachment.id)}
+                onClick={() => { playButtonClick(); onRemoveAttachment(attachment.id); }}
               >
                 ×
               </button>
@@ -105,7 +100,7 @@ export function ComposerAttachments({
                 aria-label={`Remove ${attachment.name}`}
                 className="composer-attachment__remove"
                 type="button"
-                onClick={() => onRemoveAttachment(attachment.id)}
+                onClick={() => { playButtonClick(); onRemoveAttachment(attachment.id); }}
               >
                 ×
               </button>
@@ -126,8 +121,6 @@ export function ComposerSurface({
   setComposerDraft,
   composerRef,
   attachments,
-  queuedMessages,
-  editingQueuedMessageId,
   slashSections,
   slashOptions,
   selectedSlashCommand,
@@ -140,10 +133,6 @@ export function ComposerSurface({
   onComposerPaste,
   onComposerDrop,
   onRemoveAttachment,
-  onEditQueuedMessage,
-  onCancelQueuedEdit,
-  onRemoveQueuedMessage,
-  onSteerQueuedMessage,
   onSelectSlashCommand,
   onSelectSlashOption,
   showMentionMenu,
@@ -248,23 +237,19 @@ export function ComposerSurface({
             aria-label={`Clear ${activeSlashCommand.title}`}
             className="composer__slash-intent-clear"
             type="button"
-            onClick={onClearSlashCommand}
+            onClick={() => { playButtonClick(); onClearSlashCommand(); }}
           >
             ×
           </button>
         </div>
       ) : null}
-      <QueuedComposerMessages
-        messages={queuedMessages}
-        editingQueuedMessageId={editingQueuedMessageId}
-        onEditMessage={onEditQueuedMessage}
-        onCancelEdit={onCancelQueuedEdit}
-        onRemoveMessage={onRemoveQueuedMessage}
-        onSteerMessage={onSteerQueuedMessage}
-      />
       {lastError ? (
         <div className="composer__error error-banner" data-testid="composer-error-banner">
-          {lastError}
+          <svg className="toast__icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <circle cx="8" cy="8" r="8" fill="var(--error-ink)" />
+            <path d="M5.5 5.5L10.5 10.5M10.5 5.5L5.5 10.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+          </svg>
+          <span>{lastError}</span>
         </div>
       ) : null}
       {showSlashMenu || (showSlashOptionMenu && selectedSlashCommand) ? (
@@ -286,7 +271,7 @@ export function ComposerSurface({
                       className={`slash-menu__item ${command.section === "runtime" ? "slash-menu__item--skill" : ""} ${selectedSlashCommand?.id === command.id ? "slash-menu__item--active" : ""}`}
                       key={command.id}
                       type="button"
-                      onClick={() => onSelectSlashCommand(command)}
+                      onClick={() => { playButtonClick(); onSelectSlashCommand(command); }}
                     >
                       <span className="slash-menu__icon" aria-hidden="true">
                         <SlashCommandIcon command={command} />
@@ -329,7 +314,7 @@ export function ComposerSurface({
                       className={`slash-menu__option ${selectedSlashOption?.value === option.value ? "slash-menu__option--active" : ""}`}
                       key={option.value}
                       type="button"
-                      onClick={() => onSelectSlashOption(option)}
+                      onClick={() => { playButtonClick(); onSelectSlashOption(option); }}
                     >
                       <span className="slash-menu__option-title">{option.label}</span>
                       <span className="slash-menu__option-description">{option.description}</span>
@@ -360,7 +345,7 @@ export function ComposerSurface({
                     className={`mention-menu__item ${index === selectedMentionIndex ? "mention-menu__item--active" : ""}`}
                     key={filePath}
                     type="button"
-                    onClick={() => onSelectMention(filePath)}
+                    onClick={() => { playButtonClick(); onSelectMention(filePath); }}
                   >
                     {dirPart ? <span className="mention-menu__dirname">{dirPart}</span> : null}
                     <span className="mention-menu__filename">{namePart}</span>

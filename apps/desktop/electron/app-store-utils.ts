@@ -10,9 +10,9 @@ import type {
   WorktreeRecord,
   WorkspaceRecord,
   WorkspaceSessionTarget,
-} from "../src/desktop-state";
-import { isMetaActivity } from "../src/timeline-grouping";
-import { listRalphPlans } from "./ralph-plans";
+} from "../src/desktop-state.ts";
+import { isMetaActivity } from "../src/timeline-grouping.ts";
+import { listRalphPlans } from "./ralph-plans.ts";
 
 export const LEGACY_TRANSCRIPT_HISTORY_LIMIT = 180;
 

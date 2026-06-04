@@ -1,16 +1,29 @@
 import type { HostUiRequest, SessionConfig } from "@pi-gui/session-driver";
 import type { ModelSettingsSnapshot, RuntimeCommandRecord, RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
+import { DEFAULT_BUTTON_SOUND_SETTINGS, type ButtonSoundSettings } from "./button-click-sound";
 export type SessionStatus = "idle" | "running" | "failed";
 export type { SessionRole, TranscriptMessage } from "./timeline-types";
 import type { TranscriptMessage } from "./timeline-types";
 
-export type AppView = "threads" | "new-thread" | "skills" | "extensions" | "settings";
+export type AppView = "threads" | "new-thread" | "skills" | "extensions" | "settings" | "context" | "queue";
 export type WorkspaceKind = "primary" | "worktree";
 export type WorktreeStatus = "ready" | "missing" | "error";
 export type NewThreadEnvironment = "local" | "worktree";
 export type ThemeMode = "system" | "light" | "dark" | "dracula";
 
-export type ComposerDeviceMode = "off" | "screen" | "modular" | "screen-neon";
+export type ComposerDeviceMode = "off" | "screen" | "modular" | "modular-metal" | "screen-neon";
+
+/** How the composer travels from the centered new-thread position into the docked footer when the first message is sent. */
+export type ThreadTransitionMotion = "off" | "curve" | "dock" | "spring";
+
+export interface ThreadTransitionSettings {
+  /** Composer travel motion. */
+  readonly motion: ThreadTransitionMotion;
+  /** Animate the hero (logo + title) lifting and fading out as the composer leaves. */
+  readonly heroExit: boolean;
+  /** Delay the first user bubble so it rises out of the composer as it docks. */
+  readonly bubbleHandoff: boolean;
+}
 export type ModelSettingsScopeMode = "app-global" | "per-repo";
 export type ComposerDraftSyncSource =
   | "state"
@@ -275,16 +288,20 @@ export interface DesktopAppState {
   readonly subagentAgentsByWorkspace: Record<string, readonly SubagentAgentRecord[]>;
   readonly integratedTerminalShell: string;
   readonly externalTerminalApp: string;
+  readonly retrySettings: { readonly enabled: boolean; readonly maxRetries: number; readonly baseDelayMs: number };
   readonly lastViewedAtBySession: Readonly<Record<string, string>>;
   readonly workspaceOrder: readonly string[];
   readonly modelSettingsScopeMode: ModelSettingsScopeMode;
   readonly globalModelSettings: ModelSettingsSnapshot;
   readonly sidebarCollapsed: boolean;
+  readonly queueMode: boolean;
   readonly enableTransparency: boolean;
   readonly transcriptVerbose: boolean;
   readonly autoAcceptVisionProxy: boolean;
   readonly composerDeviceMode: ComposerDeviceMode;
+  readonly threadTransition: ThreadTransitionSettings;
   readonly themeMode: ThemeMode;
+  readonly buttonSoundSettings: ButtonSoundSettings;
   readonly commitPushModel?: string;
   readonly chats: readonly ChatRecord[];
   readonly selectedChatId: string;
@@ -304,6 +321,32 @@ export interface CreateSessionInput {
 export interface WorkspaceSessionTarget {
   readonly workspaceId: string;
   readonly sessionId: string;
+}
+
+export type ContextSectionKind =
+  | "system-prompt"
+  | "context-file"
+  | "skill"
+  | "extension"
+  | "command"
+  | "model-settings"
+  | "user-message";
+
+export interface ContextSection {
+  readonly kind: ContextSectionKind;
+  readonly label: string;
+  readonly origin: string;
+  readonly scope?: string;
+  readonly enabled?: boolean;
+  readonly path?: string;
+  readonly content?: string;
+  readonly detail?: string;
+}
+
+export interface ContextSnapshot {
+  readonly workspaceId: string;
+  readonly sessionId?: string;
+  readonly sections: readonly ContextSection[];
 }
 
 export function createEmptyDesktopAppState(): DesktopAppState {
@@ -338,6 +381,7 @@ export function createEmptyDesktopAppState(): DesktopAppState {
     subagentAgentsByWorkspace: {},
     integratedTerminalShell: "",
     externalTerminalApp: "",
+    retrySettings: { enabled: true, maxRetries: 3, baseDelayMs: 2000 },
     lastViewedAtBySession: {},
     workspaceOrder: [],
     modelSettingsScopeMode: "app-global",
@@ -345,11 +389,14 @@ export function createEmptyDesktopAppState(): DesktopAppState {
       enabledModelPatterns: [],
     },
     sidebarCollapsed: false,
+    queueMode: false,
     enableTransparency: false,
     transcriptVerbose: false,
     autoAcceptVisionProxy: false,
     composerDeviceMode: "off",
+    threadTransition: { motion: "curve", heroExit: false, bubbleHandoff: false },
     themeMode: "system",
+    buttonSoundSettings: { ...DEFAULT_BUTTON_SOUND_SETTINGS },
     commitPushModel: undefined,
     chats: [],
     selectedChatId: "",

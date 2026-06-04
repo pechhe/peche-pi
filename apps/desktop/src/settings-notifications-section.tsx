@@ -1,6 +1,7 @@
 import type { DesktopNotificationPermissionStatus } from "./ipc";
 import type { NotificationPreferences } from "./desktop-state";
 import { SettingsGroup, SettingsRow } from "./settings-utils";
+import { playButtonClick } from "./button-click-sound";
 
 interface SettingsNotificationsSectionProps {
   readonly notificationPreferences: NotificationPreferences;
@@ -46,7 +47,7 @@ export function SettingsNotificationsSection({
                   className="button button--secondary"
                   disabled={notificationPermissionPending}
                   type="button"
-                  onClick={onRequestNotificationPermission}
+                  onClick={() => { playButtonClick(); onRequestNotificationPermission(); }}
                 >
                   Ask macOS
                 </button>
@@ -56,7 +57,7 @@ export function SettingsNotificationsSection({
                   className="button button--secondary"
                   disabled={notificationPermissionPending}
                   type="button"
-                  onClick={onOpenSystemNotificationSettings}
+                  onClick={() => { playButtonClick(); onOpenSystemNotificationSettings(); }}
                 >
                   Open System Settings
                 </button>

@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MutableRefObject, type RefCallback, type RefObject } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MutableRefObject, type RefCallback, type RefObject } from "react";
 import type { TranscriptMessage } from "./desktop-state";
 import { ThreadSearchBar } from "./thread-search";
 import { TimelineItem } from "./timeline-item";
 import { WorkingLabel } from "./working-label";
-import { groupTranscript, type TimelineMetaEvent, type TimelineRow } from "./timeline-grouping";
+import { groupTranscript, type TimelineRow } from "./timeline-grouping";
 import type { UndoEditOp, UndoEditsResult } from "./ipc";
+import { playButtonClick } from "./button-click-sound";
 
 const OVERSCAN_PX = 720;
 const ROW_GAP_PX = 14;
@@ -37,7 +38,6 @@ interface ConversationTimelineProps {
   readonly onViewFileInDiff?: (path: string) => void;
   readonly onUndoEdits?: (ops: readonly UndoEditOp[]) => Promise<UndoEditsResult>;
   readonly onRedoEdits?: (ops: readonly UndoEditOp[]) => Promise<UndoEditsResult>;
-  readonly onMetaEventsChange?: (events: readonly TimelineMetaEvent[]) => void;
   readonly isRunning: boolean;
   // Label for the bottom live indicator. Defaults to "Thinking…"; the
   // new-thread placeholder passes "Preparing your thread…" so going live is a
@@ -60,17 +60,13 @@ export function ConversationTimeline({
   onViewFileInDiff,
   onUndoEdits,
   onRedoEdits,
-  onMetaEventsChange,
   isRunning,
   workingLabel = "Thinking…",
 }: ConversationTimelineProps) {
   // Group consecutive tool calls into bursts and extract meta events.
   // Re-runs whenever the transcript reference changes (the main process clones
   // on every push, so identity changes per event).
-  const { rows: timelineRows, metaEvents } = useMemo(() => groupTranscript(transcript), [transcript]);
-  useEffect(() => {
-    onMetaEventsChange?.(metaEvents);
-  }, [metaEvents, onMetaEventsChange]);
+  const { rows: timelineRows } = useMemo(() => groupTranscript(transcript), [transcript]);
 
   // Giant prose blocks and attachment-heavy rows routinely blow past the estimator,
   // so keep those transcripts on the exact DOM path instead of restoring to a fake bottom.
@@ -367,7 +363,7 @@ export function ConversationTimeline({
         </div>
       )}
       {showJumpToLatest ? (
-        <button className="timeline-jump" data-testid="timeline-jump" type="button" onClick={onJumpToLatest}>
+        <button className="timeline-jump" data-testid="timeline-jump" type="button" onClick={() => { playButtonClick(); onJumpToLatest(); }}>
           New activity below
         </button>
       ) : null}
@@ -519,25 +515,7 @@ function VirtualizedTranscriptList({
   );
 }
 
-function MeasuredTimelineItem({
-  item,
-  className,
-  top,
-  onHeightChange,
-  expandedToolCallIds,
-  expandedBurstIds,
-  expandedReasoningIds,
-  onToggleToolCall,
-  onToggleBurst,
-  onToggleReasoning,
-  onViewFileInDiff,
-  onUndoEdits,
-  onRedoEdits,
-  streamingAssistantId,
-  onStreamingCaughtUp,
-  streamingReasoningId,
-  liveThinkingSectionId,
-}: {
+interface MeasuredTimelineItemProps {
   readonly item: TimelineRow;
   readonly className?: string;
   readonly top?: number;
@@ -555,7 +533,27 @@ function MeasuredTimelineItem({
   readonly onStreamingCaughtUp?: (messageId: string) => void;
   readonly streamingReasoningId?: string;
   readonly liveThinkingSectionId?: string;
-}) {
+}
+
+const MeasuredTimelineItem = memo(function MeasuredTimelineItem({
+  item,
+  className,
+  top,
+  onHeightChange,
+  expandedToolCallIds,
+  expandedBurstIds,
+  expandedReasoningIds,
+  onToggleToolCall,
+  onToggleBurst,
+  onToggleReasoning,
+  onViewFileInDiff,
+  onUndoEdits,
+  onRedoEdits,
+  streamingAssistantId,
+  onStreamingCaughtUp,
+  streamingReasoningId,
+  liveThinkingSectionId,
+}: MeasuredTimelineItemProps) {
   const rowRef = useRef<HTMLDivElement | null>(null);
 
   useLayoutEffect(() => {
@@ -603,6 +601,121 @@ function MeasuredTimelineItem({
       />
     </div>
   );
+}, sameMeasuredTimelineItemProps);
+
+function rowSignature(item: TimelineRow): string {
+  if (item.kind === "message") {
+    const attachmentSignature = item.attachments?.map((attachment) => `${attachment.kind}:${attachment.name}`).join(",") ?? "";
+    return `${item.kind}:${item.id}:${item.role}:${item.text}:${attachmentSignature}`;
+  }
+  if (item.kind === "tool") {
+    return `${item.kind}:${item.id}:${item.callId}:${item.toolName}:${item.status}:${item.label}:${item.detail ?? ""}`;
+  }
+  if (item.kind === "toolBurst") {
+    return `${item.kind}:${item.id}:${item.trailing}:${item.tools.map((tool) => `${tool.callId}:${tool.status}:${tool.label}:${tool.detail ?? ""}`).join("|")}`;
+  }
+  if (item.kind === "thinkingSection") {
+    return `${item.kind}:${item.id}:${item.trailing}:${item.children.map((child) => child.kind === "reasoning" ? `${child.id}:${child.text}` : `${child.callId}:${child.status}:${child.label}:${child.detail ?? ""}`).join("|")}`;
+  }
+  if (item.kind === "editedFiles") {
+    return `${item.kind}:${item.id}:${item.tools.map((tool) => `${tool.callId}:${tool.status}:${tool.label}:${tool.detail ?? ""}`).join("|")}`;
+  }
+  if (item.kind === "activity") {
+    return `${item.kind}:${item.id}:${item.label}:${item.detail ?? ""}:${item.metadata ?? ""}:${item.tone ?? ""}`;
+  }
+  if (item.kind === "summary") {
+    return `${item.kind}:${item.id}:${item.label}:${item.metadata ?? ""}:${item.presentation ?? ""}`;
+  }
+  if (item.kind === "reasoning") {
+    return `${item.kind}:${item.id}:${item.text}`;
+  }
+  return "";
+}
+
+function rowContainsId(item: TimelineRow, id: string | undefined): boolean {
+  if (!id) {
+    return false;
+  }
+  if (item.id === id) {
+    return true;
+  }
+  if (item.kind === "thinkingSection") {
+    return item.children.some((child) => child.id === id);
+  }
+  if (item.kind === "toolBurst" || item.kind === "editedFiles") {
+    return item.tools.some((tool) => tool.id === id || tool.callId === id);
+  }
+  if (item.kind === "tool") {
+    return item.callId === id;
+  }
+  return false;
+}
+
+function rowExpandedState(
+  item: TimelineRow,
+  expandedToolCallIds: ReadonlySet<string>,
+  expandedBurstIds: ReadonlySet<string>,
+  expandedReasoningIds: ReadonlySet<string>,
+): string {
+  const parts: string[] = [];
+  if (item.kind === "tool") {
+    parts.push(`tool:${expandedToolCallIds.has(item.callId)}`);
+  } else if (item.kind === "toolBurst") {
+    parts.push(`burst:${expandedBurstIds.has(item.id)}`);
+    for (const tool of item.tools) {
+      parts.push(`tool:${tool.callId}:${expandedToolCallIds.has(tool.callId)}`);
+    }
+  } else if (item.kind === "thinkingSection") {
+    parts.push(`reasoning:${item.id}:${expandedReasoningIds.has(item.id)}`);
+    for (const child of item.children) {
+      if (child.kind === "tool") {
+        parts.push(`tool:${child.callId}:${expandedToolCallIds.has(child.callId)}`);
+      } else {
+        parts.push(`reasoning:${child.id}:${expandedReasoningIds.has(child.id)}`);
+      }
+    }
+  } else if (item.kind === "reasoning") {
+    parts.push(`reasoning:${item.id}:${expandedReasoningIds.has(item.id)}`);
+  }
+  return parts.join("|");
+}
+
+function sameMeasuredTimelineItemProps(
+  previous: MeasuredTimelineItemProps,
+  next: MeasuredTimelineItemProps,
+): boolean {
+  if (
+    previous.className !== next.className ||
+    previous.top !== next.top ||
+    previous.onHeightChange !== next.onHeightChange ||
+    previous.onToggleToolCall !== next.onToggleToolCall ||
+    previous.onToggleBurst !== next.onToggleBurst ||
+    previous.onToggleReasoning !== next.onToggleReasoning ||
+    previous.onViewFileInDiff !== next.onViewFileInDiff ||
+    previous.onUndoEdits !== next.onUndoEdits ||
+    previous.onRedoEdits !== next.onRedoEdits ||
+    previous.onStreamingCaughtUp !== next.onStreamingCaughtUp
+  ) {
+    return false;
+  }
+  if (rowSignature(previous.item) !== rowSignature(next.item)) {
+    return false;
+  }
+  if (
+    rowExpandedState(previous.item, previous.expandedToolCallIds, previous.expandedBurstIds, previous.expandedReasoningIds) !==
+    rowExpandedState(next.item, next.expandedToolCallIds, next.expandedBurstIds, next.expandedReasoningIds)
+  ) {
+    return false;
+  }
+  const streamingIds = [
+    previous.streamingAssistantId,
+    next.streamingAssistantId,
+    previous.streamingReasoningId,
+    next.streamingReasoningId,
+    previous.liveThinkingSectionId,
+    next.liveThinkingSectionId,
+  ];
+  return streamingIds.every((id) => !rowContainsId(previous.item, id) && !rowContainsId(next.item, id));
 }
 
 function findStartIndex(offsets: readonly number[], heights: readonly number[], targetOffset: number): number {

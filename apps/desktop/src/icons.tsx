@@ -144,6 +144,20 @@ export function ArchiveIcon() {
   );
 }
 
+export function DoneIcon() {
+  return (
+    <Icon>
+      <path
+        d="M4.6 10.4 8.3 14l7.1-7.6"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.7"
+      />
+    </Icon>
+  );
+}
+
 export function RestoreIcon() {
   return (
     <Icon>
@@ -220,6 +234,20 @@ export function PiGlyphIcon() {
     </Icon>
   );
 }
+export function ContextIcon() {
+  return (
+    <Icon>
+      <path
+        d="M4.25 4.75h11.5v10.5H4.25z"
+        stroke="currentColor"
+        strokeLinejoin="round"
+        strokeWidth="1.35"
+      />
+      <path d="M6.75 7.5h6.5M6.75 10h4.5M6.75 12.5h2.5" stroke="currentColor" strokeLinecap="round" strokeWidth="1.35" />
+    </Icon>
+  );
+}
+
 export function SettingsIcon() {
   return (
     <Icon>
@@ -376,6 +404,19 @@ export function ComposeIcon() {
         strokeLinejoin="round"
         strokeWidth="1.4"
       />
+    </Icon>
+  );
+}
+
+export function QueueIcon() {
+  return (
+    <Icon>
+      <path d="M4.25 5h11.5" stroke="currentColor" strokeLinecap="round" strokeWidth="1.3" />
+      <path d="M4.25 10h11.5" stroke="currentColor" strokeLinecap="round" strokeWidth="1.3" />
+      <path d="M4.25 15h11.5" stroke="currentColor" strokeLinecap="round" strokeWidth="1.3" />
+      <circle cx="6.25" cy="5" r="1.25" fill="currentColor" />
+      <circle cx="6.25" cy="10" r="1.25" fill="currentColor" />
+      <circle cx="6.25" cy="15" r="1.25" fill="currentColor" />
     </Icon>
   );
 }

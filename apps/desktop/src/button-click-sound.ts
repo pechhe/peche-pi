@@ -1,0 +1,397 @@
+/* ── Button click sound design ─────────────────────────────────────────────
+ *
+ * Realistic button sounds using audio samples from langlink.
+ * Uses Web Audio API for low-latency playback with press/release variants.
+ *
+ * Sound files:
+ *  - /sounds/click.mp3   - Generic click (down/up variants via playback rate)
+ *  - /sounds/key-on.mp3  - Key press sound (split into press/release)
+ *  - /sounds/key-off.mp3 - Alternative key sound (split into press/release)
+ */
+
+export type ButtonClickVariant = "click" | "key" | "none";
+
+/** Button categories for per-category sound settings */
+export type ButtonCategory = "primary" | "navigation" | "toggle" | "secondary" | "destructive";
+
+export interface ButtonSoundSettings {
+  readonly primary: ButtonClickVariant;
+  readonly navigation: ButtonClickVariant;
+  readonly toggle: ButtonClickVariant;
+  readonly secondary: ButtonClickVariant;
+  readonly destructive: ButtonClickVariant;
+}
+
+export const DEFAULT_BUTTON_SOUND_SETTINGS: ButtonSoundSettings = {
+  primary: "click",
+  navigation: "none",
+  toggle: "key",
+  secondary: "none",
+  destructive: "click",
+};
+
+export const BUTTON_CLICK_VARIANTS: readonly ButtonClickVariant[] = ["click", "key", "none"];
+
+export const BUTTON_CATEGORY_LABELS: Record<ButtonCategory, string> = {
+  primary: "Primary actions",
+  navigation: "Navigation",
+  toggle: "Toggle buttons",
+  secondary: "Secondary actions",
+  destructive: "Destructive actions",
+};
+
+export const BUTTON_CATEGORY_DESCRIPTIONS: Record<ButtonCategory, string> = {
+  primary: "Submit, send, start thread, confirm",
+  navigation: "Sidebar items, view switching",
+  toggle: "Caveman, composer mode, queue mode",
+  secondary: "Refresh, copy, open folder",
+  destructive: "Delete, remove, cancel",
+};
+
+let currentSettings: ButtonSoundSettings = { ...DEFAULT_BUTTON_SOUND_SETTINGS };
+
+export function setButtonSoundSettings(settings: ButtonSoundSettings): void {
+  currentSettings = { ...settings };
+}
+
+export function getButtonSoundSettings(): ButtonSoundSettings {
+  return { ...currentSettings };
+}
+
+/* ── Audio engine (based on langlink's clickSound.ts) ──────────────────── */
+
+type ClickKind = "down" | "up";
+type KeyPhase = "press" | "release";
+
+const CLICK_URL = "/sounds/click.mp3";
+const KEY_URLS = ["/sounds/key-on.mp3", "/sounds/key-off.mp3"];
+
+const CLICK_RATE: Record<ClickKind, number> = { down: 0.78, up: 1 };
+
+let context: AudioContext | undefined;
+let masterGain: GainNode | undefined;
+
+let clickBuffer: AudioBuffer | undefined;
+let keyBuffers: Array<{ press: AudioBuffer; release: AudioBuffer }> = [];
+
+let loadPromise: Promise<void> | undefined;
+
+let keyRotateIdx = 0;
+let lastKeyPressIdx = 0;
+
+let settingsLoaded = false;
+
+/** Load settings from localStorage on first use */
+function ensureSettingsLoaded(): void {
+  if (settingsLoaded) return;
+  settingsLoaded = true;
+  try {
+    const stored = localStorage.getItem("pi:button-sound-settings");
+    if (stored) {
+      const parsed = JSON.parse(stored) as Partial<ButtonSoundSettings>;
+      currentSettings = { ...DEFAULT_BUTTON_SOUND_SETTINGS, ...parsed };
+    }
+  } catch {
+    // ignore parse errors
+  }
+}
+
+/** Persist settings to localStorage */
+export function saveButtonSoundSettings(settings: ButtonSoundSettings): void {
+  setButtonSoundSettings(settings);
+  try {
+    localStorage.setItem("pi:button-sound-settings", JSON.stringify(settings));
+  } catch {
+    // ignore storage errors
+  }
+}
+
+function getContext(): AudioContext | null {
+  if (typeof window === "undefined") return null;
+  if (!context) {
+    const Ctor =
+      window.AudioContext ??
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctor) return null;
+    context = new Ctor();
+    masterGain = context.createGain();
+    masterGain.gain.value = 0.7;
+    masterGain.connect(context.destination);
+  }
+  return context;
+}
+
+async function fetchBuffer(ctx: AudioContext, url: string): Promise<AudioBuffer | undefined> {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return undefined;
+    const data = await response.arrayBuffer();
+    return await ctx.decodeAudioData(data);
+  } catch {
+    return undefined;
+  }
+}
+
+function computeEnvelope(channel: Float32Array, windowSize: number): Float32Array {
+  const numWindows = Math.floor(channel.length / windowSize);
+  const envelope = new Float32Array(numWindows);
+  for (let w = 0; w < numWindows; w += 1) {
+    let sumSq = 0;
+    const start = w * windowSize;
+    for (let i = 0; i < windowSize; i += 1) {
+      const sample = channel[start + i] ?? 0;
+      sumSq += sample * sample;
+    }
+    envelope[w] = Math.sqrt(sumSq / windowSize);
+  }
+  return envelope;
+}
+
+function sliceBuffer(
+  ctx: AudioContext,
+  source: AudioBuffer,
+  startSample: number,
+  endSample: number
+): AudioBuffer {
+  const length = Math.max(1, endSample - startSample);
+  const out = ctx.createBuffer(source.numberOfChannels, length, source.sampleRate);
+  for (let ch = 0; ch < source.numberOfChannels; ch += 1) {
+    const channelData = source.getChannelData(ch);
+    if (channelData) {
+      const data = channelData.subarray(startSample, startSample + length);
+      out.copyToChannel(data, ch);
+    }
+  }
+  return out;
+}
+
+function trimSilence(ctx: AudioContext, buffer: AudioBuffer): AudioBuffer {
+  const channel = buffer.getChannelData(0);
+  if (!channel) return buffer;
+  const sampleRate = buffer.sampleRate;
+  const windowSize = Math.max(1, Math.floor(sampleRate * 0.003));
+  const envelope = computeEnvelope(channel, windowSize);
+
+  let peak = 0;
+  for (let i = 0; i < envelope.length; i += 1) {
+    const val = envelope[i] ?? 0;
+    if (val > peak) peak = val;
+  }
+  if (peak === 0) return buffer;
+  const threshold = peak * 0.04;
+
+  let firstWindow = 0;
+  while (firstWindow < envelope.length && (envelope[firstWindow] ?? 0) < threshold) firstWindow += 1;
+
+  let lastWindow = envelope.length - 1;
+  while (lastWindow > firstWindow && (envelope[lastWindow] ?? 0) < threshold) lastWindow -= 1;
+
+  const lead = Math.floor(sampleRate * 0.002);
+  const tail = Math.floor(sampleRate * 0.025);
+  const start = Math.max(0, firstWindow * windowSize - lead);
+  const end = Math.min(channel.length, (lastWindow + 1) * windowSize + tail);
+  if (end - start < windowSize * 2) return buffer;
+
+  return sliceBuffer(ctx, buffer, start, end);
+}
+
+function splitKeySample(
+  ctx: AudioContext,
+  buffer: AudioBuffer
+): { press: AudioBuffer; release: AudioBuffer } {
+  const channel = buffer.getChannelData(0);
+  if (!channel) {
+    const whole = trimSilence(ctx, buffer);
+    return { press: whole, release: whole };
+  }
+  const sampleRate = buffer.sampleRate;
+  const windowSize = Math.max(1, Math.floor(sampleRate * 0.003));
+  const envelope = computeEnvelope(channel, windowSize);
+
+  let peakAIdx = 0;
+  let peakAVal = 0;
+  for (let i = 0; i < envelope.length; i += 1) {
+    const val = envelope[i] ?? 0;
+    if (val > peakAVal) {
+      peakAVal = val;
+      peakAIdx = i;
+    }
+  }
+
+  const minGap = Math.max(1, Math.floor(0.04 / 0.003));
+  const valleyThreshold = peakAVal * 0.08;
+  let valleyIdx = peakAIdx + minGap;
+  while (valleyIdx < envelope.length && (envelope[valleyIdx] ?? 0) >= valleyThreshold) valleyIdx += 1;
+  if (valleyIdx >= envelope.length) {
+    const whole = trimSilence(ctx, buffer);
+    return { press: whole, release: whole };
+  }
+
+  let peakBIdx = valleyIdx;
+  let peakBVal = 0;
+  for (let i = valleyIdx; i < envelope.length; i += 1) {
+    const val = envelope[i] ?? 0;
+    if (val > peakBVal) {
+      peakBVal = val;
+      peakBIdx = i;
+    }
+  }
+
+  if (peakBVal < peakAVal * 0.1) {
+    const whole = trimSilence(ctx, buffer);
+    return { press: whole, release: whole };
+  }
+
+  let splitWindowIdx = peakBIdx;
+  let splitVal = envelope[peakBIdx] ?? 0;
+  for (let i = peakAIdx + minGap; i < peakBIdx; i += 1) {
+    const val = envelope[i] ?? 0;
+    if (val < splitVal) {
+      splitVal = val;
+      splitWindowIdx = i;
+    }
+  }
+
+  const lead = Math.floor(sampleRate * 0.003);
+  const tail = Math.floor(sampleRate * 0.025);
+
+  const pressStart = Math.max(0, peakAIdx * windowSize - lead);
+  const splitSample = splitWindowIdx * windowSize;
+  const pressEnd = Math.min(channel.length, splitSample + Math.floor(sampleRate * 0.01));
+
+  const releaseStart = Math.max(splitSample, peakBIdx * windowSize - lead);
+  let releaseEndWindow = envelope.length - 1;
+  const tailThreshold = peakBVal * 0.08;
+  while (releaseEndWindow > peakBIdx && (envelope[releaseEndWindow] ?? 0) < tailThreshold) {
+    releaseEndWindow -= 1;
+  }
+  const releaseEnd = Math.min(channel.length, (releaseEndWindow + 1) * windowSize + tail);
+
+  return {
+    press: sliceBuffer(ctx, buffer, pressStart, pressEnd),
+    release: sliceBuffer(ctx, buffer, releaseStart, releaseEnd),
+  };
+}
+
+function loadAll(): Promise<void> {
+  if (loadPromise) return loadPromise;
+  const ctx = getContext();
+  if (!ctx) {
+    loadPromise = Promise.resolve();
+    return loadPromise;
+  }
+
+  loadPromise = (async () => {
+    const [rawClick, ...rawKeys] = await Promise.all([
+      fetchBuffer(ctx, CLICK_URL),
+      ...KEY_URLS.map((url) => fetchBuffer(ctx, url)),
+    ]);
+    if (rawClick) clickBuffer = trimSilence(ctx, rawClick);
+    keyBuffers = rawKeys
+      .filter((b): b is AudioBuffer => Boolean(b))
+      .map((b) => splitKeySample(ctx, b));
+  })();
+
+  return loadPromise;
+}
+
+async function ensureContextRunning(ctx: AudioContext): Promise<boolean> {
+  if (ctx.state === "running") return true;
+  try {
+    await ctx.resume();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function fire(buffer: AudioBuffer, rate = 1): Promise<void> {
+  const ctx = getContext();
+  if (!ctx || !masterGain) return;
+  if (!(await ensureContextRunning(ctx))) return;
+  const source = ctx.createBufferSource();
+  source.buffer = buffer;
+  source.playbackRate.value = rate;
+  source.connect(masterGain);
+  source.start();
+}
+
+/** Play a click sound (down = lower pitch, up = normal pitch) */
+export function playClick(kind: ClickKind = "down"): void {
+  if (clickBuffer) {
+    void fire(clickBuffer, CLICK_RATE[kind] ?? 1);
+    return;
+  }
+  void loadAll().then(() => {
+    if (clickBuffer) void fire(clickBuffer, CLICK_RATE[kind] ?? 1);
+  });
+}
+
+/** Play a key sound (press/release pair) */
+export function playKey(phase: KeyPhase = "press"): void {
+  if (keyBuffers.length === 0) {
+    void loadAll().then(() => {
+      if (keyBuffers.length > 0) playKey(phase);
+    });
+    return;
+  }
+
+  if (phase === "press") {
+    const idx = keyRotateIdx % keyBuffers.length;
+    keyRotateIdx = (keyRotateIdx + 1) % keyBuffers.length;
+    lastKeyPressIdx = idx;
+    const keyBuffer = keyBuffers[idx];
+    if (keyBuffer) void fire(keyBuffer.press);
+  } else {
+    const lastBuffer = keyBuffers[lastKeyPressIdx];
+    if (lastBuffer) void fire(lastBuffer.release);
+  }
+}
+
+/** Unlock audio context (call on first user interaction) */
+export async function unlockClickAudio(): Promise<void> {
+  const ctx = getContext();
+  if (ctx) await ensureContextRunning(ctx);
+  await loadAll();
+}
+
+/* ── Public API for button categories ──────────────────────────────────── */
+
+/** Play sound for a specific button category */
+export function playButtonForCategory(category: ButtonCategory): void {
+  ensureSettingsLoaded();
+  const variant = currentSettings[category];
+  if (variant === "none") return;
+
+  if (variant === "click") {
+    playClick("down");
+  } else if (variant === "key") {
+    playKey("press");
+  }
+}
+
+/** Play button click (legacy API, uses primary category) */
+export function playButtonClick(variant?: ButtonClickVariant): void {
+  ensureSettingsLoaded();
+  const resolvedVariant = variant ?? currentSettings.primary;
+  if (resolvedVariant === "none") return;
+
+  if (resolvedVariant === "click") {
+    playClick("down");
+  } else if (resolvedVariant === "key") {
+    playKey("press");
+  }
+}
+
+/** Play secondary button sound (higher-pitched click) */
+export function playButtonSecondary(variant?: ButtonClickVariant): void {
+  ensureSettingsLoaded();
+  const resolvedVariant = variant ?? currentSettings.secondary;
+  if (resolvedVariant === "none") return;
+
+  if (resolvedVariant === "click") {
+    playClick("up"); // up is higher-pitched
+  } else if (resolvedVariant === "key") {
+    playKey("release");
+  }
+}

@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ClipboardEvent, type DragEvent, type KeyboardEvent, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type RefObject } from "react";
 import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
 import type { ComposerAttachment, NewThreadEnvironment, WorkspaceRecord } from "./desktop-state";
 import type { ComposerMode } from "./composer-mode";
@@ -6,6 +6,7 @@ import { CavemanSelector } from "./caveman-selector";
 import { ComposerModeSelector } from "./composer-mode-selector";
 import { ModelFeatureBadges } from "./model-feature-badges";
 import { ArrowUpIcon, PiLogoMark } from "./icons";
+import { useButtonSound } from "./use-button-sound";
 import {
   MODEL_OPTIONS_EMPTY_TITLE,
   type ComposerSlashCommand,
@@ -51,7 +52,6 @@ interface NewThreadViewProps {
   readonly selectedMentionIndex: number;
   readonly onChangePrompt: (prompt: string) => void;
   readonly onSelectEnvironment: (environment: NewThreadEnvironment) => void;
-  readonly onSelectWorkspace: (workspaceId: string) => void;
   readonly onSetModel: (provider: string, modelId: string) => void;
   readonly onSetThinking: (level: string) => void;
   readonly onSetCavemanLevel: (level: CavemanLevel) => void;
@@ -65,7 +65,7 @@ interface NewThreadViewProps {
   readonly onSelectSlashOption: (option: ComposerSlashOption) => void;
   readonly onSelectMention: (filePath: string) => void;
   readonly onRemoveAttachment: (attachmentId: string) => void;
-  readonly onSubmit: () => void;
+  readonly onSubmit: (prompt: string) => void;
 }
 
 export function NewThreadView({
@@ -99,7 +99,6 @@ export function NewThreadView({
   selectedMentionIndex,
   onChangePrompt,
   onSelectEnvironment,
-  onSelectWorkspace,
   onSetModel,
   onSetThinking,
   onSetCavemanLevel,
@@ -116,20 +115,80 @@ export function NewThreadView({
   onSubmit,
 }: NewThreadViewProps) {
   const workspace = workspaces.find((entry) => entry.id === selectedWorkspaceId);
+  const [draft, setDraft] = useState(prompt);
+  const latestDraftRef = useRef(prompt);
+  const lastPromptPropRef = useRef(prompt);
+  const composerAutoGrowHeightRef = useRef(0);
 
   useEffect(() => {
     composerRef.current?.focus();
   }, [composerRef]);
 
   useEffect(() => {
+    if (prompt === lastPromptPropRef.current) {
+      return;
+    }
+    lastPromptPropRef.current = prompt;
+    latestDraftRef.current = prompt;
+    setDraft(prompt);
+  }, [prompt]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      onChangePrompt(latestDraftRef.current);
+    }, 250);
+    return () => window.clearTimeout(timeout);
+  }, [draft, onChangePrompt]);
+
+  const handleDraftChange = (nextDraft: string) => {
+    latestDraftRef.current = nextDraft;
+    setDraft(nextDraft);
+    if (showSlashMenu || showSlashOptionMenu || showMentionMenu || /(?:^|\s)[/@][^\s]*$/.test(nextDraft)) {
+      onChangePrompt(nextDraft);
+    }
+  };
+
+  const submitDraft = () => {
+    onChangePrompt(draft);
+    onSubmit(draft);
+  };
+
+  const handleComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    onComposerKeyDown(event);
+    if (event.defaultPrevented || event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) {
+      return;
+    }
+
+    event.preventDefault();
+    if (!draft.trim() && attachments.length === 0) {
+      return;
+    }
+    if (modelOnboarding.requiresModelSelection) {
+      return;
+    }
+
+    submitDraft();
+  };
+
+  useLayoutEffect(() => {
     const composer = composerRef.current;
     if (!composer) {
       return;
     }
 
-    composer.style.height = "0px";
-    composer.style.height = `${Math.min(composer.scrollHeight, 400)}px`;
-  }, [composerRef, prompt]);
+    composer.style.height = "auto";
+    const nextHeight = Math.min(composer.scrollHeight, 400);
+    const previousHeight = composerAutoGrowHeightRef.current;
+    if (Math.abs(nextHeight - previousHeight) < 1) {
+      if (previousHeight > 0) {
+        composer.style.height = `${previousHeight}px`;
+      }
+      return;
+    }
+
+    composerAutoGrowHeightRef.current = nextHeight;
+    composer.style.height = `${nextHeight}px`;
+  }, [composerRef, draft]);
 
   if (!isChat && !workspace) {
     return (
@@ -168,9 +227,8 @@ export function NewThreadView({
               topNotice={(
                 <ModelOnboardingNoticeBanner notice={modelOnboarding.notice} onOpenSettings={onOpenModelSettings} />
               )}
-              queuedMessages={[]}
-              composerDraft={prompt}
-              setComposerDraft={onChangePrompt}
+              composerDraft={draft}
+              setComposerDraft={handleDraftChange}
               composerRef={composerRef}
               attachments={attachments}
               slashSections={slashSections}
@@ -181,13 +239,9 @@ export function NewThreadView({
               showSlashOptionMenu={showSlashOptionMenu}
               slashOptionEmptyState={slashOptionEmptyState}
               onClearSlashCommand={onClearSlashCommand}
-              onComposerKeyDown={onComposerKeyDown}
+              onComposerKeyDown={handleComposerKeyDown}
               onComposerPaste={onComposerPaste}
               onComposerDrop={onComposerDrop}
-              onEditQueuedMessage={() => undefined}
-              onCancelQueuedEdit={() => undefined}
-              onRemoveQueuedMessage={() => undefined}
-              onSteerQueuedMessage={() => undefined}
               onRemoveAttachment={onRemoveAttachment}
               onSelectSlashCommand={onSelectSlashCommand}
               onSelectSlashOption={onSelectSlashOption}
@@ -215,13 +269,13 @@ export function NewThreadView({
                   cavemanLevel={cavemanLevel}
                   composerMode={composerMode}
                   modelOnboarding={modelOnboarding}
-                  hasContent={Boolean(prompt.trim() || attachments.length > 0)}
+                  hasContent={Boolean(draft.trim() || attachments.length > 0)}
                   modelSelectorRef={modelSelectorRef}
                   onSetModel={onSetModel}
                   onSetThinking={onSetThinking}
                   onSetCavemanLevel={onSetCavemanLevel}
                   onSetComposerMode={onSetComposerMode}
-                  onSubmit={onSubmit}
+                  onSubmit={submitDraft}
                 />
               )}
             />
@@ -231,18 +285,7 @@ export function NewThreadView({
           <div className="new-thread__options">
             <div className="new-thread__option">
               <span className="new-thread__option-label">Project</span>
-              <select
-                className="new-thread__project-select"
-                aria-label="Project"
-                value={selectedWorkspaceId}
-                onChange={(event) => onSelectWorkspace(event.target.value)}
-              >
-                {workspaces.map((entry) => (
-                  <option key={entry.id} value={entry.id}>
-                    {entry.name}
-                  </option>
-                ))}
-              </select>
+              <span className="new-thread__project-name">{workspace?.name ?? "—"}</span>
             </div>
             <div className="new-thread__option">
               <span className="new-thread__option-label">Environment</span>
@@ -303,6 +346,7 @@ function NewThreadComposerFooter({
   onSetComposerMode,
   onSubmit,
 }: NewThreadComposerFooterProps) {
+  const submitButtonSound = useButtonSound({ category: "primary", disabled: !hasContent || modelOnboarding.requiresModelSelection });
   return (
     <>
       <div className="composer__footer">
@@ -340,6 +384,7 @@ function NewThreadComposerFooter({
                 className="button button--primary button--cta-icon composer__send"
                 type="button"
                 disabled={!hasContent || modelOnboarding.requiresModelSelection}
+                {...submitButtonSound}
                 onClick={onSubmit}
               >
                 <ArrowUpIcon />

@@ -159,6 +159,25 @@ test("settings/mergeNotificationPreferences merges shallowly and always bumps re
   assert.notEqual(stillBumps, next);
 });
 
+test("settings/mergeThreadTransition merges shallowly and always bumps revision", () => {
+  const base = {
+    ...createEmptyDesktopAppState(),
+    threadTransition: { motion: "curve" as const, heroExit: false, bubbleHandoff: false },
+    revision: 5,
+  };
+  const next = reduce(base, {
+    type: "settings/mergeThreadTransition",
+    preferences: { motion: "spring" as const, bubbleHandoff: true },
+  });
+  assert.deepEqual(next.threadTransition, { motion: "spring", heroExit: false, bubbleHandoff: true });
+  assert.equal(next.revision, 6);
+
+  // Empty/identical patch still bumps revision (mirrors notification merge).
+  const stillBumps = reduce(next, { type: "settings/mergeThreadTransition", preferences: {} });
+  assert.equal(stillBumps.revision, 7);
+  assert.notEqual(stillBumps, next);
+});
+
 test("composer/setDraft owns draft sync nonce, clears lastError, and no-ops when draft/source unchanged", () => {
   const base = {
     ...createEmptyDesktopAppState(),

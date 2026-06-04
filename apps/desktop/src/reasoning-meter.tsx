@@ -13,7 +13,7 @@ const LEVEL_LABEL: Record<ThinkingValue, string> = {
   low: "low",
   medium: "med",
   high: "high",
-  xhigh: "xhigh",
+  xhigh: "max",
 };
 
 function reasoningFill(level: string): number {

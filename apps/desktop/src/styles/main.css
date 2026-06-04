@@ -220,7 +220,7 @@
 }
 
 .canvas {
-  padding: 20px 28px 0;
+  padding: 16px 16px 0;
   overflow: auto;
   animation: canvas-fade-in 200ms ease-out both;
 }
@@ -290,18 +290,18 @@
  * scrollbar is rendered outside the padding, at the right edge of the
  * pane's border-box. */
 .conversation--thread .timeline-pane--thread {
-  padding-left: 28px;
-  padding-right: 28px;
+  padding-left: 16px;
+  padding-right: 16px;
   /* Reserve scroll space below the last item so it can clear the
-   * composer, which overlaps the pane bottom by ~20px (margin-top: -20px
+   * composer, which overlaps the pane bottom by ~12px (margin-top: -12px
    * on .composer). Without this the final content sits flush at the pane
    * bottom and is hidden behind the composer surface at max scroll. */
-  padding-bottom: 48px;
+  padding-bottom: 40px;
 }
 
 .conversation--thread > .chat-header {
-  padding-left: 28px;
-  padding-right: 28px;
+  padding-left: 16px;
+  padding-right: 16px;
 }
 
 .conversation--composer {
@@ -508,14 +508,19 @@
 }
 
 .error-banner {
-  padding: 12px 14px;
-  border-radius: 12px;
-  background: rgba(196, 86, 102, 0.08);
-  border: 1px solid rgba(196, 86, 102, 0.16);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 0;
+  background: color-mix(in srgb, var(--error-ink) 10%, white);
+  border: none;
   color: var(--error-ink);
-  font-weight: 600;
+  font-weight: 500;
+  font-size: 13px;
   width: 100%;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
+  animation: toast-slide-in 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .composer__error {
@@ -523,10 +528,12 @@
 }
 
 .timeline-item--assistant {
+  contain: layout paint;
   max-width: 760px;
 }
 
 .timeline-item--summary-card {
+  contain: layout paint;
   max-width: 760px;
   padding: 14px 16px;
   border-radius: 18px;
@@ -544,6 +551,7 @@
 }
 
 .timeline-item--user {
+  contain: layout paint;
   display: flex;
   justify-content: flex-end;
 }
@@ -552,36 +560,51 @@
   max-width: min(620px, 100%);
   padding: 13px 17px;
   border-radius: 16px;
-  background: var(--main);
+  background: var(--sidebar);
   transform-origin: bottom right;
 }
 
 .timeline-item--just-sent .timeline-item__bubble {
-  animation: user-bubble-in 640ms cubic-bezier(0.22, 1.45, 0.36, 1) both;
+  animation: user-bubble-in 220ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
   will-change: transform, opacity;
 }
 
 @keyframes user-bubble-in {
   0% {
-    transform: translateY(22px) scale(0.9);
+    transform: translateY(6px);
     opacity: 0;
   }
-  42% {
-    transform: translateY(-3px) scale(1.025);
+  100% {
+    transform: translateY(0);
     opacity: 1;
   }
-  68% {
-    transform: translateY(1px) scale(0.995);
-    opacity: 1;
+}
+
+/* Option 4 — bubble handoff: while the composer docks during go-live, the first
+   user bubble holds low (toward the composer) then rises up, so it reads as
+   lifting out of the composer. Gated by a body class set only during go-live. */
+body.pi-thread-handoff .timeline-item--just-sent .timeline-item__bubble {
+  animation: user-bubble-handoff 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes user-bubble-handoff {
+  0% {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+  45% {
+    transform: translateY(24px);
+    opacity: 0;
   }
   100% {
-    transform: translateY(0) scale(1);
+    transform: translateY(0);
     opacity: 1;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .timeline-item--just-sent .timeline-item__bubble {
+  .timeline-item--just-sent .timeline-item__bubble,
+  body.pi-thread-handoff .timeline-item--just-sent .timeline-item__bubble {
     animation: none;
   }
 }
@@ -720,7 +743,8 @@
   padding-left: 12px;
   border-left: 2px solid var(--border);
   color: var(--muted-strong);
-  font-size: 13px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
   line-height: 1.6;
 }
 
@@ -818,12 +842,13 @@
   border-left: 2px solid var(--border);
 }
 
-/* Reasoning text: muted, smaller, italic — quiet supporting context, not the
-   headline answer. */
+/* Reasoning text: muted, smaller, monospace — quiet supporting context, not
+   the headline answer. Monospace gives a distinctive "thinking" feel without
+   the readability cost of italic for code-adjacent prose. */
 .timeline-thinking__reasoning {
   color: var(--muted-strong);
+  font-family: var(--font-mono);
   font-size: 12.5px;
-  font-style: italic;
   line-height: 1.65;
 }
 
@@ -1678,11 +1703,10 @@
   line-height: 1.65;
 }
 
-/* Streaming variant: raw text + inline caret, so we override the grid
-   layout used for parsed markdown blocks. Falls back to block flow so the
-   caret stays on the last line of text instead of dropping to a new grid
-   row. The wrapping <div> also has white-space: pre-wrap inline (set in
-   StreamingMessageText) so newlines from the model are preserved. */
+/* Streaming variant: markdown-parsed text + inline caret, so we override
+   the grid layout used for the final markdown blocks. Falls back to block
+   flow so the caret stays on the last line of text instead of dropping to
+   a new grid row. */
 .message__content--streaming {
   display: block;
 }
@@ -1786,7 +1810,7 @@
 }
 
 .composer {
-  padding: 0 28px 24px;
+  padding: 0 16px 24px;
   position: relative;
   z-index: 2;
   /* Overlap the conversation by the surface corner radius so conversation
@@ -1794,13 +1818,118 @@
      content over its solid body, and where the surface's rounded top
      corners curve away the content behind shows through — filling the
      otherwise-empty corner gap instead of being clipped flat. */
-  margin-top: -20px;
+  margin-top: -12px;
+}
+
+/* In-app "thread finished" toast — slides up out of the top of the composer. */
+.composer-completion-toast {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: calc(100% - 6px);
+  z-index: 5;
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  padding: 8px 8px 8px 10px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+  animation: composer-completion-toast-rise 0.22s ease-out;
+}
+
+.composer-completion-toast--failure {
+  border-color: color-mix(in srgb, var(--error-ink) 55%, transparent);
+  border-left-color: var(--error-ink);
+}
+
+.composer-completion-toast__open {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+}
+
+.composer-completion-toast__icon {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  font-size: 13px;
+  color: #fff;
+  background: var(--accent);
+}
+
+.composer-completion-toast--failure .composer-completion-toast__icon {
+  background: var(--error-ink);
+}
+
+.composer-completion-toast__body {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.composer-completion-toast__label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted-soft, var(--muted));
+}
+
+.composer-completion-toast__title {
+  font-size: 13px;
+  color: var(--text-strong, var(--ink));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-completion-toast__close {
+  flex: 0 0 auto;
+  align-self: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: 0;
+  background: transparent;
+  color: var(--muted-soft, var(--ink));
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0;
+}
+
+.composer-completion-toast__close:hover {
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+}
+
+@keyframes composer-completion-toast-rise {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .composer__surface {
   position: relative;
   border-radius: 18px;
-  padding: 30px 14px 11px;
+  padding: 16px 14px 8px;
   border: 1px solid var(--line);
   background: var(--surface);
   width: 100%;
@@ -2591,62 +2720,71 @@
 
 .toast {
   position: fixed;
-  right: 16px;
-  bottom: 16px;
+  top: 0;
+  left: 0;
+  right: 0;
   z-index: 9999;
-  display: inline-flex;
-  align-items: flex-start;
-  gap: 12px;
-  max-width: 420px;
-  padding: 10px 12px 10px 14px;
-  border-radius: 10px;
-  border: 1px solid var(--line);
-  background: var(--surface);
-  color: var(--ink);
-  box-shadow: var(--shadow-lg);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
   font-size: 13px;
   line-height: 1.4;
-  animation: toast-slide-in 0.18s ease-out;
+  animation: toast-slide-in 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .toast--success {
-  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
-  border-left: 3px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, white);
+  color: var(--ink);
 }
 
 .toast--error {
-  border-color: color-mix(in srgb, var(--error-ink) 55%, transparent);
-  border-left: 3px solid var(--error-ink);
+  background: color-mix(in srgb, var(--error-ink) 10%, white);
+  color: var(--error-ink);
+}
+
+.toast__icon {
+  flex: 0 0 auto;
 }
 
 .toast__message {
   flex: 1 1 auto;
   white-space: pre-wrap;
   word-break: break-word;
+  font-weight: 500;
+}
+
+.toast__secondary {
+  font-weight: 400;
+  color: var(--muted-soft, var(--ink));
 }
 
 .toast__close {
   flex: 0 0 auto;
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
   border: 0;
   background: transparent;
   color: var(--muted-soft, var(--ink));
   cursor: pointer;
-  font-size: 16px;
-  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: 0;
+  opacity: 0.5;
+  transition: opacity 0.15s;
 }
 
 .toast__close:hover {
+  opacity: 1;
   background: color-mix(in srgb, var(--ink) 8%, transparent);
 }
 
 @keyframes toast-slide-in {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(12px);
   }
   to {
     opacity: 1;
@@ -2660,9 +2798,18 @@
   gap: 8px;
 }
 
-.composer__attachment-shelf {
+.composer__attachment-shelf,
+.composer__queued-shelf {
   width: min(920px, 100%);
   margin: 0 auto 12px;
+}
+
+.composer__queued-shelf {
+  padding: 8px;
+  margin-bottom: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface-muted);
 }
 
 .composer__attachments {
@@ -2676,9 +2823,9 @@
 }
 
 .queued-composer-messages {
-  display: grid;
-  gap: 10px;
-  margin-bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .queued-composer-messages__editing {
@@ -2686,12 +2833,12 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 10px 12px;
-  border-radius: 14px;
+  padding: 8px 10px;
+  border-radius: 10px;
   border: 1px solid var(--line);
-  background: var(--surface-muted);
+  background: var(--surface);
   color: var(--muted-strong);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 560;
 }
 
@@ -2702,6 +2849,7 @@
   color: var(--muted-soft);
   font: inherit;
   cursor: pointer;
+  padding: 0;
 }
 
 .queued-composer-messages__editing button:hover,
@@ -2710,24 +2858,28 @@
 }
 
 .queued-composer-message {
-  display: grid;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.queued-composer-message > .queued-composer-message__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 10px;
-  padding: 12px 14px;
-  border-radius: 16px;
-  border: 1px solid var(--line);
-  background: linear-gradient(180deg, var(--main) 0%, var(--surface-muted) 100%);
 }
 
 .queued-composer-message--editing {
-  border-color: #8da0ef;
-  box-shadow: 0 0 0 3px rgba(107, 125, 216, 0.12);
+  color: var(--text-strong);
 }
 
 .queued-composer-message__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
 }
 
 .queued-composer-message__actions {
@@ -2737,14 +2889,15 @@
   flex-shrink: 0;
   flex-wrap: nowrap;
   justify-content: flex-end;
+  font-size: 12px;
 }
 
 .queued-composer-message__text {
   min-width: 0;
   flex: 1;
-  color: var(--text-strong);
-  font-size: 14px;
-  line-height: 1.45;
+  color: var(--muted-strong);
+  font-size: 13px;
+  line-height: 1.35;
   white-space: pre-wrap;
 }
 
@@ -3369,6 +3522,16 @@
   text-transform: uppercase;
 }
 
+.new-thread__project-name {
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text-strong);
+  font-size: 13px;
+  font-weight: 560;
+}
+
 .new-thread__project-select {
   padding: 8px 12px;
   border-radius: 999px;
@@ -3464,7 +3627,8 @@
 }
 
 .settings-view,
-.skills-view {
+.skills-view,
+.context-view {
   padding-bottom: 24px;
   width: min(1120px, 100%);
   margin: 0 auto;
@@ -4846,10 +5010,6 @@ mark.thread-find-active {
   box-shadow: 0 14px 32px rgba(0, 0, 0, 0.3);
 }
 
-:root.dark .timeline-item__bubble {
-  background: var(--surface);
-}
-
 :root.dark .timeline-item--summary-card {
   border-color: rgba(210, 177, 98, 0.22);
   background: linear-gradient(180deg, rgba(71, 55, 28, 0.58) 0%, rgba(46, 38, 24, 0.78) 100%);
@@ -4918,15 +5078,8 @@ mark.thread-find-active {
   background: var(--surface-muted);
 }
 
-:root.dark .queued-composer-messages__editing,
-:root.dark .queued-composer-message {
-  border-color: var(--line);
-  background: color-mix(in srgb, var(--surface-muted) 88%, black 12%);
-}
-
 :root.dark .queued-composer-message--editing {
-  border-color: #8fa0ff;
-  box-shadow: 0 0 0 3px rgba(143, 160, 255, 0.14);
+  color: var(--text-strong);
 }
 
 :root.dark .queued-composer-attachment {
@@ -5229,8 +5382,7 @@ mark.thread-find-active {
 }
 
 :root.dark .error-banner {
-  background: rgba(224, 84, 103, 0.12);
-  border-color: rgba(224, 84, 103, 0.2);
+  background: color-mix(in srgb, var(--error-ink) 12%, #1a1a1a);
 }
 
 /* Working label — animated spinner + shimmer text. Matches pi TUI loader. */
@@ -5506,7 +5658,7 @@ mark.thread-find-active {
   background: var(--crt-frame);
   border: 0;
   border-radius: 20px;
-  padding: 14px 16px 16px;
+  padding: 8px 12px 10px;
   /* Flat darker grey frame (no bright raised edges) so it reads as the
      same box as the controls strip, surrounding the screen. */
   box-shadow:
@@ -5818,6 +5970,7 @@ mark.thread-find-active {
 }
 
 .composer-device--modular .composer__screen {
+  contain: layout paint;
   display: flex;
   min-height: 90px;
   flex-direction: column;
@@ -5830,49 +5983,9 @@ mark.thread-find-active {
 }
 
 /* Scanlines live only on the recessed screen, not the controls strip. */
-.composer-device--modular .composer__screen::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 3;
-  opacity: 0.26;
-  border-radius: inherit;
-  background-image: repeating-linear-gradient(
-    to bottom,
-    transparent 0,
-    transparent calc(var(--crt-px) - 1px),
-    var(--crt-grid-bg) calc(var(--crt-px) - 1px),
-    var(--crt-grid-bg) var(--crt-px)
-  );
-  background-size: 100% var(--crt-px);
-}
-
+.composer-device--modular .composer__screen::before,
 .composer-device--modular .composer__screen::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 4;
-  border-radius: inherit;
-  background: radial-gradient(ellipse at 50% 40%, transparent 50%, oklch(0 0 0 / 0.48) 100%);
-  mask-image: linear-gradient(
-    to bottom,
-    transparent 45%,
-    rgba(0, 0, 0, 0.12) 49%,
-    rgba(0, 0, 0, 0.12) 51%,
-    transparent 55%
-  );
-  -webkit-mask-image: linear-gradient(
-    to bottom,
-    transparent 45%,
-    rgba(0, 0, 0, 0.12) 49%,
-    rgba(0, 0, 0, 0.12) 51%,
-    transparent 55%
-  );
-  mask-size: 100% 6%;
-  -webkit-mask-size: 100% 6%;
-  animation: composer-crt-scanbeam 17ms linear infinite;
+  content: none;
 }
 
 /* The bar wraps context bar + footer-row. Give it a small top gap. */
@@ -5964,6 +6077,24 @@ mark.thread-find-active {
   border-radius: 999px;
 }
 
+/* Light mode: the key-mount socket is the grey machined groove the key
+   rises out of — not the near-black socket used in dark mode. */
+:root:not(.dark).composer-device.composer-device--modular .composer__key-mount {
+  background: linear-gradient(135deg, oklch(0.56 0.004 250) 0%, oklch(0.63 0.004 250) 100%);
+  box-shadow:
+    inset 1px 1px 1.5px oklch(0.34 0.004 250 / 0.5),
+    inset -1px -1px 1px oklch(1 0.002 250 / 0.4),
+    inset 0 0 0 1px oklch(0.42 0.004 250 / 0.5);
+}
+
+/* The send button is a freestanding two-part dial (collar + raised cap),
+   so it doesn't sit in the grey key-mount socket the other keys use. */
+:root:not(.dark).composer-device.composer-device--modular .composer__key-mount--send {
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+}
+
 /* The .model-selector wrapper holds TWO badges (model + thinking).
    Make it a flex container so the two keys are spaced like all the
    other top-level keys, with a consistent gap. */
@@ -6042,10 +6173,14 @@ mark.thread-find-active {
 .composer-device--modular .caveman-selector__select:active:not(:disabled),
 .composer-device--modular .model-selector__badge:active:not(:disabled),
 .composer-device--modular .new-thread__environment:active:not(:disabled) {
-  transform: translateY(1px);
+  transform: translateY(2px);
   box-shadow:
-    inset 1px 1px 2px oklch(0 0 0 / 0.45),
-    inset -1px -1px 0 oklch(0.4 0.005 250 / 0.25);
+    /* pressed down into the blackish cavity */
+    inset 0 2px 4px oklch(0 0 0 / 0.55),
+    inset 0 1px 0 oklch(0.28 0.004 250 / 0.55),
+    inset 0 -1px 0 oklch(0.9 0.002 250 / 0.3),
+    0 0 0 1px oklch(0.16 0.004 250 / 0.85),
+    0 1px 2px 1px oklch(0 0 0 / 0.5);
 }
 
 .composer-device--modular .composer-mode:disabled,
@@ -6072,38 +6207,113 @@ mark.thread-find-active {
     0 0 18px oklch(0.62 0.18 295 / 0.22);
 }
 
-/* Build/Plan: pressed-in purple state when plan is active */
+/* Build/Plan mode switch: recessed slot with a brushed-metal thumb. */
+.composer-device--modular .composer__key-mount--mode {
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.composer-device--modular .composer-mode {
+  gap: 18px;
+  height: 46px;
+  min-width: 212px;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
+}
+
+.composer-device--modular .composer-mode:hover:not(:disabled) {
+  filter: none;
+}
+
+.composer-device--modular .composer-mode:active:not(:disabled) {
+  transform: none;
+  box-shadow: none;
+}
+
 .composer-device--modular .composer-mode--plan {
-  transform: translateY(1px);
-  background: linear-gradient(
-    160deg,
-    oklch(0.30 0.10 295) 0%,
-    oklch(0.22 0.11 295) 55%,
-    oklch(0.18 0.10 295) 100%
-  );
-  color: oklch(0.88 0.10 295);
-  box-shadow:
-    inset 1px 1px 2px oklch(0 0 0 / 0.55),
-    inset 0 0 0 1px oklch(0.42 0.13 295 / 0.85),
-    0 0 18px oklch(0.62 0.18 295 / 0.22);
+  transform: none;
 }
 
-.composer-device--modular .composer-mode__dot {
-  width: 7px;
-  height: 7px;
+.composer-device--modular .composer-mode__label {
+  position: relative;
+  z-index: 2;
+  min-width: 44px;
+  color: oklch(0.18 0.004 250);
+  text-align: center;
+  transition:
+    color 120ms ease,
+    text-shadow 120ms ease;
+}
+
+.composer-device--modular .composer-mode__label--active {
+  color: oklch(0.74 0.185 52);
+  text-shadow:
+    0 0 5px oklch(0.78 0.20 55 / 0.7),
+    0 0 12px oklch(0.78 0.20 55 / 0.35);
+}
+
+.composer-device--modular .composer-mode__track {
+  position: relative;
+  z-index: 1;
+  width: 74px;
+  height: 34px;
+  margin: 0;
   border-radius: 999px;
-  background: oklch(0.84 0.18 145);
+  background: linear-gradient(135deg, oklch(0.43 0.004 250), oklch(0.62 0.004 250));
   box-shadow:
-    inset 0 0 1px oklch(0 0 0 / 0.5),
-    0 0 6px oklch(0.78 0.20 150 / 0.7);
-  opacity: 1;
+    inset 2px 2px 4px oklch(0 0 0 / 0.38),
+    inset -1px -1px 2px oklch(1 0.002 250 / 0.28);
 }
 
-.composer-device--modular .composer-mode--plan .composer-mode__dot {
-  background: oklch(0.78 0.15 295);
+.composer-device--modular .composer-mode__thumb {
+  position: absolute;
+  top: -6px;
+  left: -5px;
+  width: 46px;
+  height: 46px;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 50% 46%, oklch(1 0.002 250 / 0.5), transparent 46%),
+    conic-gradient(
+      from 0deg,
+      oklch(0.78 0.004 250) 0deg,
+      oklch(0.60 0.004 250) 45deg,
+      oklch(0.80 0.004 250) 90deg,
+      oklch(0.97 0.002 250) 135deg,
+      oklch(0.80 0.004 250) 180deg,
+      oklch(0.60 0.004 250) 225deg,
+      oklch(0.80 0.004 250) 270deg,
+      oklch(0.97 0.002 250) 315deg,
+      oklch(0.78 0.004 250) 360deg
+    );
   box-shadow:
-    inset 0 0 1px oklch(0 0 0 / 0.5),
-    0 0 6px oklch(0.7 0.18 295 / 0.7);
+    inset 0 1.5px 0 oklch(1 0.002 250 / 0.9),
+    inset 0 -1.5px 1px oklch(0.42 0.004 250 / 0.55),
+    inset 0 0 0 1px oklch(0.60 0.004 250 / 0.4),
+    0 0 0 1px oklch(0.34 0.004 250 / 0.6),
+    0 2px 2px oklch(0 0 0 / 0.3),
+    0 5px 9px -2px oklch(0 0 0 / 0.32);
+  transition: transform 140ms ease;
+}
+
+.composer-device--modular .composer-mode__thumb::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background:
+    radial-gradient(ellipse 70% 52% at 30% 24%, oklch(1 0.002 250 / 0.36), transparent 60%),
+    radial-gradient(ellipse 70% 52% at 72% 78%, oklch(1 0.002 250 / 0.28), transparent 60%),
+    repeating-conic-gradient(from 0deg, oklch(1 0.002 250 / 0.05) 0 1.3deg, oklch(0.42 0.004 250 / 0.045) 1.3deg 2.6deg);
+}
+
+.composer-device--modular .composer-mode--plan .composer-mode__thumb {
+  transform: translateX(36px);
 }
 
 /* Caveman: hide the emoji icon (it competes with the metal look),
@@ -6370,6 +6580,748 @@ mark.thread-find-active {
     inset 0 0 12px rgb(120 90 255 / 0.4);
 }
 
+/* ================================================================ */
+/* Light mode: brushed aluminium composer                           */
+/* ================================================================ */
+/* Reference target: dark inset screen, satin aluminium slab, soft   */
+/* rounded machined edge, white chamfered keycaps, orange send ring. */
+
+:root:not(.dark).composer-device {
+  --crt-frame: oklch(0.77 0.004 250);
+  --crt-body-top: oklch(0.985 0.002 250);
+  --crt-body: oklch(0.90 0.003 250);
+  --crt-body-bottom: oklch(0.79 0.003 250);
+  --crt-bezel: oklch(0.65 0.004 250);
+  --crt-edge-highlight: oklch(0.96 0.003 250);
+  --crt-screen-bg-deep: oklch(0.012 0.004 150);
+  --crt-ink: oklch(0.13 0.005 250);
+  --crt-ink-muted: oklch(0.34 0.005 250);
+  --crt-key-bg:
+    /* gentle dome: brighter toward the top, matte light aluminium */
+    radial-gradient(ellipse 125% 100% at 50% 0%, oklch(1 0.002 250 / 0.5), transparent 58%),
+    radial-gradient(ellipse 90% 70% at 24% 16%, oklch(1 0.002 250 / 0.14), transparent 64%),
+    radial-gradient(ellipse 85% 80% at 84% 88%, oklch(0.46 0.003 250 / 0.07), transparent 70%),
+    linear-gradient(180deg, oklch(0.92 0.003 250) 0%, oklch(0.86 0.003 250) 58%, oklch(0.78 0.003 250) 100%);
+  --crt-key-shadow:
+    /* thin sharp specular highlight along the top edge of the cap
+       (near-white, not pure white — same recipe as the chassis edge) */
+    inset 0 1px 0 oklch(0.97 0.002 250 / 0.95),
+    inset 1px 0 0 oklch(0.94 0.002 250 / 0.6),
+    /* soft dome sheen under the top edge */
+    inset 0 6px 8px oklch(1 0.002 250 / 0.34),
+    /* cap bottom + right fall into shade (directional) */
+    inset -1px 0 0 oklch(0.40 0.004 250 / 0.42),
+    inset 0 -1px 0 oklch(0.32 0.004 250 / 0.62),
+    inset 0 -7px 9px oklch(0.27 0.004 250 / 0.26),
+    inset 0 0 0 1px oklch(0.55 0.004 250 / 0.32),
+    /* recessed socket groove the cap rises out of: blackish, deepest at
+       the bottom, with a soft spill shadow into the cavity */
+    0 0 0 1px oklch(0.52 0.004 250 / 0.55),
+    0 1px 1px 0 oklch(0.44 0.004 250 / 0.4),
+    0 2px 3px 0 oklch(0.36 0.004 250 / 0.3),
+    0 4px 6px -2px oklch(0.32 0.004 250 / 0.2);
+}
+
+:root:not(.dark).composer-device.composer-device--modular .composer__surface {
+  padding: 12px 12px 10px;
+  border-radius: 20px;
+  background:
+    /* smooth light matte aluminium, no visible stripe pattern */
+    linear-gradient(180deg, oklch(1 0.002 250 / 0.42), oklch(0.90 0.003 250 / 0.10) 46%, oklch(0.64 0.003 250 / 0.09) 100%),
+    /* broad soft tonal variation like bead-blasted aluminium */
+    radial-gradient(ellipse 95% 76% at 24% 20%, oklch(1 0.002 250 / 0.13), transparent 64%),
+    radial-gradient(ellipse 90% 78% at 88% 82%, oklch(0.42 0.003 250 / 0.055), transparent 70%),
+    linear-gradient(180deg, var(--crt-body-top) 0%, var(--crt-body) 54%, var(--crt-body-bottom) 100%);
+  background-blend-mode: normal, soft-light, multiply, normal;
+  box-shadow:
+    inset 0 1px 0 oklch(1 0.002 250 / 0.88),
+    inset 0 3px 5px oklch(1 0.002 250 / 0.24),
+    inset 1px 0 0 oklch(1 0.002 250 / 0.50),
+    inset -1px 0 0 oklch(0.34 0.004 250 / 0.36),
+    /* sharp chamfered edge: chassis face runs STRAIGHT into a thin
+       bright highlight, then a lighter shadow, then a darker shadow,
+       then the soft spill-out shadow. No dark band before the highlight. */
+    /* highlight all around keeps the thin edge line on every side,
+       incl. the bottom straight edge */
+    0 0 0 0.5px oklch(0.92 0.002 250 / 0.78),
+    /* extra brighter highlight biased upward: top edge + upper corners
+       catch the light, lower corners stay relatively dim (directional) */
+    0 -0.5px 0 0.5px oklch(0.97 0.002 250 / 0.7),
+    /* lighter shadow, then darker shadow, biased downward */
+    0 1px 0 1px oklch(0.58 0.004 250 / 0.7),
+    0 2px 3px 1px oklch(0.22 0.004 250 / 0.6),
+    /* soft spill-out shadow, strongest at the lower corners */
+    0 6px 14px -3px oklch(0 0 0 / 0.42),
+    0 16px 30px -12px oklch(0 0 0 / 0.6);
+}
+
+:root:not(.dark).composer-device.composer-device--modular .composer__surface::before {
+  border-radius: inherit;
+  background:
+    /* edge catchlights, like rounded machined aluminium */
+    linear-gradient(90deg, oklch(1 0.002 250 / 0.34), transparent 9%, transparent 91%, oklch(0.30 0.004 250 / 0.12)),
+    linear-gradient(180deg, oklch(1 0.002 250 / 0.36), transparent 11%, transparent 88%, oklch(0.30 0.004 250 / 0.16)),
+    /* satin sheen, not grain */
+    radial-gradient(ellipse 130% 60% at 45% 0%, oklch(1 0.002 250 / 0.10), transparent 62%);
+  opacity: 0.66;
+}
+
+:root:not(.dark).composer-device.composer-device--modular .composer textarea,
+:root:not(.dark).composer-device.composer-device--modular .composer textarea::placeholder {
+  text-shadow: none;
+}
+
+:root:not(.dark).composer-device.composer-device--modular .composer__screen {
+  min-height: 118px;
+  border: 0;
+  border-radius: 16px;
+  background:
+    radial-gradient(ellipse 95% 80% at 14% 12%, rgb(140 240 165 / 0.04), transparent 56%),
+    radial-gradient(ellipse 110% 140% at 50% 60%, oklch(0.045 0.008 150), oklch(0.004 0.002 150) 78%);
+  /* Soft rounded-over machined lip: the glass is recessed, the chassis
+     edge rolls over into it with a smooth bright bevel that blends back
+     into the slab — not hard concentric rings. Blur + a slight downward
+     bias give the lip its 3D, bottom-lit feel. */
+  box-shadow:
+    /* recessed glass: dark at the top inner edge, settling lower */
+    inset 0 4px 14px oklch(0 0 0 / 0.92),
+    inset 0 -2px 9px oklch(0 0 0 / 0.55),
+    inset 0 0 0 1px oklch(0 0 0 / 0.85),
+    inset 0 0 42px rgb(140 240 165 / 0.04),
+    /* thin dark seat hugging the glass */
+    0 0 0 1.5px oklch(0.38 0.004 250 / 0.7),
+    /* soft bright bevel, biased to the bottom edge */
+    0 2px 3px 2px oklch(0.99 0.002 250 / 0.95),
+    0 0 5px 3px oklch(0.97 0.002 250 / 0.55),
+    0 4px 6px 1px oklch(1 0.001 250 / 0.4),
+    /* ambient contact shadow into the chassis */
+    0 7px 15px -3px oklch(0 0 0 / 0.28);
+}
+
+:root:not(.dark).composer-device.composer-device--modular .composer__context {
+  padding-top: 18px;
+}
+
+:root:not(.dark).composer-device.composer-device--modular .composer__footer-row {
+  min-height: 66px;
+  gap: 18px;
+  padding: 10px 10px 4px;
+}
+
+:root:not(.dark).composer-device.composer-device--modular .composer__controls {
+  gap: 14px;
+}
+
+:root:not(.dark).composer-device.composer-device--modular .composer__key-mount {
+  padding: 0;
+  border-radius: 9px;
+  background: transparent;
+  box-shadow: none;
+}
+
+:root:not(.dark).composer-device.composer-device--modular .composer-mode,
+:root:not(.dark).composer-device.composer-device--modular .caveman-selector__select,
+:root:not(.dark).composer-device.composer-device--modular .model-selector__badge,
+:root:not(.dark).composer-device.composer-device--modular .new-thread__environment {
+  min-width: 134px;
+  height: 42px;
+  border-radius: 7px;
+  color: oklch(0.16 0.005 250);
+  text-shadow: 0 1px 0 oklch(1 0.002 250 / 0.70);
+  /* matte light aluminium: same family as the chassis, just brighter.
+     Flat face (minimal gradient) + same soft tonal grain as the slab. */
+  background:
+    /* crisp top specular line */
+    linear-gradient(180deg, oklch(1 0.001 250 / 0.92) 0%, transparent 5%),
+    /* matching bead-blasted tonal variation */
+    radial-gradient(ellipse 95% 80% at 26% 16%, oklch(1 0.001 250 / 0.10), transparent 64%),
+    radial-gradient(ellipse 90% 84% at 84% 88%, oklch(0.50 0.003 250 / 0.06), transparent 70%),
+    linear-gradient(180deg, oklch(0.945 0.002 250) 0%, oklch(0.915 0.003 250) 60%, oklch(0.89 0.003 250) 100%);
+  background-blend-mode: normal, soft-light, multiply, normal;
+  /* squared chamfer + near-black recessed socket groove (deepest at bottom) */
+  box-shadow:
+    inset 0 2px 0 oklch(1 0.001 250 / 0.95),
+    inset 0 -2px 1px oklch(0.52 0.004 250 / 0.30),
+    inset 2px 0 1px oklch(1 0.001 250 / 0.45),
+    inset -2px 0 1px oklch(0.60 0.004 250 / 0.28),
+    0 0 0 1px oklch(0.16 0.004 250 / 0.66),
+    0 2px 1px oklch(0.08 0.004 250 / 0.58),
+    0 4px 6px oklch(0.03 0.004 250 / 0.42),
+    0 7px 11px oklch(0 0 0 / 0.22);
+  transition: transform 80ms ease, box-shadow 80ms ease, filter 120ms ease;
+}
+
+:root:not(.dark).composer-device.composer-device--modular .composer-mode:hover:not(:disabled),
+:root:not(.dark).composer-device.composer-device--modular .caveman-selector__select:hover:not(:disabled),
+:root:not(.dark).composer-device.composer-device--modular .model-selector__badge:hover:not(:disabled),
+:root:not(.dark).composer-device.composer-device--modular .new-thread__environment:hover:not(:disabled) {
+  filter: brightness(1.02);
+}
+
+/* Press the keycap down into its cavity (langlink DeviceButton recipe). */
+:root:not(.dark).composer-device.composer-device--modular .composer-mode:is(:active, .is-pressed):not(:disabled),
+:root:not(.dark).composer-device.composer-device--modular .caveman-selector__select:is(:active, .is-pressed):not(:disabled),
+:root:not(.dark).composer-device.composer-device--modular .model-selector__badge:is(:active, .is-pressed, [aria-expanded="true"]):not(:disabled),
+:root:not(.dark).composer-device.composer-device--modular .new-thread__environment:is(:active, .is-pressed):not(:disabled) {
+  transform: translateY(2px);
+  box-shadow:
+    inset 0 2px 4px oklch(0.30 0.004 250 / 0.40),
+    inset 0 1px 0 oklch(1 0.001 250 / 0.35),
+    inset 0 -1px 0 oklch(0.62 0.004 250 / 0.28),
+    0 0 0 1px oklch(0.16 0.004 250 / 0.62),
+    0 1px 0 oklch(0.08 0.004 250 / 0.50),
+    0 1px 2px oklch(0 0 0 / 0.24);
+}
+
+:root:not(.dark).composer-device.composer-device--modular .model-selector {
+  gap: 14px;
+}
+
+:root:not(.dark).composer-device.composer-device--modular .new-thread__environment--active {
+  color: oklch(0.13 0.045 292);
+  background:
+    linear-gradient(180deg, oklch(1 0.002 250 / 0.74), transparent 20%),
+    linear-gradient(180deg, oklch(0.88 0.018 292) 0%, oklch(0.76 0.030 292) 100%);
+  box-shadow:
+    inset 1px 1px 2px oklch(0.30 0.035 292 / 0.32),
+    inset -1px -1px 0 oklch(1 0.002 250 / 0.48),
+    0 1px 0 oklch(0.32 0.004 250 / 0.38),
+    0 0 12px oklch(0.62 0.10 292 / 0.16);
+}
+
+/* Plan mode: the Build/Plan key stays depressed with no colour change
+   (the dot turns from green to orange instead). */
+:root:not(.dark).composer-device.composer-device--modular .composer-mode--plan {
+  transform: translateY(2px);
+  box-shadow:
+    inset 0 2px 4px oklch(0.30 0.004 250 / 0.40),
+    inset 0 1px 0 oklch(1 0.001 250 / 0.35),
+    inset 0 -1px 0 oklch(0.62 0.004 250 / 0.28),
+    0 0 0 1px oklch(0.16 0.004 250 / 0.62),
+    0 1px 0 oklch(0.08 0.004 250 / 0.50),
+    0 1px 2px oklch(0 0 0 / 0.24);
+}
+
+:root:not(.dark).composer-device.composer-device--modular .composer-mode__dot {
+  background: oklch(0.72 0.20 145);
+  box-shadow:
+    inset 0 0 1px oklch(0 0 0 / 0.45),
+    0 0 7px oklch(0.72 0.20 145 / 0.74);
+}
+
+:root:not(.dark).composer-device.composer-device--modular .composer-mode--plan .composer-mode__dot {
+  background: oklch(0.74 0.185 52);
+  box-shadow:
+    inset 0 0 1px oklch(0 0 0 / 0.45),
+    0 0 7px oklch(0.78 0.20 55 / 0.74);
+}
+
+/* ================================================================ */
+/* Metal keys variant (Modular + Metal keys device mode).            */
+/* The left control keys get the same brushed-metal treatment as the */
+/* send dial: a raised steel cap with vertical brushed grain, a bright */
+/* top bevel and a dark seat. Adds the .composer-device--metal-keys   */
+/* class on top of --modular so it reuses the whole modular chassis   */
+/* and only restyles the control keys.                                */
+/* ================================================================ */
+:root:not(.dark).composer-device.composer-device--modular.composer-device--metal-keys .composer-mode,
+:root:not(.dark).composer-device.composer-device--modular.composer-device--metal-keys .caveman-selector__select,
+:root:not(.dark).composer-device.composer-device--modular.composer-device--metal-keys .model-selector__badge,
+:root:not(.dark).composer-device.composer-device--modular.composer-device--metal-keys .new-thread__environment {
+  color: oklch(0.16 0.005 250);
+  text-shadow: 0 1px 0 oklch(1 0.002 250 / 0.7);
+  background:
+    /* crisp top specular line */
+    linear-gradient(180deg, oklch(1 0.002 250 / 0.85) 0%, transparent 6%),
+    /* converging center sheen */
+    radial-gradient(ellipse 120% 82% at 50% 0%, oklch(1 0.002 250 / 0.32), transparent 60%),
+    /* fine vertical brushed grain */
+    repeating-linear-gradient(90deg, oklch(1 0.002 250 / 0.06) 0 1.5px, oklch(0.55 0.004 250 / 0.05) 1.5px 3px),
+    /* base steel: bright top, darker bottom (raised dome) */
+    linear-gradient(180deg, oklch(0.92 0.004 250) 0%, oklch(0.80 0.004 250) 52%, oklch(0.70 0.004 250) 100%);
+  box-shadow:
+    /* cap bevel: bright top edge, shaded bottom */
+    inset 0 1.5px 0 oklch(1 0.002 250 / 0.9),
+    inset 0 -1.5px 1px oklch(0.42 0.004 250 / 0.55),
+    inset 0 0 0 1px oklch(0.60 0.004 250 / 0.4),
+    /* dark seat + soft drop onto the chassis */
+    0 0 0 1px oklch(0.34 0.004 250 / 0.6),
+    0 2px 2px oklch(0 0 0 / 0.3),
+    0 5px 9px -2px oklch(0 0 0 / 0.32);
+}
+
+:root:not(.dark).composer-device.composer-device--modular.composer-device--metal-keys .composer-mode:hover:not(:disabled),
+:root:not(.dark).composer-device.composer-device--modular.composer-device--metal-keys .caveman-selector__select:hover:not(:disabled),
+:root:not(.dark).composer-device.composer-device--modular.composer-device--metal-keys .model-selector__badge:hover:not(:disabled),
+:root:not(.dark).composer-device.composer-device--modular.composer-device--metal-keys .new-thread__environment:hover:not(:disabled) {
+  filter: brightness(1.03);
+}
+
+/* Press the metal cap down into its socket. */
+:root:not(.dark).composer-device.composer-device--modular.composer-device--metal-keys .composer-mode:is(:active, .is-pressed, .composer-mode--plan):not(:disabled),
+:root:not(.dark).composer-device.composer-device--modular.composer-device--metal-keys .caveman-selector__select:is(:active, .is-pressed):not(:disabled),
+:root:not(.dark).composer-device.composer-device--modular.composer-device--metal-keys .model-selector__badge:is(:active, .is-pressed, [aria-expanded="true"]):not(:disabled),
+:root:not(.dark).composer-device.composer-device--modular.composer-device--metal-keys .new-thread__environment:is(:active, .is-pressed):not(:disabled) {
+  transform: translateY(2px);
+  box-shadow:
+    inset 0 2px 5px oklch(0 0 0 / 0.4),
+    inset 0 1px 0 oklch(0.42 0.004 250 / 0.5),
+    inset 0 0 0 1px oklch(0.55 0.004 250 / 0.5),
+    0 1px 2px oklch(0 0 0 / 0.4);
+}
+
+/* ================================================================ */
+/* Dark metal keys: gunmetal version of the same recipe.             */
+/* ================================================================ */
+:root.dark.composer-device.composer-device--modular.composer-device--metal-keys .composer-mode,
+:root.dark.composer-device.composer-device--modular.composer-device--metal-keys .caveman-selector__select,
+:root.dark.composer-device.composer-device--modular.composer-device--metal-keys .model-selector__badge,
+:root.dark.composer-device.composer-device--modular.composer-device--metal-keys .new-thread__environment {
+  color: oklch(0.92 0.005 250);
+  text-shadow: 0 1px 0 oklch(0 0 0 / 0.6);
+  background:
+    linear-gradient(180deg, oklch(0.62 0.005 250 / 0.65) 0%, transparent 6%),
+    radial-gradient(ellipse 120% 82% at 50% 0%, oklch(0.7 0.005 250 / 0.22), transparent 60%),
+    repeating-linear-gradient(90deg, oklch(0.7 0.005 250 / 0.07) 0 1.5px, oklch(0.12 0.005 250 / 0.18) 1.5px 3px),
+    linear-gradient(180deg, oklch(0.36 0.005 250) 0%, oklch(0.26 0.005 250) 52%, oklch(0.18 0.005 250) 100%);
+  box-shadow:
+    inset 0 1.5px 0 oklch(0.62 0.006 250 / 0.7),
+    inset 0 -1.5px 1px oklch(0 0 0 / 0.6),
+    inset 0 0 0 1px oklch(0.10 0.005 250 / 0.6),
+    0 0 0 1px oklch(0 0 0 / 0.7),
+    0 2px 2px oklch(0 0 0 / 0.45),
+    0 5px 9px -2px oklch(0 0 0 / 0.5);
+}
+
+:root.dark.composer-device.composer-device--modular.composer-device--metal-keys .composer-mode:is(:active, .is-pressed, .composer-mode--plan):not(:disabled),
+:root.dark.composer-device.composer-device--modular.composer-device--metal-keys .caveman-selector__select:is(:active, .is-pressed):not(:disabled),
+:root.dark.composer-device.composer-device--modular.composer-device--metal-keys .model-selector__badge:is(:active, .is-pressed, [aria-expanded="true"]):not(:disabled),
+:root.dark.composer-device.composer-device--modular.composer-device--metal-keys .new-thread__environment:is(:active, .is-pressed):not(:disabled) {
+  transform: translateY(2px);
+  box-shadow:
+    inset 0 2px 5px oklch(0 0 0 / 0.6),
+    inset 0 1px 0 oklch(0.10 0.005 250 / 0.5),
+    inset 0 0 0 1px oklch(0.10 0.005 250 / 0.6),
+    0 1px 2px oklch(0 0 0 / 0.5);
+}
+
+/* Send button: a single freestanding brushed-metal cap.
+   - the element is the brushed cap (fine concentric grain + bevel)
+   - ::before is the grain + catchlight overlay
+   - ::after is the orange glow halo (only when there's something to send)
+   - svg arrow is black by default, lit orange when enabled */
+:root:not(.dark).composer-device.composer-device--modular .composer__send {
+  width: 56px;
+  min-width: 56px;
+  height: 56px;
+  color: oklch(0.14 0.004 250);
+  background:
+    /* soft converging center highlight */
+    radial-gradient(circle at 50% 46%, oklch(1 0.002 250 / 0.5), transparent 46%),
+    /* two-axis brushed lighting: bright top-left (315deg) +
+       bottom-right (135deg), dark top-right (45deg) + bottom-left (225deg) */
+    conic-gradient(
+      from 0deg,
+      oklch(0.78 0.004 250) 0deg,
+      oklch(0.60 0.004 250) 45deg,
+      oklch(0.80 0.004 250) 90deg,
+      oklch(0.97 0.002 250) 135deg,
+      oklch(0.80 0.004 250) 180deg,
+      oklch(0.60 0.004 250) 225deg,
+      oklch(0.80 0.004 250) 270deg,
+      oklch(0.97 0.002 250) 315deg,
+      oklch(0.78 0.004 250) 360deg
+    ),
+    radial-gradient(circle at 50% 50%, oklch(0.82 0.004 250) 0 100%);
+  box-shadow:
+    /* cap bevel: bright top edge, shaded bottom (raised dome) */
+    inset 0 1.5px 0 oklch(1 0.002 250 / 0.9),
+    inset 0 -1.5px 1px oklch(0.42 0.004 250 / 0.55),
+    inset 0 0 0 1px oklch(0.60 0.004 250 / 0.4),
+    /* dark seat + soft drop onto the chassis */
+    0 0 0 1px oklch(0.34 0.004 250 / 0.6),
+    0 2px 2px oklch(0 0 0 / 0.3),
+    0 5px 9px -2px oklch(0 0 0 / 0.32);
+}
+
+:root:not(.dark).composer-device.composer-device--modular .composer__send::before {
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  opacity: 1;
+  background:
+    /* matching catchlights in the two bright quadrants */
+    radial-gradient(ellipse 70% 52% at 30% 24%, oklch(1 0.002 250 / 0.36), transparent 60%),
+    radial-gradient(ellipse 70% 52% at 72% 78%, oklch(1 0.002 250 / 0.28), transparent 60%),
+    /* very fine concentric brushed grain */
+    repeating-conic-gradient(from 0deg, oklch(1 0.002 250 / 0.05) 0 1.3deg, oklch(0.42 0.004 250 / 0.045) 1.3deg 2.6deg);
+}
+
+:root:not(.dark).composer-device.composer-device--modular .composer__send::after {
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  background: none;
+  box-shadow: none;
+}
+
+/* enabled (something to send): lit orange arrow + glow halo */
+:root:not(.dark).composer-device.composer-device--modular .composer__send:not(:disabled) {
+  color: oklch(0.74 0.185 52);
+}
+
+:root:not(.dark).composer-device.composer-device--modular .composer__send:not(:disabled)::after {
+  background:
+    radial-gradient(circle at 50% 58%, oklch(0.80 0.20 55 / 0.32), transparent 26%);
+}
+
+:root:not(.dark).composer-device.composer-device--modular .composer__send svg {
+  width: 27px;
+  height: 27px;
+  filter:
+    /* engraved: bright lower edge + dark upper edge */
+    drop-shadow(0 1px 0 oklch(1 0.002 250 / 0.55))
+    drop-shadow(0 -0.5px 0.5px oklch(0.22 0.005 250 / 0.7));
+}
+
+:root:not(.dark).composer-device.composer-device--modular .composer__send:not(:disabled) svg {
+  filter:
+    drop-shadow(0 1px 0 oklch(1 0.002 250 / 0.55))
+    drop-shadow(0 -0.5px 0.5px oklch(0.22 0.06 40 / 0.7))
+    /* lit orange glow */
+    drop-shadow(0 0 6px oklch(0.78 0.20 55 / 0.6));
+}
+
+/* disabled (nothing to send): black arrow, no whole-button fade */
+:root:not(.dark).composer-device.composer-device--modular .composer__send:disabled {
+  opacity: 1;
+  filter: none;
+  color: oklch(0.14 0.004 250);
+  cursor: not-allowed;
+}
+
+/* Send button clicks down into its socket. */
+:root:not(.dark).composer-device.composer-device--modular .composer__send:is(:active, .is-pressed):not(:disabled) {
+  transform: translateY(2px);
+  box-shadow:
+    inset 0 2px 5px oklch(0 0 0 / 0.4),
+    inset 0 1px 0 oklch(0.42 0.004 250 / 0.5),
+    inset 0 0 0 1px oklch(0.55 0.004 250 / 0.5),
+    0 1px 2px oklch(0 0 0 / 0.4);
+}
+
+/* ================================================================ */
+/* Dark mode: brushed gunmetal composer                             */
+/* ================================================================ */
+/* Same machined recipe as the light composer (chamfered edge, stepped */
+/* screen lip, brushed keycaps, single orange-arrow send cap), in a    */
+/* darker gunmetal palette. The screen stays black; the arrow stays    */
+/* orange when there's something to send.                              */
+
+:root.dark.composer-device {
+  --crt-frame: oklch(0.26 0.005 250);
+  --crt-body-top: oklch(0.225 0.005 250);
+  --crt-body: oklch(0.165 0.005 250);
+  --crt-body-bottom: oklch(0.115 0.005 250);
+  --crt-bezel: oklch(0.21 0.006 250);
+  --crt-edge-highlight: oklch(0.46 0.006 250);
+  --crt-screen-bg-deep: oklch(0.012 0.004 150);
+  --crt-ink: oklch(0.92 0.005 250);
+  --crt-ink-muted: oklch(0.60 0.005 250);
+}
+
+:root.dark.composer-device.composer-device--modular .composer__surface {
+  padding: 12px 12px 10px;
+  border-radius: 20px;
+  background:
+    /* faint brushed-metal sheen, no visible stripe pattern */
+    linear-gradient(180deg, oklch(0.46 0.004 250 / 0.26), oklch(0.20 0.004 250 / 0.08) 46%, oklch(0.02 0.004 250 / 0.16) 100%),
+    /* broad soft tonal variation like bead-blasted gunmetal */
+    radial-gradient(ellipse 95% 76% at 24% 20%, oklch(0.55 0.004 250 / 0.10), transparent 64%),
+    radial-gradient(ellipse 90% 78% at 88% 82%, oklch(0.02 0.003 250 / 0.35), transparent 70%),
+    linear-gradient(180deg, var(--crt-body-top) 0%, var(--crt-body) 54%, var(--crt-body-bottom) 100%);
+  background-blend-mode: normal, soft-light, multiply, normal;
+  box-shadow:
+    inset 0 1px 0 oklch(0.46 0.004 250 / 0.5),
+    inset 0 3px 5px oklch(0.44 0.004 250 / 0.12),
+    inset 1px 0 0 oklch(0.44 0.004 250 / 0.3),
+    inset -1px 0 0 oklch(0.02 0.004 250 / 0.5),
+    /* chamfered edge: chassis face runs straight into a thin metal
+       highlight, then a lighter shadow, then a darker shadow, then spill */
+    0 0 0 0.5px oklch(0.46 0.004 250 / 0.55),
+    0 -0.5px 0 0.5px oklch(0.54 0.004 250 / 0.45),
+    0 1px 0 1px oklch(0.10 0.004 250 / 0.7),
+    0 2px 3px 1px oklch(0.02 0.004 250 / 0.7),
+    0 6px 14px -3px oklch(0 0 0 / 0.55),
+    0 16px 30px -12px oklch(0 0 0 / 0.7);
+}
+
+:root.dark.composer-device.composer-device--modular .composer__surface::before {
+  border-radius: inherit;
+  background:
+    linear-gradient(90deg, oklch(0.48 0.004 250 / 0.26), transparent 9%, transparent 91%, oklch(0.01 0.004 250 / 0.2)),
+    linear-gradient(180deg, oklch(0.48 0.004 250 / 0.28), transparent 11%, transparent 88%, oklch(0.01 0.004 250 / 0.24)),
+    radial-gradient(ellipse 130% 60% at 45% 0%, oklch(0.48 0.004 250 / 0.07), transparent 62%);
+  opacity: 0.6;
+}
+
+:root.dark.composer-device.composer-device--modular .composer__screen {
+  min-height: 118px;
+  border: 0;
+  border-radius: 16px;
+  background:
+    radial-gradient(ellipse 95% 80% at 14% 12%, rgb(140 240 165 / 0.04), transparent 56%),
+    radial-gradient(ellipse 110% 140% at 50% 60%, oklch(0.045 0.008 150), oklch(0.004 0.002 150) 78%);
+  box-shadow:
+    inset 0 4px 14px oklch(0 0 0 / 0.92),
+    inset 0 -2px 9px oklch(0 0 0 / 0.55),
+    inset 0 0 0 1px oklch(0 0 0 / 0.85),
+    inset 0 0 42px rgb(140 240 165 / 0.04),
+    /* thin dark seat hugging the glass */
+    0 0 0 1.5px oklch(0.06 0.004 250 / 0.85),
+    /* soft metal bevel, biased to the bottom edge */
+    0 2px 3px 2px oklch(0.50 0.004 250 / 0.55),
+    0 0 5px 3px oklch(0.44 0.004 250 / 0.32),
+    0 4px 6px 1px oklch(0.48 0.004 250 / 0.26),
+    0 7px 15px -3px oklch(0 0 0 / 0.55);
+}
+
+:root.dark.composer-device.composer-device--modular .composer__context {
+  padding-top: 18px;
+}
+
+:root.dark.composer-device.composer-device--modular .composer__footer-row {
+  min-height: 66px;
+  gap: 18px;
+  padding: 10px 10px 4px;
+}
+
+:root.dark.composer-device.composer-device--modular .composer__controls {
+  gap: 14px;
+}
+
+:root.dark.composer-device.composer-device--modular .composer__key-mount,
+:root.dark.composer-device.composer-device--modular .composer__key-mount--send {
+  padding: 0;
+  border-radius: 9px;
+  background: transparent;
+  box-shadow: none;
+}
+
+:root.dark.composer-device.composer-device--modular .composer-mode,
+:root.dark.composer-device.composer-device--modular .caveman-selector__select,
+:root.dark.composer-device.composer-device--modular .model-selector__badge,
+:root.dark.composer-device.composer-device--modular .new-thread__environment {
+  min-width: 134px;
+  height: 42px;
+  border-radius: 7px;
+  color: oklch(0.92 0.005 250);
+  text-shadow: 0 1px 0 oklch(0 0 0 / 0.55);
+  /* matte brushed gunmetal: same family as the chassis, just brighter */
+  background:
+    linear-gradient(180deg, oklch(0.48 0.004 250 / 0.5) 0%, transparent 6%),
+    radial-gradient(ellipse 95% 80% at 26% 16%, oklch(0.54 0.004 250 / 0.11), transparent 64%),
+    radial-gradient(ellipse 90% 84% at 84% 88%, oklch(0.02 0.003 250 / 0.35), transparent 70%),
+    linear-gradient(180deg, oklch(0.285 0.004 250) 0%, oklch(0.255 0.004 250) 60%, oklch(0.235 0.004 250) 100%);
+  background-blend-mode: normal, soft-light, multiply, normal;
+  box-shadow:
+    inset 0 2px 0 oklch(0.50 0.004 250 / 0.65),
+    inset 0 -2px 1px oklch(0.02 0.004 250 / 0.45),
+    inset 2px 0 1px oklch(0.48 0.004 250 / 0.32),
+    inset -2px 0 1px oklch(0.02 0.004 250 / 0.35),
+    0 0 0 1px oklch(0 0 0 / 0.7),
+    0 2px 1px oklch(0 0 0 / 0.6),
+    0 4px 6px oklch(0 0 0 / 0.5),
+    0 7px 11px oklch(0 0 0 / 0.32);
+  transition: transform 80ms ease, box-shadow 80ms ease, filter 120ms ease;
+}
+
+:root.dark.composer-device.composer-device--modular .composer-mode:hover:not(:disabled),
+:root.dark.composer-device.composer-device--modular .caveman-selector__select:hover:not(:disabled),
+:root.dark.composer-device.composer-device--modular .model-selector__badge:hover:not(:disabled),
+:root.dark.composer-device.composer-device--modular .new-thread__environment:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+:root.dark.composer-device.composer-device--modular .composer-mode:is(:active, .is-pressed):not(:disabled),
+:root.dark.composer-device.composer-device--modular .caveman-selector__select:is(:active, .is-pressed):not(:disabled),
+:root.dark.composer-device.composer-device--modular .model-selector__badge:is(:active, .is-pressed, [aria-expanded="true"]):not(:disabled),
+:root.dark.composer-device.composer-device--modular .new-thread__environment:is(:active, .is-pressed):not(:disabled) {
+  transform: translateY(2px);
+  box-shadow:
+    inset 0 2px 4px oklch(0 0 0 / 0.6),
+    inset 0 1px 0 oklch(0.02 0.004 250 / 0.4),
+    inset 0 -1px 0 oklch(0.46 0.004 250 / 0.22),
+    0 0 0 1px oklch(0 0 0 / 0.7),
+    0 1px 0 oklch(0 0 0 / 0.55),
+    0 1px 2px oklch(0 0 0 / 0.4);
+}
+
+:root.dark.composer-device.composer-device--modular .model-selector {
+  gap: 14px;
+}
+
+:root.dark.composer-device.composer-device--modular .new-thread__environment--active {
+  color: oklch(0.92 0.05 292);
+  background:
+    linear-gradient(180deg, oklch(0.55 0.06 292 / 0.4), transparent 20%),
+    linear-gradient(180deg, oklch(0.34 0.10 292) 0%, oklch(0.26 0.11 292) 100%);
+  box-shadow:
+    inset 1px 1px 2px oklch(0 0 0 / 0.5),
+    inset -1px -1px 0 oklch(0.55 0.08 292 / 0.4),
+    0 1px 0 oklch(0 0 0 / 0.45),
+    0 0 14px oklch(0.55 0.16 292 / 0.28);
+}
+
+/* Plan mode: depressed, no colour change (the dot turns orange). */
+:root.dark.composer-device.composer-device--modular .composer-mode--plan {
+  transform: translateY(2px);
+  box-shadow:
+    inset 0 2px 4px oklch(0 0 0 / 0.6),
+    inset 0 1px 0 oklch(0.02 0.004 250 / 0.4),
+    inset 0 -1px 0 oklch(0.46 0.004 250 / 0.22),
+    0 0 0 1px oklch(0 0 0 / 0.7),
+    0 1px 0 oklch(0 0 0 / 0.55),
+    0 1px 2px oklch(0 0 0 / 0.4);
+}
+
+:root.dark.composer-device.composer-device--modular .composer-mode__dot {
+  background: oklch(0.72 0.20 145);
+  box-shadow:
+    inset 0 0 1px oklch(0 0 0 / 0.45),
+    0 0 7px oklch(0.72 0.20 145 / 0.74);
+}
+
+:root.dark.composer-device.composer-device--modular .composer-mode--plan .composer-mode__dot {
+  background: oklch(0.74 0.185 52);
+  box-shadow:
+    inset 0 0 1px oklch(0 0 0 / 0.45),
+    0 0 7px oklch(0.78 0.20 55 / 0.74);
+}
+
+/* Build/Plan is not a keycap in themed metal modes: only the slot and
+   thumb are controls; the labels sit directly on the chassis surface. */
+:root.composer-device.composer-device--modular .composer__key-mount--mode {
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+:root.composer-device.composer-device--modular .composer-mode,
+:root.dark.composer-device.composer-device--modular.composer-device--metal-keys .composer-mode {
+  min-width: 212px;
+  height: 46px;
+  padding: 0;
+  border-radius: 0;
+  color: inherit;
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
+  text-shadow: none;
+}
+
+:root.composer-device.composer-device--modular .composer-mode:hover:not(:disabled),
+:root.dark.composer-device.composer-device--modular.composer-device--metal-keys .composer-mode:hover:not(:disabled) {
+  filter: none;
+}
+
+:root.composer-device.composer-device--modular .composer-mode:is(:active, .is-pressed, .composer-mode--plan):not(:disabled),
+:root.dark.composer-device.composer-device--modular.composer-device--metal-keys .composer-mode:is(:active, .is-pressed, .composer-mode--plan):not(:disabled) {
+  transform: none;
+  box-shadow: none;
+}
+
+:root.dark.composer-device.composer-device--modular .composer__send {
+  width: 56px;
+  min-width: 56px;
+  height: 56px;
+  color: oklch(0.46 0.004 250);
+  background:
+    radial-gradient(circle at 50% 46%, oklch(0.52 0.004 250 / 0.38), transparent 46%),
+    /* two-axis brushed lighting: bright top-left + bottom-right,
+       dark top-right + bottom-left */
+    conic-gradient(
+      from 0deg,
+      oklch(0.24 0.004 250) 0deg,
+      oklch(0.14 0.004 250) 45deg,
+      oklch(0.26 0.004 250) 90deg,
+      oklch(0.44 0.004 250) 135deg,
+      oklch(0.26 0.004 250) 180deg,
+      oklch(0.14 0.004 250) 225deg,
+      oklch(0.26 0.004 250) 270deg,
+      oklch(0.44 0.004 250) 315deg,
+      oklch(0.24 0.004 250) 360deg
+    ),
+    radial-gradient(circle at 50% 50%, oklch(0.22 0.004 250) 0 100%);
+  box-shadow:
+    inset 0 1.5px 0 oklch(0.50 0.004 250 / 0.55),
+    inset 0 -1.5px 1px oklch(0.02 0.004 250 / 0.6),
+    inset 0 0 0 1px oklch(0.06 0.004 250 / 0.5),
+    0 0 0 1px oklch(0 0 0 / 0.6),
+    0 2px 2px oklch(0 0 0 / 0.4),
+    0 5px 9px -2px oklch(0 0 0 / 0.45);
+}
+
+:root.dark.composer-device.composer-device--modular .composer__send::before {
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  opacity: 1;
+  background:
+    radial-gradient(ellipse 70% 52% at 30% 24%, oklch(0.56 0.004 250 / 0.18), transparent 60%),
+    radial-gradient(ellipse 70% 52% at 72% 78%, oklch(0.56 0.004 250 / 0.14), transparent 60%),
+    repeating-conic-gradient(from 0deg, oklch(0.56 0.004 250 / 0.05) 0 1.3deg, oklch(0.02 0.004 250 / 0.12) 1.3deg 2.6deg);
+}
+
+:root.dark.composer-device.composer-device--modular .composer__send::after {
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  background: none;
+  box-shadow: none;
+}
+
+:root.dark.composer-device.composer-device--modular .composer__send:not(:disabled) {
+  color: oklch(0.74 0.185 52);
+}
+
+:root.dark.composer-device.composer-device--modular .composer__send:not(:disabled)::after {
+  background:
+    radial-gradient(circle at 50% 58%, oklch(0.80 0.20 55 / 0.34), transparent 26%);
+}
+
+:root.dark.composer-device.composer-device--modular .composer__send svg {
+  width: 27px;
+  height: 27px;
+  filter:
+    drop-shadow(0 1px 0 oklch(0.48 0.004 250 / 0.4))
+    drop-shadow(0 -0.5px 0.5px oklch(0 0 0 / 0.7));
+}
+
+:root.dark.composer-device.composer-device--modular .composer__send:not(:disabled) svg {
+  filter:
+    drop-shadow(0 1px 0 oklch(0.48 0.004 250 / 0.4))
+    drop-shadow(0 -0.5px 0.5px oklch(0.18 0.06 40 / 0.7))
+    drop-shadow(0 0 6px oklch(0.78 0.20 55 / 0.65));
+}
+
+:root.dark.composer-device.composer-device--modular .composer__send:disabled {
+  opacity: 1;
+  filter: none;
+  color: oklch(0.46 0.004 250);
+  cursor: not-allowed;
+}
+
+:root.dark.composer-device.composer-device--modular .composer__send:is(:active, .is-pressed):not(:disabled) {
+  transform: translateY(2px);
+  box-shadow:
+    inset 0 2px 5px oklch(0 0 0 / 0.55),
+    inset 0 1px 0 oklch(0.05 0.004 250 / 0.4),
+    inset 0 0 0 1px oklch(0 0 0 / 0.6),
+    0 1px 2px oklch(0 0 0 / 0.5);
+}
+
 /* Locked Ralph loop thread: control bar replacing the composer. */
 .composer--loop {
   padding: 12px 16px;
@@ -6483,7 +7435,6 @@ mark.thread-find-active {
   gap: 6px;
   padding: 8px 10px;
   border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
-  border-left: 2px solid var(--accent);
   border-radius: 8px;
   background: color-mix(in srgb, var(--accent) 6%, var(--surface));
 }
@@ -6745,4 +7696,211 @@ mark.thread-find-active {
   grid-template-columns: none !important;
   flex-direction: row;
   align-items: center;
+}
+
+/* ── Context view ─────────────────────────────────────── */
+
+.context-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 0;
+  color: var(--muted-strong);
+}
+
+.context-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.context-group {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.context-group + .context-group {
+  margin-top: 4px;
+}
+
+.context-group__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 14px;
+  background: var(--surface);
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: var(--ink-strong);
+}
+
+.context-group__header:hover {
+  background: var(--surface-hover);
+}
+
+.context-group__header svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.context-group__label {
+  font-weight: 600;
+  flex: 1;
+}
+
+.context-group__count {
+  font-size: 12px;
+  color: var(--muted-strong);
+}
+
+.context-group__items {
+  display: flex;
+  flex-direction: column;
+}
+
+.context-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px 8px 38px;
+  border-top: 1px solid var(--line);
+  cursor: pointer;
+}
+
+.context-row:hover {
+  background: var(--surface-hover);
+}
+
+.context-row__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.context-row__label {
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.context-row__meta {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.context-tag {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--surface-alt);
+  color: var(--muted-strong);
+}
+
+.context-tag--muted {
+  opacity: 0.7;
+}
+
+.context-tag--disabled {
+  background: var(--warning-subtle);
+  color: var(--warning);
+}
+
+.context-row__actions {
+  flex-shrink: 0;
+}
+
+.context-row__content {
+  width: 100%;
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  background: var(--surface-alt);
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.context-row__detail {
+  width: 100%;
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--muted-strong);
+}
+
+/* ── Sound settings ────────────────────────────────────── */
+
+.sound-settings__control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sound-settings__select {
+  min-width: 100px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.sound-settings__select:hover {
+  border-color: var(--accent);
+}
+
+.sound-settings__select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(124, 107, 245, 0.2);
+}
+
+.sound-settings__preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.sound-settings__preview:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(124, 107, 245, 0.08);
+}
+
+.sound-settings__preview:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.sound-settings__preview--active {
+  border-color: var(--accent);
+  background: rgba(124, 107, 245, 0.15);
+  color: var(--accent);
+}
+
+.sound-settings__preview:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }

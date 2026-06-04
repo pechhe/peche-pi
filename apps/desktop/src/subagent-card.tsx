@@ -99,9 +99,10 @@ function buildRows(item: TimelineToolCall): SubagentRow[] {
 
   // Batch launch: children carry their own details, paired by index with input.
   if (details?.children?.length) {
-    return details.children.map((child, index) => rowFromDetails(child, input.children?.[index]));
+    const childInputs = Array.isArray(input.children) ? input.children : [];
+    return details.children.map((child, index) => rowFromDetails(child, childInputs[index]));
   }
-  if (input.children?.length) {
+  if (Array.isArray(input.children) && input.children.length) {
     return input.children.map((child) => rowFromDetails(undefined, child));
   }
 

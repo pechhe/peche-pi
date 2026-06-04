@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import type { RuntimeExtensionRecord, RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
 import type { ExtensionCommandCompatibilityRecord, WorkspaceRecord } from "./desktop-state";
 import { ExtensionIcon, FolderIcon, RefreshIcon } from "./icons";
+import { playButtonClick, playButtonSecondary } from "./button-click-sound";
 
 interface ExtensionsViewProps {
   readonly workspace?: WorkspaceRecord;
@@ -87,7 +88,7 @@ export function ExtensionsView({
             </p>
           </div>
           <div className="view-header__actions">
-            <button className="button button--secondary" type="button" onClick={onRefresh}>
+            <button className="button button--secondary" type="button" onClick={() => { playButtonClick(); onRefresh(); }}>
               <RefreshIcon />
               <span>Refresh</span>
             </button>
@@ -187,21 +188,21 @@ export function ExtensionsView({
                   <div className="skill-detail__panel skill-detail__panel--actions">
                     <h3 className="skill-detail__panel-title">Actions</h3>
                     <div className="skill-detail__action-stack">
-                      <button className="button button--secondary" type="button" onClick={() => onOpenExtensionFolder(selectedExtension.path)}>
+                      <button className="button button--secondary" type="button" onClick={() => { playButtonClick(); onOpenExtensionFolder(selectedExtension.path); }}>
                         <FolderIcon />
                         <span>Open folder</span>
                       </button>
                       <button
                         className={`button button--secondary ${selectedExtension.enabled ? "skill-detail__danger" : ""}`}
                         type="button"
-                        onClick={() => onToggleExtension(selectedExtension.path, !selectedExtension.enabled)}
+                        onClick={() => { playButtonClick(); onToggleExtension(selectedExtension.path, !selectedExtension.enabled); }}
                       >
                         {selectedExtension.enabled ? "Disable" : "Enable"}
                       </button>
                       <button
                         className="button button--secondary skill-detail__danger"
                         type="button"
-                        onClick={() => onDeleteExtension(selectedExtension.path)}
+                        onClick={() => { playButtonSecondary(); onDeleteExtension(selectedExtension.path); }}
                       >
                         Delete
                       </button>

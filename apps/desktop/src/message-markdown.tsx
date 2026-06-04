@@ -116,16 +116,15 @@ function useTypewriter(targetText: string, onCaughtUp?: () => void): string {
   return targetText.slice(0, effectiveLength);
 }
 
-// While an assistant message is still streaming, render it as plain text
-// (no markdown parse per delta) and reveal characters through a render-side
-// typewriter buffer so the visible cadence is smooth regardless of how the
-// provider chunked deltas. The parent keeps this mounted after run end until
-// onCaughtUp fires, so the final markdown swap never reveals hidden text as
-// a burst.
+// While an assistant message is still streaming, render markdown-parsed text
+// and reveal characters through a render-side typewriter buffer so the visible
+// cadence is smooth regardless of how the provider chunked deltas. The parent
+// keeps this mounted after run end until onCaughtUp fires, so the final swap
+// to the final MessageMarkdown never reveals hidden text as a burst.
 //
-// `white-space: pre-wrap` preserves newlines and spaces so the stream looks
-// like prose during typing. The wrapper class matches MessageMarkdown so
-// layout/typography don't shift on swap.
+// Partial markdown (e.g. unclosed bold markers) renders imperfectly during
+// streaming but is far better than raw syntax. It self-corrects as more text
+// arrives.
 export const StreamingMessageText = memo(function StreamingMessageText({
   text,
   onCaughtUp,
@@ -135,8 +134,10 @@ export const StreamingMessageText = memo(function StreamingMessageText({
 }) {
   const displayed = useTypewriter(text, onCaughtUp);
   return (
-    <div className="message__content message__content--streaming" style={{ whiteSpace: "pre-wrap" }}>
-      {displayed}
+    <div className="message__content message__content--streaming">
+      <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={MARKDOWN_COMPONENTS}>
+        {displayed}
+      </ReactMarkdown>
       {/* Blinking caret to signal active typing. Inline so it follows the
           current end-of-text position even mid-line. Pure CSS animation —
           no React state, no re-renders. Removed entirely when the run ends
