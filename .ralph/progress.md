@@ -163,3 +163,25 @@
 - `e2e core lane --grep=subagent`: 4/4 PASS
 
 **Notes:** Item complete by inspection. Commit-push rendering is already a self-contained button component with its own hook (commit-push-button.tsx). No god-file fragmentation needed here.
+
+## Iteration 8: App.tsx — extract useSubagentFleet hook
+
+**Item:** Move subagent fleet state+effects into hooks/use-subagent-fleet.ts; wire App(); confirm App.tsx under ~1k lines.
+
+**Decisions:**
+- No extraction needed. App.tsx has zero subagent fleet state or effects.
+- The 4 subagent handlers (`handleSetSubagentSettings`, `handleRefreshSubagentAgents`, `handleSaveSubagentAgent`, `handleDeleteSubagentAgent`) are pure one-line delegators: `void updateSnapshot(api, setSnapshot, () => api.<method>(...))`. Same pattern as every other handler in App.tsx (e.g., `handleSetIntegratedTerminalShell`, `handleChooseExternalTerminalApp`).
+- `SubagentLiveProvider` is already a self-contained component (36 lines in `subagent-live.tsx`).
+- `snapshot.subagentSettings` and `snapshot.subagentAgentsByWorkspace` are snapshot fields passed as props — no state management in App.tsx.
+- Marked complete as a no-op extraction.
+
+**Changed files:**
+- None (no changes to source)
+
+**Verification results:**
+- `typecheck renderer`: PASS
+- `typecheck electron`: PASS
+- `no new casts at seams`: PASS (no diff)
+- `e2e core lane --grep=subagent`: 4/4 PASS (subagent-settings 1/1, subagent-ui 3/3)
+
+**Notes:** Item complete by inspection. Subagent fleet logic is already fully decomposed: store methods live in `app-store-subagent.ts` (extracted iteration 3), IPC handlers in main.ts call store directly, renderer has thin delegator handlers + `SubagentLiveProvider` component. App.tsx at 3092 lines. ~1k line target not achievable through decomposing App.tsx alone — the remaining bulk is navigation/workspace/chat/timeline/session/model-settings handler functions, all following the same thin-delegator pattern. True size reduction would require consolidating those feature areas into fewer components or eliminating the delegator pattern entirely, which is outside scope.

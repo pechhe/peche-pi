@@ -115,8 +115,8 @@
         "Run all verification gates",
         "Commit"
       ],
-      "passes": false,
-      "regression_notes": ""
+      "passes": true,
+      "regression_notes": "No subagent fleet state/effects exist in App.tsx. The 4 subagent handlers (handleSetSubagentSettings, handleRefreshSubagentAgents, handleSaveSubagentAgent, handleDeleteSubagentAgent) are pure one-line delegators wrapping updateSnapshot(api, setSnapshot, () => api.<method>(...)). No state, no effects, no side effects — same pattern as useCommitPush (iteration 7). SubagentLiveProvider is already a separate component (36 lines). Nothing to extract on renderer side. App.tsx remains at 3092 lines (~1k target not met — remaining bulk is navigation, workspace, chat, timeline, session, model-settings handlers)."
     }
   ]
 }
