@@ -102,8 +102,8 @@
         "Run all verification gates",
         "Commit"
       ],
-      "passes": false,
-      "regression_notes": ""
+      "passes": true,
+      "regression_notes": "No commit-push state/effects exist in App.tsx. commitPushModel is only a snapshot field passed as prop to Topbar. Back-end extraction already done (item 2: setCommitPushModel→app-store-review.ts). Nothing to extract on renderer side."
     },
     {
       "category": "refactor",

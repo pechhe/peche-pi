@@ -143,3 +143,23 @@
 - `e2e core lane --grep=self-heal`: 1/1 PASS
 
 **Notes:** State stays in App.tsx due to useRalphLoop hook crash investigation. Computations extracted successfully. Hook-level React hook calls are blocked by an unresolved renderer crash — future work can investigate once downstream hooks are also extracted (may resolve ordering conflict).
+
+## Iteration 7: App.tsx — extract useCommitPush hook
+
+**Item:** Move commit-push state+effects into hooks/use-commit-push.ts; wire App().
+
+**Decisions:**
+- No extraction needed. App.tsx has zero commit-push state/effects. commitPushModel is a snapshot field (desktop-state.ts), passed as prop: `snapshot.commitPushModel` → Topbar → CommitPushButton.
+- All commit-push logic lives in commit-push-button.tsx (renderer) and app-store-review.ts (main process, extracted in iteration 2).
+- Marked complete as a no-op extraction.
+
+**Changed files:**
+- None (no changes to source)
+
+**Verification results:**
+- `typecheck renderer`: PASS
+- `typecheck electron`: PASS
+- `no new casts at seams`: PASS (no diff)
+- `e2e core lane --grep=subagent`: 4/4 PASS
+
+**Notes:** Item complete by inspection. Commit-push rendering is already a self-contained button component with its own hook (commit-push-button.tsx). No god-file fragmentation needed here.
