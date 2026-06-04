@@ -82,6 +82,7 @@ import {
   SessionRuntimeRegistry,
   type ManagedSessionRecord,
 } from "./session-runtime-registry.js";
+import { createQuestionnaireTool } from "./questionnaire-tool.js";
 
 export interface PiSdkDriverOptions {
   readonly catalogFilePath?: string;
@@ -311,6 +312,7 @@ export class SessionSupervisor {
     const createOptions: CreateAgentSessionOptions = {
       cwd: workspace.path,
       sessionManager: SessionManager.create(workspace.path),
+      customTools: [createQuestionnaireTool()],
       ...(this.modelRegistry ? { modelRegistry: this.modelRegistry } : {}),
     };
     if (initialModel) {
@@ -397,10 +399,20 @@ export class SessionSupervisor {
       if (isQueuedMessage) {
         await deliverQueuedPrompt(session, promptText, input.deliverAs!, images);
       } else {
-        await session.prompt(promptText, {
-          ...(images && images.length > 0 ? { images } : {}),
-          source: "interactive",
-        });
+        const previousTools = input.mode === "plan" ? session.getActiveToolNames() : undefined;
+        if (input.mode === "plan") {
+          session.setActiveToolsByName(["read", "grep", "find", "ls", "questionnaire"]);
+        }
+        try {
+          await session.prompt(promptText, {
+            ...(images && images.length > 0 ? { images } : {}),
+            source: "interactive",
+          });
+        } finally {
+          if (previousTools) {
+            session.setActiveToolsByName(previousTools);
+          }
+        }
       }
 
       if (isExtensionCommand) {

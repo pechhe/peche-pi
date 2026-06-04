@@ -80,14 +80,6 @@ export function sessionKey(sessionRef: SessionRef): string {
   return `${sessionRef.workspaceId}:${sessionRef.sessionId}`;
 }
 
-export function workspaceToRef(workspace: { workspaceId: string; path: string; displayName: string }): WorkspaceRef {
-  return {
-    workspaceId: workspace.workspaceId,
-    path: workspace.path,
-    displayName: workspace.displayName,
-  };
-}
-
 export function deriveWorkspaceTitle(workspace: WorkspaceRef): string {
   return workspace.displayName?.trim() || basename(workspace.path) || workspace.path;
 }

@@ -119,6 +119,7 @@ export interface SessionMessageInput {
   readonly text: string;
   readonly attachments?: readonly SessionAttachment[];
   readonly deliverAs?: SessionMessageDeliveryMode;
+  readonly mode?: "build" | "plan";
 }
 
 export interface CreateSessionOptions {

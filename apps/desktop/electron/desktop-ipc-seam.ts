@@ -109,7 +109,7 @@ function validateWorkspaceId(workspaceId: unknown): void {
 // Channel name constants
 // ---------------------------------------------------------------------------
 
-export const desktopIpc = {
+const desktopIpc = {
   stateRequest: "pi-gui:state-request",
   stateChanged: "pi-gui:state-changed",
   statePatch: "pi-gui:state-patch",

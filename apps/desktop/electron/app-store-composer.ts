@@ -367,7 +367,7 @@ export async function submitComposer(
       });
     }
 
-    await sendMessageToSession(store, sessionRef, text, attachments);
+    await sendMessageToSession(store, sessionRef, text, attachments, { mode: options.mode });
     const runtimeCommandOutcome = resolvedRuntimeSlashCommand
       ? store.finishRuntimeCommandExecution(sessionRef)
       : undefined;
@@ -469,6 +469,7 @@ export async function sendMessageToSession(
   attachments: readonly ComposerAttachment[],
   options: {
     readonly rollbackOptimisticMessageOnError?: boolean;
+    readonly mode?: ComposerMode;
   } = {},
 ): Promise<void> {
   const key = sessionKey(sessionRef);
@@ -496,6 +497,7 @@ export async function sendMessageToSession(
     await store.driver.sendUserMessage(sessionRef, {
       text,
       attachments: toSessionAttachments(attachments),
+      mode: options.mode,
     });
   } catch (error) {
     if (rollbackOptimisticMessageOnError) {

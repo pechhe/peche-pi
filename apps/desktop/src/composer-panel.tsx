@@ -1,6 +1,6 @@
 import { type ClipboardEvent, type Dispatch, type DragEvent, type KeyboardEvent, type RefObject, type SetStateAction } from "react";
 import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
-import type { ComposerAttachment, QueuedComposerMessage, RalphLoopStatus, SessionRecord } from "./desktop-state";
+import type { ComposerAttachment, QueuedComposerMessage, RalphLoopStatus, SessionExtensionDialogRecord, SessionRecord } from "./desktop-state";
 import type { ComposerMode } from "./composer-mode";
 import { CavemanSelector } from "./caveman-selector";
 import { ComposerModeSelector } from "./composer-mode-selector";
@@ -20,6 +20,7 @@ import type { ModelOnboardingState, ModelOnboardingSettingsSection } from "./mod
 import { ModelSelector } from "./model-selector";
 import type { ModelSelectorHandle } from "./model-selector";
 import type { CavemanLevel } from "./ipc";
+import { QuestionnaireComposer } from "./questionnaire-composer";
 
 export interface LoopControlProps {
   readonly status: RalphLoopStatus;
@@ -94,6 +95,8 @@ interface ComposerPanelProps {
   readonly mentionOptions: readonly string[];
   readonly selectedMentionIndex: number;
   readonly onSelectMention: (filePath: string) => void;
+  readonly questionnaireRequest?: Extract<SessionExtensionDialogRecord, { readonly kind: "questionnaire" }>;
+  readonly onRespondToQuestionnaire?: (response: import("@pi-gui/session-driver").HostUiResponse) => void;
 }
 
 function resolveFallbackContextWindow(
@@ -171,7 +174,13 @@ export function ComposerPanel({
   onSelectMention,
   loopControl,
   beginRalphLoop,
+  questionnaireRequest,
+  onRespondToQuestionnaire,
 }: ComposerPanelProps) {
+  if (questionnaireRequest && onRespondToQuestionnaire) {
+    return <QuestionnaireComposer request={questionnaireRequest} onRespond={onRespondToQuestionnaire} />;
+  }
+
   if (loopControl) {
     return <LoopControlBar {...loopControl} />;
   }

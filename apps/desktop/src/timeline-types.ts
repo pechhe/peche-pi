@@ -1,6 +1,5 @@
 import type { SessionTranscriptMessage, SessionTranscriptRole } from "@pi-gui/pi-sdk-driver";
 
-export type SessionRole = SessionTranscriptRole;
 export type TimelineTone = "neutral" | "success" | "warning" | "error";
 export type TimelineToolStatus = "running" | "success" | "error";
 export type TimelineSummaryPresentation = "inline" | "divider";

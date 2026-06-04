@@ -2,7 +2,7 @@ import type { HostUiRequest, SessionConfig } from "@pi-gui/session-driver";
 import type { ModelSettingsSnapshot, RuntimeCommandRecord, RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
 import { DEFAULT_BUTTON_SOUND_SETTINGS, type ButtonSoundSettings } from "./button-click-sound";
 export type SessionStatus = "idle" | "running" | "failed";
-export type { SessionRole, TranscriptMessage } from "./timeline-types";
+export type { TranscriptMessage } from "./timeline-types";
 import type { TranscriptMessage } from "./timeline-types";
 
 export type AppView = "threads" | "new-thread" | "skills" | "extensions" | "settings" | "context" | "queue";

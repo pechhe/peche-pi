@@ -1,17 +1,6 @@
 import type { SessionDriverEvent, SessionQueuedMessage } from "@pi-gui/session-driver";
 import type { TranscriptMessage } from "./timeline-types";
-
-export type {
-  SessionRole,
-  TimelineActivity,
-  TimelineReasoning,
-  TimelineSummary,
-  TimelineSummaryPresentation,
-  TimelineTone,
-  TimelineToolCall,
-  TimelineToolStatus,
-  TranscriptMessage,
-} from "./timeline-types";
+export type { TranscriptMessage } from "./timeline-types";
 
 // Tools that produce a lot of low-signal calls; rolled into a "×N" count when
 // a burst is collapsed.

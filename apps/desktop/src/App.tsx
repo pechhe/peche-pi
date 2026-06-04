@@ -858,7 +858,9 @@ export default function App() {
     setTakeoverTerminalSessionKey("");
   }, [selectedSessionKey]);
   const displayedSessionTitle = selectedExtensionUi?.title ?? selectedSession?.title ?? "";
-  const activeExtensionDialog = selectedExtensionUi?.pendingDialogs[0];
+  const activeHostDialog = selectedExtensionUi?.pendingDialogs[0];
+  const activeQuestionnaireRequest = activeHostDialog?.kind === "questionnaire" ? activeHostDialog : undefined;
+  const activeExtensionDialog = activeHostDialog?.kind !== "questionnaire" ? activeHostDialog : undefined;
   const persistedComposerDraft = snapshot?.composerDraft ?? "";
   // Drop "done" guards once the snapshot confirms the session is archived (or
   // gone), so the real backend state takes over from the optimistic override.
@@ -3115,6 +3117,8 @@ export default function App() {
                 openSettings(selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id, section)
               }
               handleClipboardImageShortcut={handleClipboardImageShortcut}
+              questionnaireRequest={activeQuestionnaireRequest}
+              onRespondToQuestionnaire={handleRespondToExtensionDialog}
             />
             ) : (
               <PendingComposer

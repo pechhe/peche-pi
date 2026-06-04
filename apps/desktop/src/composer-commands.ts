@@ -59,9 +59,6 @@ export interface ComposerModelOption extends ComposerSlashOption {
   readonly modelId: string;
 }
 
-export interface ComposerProviderOption extends ComposerSlashOption {
-  readonly providerId: string;
-}
 
 export const MODEL_OPTIONS_EMPTY_TITLE = "No models available";
 const MODEL_OPTIONS_EMPTY_DESCRIPTION = "Open Settings to enable a model or log in to a provider.";
@@ -359,6 +356,10 @@ export function flattenSlashSections(
   sections: readonly ComposerSlashCommandSection[],
 ): readonly ComposerSlashCommand[] {
   return sections.flatMap((section) => section.items);
+}
+
+interface ComposerProviderOption extends ComposerSlashOption {
+  readonly providerId: string;
 }
 
 function buildProviderOptions(

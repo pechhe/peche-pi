@@ -26,6 +26,7 @@ import type {
   DesktopAppState,
   ExtensionCommandCompatibilityRecord,
   QueuedComposerMessage,
+  SessionExtensionDialogRecord,
   SessionRecord,
   WorkspaceRecord,
 } from "./desktop-state";
@@ -111,6 +112,8 @@ interface SessionComposerProps {
     event: KeyboardEvent<HTMLTextAreaElement>,
     onImage: (attachment: ComposerImageAttachment) => void,
   ) => boolean;
+  readonly questionnaireRequest?: Extract<SessionExtensionDialogRecord, { readonly kind: "questionnaire" }>;
+  readonly onRespondToQuestionnaire?: (response: import("@pi-gui/session-driver").HostUiResponse) => void;
 }
 
 function isNearBottom(element: HTMLDivElement): boolean {
@@ -161,6 +164,8 @@ const SessionComposerInner = forwardRef<SessionComposerHandle, SessionComposerPr
     onSetCavemanLevel,
     onOpenModelSettings,
     handleClipboardImageShortcut,
+    questionnaireRequest,
+    onRespondToQuestionnaire,
   },
   ref,
 ) {
@@ -533,6 +538,8 @@ const SessionComposerInner = forwardRef<SessionComposerHandle, SessionComposerPr
       mentionOptions={mentionMenu.mentionOptions}
       selectedMentionIndex={mentionMenu.selectedIndex}
       onSelectMention={mentionMenu.insertMention}
+      questionnaireRequest={questionnaireRequest}
+      onRespondToQuestionnaire={onRespondToQuestionnaire}
     />
   );
 });
@@ -616,7 +623,9 @@ function sameSessionComposerProps(
     previous.onSetThinking === next.onSetThinking &&
     previous.onSetCavemanLevel === next.onSetCavemanLevel &&
     previous.onOpenModelSettings === next.onOpenModelSettings &&
-    previous.handleClipboardImageShortcut === next.handleClipboardImageShortcut
+    previous.handleClipboardImageShortcut === next.handleClipboardImageShortcut &&
+    previous.questionnaireRequest === next.questionnaireRequest &&
+    previous.onRespondToQuestionnaire === next.onRespondToQuestionnaire
   );
 }
 

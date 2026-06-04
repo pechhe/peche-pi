@@ -161,9 +161,9 @@ function MovingSidebarHighlight({
         aria-hidden="true"
         className="sidebar-moving-highlight__indicator sidebar-moving-highlight__indicator--hover"
         style={{
-          transform: `translate3d(${hoverIndicator.left + 2}px, ${hoverIndicator.top + 1}px, 0)`,
+          transform: `translate3d(${hoverIndicator.left + 2}px, ${hoverIndicator.top + 4}px, 0)`,
           width: Math.max(0, hoverIndicator.width - 4),
-          height: Math.max(0, hoverIndicator.height - 2),
+          height: Math.max(0, hoverIndicator.height - 8),
           opacity: hoverIndicator.visible ? 1 : 0,
           transition: shouldAnimate
             ? "transform 350ms cubic-bezier(0.32, 1.15, 0.60, 1.00), width 250ms cubic-bezier(0.22, 1, 0.36, 1), height 250ms cubic-bezier(0.22, 1, 0.36, 1), opacity 150ms ease"
@@ -174,9 +174,9 @@ function MovingSidebarHighlight({
         aria-hidden="true"
         className="sidebar-moving-highlight__indicator sidebar-moving-highlight__indicator--active"
         style={{
-          transform: `translate3d(${activeIndicator.left + 2}px, ${activeIndicator.top + 1}px, 0)`,
+          transform: `translate3d(${activeIndicator.left + 2}px, ${activeIndicator.top + 4}px, 0)`,
           width: Math.max(0, activeIndicator.width - 4),
-          height: Math.max(0, activeIndicator.height - 2),
+          height: Math.max(0, activeIndicator.height - 8),
           opacity: activeIndicator.visible ? 1 : 0,
           transition: shouldAnimate
             ? "transform 350ms cubic-bezier(0.32, 1.15, 0.60, 1.00), width 250ms cubic-bezier(0.22, 1, 0.36, 1), height 250ms cubic-bezier(0.22, 1, 0.36, 1), opacity 150ms ease"

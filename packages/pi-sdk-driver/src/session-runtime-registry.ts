@@ -242,11 +242,14 @@ export class SessionRuntimeRegistry implements SessionRuntimeRegistryInterface {
       );
     }
 
+    const [{ createQuestionnaireTool }, { SessionManager }] = await Promise.all([
+      import("./questionnaire-tool.js"),
+      import("@earendil-works/pi-coding-agent"),
+    ]);
     const runtime = await this.runtimeFactory({
       cwd: workspace.path,
-      sessionManager: (
-        await import("@earendil-works/pi-coding-agent")
-      ).SessionManager.open(sessionFile),
+      sessionManager: SessionManager.open(sessionFile),
+      customTools: [createQuestionnaireTool()],
       ...(this.modelRegistry ? { modelRegistry: this.modelRegistry } : {}),
     });
     const session = runtime.session;

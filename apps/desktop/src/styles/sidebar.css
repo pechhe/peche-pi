@@ -687,17 +687,51 @@
  * colour (accent left bar + tint) instead of relying on a small dot, and play
  * a one-shot pulse the moment it transitions in. */
 .session-row[data-sidebar-indicator="unseen"]:not(.session-row--active) {
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  background: transparent;
   animation: session-row-complete-pulse 600ms ease-out 1;
+}
+
+.session-row[data-sidebar-indicator="unseen"]:not(.session-row--active)::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  top: 4px;
+  bottom: 4px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  animation: session-row-complete-pulse-before 600ms ease-out 1;
+  z-index: -1;
+  pointer-events: none;
 }
 
 
 
 @keyframes session-row-complete-pulse {
   0% {
+    background: transparent;
+  }
+  100% {
+    background: transparent;
+  }
+}
+
+@keyframes session-row-complete-pulse {
+  0% {
+    background: transparent;
+  }
+  100% {
+    background: transparent;
+  }
+}
+
+@keyframes session-row-complete-pulse-before {
+  0% {
+    opacity: 1;
     background: color-mix(in srgb, var(--accent) 40%, transparent);
   }
   100% {
+    opacity: 1;
     background: color-mix(in srgb, var(--accent) 10%, transparent);
   }
 }

@@ -7904,3 +7904,158 @@ mark.thread-find-active {
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+/* First-class questionnaire surface: replaces composer while planner waits for input. */
+.composer--questionnaire {
+  padding: 12px 16px 16px;
+}
+
+.questionnaire-composer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: stretch;
+  padding: 10px;
+  border-radius: 28px;
+  border: 1px solid oklch(0.78 0.01 250);
+  background: linear-gradient(180deg, oklch(0.91 0.006 250), oklch(0.78 0.008 250));
+  box-shadow:
+    inset 0 1px 0 oklch(1 0 0 / 0.72),
+    0 12px 28px oklch(0 0 0 / 0.18);
+}
+
+.questionnaire-composer:focus {
+  outline: none;
+}
+
+.questionnaire-composer__screen {
+  min-width: 0;
+  padding: 18px 22px;
+  border-radius: 18px;
+  color: oklch(0.72 0.12 150);
+  background:
+    radial-gradient(circle at 30% 0%, oklch(0.18 0.04 150 / 0.36), transparent 32%),
+    oklch(0.03 0.006 150);
+  box-shadow:
+    inset 0 0 0 1px oklch(0.5 0.08 150 / 0.26),
+    inset 0 0 18px oklch(0 0 0 / 0.8);
+  font-family: var(--font-mono);
+}
+
+.questionnaire-composer__title,
+.questionnaire-composer__prompt {
+  text-shadow: 0 0 8px oklch(0.66 0.13 150 / 0.42);
+}
+
+.questionnaire-composer__title {
+  font-size: 15px;
+  font-weight: 760;
+  letter-spacing: 0.04em;
+}
+
+.questionnaire-composer__intro,
+.questionnaire-composer__label {
+  margin-top: 8px;
+  color: oklch(0.58 0.08 150);
+  font-size: 12px;
+}
+
+.questionnaire-composer__prompt {
+  margin-top: 16px;
+  font-size: 14px;
+  font-weight: 680;
+}
+
+.questionnaire-composer__options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.questionnaire-composer__option {
+  min-height: 44px;
+  padding: 10px 18px;
+  border-radius: 7px;
+  border: 1px solid oklch(0.55 0.09 150 / 0.55);
+  background: oklch(0.04 0.006 150);
+  color: oklch(0.72 0.12 150);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px oklch(0 0 0 / 0.5), 0 0 10px oklch(0.45 0.11 150 / 0.12);
+}
+
+.questionnaire-composer__option:hover,
+.questionnaire-composer__option--selected {
+  border-color: oklch(0.78 0.15 150);
+  box-shadow: inset 0 0 0 1px oklch(0.7 0.14 150 / 0.45), 0 0 14px oklch(0.62 0.14 150 / 0.24);
+}
+
+.questionnaire-composer__option small,
+.questionnaire-composer__badge {
+  display: block;
+  margin-top: 4px;
+  color: oklch(0.54 0.08 150);
+  font-size: 10px;
+  font-weight: 560;
+}
+
+.questionnaire-composer__other {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.questionnaire-composer__other input {
+  flex: 1;
+  min-width: 180px;
+  border-radius: 8px;
+  border: 1px solid oklch(0.55 0.09 150 / 0.6);
+  background: oklch(0.02 0.005 150);
+  color: oklch(0.78 0.13 150);
+  padding: 9px 10px;
+  font: inherit;
+}
+
+.questionnaire-composer__other button,
+.questionnaire-composer__back,
+.questionnaire-composer__skip {
+  border-radius: 999px;
+  border: 1px solid oklch(0.62 0.01 250);
+  background: oklch(0.88 0.006 250);
+  color: oklch(0.24 0.006 250);
+  font-size: 12px;
+  font-weight: 720;
+  cursor: pointer;
+}
+
+.questionnaire-composer__other button {
+  padding: 8px 12px;
+}
+
+.questionnaire-composer__hint {
+  margin-top: 14px;
+  color: oklch(0.48 0.07 150);
+  font-size: 12px;
+}
+
+.questionnaire-composer__controls {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  min-width: 76px;
+}
+
+.questionnaire-composer__back,
+.questionnaire-composer__skip {
+  padding: 9px 12px;
+}
+
+.questionnaire-composer__back:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
