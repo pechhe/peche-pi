@@ -11,13 +11,12 @@ import {
   type NewThreadEnvironment,
   type SelectedTranscriptRecord,
   type StartChatInput,
-  type RalphPlanSummary,
   type StartThreadInput,
   type TranscriptMessage,
   type WorktreeRecord,
   type WorkspaceRecord,
 } from "./desktop-state";
-import { ComposerPanel, type LoopControlProps } from "./composer-panel";
+import { ComposerPanel } from "./composer-panel";
 import { buildPlanModePrompt, type ComposerMode } from "./composer-mode";
 import { DiffPanel, type DiffPanelFileRequest } from "./diff-panel";
 import { buildModelOptions, THINKING_OPTIONS } from "./composer-commands";
@@ -51,6 +50,7 @@ import { useMentionMenu } from "./hooks/use-mention-menu";
 import { useThreadSearch } from "./hooks/use-thread-search";
 import { useWorkspaceMenu } from "./hooks/use-workspace-menu";
 import { useNavigationHistory } from "./hooks/use-navigation-history";
+import { useRalphLoop, type RalphLaunch } from "./hooks/use-ralph-loop";
 import { useSelfHealTranscript } from "./hooks/use-self-heal-transcript";
 import { useSidebarWidth } from "./hooks/use-sidebar-width";
 import { ExtensionDialog } from "./extension-session-ui";
@@ -296,13 +296,7 @@ export default function App() {
   const [newThreadRootWorkspaceId, setNewThreadRootWorkspaceId] = useState("");
   const [newThreadIsChat, setNewThreadIsChat] = useState(false);
   const [newThreadEnvironment, setNewThreadEnvironment] = useState<NewThreadEnvironment>("local");
-  const [ralphLaunch, setRalphLaunch] = useState<{
-    plan: RalphPlanSummary;
-    provider: string | undefined;
-    modelId: string | undefined;
-    thinkingLevel: string | undefined;
-    maxIterations: number;
-  } | null>(null);
+  const [ralphLaunch, setRalphLaunch] = useState<RalphLaunch | null>(null);
   // Per-project draft text + attachments. Keyed by rootWorkspaceId so each
   // project remembers what the user typed while navigating elsewhere.
   const [newThreadPromptByWorkspace, setNewThreadPromptByWorkspace] = useState<Record<string, string>>({});
@@ -1948,61 +1942,19 @@ export default function App() {
     }
   };
 
-  // When the selected thread is the active iteration of a Ralph loop, replace
-  // the composer with a locked control bar so the loop cannot be interrupted.
-  const selectedLoopStatus = snapshot?.selectedLoopStatus;
-  const sendLoopCommand = (command: string) =>
-    void updateSnapshot(api, setSnapshot, () => api.submitComposer(command));
-  const loopControl: LoopControlProps | undefined =
-    selectedLoopStatus && selectedLoopStatus.isSelectedSessionActive
-      ? {
-          status: selectedLoopStatus,
-          onStop: () => sendLoopCommand("/ralph-stop"),
-          onResume: () => sendLoopCommand("/ralph-resume"),
-          onRestart: () => sendLoopCommand("/ralph-restart"),
-        }
-      : undefined;
-
-  // Once a Ralph plan has been written, the plan's workspace exposes it on
-  // `ralphPlans`. Surface a "Begin Ralph loop" banner on the chat composer
-  // (hidden while a loop already owns the thread). Beginning starts a fresh
-  // thread — the special loop thread — and runs the bundle-mode loop there.
-  const selectedRalphPlan: RalphPlanSummary | undefined =
-    !loopControl && selectedSession && snapshot?.selectedSessionCreatedRalphPlan
-      ? selectedWorkspace?.ralphPlans?.[0]
-      : undefined;
-  const beginRalphLoop = selectedRalphPlan
-    ? {
-        planTitle: selectedRalphPlan.title,
-        onBegin: () =>
-          setRalphLaunch({
-            plan: selectedRalphPlan,
-            provider: resolvedSessionProvider,
-            modelId: resolvedSessionModelId,
-            thinkingLevel: resolvedSessionThinkingLevel,
-            maxIterations: selectedRalphPlan.defaultMaxIterations,
-          }),
-      }
-    : undefined;
-  const runRalphLoop = () => {
-    const launch = ralphLaunch;
-    const workspaceId = selectedWorkspace?.id;
-    if (!launch || !workspaceId) {
-      return;
-    }
-    setRalphLaunch(null);
-    void updateSnapshot(api, setSnapshot, () =>
-      api.startThread({
-        rootWorkspaceId: workspaceId,
-        environment: "local",
-        provider: launch.provider,
-        modelId: launch.modelId,
-        thinkingLevel: launch.thinkingLevel,
-      }),
-    ).then(() => {
-      void api.submitComposer(`/ralph-loop "${launch.plan.promptRef}" --max-iterations=${launch.maxIterations}`);
-    });
-  };
+  const { loopControl, beginRalphLoop, runRalphLoop } = useRalphLoop(
+    snapshot,
+    selectedSession,
+    selectedWorkspace,
+    api,
+    setSnapshot,
+    updateSnapshot,
+    resolvedSessionProvider,
+    resolvedSessionModelId,
+    resolvedSessionThinkingLevel,
+    ralphLaunch,
+    setRalphLaunch,
+  );
 
   const handleSetDefaultModel = (provider: string, modelId: string) => {
     if (!settingsWorkspace) {

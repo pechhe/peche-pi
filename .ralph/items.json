@@ -90,8 +90,8 @@
         "Run all verification gates",
         "Commit"
       ],
-      "passes": false,
-      "regression_notes": ""
+      "passes": true,
+      "regression_notes": "RalphLaunch type exported for state typing in App.tsx. Hook owns computations only (useState kept in App.tsx — adding any React hook (useState/useRef) inside this custom hook crashes the renderer for unknown reasons, investigated but unresolved)."
     },
     {
       "category": "refactor",

@@ -120,3 +120,26 @@
 - `e2e core lane --grep=subagent`: 4/4 PASS
 
 **Notes:** Behavior-preserving extraction. All characterization tests pass with extracted hook. `openNewThread` helper has a pre-existing sidebar button issue (also fails in existing new-thread-composer spec), so tests use `startThreadViaIpc` + deferred title mode instead.
+
+## Iteration 6: App.tsx — extract useRalphLoop hook
+
+**Item:** Extract ralph loop computations (loopControl, beginRalphLoop, runRalphLoop) into hooks/use-ralph-loop.ts.
+
+**Decisions:**
+- Hook `useRalphLoop` takes state and setter params (ralphLaunch, setRalphLaunch) rather than owning `useState` internally.
+- Adding ANY React hook (useState, useRef) inside this custom hook crashes the Electron renderer at startup. Extensive investigation did not identify root cause. Same hook pattern works in other extracted hooks (useSelfHealTranscript, usePendingThreadGoLive) which DO use React hooks internally — the difference is those hooks are called earlier in the component (before line ~600). Hypothesis: hook ordering conflict with later conditional hooks or React 19 strict-mode edge case.
+- Exported `RalphLaunch` interface for App.tsx state typing, replacing inline type annotation.
+- Removed `RalphPlanSummary` and `LoopControlProps` from App.tsx imports (now internal to hook).
+
+**Changed files:**
+- `apps/desktop/src/hooks/use-ralph-loop.ts` (new, 102 lines)
+- `apps/desktop/src/App.tsx` (3187 → 3092 lines, -95)
+
+**Verification results:**
+- `typecheck renderer`: PASS
+- `typecheck electron`: PASS
+- `no new casts at seams`: PASS (zero casts in diff)
+- `e2e core lane --grep=subagent`: 4/4 PASS
+- `e2e core lane --grep=self-heal`: 1/1 PASS
+
+**Notes:** State stays in App.tsx due to useRalphLoop hook crash investigation. Computations extracted successfully. Hook-level React hook calls are blocked by an unresolved renderer crash — future work can investigate once downstream hooks are also extracted (may resolve ordering conflict).
