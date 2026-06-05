@@ -21,6 +21,13 @@ import {
 import { SessionComposer, type SessionComposerHandle } from "./session-composer";
 import { buildPlanModePrompt, type ComposerMode } from "./composer-mode";
 import { DiffPanel, type DiffPanelFileRequest } from "./diff-panel";
+import { AdvisorPanel } from "./advisor-panel";
+import {
+  reduceAdvisorState,
+  getAdvisorSideEffect,
+  createEmptyAdvisorState,
+  type AdvisorIntent,
+} from "./advisor-handoff-controller";
 import { buildModelOptions } from "./composer-commands";
 import { parseTreeComposerCommand } from "./composer-commands";
 import {
@@ -35,6 +42,7 @@ import { ExtensionsView } from "./extensions-view";
 import { ContextView } from "./context-view";
 import { SettingsView, type SettingsSection } from "./settings-view";
 import { NewThreadView } from "./new-thread-view";
+import { KanbanView } from "./kanban-view";
 import { PendingComposer } from "./pending-thread-view";
 import { buildThreadGroups, PENDING_THREAD_SESSION_ID, type ThreadListEntry } from "./thread-groups";
 import { usePendingThreadGoLive, captureHeroFlip } from "./hooks/use-pending-thread-go-live";
@@ -62,6 +70,7 @@ import { ExtensionDialog } from "./extension-session-ui";
 import { RalphLaunchDialog } from "./ralph-launch-dialog";
 import { SubagentLiveProvider } from "./subagent-live";
 import { TreeModal } from "./tree-modal";
+import { ShortcutsSheet } from "./shortcuts-sheet";
 import { ImageLightbox } from "./image-lightbox";
 import { Agentation } from "agentation";
 import { ToastHost, showToast } from "./toast";
@@ -356,7 +365,7 @@ function forceSessionsArchived(state: DesktopAppState, doneKeys: ReadonlySet<str
 }
 
 function canTogglePrimarySidebar(view: AppView | undefined): boolean {
-  return view === "threads" || view === "new-thread";
+  return view === "threads" || view === "new-thread" || view === "kanban";
 }
 
 function useRunningLabel(startedAt: string | undefined) {
@@ -399,6 +408,14 @@ function formatRunningLabel(startedAt: string | undefined): string {
 export default function App() {
   const [snapshot, setSnapshot, selectedTranscript, setSelectedTranscript] = useDesktopAppState();
   const [newThreadComposerMode, setNewThreadComposerMode] = useState<ComposerMode>("build");
+  // Per-session plan/build mode, owned here so it survives composer submits and
+  // session switches. `planAwaitingBySession` marks a session whose plan-mode
+  // run is pending a written plan; once that session is idle the composer shows
+  // an "Execute plan" button.
+  const [composerModeBySession, setComposerModeBySession] = useState<Record<string, ComposerMode>>({});
+  const [planAwaitingBySession, setPlanAwaitingBySession] = useState<Record<string, boolean>>({});
+  const [planReadyBySession, setPlanReadyBySession] = useState<Record<string, boolean>>({});
+  const prevPlanStatusRef = useRef<Map<string, SessionStatus>>(new Map());
   const [settingsSection, setSettingsSection] = useState<SettingsSection>("general");
   const [cavemanLevel, setCavemanLevel] = useState<CavemanLevel>("off");
   const [settingsWorkspaceId, setSettingsWorkspaceId] = useState("");
@@ -499,6 +516,7 @@ export default function App() {
   const prevSessionStatusRef = useRef<Map<string, SessionStatus>>(new Map());
   const lastErrorToastKeyRef = useRef("");
   const [showDiffPanel, setShowDiffPanel] = useState(false);
+  const [advisorState, setAdvisorState] = useState(createEmptyAdvisorState());
   const [openTerminalSessionKey, setOpenTerminalSessionKey] = useState("");
   const [takeoverTerminalSessionKey, setTakeoverTerminalSessionKey] = useState("");
   const [terminalHeight, setTerminalHeight] = useState(340);
@@ -742,6 +760,72 @@ export default function App() {
   const editingQueuedMessageId = snapshot?.editingQueuedMessageId;
   const runningLabel = useRunningLabel(selectedSession?.status === "running" ? selectedSession.runningSince : undefined);
   const selectedSessionKey = selectedWorkspace && selectedSession ? `${selectedWorkspace.id}:${selectedSession.id}` : "";
+  const selectedSessionComposerMode: ComposerMode = composerModeBySession[selectedSessionKey] ?? "build";
+  const selectedPlanReady =
+    selectedSessionComposerMode === "plan" && Boolean(planReadyBySession[selectedSessionKey]);
+  const setSessionComposerMode = useCallback(
+    (mode: ComposerMode) => {
+      if (!selectedSessionKey) {
+        return;
+      }
+      setComposerModeBySession((prev) => ({ ...prev, [selectedSessionKey]: mode }));
+      if (mode === "build") {
+        setPlanAwaitingBySession((prev) => ({ ...prev, [selectedSessionKey]: false }));
+        setPlanReadyBySession((prev) => ({ ...prev, [selectedSessionKey]: false }));
+      }
+    },
+    [selectedSessionKey],
+  );
+  // A plan-mode message was just sent: expect a plan, and hide any stale
+  // "Execute plan" button until this new run completes.
+  const handlePlanSubmitted = useCallback(() => {
+    if (!selectedSessionKey) {
+      return;
+    }
+    setPlanAwaitingBySession((prev) => ({ ...prev, [selectedSessionKey]: true }));
+    setPlanReadyBySession((prev) => ({ ...prev, [selectedSessionKey]: false }));
+  }, [selectedSessionKey]);
+  const handleExecutePlan = useCallback(() => {
+    if (!api || !selectedSessionKey) {
+      return;
+    }
+    setComposerModeBySession((prev) => ({ ...prev, [selectedSessionKey]: "build" }));
+    setPlanAwaitingBySession((prev) => ({ ...prev, [selectedSessionKey]: false }));
+    setPlanReadyBySession((prev) => ({ ...prev, [selectedSessionKey]: false }));
+    void updateSnapshot(api, setSnapshot, () =>
+      api.submitComposer("Execute the plan above.", { mode: "build" }),
+    );
+  }, [api, selectedSessionKey, setSnapshot]);
+  // Mark a session's plan as ready to execute when its plan-mode run finishes
+  // (running -> idle). Edge-detecting on the prior snapshot status dedupes and
+  // works even if the run completes while another session is on screen.
+  useEffect(() => {
+    if (!snapshot) {
+      return;
+    }
+    const prev = prevPlanStatusRef.current;
+    const next = new Map<string, SessionStatus>();
+    const becameReady: string[] = [];
+    for (const workspace of snapshot.workspaces) {
+      for (const session of workspace.sessions) {
+        const key = `${workspace.id}:${session.id}`;
+        next.set(key, session.status);
+        if (prev.get(key) === "running" && session.status === "idle" && planAwaitingBySession[key]) {
+          becameReady.push(key);
+        }
+      }
+    }
+    prevPlanStatusRef.current = next;
+    if (becameReady.length > 0) {
+      setPlanReadyBySession((current) => {
+        const updated = { ...current };
+        for (const key of becameReady) {
+          updated[key] = true;
+        }
+        return updated;
+      });
+    }
+  }, [snapshot, planAwaitingBySession]);
   const snapshotLastError = snapshot?.lastError;
   const composerLastError = isRequestAbortedError(snapshotLastError) ? undefined : snapshotLastError;
   const isTerminalVisibleForSelectedThread = Boolean(selectedSessionKey) && openTerminalSessionKey === selectedSessionKey;
@@ -1015,10 +1099,10 @@ export default function App() {
       if (snapshot?.activeView === "new-thread" && !pendingThreadStart) {
         setNewThreadComposerMode(mode);
       } else if (selectedWorkspace && selectedSession) {
-        sessionComposerRef.current?.setComposerMode(mode);
+        setSessionComposerMode(mode);
       }
     },
-    [snapshot?.activeView, pendingThreadStart, selectedWorkspace, selectedSession],
+    [snapshot?.activeView, pendingThreadStart, selectedWorkspace, selectedSession, setSessionComposerMode],
   );
   const toggleTerminal = useCallback(() => {
     if (!selectedSessionKey) {
@@ -1050,6 +1134,104 @@ export default function App() {
     setShowDiffPanel(true);
     setDiffFileRequest({ path, nonce: Date.now() });
   }, []);
+
+  const [shortcutsSheetOpen, setShortcutsSheetOpen] = useState(false);
+  const toggleShortcutsSheet = useCallback(() => setShortcutsSheetOpen((open) => !open), []);
+
+  // --- Advisor panel ---
+  const handleAdvisorIntent = useCallback(
+    async (intent: AdvisorIntent) => {
+      if (!api) return;
+      const nextState = reduceAdvisorState(advisorState, intent);
+      setAdvisorState(nextState);
+      const effect = getAdvisorSideEffect(nextState, intent);
+      if (!effect) return;
+
+      switch (effect.type) {
+        case "build-payload": {
+          try {
+            const payload = await api.buildHandoffPayload({
+              workspaceId: effect.workspaceId,
+              sessionId: effect.sessionId,
+              scope: effect.scope,
+            });
+            setAdvisorState((prev) => ({ ...prev, tokenEstimate: payload.tokenEstimate }));
+            const result = await api.createSeededSession({
+              workspaceId: effect.workspaceId,
+              title: "Advisor",
+              seedText: payload.seedText,
+            });
+            setAdvisorState((prev) => ({
+              ...prev,
+              sessionId: result.sessionId,
+              status: "ready",
+              tokenEstimate: payload.tokenEstimate,
+            }));
+          } catch (err) {
+            setAdvisorState((prev) => ({
+              ...prev,
+              status: "error",
+              errorMessage: err instanceof Error ? err.message : "Failed to start advisor",
+            }));
+          }
+          break;
+        }
+        case "build-questionnaire-payload": {
+          try {
+            const questionNote =
+              `The user is unsure about the following questionnaire question:\n\n` +
+              `**Question:** ${effect.questionPrompt}\n\n` +
+              `**Options:**\n${effect.questionOptions.map((o, i) => `${i + 1}. ${o}`).join("\n")}`;
+            const payload = await api.buildHandoffPayload({
+              workspaceId: effect.workspaceId,
+              sessionId: effect.sessionId,
+              scope: "compressed",
+              userNote: questionNote,
+              framing: "You are an advisor helping a user decide between options in a questionnaire. Analyze each option and recommend the best choice.",
+            });
+            setAdvisorState((prev) => ({ ...prev, tokenEstimate: payload.tokenEstimate }));
+            const result = await api.createSeededSession({
+              workspaceId: effect.workspaceId,
+              title: "Questionnaire Advisor",
+              seedText: payload.seedText,
+            });
+            setAdvisorState((prev) => ({
+              ...prev,
+              sessionId: result.sessionId,
+              status: "ready",
+              tokenEstimate: payload.tokenEstimate,
+            }));
+          } catch (err) {
+            setAdvisorState((prev) => ({
+              ...prev,
+              status: "error",
+              errorMessage: err instanceof Error ? err.message : "Failed to start advisor",
+            }));
+          }
+          break;
+        }
+        case "navigate-to-session": {
+          if (selectedWorkspace) {
+            await api.selectSession({ workspaceId: selectedWorkspace.id, sessionId: effect.sessionId });
+          }
+          break;
+        }
+      }
+    },
+    [advisorState, api, selectedWorkspace],
+  );
+
+  const toggleAdvisorPanel = useCallback(() => {
+    if (advisorState.visible) {
+      handleAdvisorIntent({ type: "close-advisor" });
+    } else if (selectedWorkspace && selectedSession) {
+      handleAdvisorIntent({
+        type: "open-advisor",
+        workspaceId: selectedWorkspace.id,
+        sessionId: selectedSession.id,
+      });
+    }
+  }, [advisorState.visible, selectedWorkspace, selectedSession, handleAdvisorIntent]);
 
   const toggleDiffPanel = useCallback(() => {
     const pane = timelineScroll.timelinePaneRef.current;
@@ -1457,8 +1639,10 @@ export default function App() {
     onSetComposerMode: handleSetComposerMode,
     focusComposer,
     toggleDiffPanel,
+    toggleAdvisorPanel,
     toggleTerminal,
     handleTogglePrimarySidebar,
+    openShortcutsSheet: toggleShortcutsSheet,
     openSettings,
     openNewThreadSurface,
     navigateToEntry,
@@ -1497,6 +1681,7 @@ export default function App() {
   const mainClassName = [
     "main",
     showDiffPanel ? "main--with-diff" : "",
+    advisorState.visible ? "main--with-advisor" : "",
     isTerminalVisibleForSelectedThread ? "main--with-terminal" : "",
     showTerminalTakeover ? "main--terminal-takeover" : "",
   ].filter(Boolean).join(" ");
@@ -1551,6 +1736,9 @@ export default function App() {
 
   const setQueueMode = (enabled: boolean) => {
     void updateSnapshot(api, setSnapshot, () => api.setQueueMode(enabled));
+  };
+  const openKanbanView = () => {
+    setActiveView("kanban");
   };
 
   const openNewChatSurface = () => {
@@ -1764,8 +1952,14 @@ export default function App() {
     setNewThreadThinkingLevel(undefined);
     setNewThreadComposerMode("build");
     setNewThreadIsChat(false);
+    const startedInPlanMode = newThreadComposerMode === "plan";
     void updateSnapshot(api, setSnapshot, () => api.startChat(input))
       .then((state) => {
+        if (startedInPlanMode) {
+          const newKey = `${state.selectedWorkspaceId}:${state.selectedSessionId}`;
+          setComposerModeBySession((prev) => ({ ...prev, [newKey]: "plan" }));
+          setPlanAwaitingBySession((prev) => ({ ...prev, [newKey]: true }));
+        }
         // Don't clear the placeholder yet — hold it until the new session's
         // transcript arrives so the live view doesn't flash an empty/loading
         // state. The hold effect clears pendingThreadStart once ready.
@@ -1848,9 +2042,15 @@ export default function App() {
     setNewThreadThinkingLevel(undefined);
     setNewThreadComposerMode("build");
     setNewThreadEnvironment("local");
+    const startedInPlanMode = newThreadComposerMode === "plan";
     void updateSnapshot(api, setSnapshot, () =>
       api.startThread(input),
     ).then((state) => {
+      if (startedInPlanMode) {
+        const newKey = `${state.selectedWorkspaceId}:${state.selectedSessionId}`;
+        setComposerModeBySession((prev) => ({ ...prev, [newKey]: "plan" }));
+        setPlanAwaitingBySession((prev) => ({ ...prev, [newKey]: true }));
+      }
       // Hold the placeholder until the new session's transcript arrives (see
       // the hold effect) so going live is a seamless label swap rather than a
       // flash through an empty/loading transcript.
@@ -1904,6 +2104,9 @@ export default function App() {
     : ({ ["--sidebar-width" as string]: `${sidebarResize.width}px` } as React.CSSProperties);
   const renderUtilitySurface = (testId: string, children: React.ReactNode) => (
     <div className={utilityShellClass} style={utilityShellStyle} data-testid={testId}>
+      {shortcutsSheetOpen ? (
+        <ShortcutsSheet platform={api.platform} onClose={() => setShortcutsSheetOpen(false)} />
+      ) : null}
       {primarySidebarToggleVisible ? (
         <SidebarToggleButton
           collapsed={snapshot.sidebarCollapsed}
@@ -1931,6 +2134,7 @@ export default function App() {
           onOpenExtensions={openExtensions}
           onOpenSettings={openSettings}
           onOpenContext={openContext}
+          onOpenKanban={openKanbanView}
           queueMode={snapshot.queueMode}
           onSetQueueMode={setQueueMode}
           onArchiveSession={handleArchiveSession}
@@ -2152,6 +2356,9 @@ export default function App() {
 
   return (
     <div className={shellClassName} style={shellStyle}>
+      {shortcutsSheetOpen ? (
+        <ShortcutsSheet platform={api.platform} onClose={() => setShortcutsSheetOpen(false)} />
+      ) : null}
       {primarySidebarToggleVisible ? (
         <SidebarToggleButton
           collapsed={snapshot.sidebarCollapsed}
@@ -2179,6 +2386,7 @@ export default function App() {
           onOpenExtensions={openExtensions}
           onOpenSettings={openSettings}
           onOpenContext={openContext}
+          onOpenKanban={openKanbanView}
             queueMode={snapshot.queueMode}
             onSetQueueMode={setQueueMode}
           onArchiveSession={handleArchiveSession}
@@ -2212,6 +2420,8 @@ export default function App() {
           onOpenExternalTerminal={openExternalTerminal}
           showDiffPanel={showDiffPanel}
           onToggleDiffPanel={toggleDiffPanel}
+          showAdvisorPanel={advisorState.visible}
+          onToggleAdvisorPanel={toggleAdvisorPanel}
           selectedRuntime={rootRuntime}
           commitPushModel={snapshot.commitPushModel}
           transcriptVerbose={transcriptVerbose}
@@ -2285,6 +2495,15 @@ export default function App() {
               </div>
             </section>
           )
+        ) : snapshot.activeView === "kanban" ? (
+          <KanbanView
+            threadGroups={threadGroups}
+            selectedWorkspaceId={snapshot.selectedWorkspaceId}
+            selectedSessionId={snapshot.selectedSessionId}
+            onSelectSession={handleSelectSession}
+            onArchiveSession={handleArchiveSession}
+            onUnarchiveSession={handleUnarchiveSession}
+          />
         ) : pendingThreadStart || (selectedWorkspace && selectedSession) ? (
           <>
             <section className="canvas canvas--thread">
@@ -2334,6 +2553,11 @@ export default function App() {
               queuedMessages={queuedComposerMessages}
               editingQueuedMessageId={editingQueuedMessageId}
               cavemanLevel={cavemanLevel}
+              composerMode={selectedSessionComposerMode}
+              onSetComposerMode={setSessionComposerMode}
+              planReady={selectedPlanReady}
+              onExecutePlan={handleExecutePlan}
+              onPlanSubmitted={handlePlanSubmitted}
               runningLabel={runningLabel}
               loopControl={loopControl}
               beginRalphLoop={beginRalphLoop}
@@ -2444,6 +2668,35 @@ export default function App() {
             sessionStatus={selectedSession.status}
             fileRequest={diffFileRequest}
             refreshNonce={diffRefreshNonce}
+          />
+        ) : null}
+        {advisorState.visible ? (
+          <AdvisorPanel
+            visible={advisorState.visible}
+            advisorSessionId={advisorState.sessionId}
+            sourceSessionId={selectedSession?.id ?? ""}
+            sourceWorkspaceId={selectedWorkspace?.id ?? ""}
+            status={advisorState.status}
+            scope={advisorState.scope}
+            tokenEstimate={advisorState.tokenEstimate}
+            errorMessage={advisorState.errorMessage}
+            api={api}
+            onClose={() => handleAdvisorIntent({ type: "close-advisor" })}
+            onHandBack={(text) => {
+              handleAdvisorIntent({ type: "hand-back" });
+              void api.updateComposerDraft(text);
+            }}
+            onPromoteToThread={() => handleAdvisorIntent({ type: "promote-to-thread" })}
+            onScopeChange={(scope) => handleAdvisorIntent({ type: "set-scope", scope })}
+            onReloadPayload={() => {
+              if (selectedWorkspace && selectedSession) {
+                handleAdvisorIntent({
+                  type: "open-advisor",
+                  workspaceId: selectedWorkspace.id,
+                  sessionId: selectedSession.id,
+                });
+              }
+            }}
           />
         ) : null}
       </main>

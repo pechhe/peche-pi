@@ -238,6 +238,9 @@ const desktopIpc = {
   installExtension: "pi-gui:install-extension",
   uninstallExtension: "pi-gui:uninstall-extension",
   checkExtensionUpdates: "pi-gui:check-extension-updates",
+  buildHandoffPayload: "pi-gui:build-handoff-payload",
+  createSeededSession: "pi-gui:create-seeded-session",
+  getSessionTranscript: "pi-gui:get-session-transcript",
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -418,6 +421,11 @@ export const desktopIpcContracts: readonly IpcContractEntry[] = [
   { methodName: "renameChat", channel: desktopIpc.renameChat, direction: "renderer-to-main", kind: "invoke", adapter: "chat" },
   { methodName: "getChatAgentsMd", channel: desktopIpc.getChatAgentsMd, direction: "renderer-to-main", kind: "invoke", adapter: "chat" },
   { methodName: "writeChatAgentsMd", channel: desktopIpc.writeChatAgentsMd, direction: "renderer-to-main", kind: "invoke", adapter: "chat" },
+
+  // -- Handoff / Advisor --
+  { methodName: "buildHandoffPayload", channel: desktopIpc.buildHandoffPayload, direction: "renderer-to-main", kind: "invoke", adapter: "session" },
+  { methodName: "createSeededSession", channel: desktopIpc.createSeededSession, direction: "renderer-to-main", kind: "invoke", adapter: "session" },
+  { methodName: "getSessionTranscript", channel: desktopIpc.getSessionTranscript, direction: "renderer-to-main", kind: "invoke", adapter: "session" },
 ] as const;
 
 // ---------------------------------------------------------------------------

@@ -25,6 +25,7 @@ import {
 } from "./pr-service";
 import { listWorkspaceFiles } from "./app-store-files";
 import { MAIN_DEV_RELOAD_MARKER } from "./dev-reload-main-probe";
+import { importLoginShellEnv } from "./login-shell-env";
 import { NotificationManager } from "./notification-manager";
 import {
   NotificationPermissionService,
@@ -52,6 +53,8 @@ import type {
 import type { SessionDriverEvent } from "@pi-gui/session-driver";
 import type { GenerateThreadTitleOptions } from "@pi-gui/pi-sdk-driver";
 import type { WorkspaceRef } from "@pi-gui/session-driver";
+import { buildHandoffPayload, summarizeTranscript } from "./handoff-core";
+import type { BuildHandoffPayloadInput, CreateSeededSessionInput } from "./handoff-core";
 
 const isDev = Boolean(process.env.ELECTRON_RENDERER_URL);
 const windowTestMode = resolveWindowTestMode();
@@ -437,12 +440,19 @@ function installApplicationMenu(): void {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
-// Ensure npm (and other Homebrew/npm-global binaries) are available
-// even when pi-gui is launched via Finder/Dock (which has a minimal PATH).
+// Recover the user's login-shell environment first. GUI launches (Finder/Dock)
+// start with a minimal env, so profile-managed PATH entries and tool/secret
+// exports the pi runtime shells out to (e.g. `!`-prefixed provider headers)
+// would otherwise be missing. No-op for terminal launches.
+importLoginShellEnv();
+
+// Ensure npm (and other Homebrew/npm-global binaries) plus pi's own managed
+// bin dir are available even when login-shell import is skipped or fails.
 const extraBinPaths = [
   "/opt/homebrew/bin",
   "/usr/local/bin",
   `${process.env.HOME}/.npm-global/bin`,
+  path.join(homedir(), ".pi", "agent", "bin"),
 ].filter((p) => p);
 const currentPath = process.env.PATH ?? "";
 const missingPaths = extraBinPaths.filter((p) => !currentPath.split(":").includes(p));
@@ -915,6 +925,23 @@ app.whenReady().then(async () => {
       getChatAgentsMd: async (_event: unknown, chatId: string) => store.getChatAgentsMd(chatId),
       writeChatAgentsMd: async (_event: unknown, chatId: string, content: string) => {
         await store.writeChatAgentsMd(chatId, content);
+      },
+
+      // -- Handoff / Advisor --
+      buildHandoffPayload: async (_event: unknown, input: { workspaceId: string; sessionId: string; scope: string; quotedText?: string; userNote?: string; framing?: string }) => {
+        const sessionRef = { workspaceId: input.workspaceId, sessionId: input.sessionId };
+        const transcript = await store.getSessionTranscript(sessionRef);
+        const settings = await store.getSmartCompactSettings();
+        const getSummary = (tx: readonly import("../src/desktop-state").TranscriptMessage[]) =>
+          summarizeTranscript(tx, { summaryModel: settings.summaryModel as string | undefined });
+        return buildHandoffPayload(transcript, { ...input, sessionRef } as BuildHandoffPayloadInput, getSummary);
+      },
+      createSeededSession: async (_event: unknown, input: CreateSeededSessionInput) => {
+        const result = await store.createSeededSession(input);
+        return result;
+      },
+      getSessionTranscript: async (_event: unknown, workspaceId: string, sessionId: string) => {
+        return store.getSessionTranscript({ workspaceId, sessionId });
       },
 
       // -- Context snapshot --

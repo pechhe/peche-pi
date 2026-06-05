@@ -161,6 +161,9 @@ export const desktopIpc = {
   generatePrDraft: "pi-gui:generate-pr-draft",
   prCreate: "pi-gui:pr-create",
   getContextSnapshot: "pi-gui:get-context-snapshot",
+  buildHandoffPayload: "pi-gui:build-handoff-payload",
+  createSeededSession: "pi-gui:create-seeded-session",
+  getSessionTranscript: "pi-gui:get-session-transcript",
   getThemeMode: "pi-gui:get-theme-mode",
   getResolvedTheme: "pi-gui:get-resolved-theme",
   setThemeMode: "pi-gui:set-theme-mode",
@@ -298,6 +301,9 @@ export const piDesktopApiIpcBridge = {
   generatePrDraft: { kind: "invoke", channel: desktopIpc.generatePrDraft },
   prCreate: { kind: "invoke", channel: desktopIpc.prCreate },
   getContextSnapshot: { kind: "invoke", channel: desktopIpc.getContextSnapshot },
+  buildHandoffPayload: { kind: "invoke", channel: desktopIpc.buildHandoffPayload },
+  createSeededSession: { kind: "invoke", channel: desktopIpc.createSeededSession },
+  getSessionTranscript: { kind: "invoke", channel: desktopIpc.getSessionTranscript },
   toggleWindowMaximize: { kind: "invoke", channel: desktopIpc.toggleWindowMaximize },
   startChat: { kind: "invoke", channel: desktopIpc.startChat },
   selectChat: { kind: "invoke", channel: desktopIpc.selectChat },
@@ -506,6 +512,34 @@ export interface ExtensionConfigValue {
   readonly value: string | number | boolean;
 }
 
+export type HandoffScope = "compressed" | "full" | "plan" | "selection";
+
+export interface BuildHandoffPayloadInput {
+  readonly workspaceId: string;
+  readonly sessionId: string;
+  readonly scope: HandoffScope;
+  readonly quotedText?: string;
+  readonly userNote?: string;
+  readonly framing?: string;
+}
+
+export interface HandoffPayload {
+  readonly seedText: string;
+  readonly scope: HandoffScope;
+  readonly tokenEstimate: number;
+}
+
+export interface CreateSeededSessionInput {
+  readonly workspaceId: string;
+  readonly title: string;
+  readonly seedText: string;
+  readonly model?: string;
+}
+
+export interface CreateSeededSessionResult {
+  readonly sessionId: string;
+}
+
 export interface SmartCompactSettings {
   readonly summaryModel?: string;
   readonly segmentationModel?: string;
@@ -679,6 +713,9 @@ export interface PiDesktopApi {
   generatePrDraft(workspaceId: string, baseBranch?: string): Promise<PrDraftResult>;
   prCreate(workspaceId: string, input: CreatePrInput): Promise<CreatePrResult>;
   getContextSnapshot(workspaceId: string, sessionId?: string): Promise<ContextSnapshot>;
+  buildHandoffPayload(input: BuildHandoffPayloadInput): Promise<HandoffPayload>;
+  createSeededSession(input: CreateSeededSessionInput): Promise<CreateSeededSessionResult>;
+  getSessionTranscript(workspaceId: string, sessionId: string): Promise<readonly TranscriptMessage[]>;
   toggleWindowMaximize(): Promise<void>;
   openExternal(url: string): Promise<void>;
   getThemeMode(): Promise<"system" | "light" | "dark" | "dracula">;

@@ -1115,6 +1115,20 @@ body.pi-thread-handoff .timeline-item--just-sent .timeline-item__bubble {
   color: var(--error-ink);
 }
 
+.timeline-activity--retry {
+  align-items: center;
+}
+
+.timeline-activity--retry .timeline-activity__spinner {
+  color: var(--error-ink);
+  flex-shrink: 0;
+}
+
+.timeline-activity--retry .timeline-activity__meta {
+  color: var(--error-ink);
+  opacity: 0.85;
+}
+
 .timeline-activity--summary {
   margin-top: 2px;
 }
@@ -1774,6 +1788,259 @@ body.pi-thread-handoff .timeline-item--just-sent .timeline-item__bubble {
   background: var(--surface-muted);
   border-bottom: 1px solid var(--border);
   color: var(--ink);
+}
+
+/* ------------------------------------------------------------------ */
+/* Advisor Panel                                                       */
+/* ------------------------------------------------------------------ */
+
+.main--with-advisor {
+  grid-template-columns: 1fr 420px;
+}
+
+.main--with-advisor > .topbar {
+  grid-column: 1 / -1;
+}
+
+.main--with-advisor > .composer {
+  grid-column: 1;
+}
+
+.main--with-advisor > .terminal-panel {
+  grid-column: 1;
+}
+
+.advisor-panel {
+  width: 420px;
+  min-width: 340px;
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  overflow: hidden;
+  grid-column: 2;
+  grid-row: 2 / -1;
+}
+
+.main--with-advisor.main--with-terminal > .advisor-panel {
+  grid-row: 2 / span 3;
+}
+
+.advisor-panel__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.advisor-panel__title {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--ink-strong);
+  flex-shrink: 0;
+}
+
+.advisor-panel__scope-group {
+  display: flex;
+  gap: 2px;
+  margin-left: 4px;
+}
+
+.advisor-panel__scope-btn {
+  font-size: 11px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted-strong);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.advisor-panel__scope-btn:hover:not(:disabled) {
+  background: var(--surface-muted);
+}
+
+.advisor-panel__scope-btn--active {
+  background: var(--accent-subtle, rgba(59, 130, 246, 0.1));
+  color: var(--accent, #3b82f6);
+  border-color: var(--accent, #3b82f6);
+  font-weight: 500;
+}
+
+.advisor-panel__tokens {
+  font-size: 11px;
+  color: var(--muted-soft);
+  font-variant-numeric: tabular-nums;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.advisor-panel__transcript {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.advisor-panel__loading,
+.advisor-panel__error,
+.advisor-panel__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 40px 16px;
+  text-align: center;
+  color: var(--muted-soft);
+  font-size: 13px;
+}
+
+.advisor-panel__spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent, #3b82f6);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.advisor-panel__error {
+  color: var(--danger, #ef4444);
+}
+
+.advisor-panel__retry-btn {
+  font-size: 12px;
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  color: var(--ink);
+}
+
+.advisor-panel__message {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.advisor-panel__message-role {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted-strong);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.advisor-panel__message--user .advisor-panel__message-role {
+  color: var(--accent, #3b82f6);
+}
+
+.advisor-panel__message--assistant .advisor-panel__message-role {
+  color: var(--success, #22c55e);
+}
+
+.advisor-panel__message-text {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.advisor-panel__thinking {
+  color: var(--muted-soft);
+  font-style: italic;
+}
+
+.advisor-panel__actions {
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+}
+
+.advisor-panel__action-btn {
+  font-size: 12px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.advisor-panel__action-btn:hover:not(:disabled) {
+  background: var(--surface-muted);
+}
+
+.advisor-panel__action-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.advisor-panel__composer {
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+  align-items: flex-end;
+}
+
+.advisor-panel__input {
+  flex: 1;
+  font-size: 13px;
+  line-height: 1.4;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-muted);
+  color: var(--ink);
+  resize: none;
+  font-family: inherit;
+  outline: none;
+}
+
+.advisor-panel__input:focus {
+  border-color: var(--accent, #3b82f6);
+}
+
+.advisor-panel__input:disabled {
+  opacity: 0.55;
+}
+
+.advisor-panel__send-btn {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 6px 14px;
+  border: none;
+  border-radius: 6px;
+  background: var(--accent, #3b82f6);
+  color: white;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: opacity 0.15s;
+}
+
+.advisor-panel__send-btn:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.advisor-panel__send-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
 
 .icon-button--active {
@@ -3059,6 +3326,14 @@ body.pi-thread-handoff .timeline-item--just-sent .timeline-item__bubble {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.composer__execute-plan {
+  height: 32px;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .composer__attachment-shelf,
@@ -9593,15 +9868,15 @@ mark.thread-find-active {
 :root.composer-device.composer-device--modular .composer-mode:not(.composer-mode--plan) .composer-mode__label:first-child {
   color: oklch(0.72 0.22 145) !important;
   text-shadow:
-    0 0 5px oklch(0.72 0.22 145 / 0.58),
-    0 0 12px oklch(0.68 0.20 145 / 0.26) !important;
+    0 0 3px oklch(0.72 0.22 145 / 0.40),
+    0 0 7px oklch(0.68 0.20 145 / 0.16) !important;
 }
 
 :root.composer-device.composer-device--modular .composer-mode--plan .composer-mode__label:last-child {
   color: oklch(0.68 0.22 305) !important;
   text-shadow:
-    0 0 5px oklch(0.68 0.22 305 / 0.58),
-    0 0 12px oklch(0.64 0.20 305 / 0.26) !important;
+    0 0 3px oklch(0.68 0.22 305 / 0.40),
+    0 0 7px oklch(0.64 0.20 305 / 0.16) !important;
 }
 
 :root.composer-device.composer-device--modular .composer-mode:not(.composer-mode--plan) .composer-mode__label:last-child,
@@ -9998,4 +10273,390 @@ mark.thread-find-active {
 .model-selector__badge--slider .model-selector__slider-track .model-selector__slider-glow::before,
 .model-selector__badge--slider .model-selector__slider-track .model-selector__slider-glow::after {
   will-change: opacity;
+}
+
+/* ------------------------------------------------------------------------- */
+/* Keyboard shortcut discovery: hold-⌘ composer hints + ⌘/ reference sheet.  */
+/* ------------------------------------------------------------------------- */
+
+/* Anchor: only key-mounts that actually carry a hint become positioning
+   contexts, so we don't disturb the layout of every other key-mount. */
+.composer__key-mount:has(> .shortcut-hint) {
+  position: relative;
+}
+
+.shortcut-hint {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  z-index: 40;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  padding: 2px 6px;
+  border-radius: 5px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  box-shadow: var(--shadow-md, 0 4px 12px rgba(0, 0, 0, 0.18));
+  color: var(--text-strong);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%) translateY(4px);
+  transition: opacity 140ms ease, transform 140ms ease;
+}
+
+:root.pi-hints-visible .shortcut-hint {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shortcut-hint {
+    transition: opacity 80ms ease;
+    transform: translateX(-50%);
+  }
+  :root.pi-hints-visible .shortcut-hint {
+    transform: translateX(-50%);
+  }
+}
+
+/* ⌘/ reference sheet — mirrors the tree-modal surface tokens. */
+.shortcuts-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(24, 31, 44, 0.3);
+  backdrop-filter: blur(10px);
+}
+
+.shortcuts-sheet {
+  width: min(560px, 100%);
+  max-height: min(720px, calc(100vh - 48px));
+  display: grid;
+  gap: 18px;
+  padding: 22px;
+  border-radius: 24px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-xl);
+  overflow: auto;
+}
+
+.shortcuts-sheet__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.shortcuts-sheet__eyebrow {
+  color: var(--muted-soft);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.shortcuts-sheet__title {
+  margin: 4px 0 0;
+  color: var(--text-strong);
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.shortcuts-sheet__close {
+  border: none;
+  background: transparent;
+  color: var(--muted-soft);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 8px;
+}
+
+.shortcuts-sheet__close:hover {
+  background: var(--surface-muted, rgba(127, 127, 127, 0.12));
+  color: var(--text-strong);
+}
+
+.shortcuts-sheet__groups {
+  display: grid;
+  gap: 18px;
+}
+
+.shortcuts-sheet__group {
+  display: grid;
+  gap: 6px;
+}
+
+.shortcuts-sheet__group-title {
+  color: var(--muted-soft);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+
+.shortcuts-sheet__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 5px 0;
+}
+
+.shortcuts-sheet__keys {
+  display: inline-flex;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.shortcuts-sheet__kbd {
+  display: inline-flex;
+  align-items: center;
+  min-width: 22px;
+  justify-content: center;
+  padding: 2px 7px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--surface-muted, rgba(127, 127, 127, 0.08));
+  color: var(--text-strong);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  line-height: 1.3;
+}
+
+.shortcuts-sheet__label {
+  color: var(--text);
+  font-size: 13px;
+  text-align: right;
+}
+
+.shortcuts-sheet__footer {
+  color: var(--muted-soft);
+  font-size: 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.kanban-surface {
+  min-height: 0;
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 18px;
+  padding: 22px;
+}
+
+.kanban-surface__header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.kanban-surface__header h1 {
+  margin: 4px 0 0;
+  color: var(--ink);
+  font-size: 24px;
+  letter-spacing: -0.03em;
+}
+
+.kanban-surface__header p {
+  max-width: 440px;
+  margin: 0;
+  color: var(--muted-soft);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.kanban-board {
+  min-height: 0;
+  overflow: auto hidden;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(230px, 1fr));
+  gap: 14px;
+}
+
+.kanban-column {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  border: 1px solid color-mix(in srgb, var(--line) 58%, transparent);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
+  overflow: hidden;
+}
+
+.kanban-column__header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 14px 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 50%, transparent);
+}
+
+.kanban-column__header h2 {
+  margin: 0;
+  color: var(--muted-strong);
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.kanban-column__header p {
+  margin: 3px 0 0;
+  color: var(--muted-soft);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.kanban-column__count {
+  min-width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--line) 45%, transparent);
+  color: var(--muted-strong);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.kanban-column__cards {
+  min-height: 0;
+  overflow: hidden auto;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.kanban-column__empty {
+  display: grid;
+  place-items: center;
+  min-height: 96px;
+  border: 1px dashed color-mix(in srgb, var(--line) 75%, transparent);
+  border-radius: 14px;
+  color: var(--muted-soft);
+  font-size: 12px;
+}
+
+.kanban-card {
+  position: relative;
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: 0 10px 28px rgba(20, 27, 45, 0.07);
+  overflow: hidden;
+}
+
+.kanban-card--active {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 20%, transparent), 0 14px 34px rgba(20, 27, 45, 0.12);
+}
+
+.kanban-card__body {
+  width: 100%;
+  padding: 12px 36px 12px 12px;
+  display: grid;
+  gap: 7px;
+  text-align: left;
+  color: inherit;
+}
+
+.kanban-card__body:disabled {
+  cursor: default;
+}
+
+.kanban-card__topline,
+.kanban-card__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.kanban-card__project,
+.kanban-card__time,
+.kanban-card__status,
+.kanban-card__env {
+  color: var(--muted-soft);
+  font-size: 11px;
+  font-weight: 560;
+}
+
+.kanban-card__project {
+  color: var(--accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kanban-card__title {
+  color: var(--muted-strong);
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.kanban-card__preview {
+  color: var(--muted-soft);
+  font-size: 12px;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.kanban-card__status,
+.kanban-card__env {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.kanban-card__status--attention {
+  color: #d97706;
+}
+
+.kanban-card__env svg {
+  width: 12px;
+  height: 12px;
+}
+
+.kanban-card__action {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  color: var(--muted-soft);
+}
+
+.kanban-card__action:hover {
+  background: color-mix(in srgb, var(--line) 45%, transparent);
+  color: var(--muted-strong);
+}
+
+.kanban-card__action svg {
+  width: 14px;
+  height: 14px;
 }

@@ -344,6 +344,18 @@ export function DiffIcon() {
   );
 }
 
+export function AdvisorIcon() {
+  // Speech-bubble-with-lightbulb: advisor / second opinion.
+  return (
+    <Icon>
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+      <path d="M12 8v1" />
+      <path d="M9 11h6" />
+      <path d="M10 8a2 2 0 0 1 4 0c0 1.1-.9 2-2 2s-2-.9-2-2z" />
+    </Icon>
+  );
+}
+
 export function ComposeIcon() {
   // Square-with-pencil — Codex-style "new thread" affordance.
   return (

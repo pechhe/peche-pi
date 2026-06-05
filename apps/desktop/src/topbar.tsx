@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import type { AppView, SessionRecord, WorkspaceRecord, WorktreeRecord } from "./desktop-state";
-import { DiffIcon, ExternalTerminalIcon, FolderIcon, SettingsIcon, TerminalIcon } from "./icons";
+import { AdvisorIcon, DiffIcon, ExternalTerminalIcon, FolderIcon, SettingsIcon, TerminalIcon } from "./icons";
 import { playButtonClick } from "./button-click-sound";
 import { getDesktopShortcutLabel, type PiDesktopApi } from "./ipc";
 import type { WorkspaceMenuState } from "./hooks/use-workspace-menu";
@@ -25,6 +25,8 @@ interface TopbarProps {
   readonly onOpenExternalTerminal: () => void;
   readonly showDiffPanel: boolean;
   readonly onToggleDiffPanel: () => void;
+  readonly showAdvisorPanel?: boolean;
+  readonly onToggleAdvisorPanel?: () => void;
   readonly selectedRuntime?: RuntimeSnapshot;
   readonly commitPushModel?: string;
   readonly transcriptVerbose: boolean;
@@ -51,6 +53,8 @@ export function Topbar(props: TopbarProps) {
     onOpenExternalTerminal,
     showDiffPanel,
     onToggleDiffPanel,
+    showAdvisorPanel,
+    onToggleAdvisorPanel,
     selectedRuntime,
     commitPushModel,
     transcriptVerbose,
@@ -237,6 +241,22 @@ export function Topbar(props: TopbarProps) {
             <kbd>{diffShortcut}</kbd>
           </span>
         </div>
+        {onToggleAdvisorPanel ? (
+          <div className="shortcut-tooltip-wrap topbar__tooltip-wrap">
+            <button
+              aria-label="Toggle advisor"
+              className={`icon-button topbar__icon ${showAdvisorPanel ? "icon-button--active" : ""}`}
+              type="button"
+              onClick={() => { playButtonClick(); onToggleAdvisorPanel(); }}
+            >
+              <AdvisorIcon />
+            </button>
+            <span className="shortcut-tooltip topbar__tooltip" role="tooltip">
+              <span>Toggle advisor</span>
+              <kbd>{api.platform === "darwin" ? "⌘⇧A" : "Ctrl+Shift+A"}</kbd>
+            </span>
+          </div>
+        ) : null}
         {rootWorkspace ? (
           <div className="shortcut-tooltip-wrap topbar__tooltip-wrap">
             <button

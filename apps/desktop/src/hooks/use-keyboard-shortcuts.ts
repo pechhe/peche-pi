@@ -9,6 +9,7 @@ import type { DesktopAppState, SessionRecord, WorkspaceRecord } from "../desktop
 import type { useThreadSearch } from "./use-thread-search";
 import type { useNavigationHistory } from "./use-navigation-history";
 import { installPhysicalKeyFeedback } from "../physical-key-feedback";
+import { installShortcutHints } from "../shortcut-hints";
 import type { PiDesktopApi } from "../ipc";
 import { playRotary } from "../button-click-sound";
 
@@ -37,8 +38,10 @@ export interface KeyboardShortcutDeps {
   readonly onSetComposerMode: (mode: import("../composer-mode").ComposerMode) => void;
   readonly focusComposer: () => void;
   readonly toggleDiffPanel: () => void;
+  readonly toggleAdvisorPanel?: () => void;
   readonly toggleTerminal: () => void;
   readonly handleTogglePrimarySidebar: () => boolean;
+  readonly openShortcutsSheet: () => void;
   readonly openSettings: (workspaceId?: string, section?: import("../settings-view").SettingsSection) => void;
   readonly openNewThreadSurface: (workspaceId?: string) => void;
   readonly navigateToEntry: (entry: { activeView: import("../desktop-state").AppView; selectedWorkspaceId: string; selectedSessionId: string }) => void;
@@ -63,8 +66,10 @@ export function useKeyboardShortcuts({
   onSetComposerMode,
   focusComposer,
   toggleDiffPanel,
+  toggleAdvisorPanel,
   toggleTerminal,
   handleTogglePrimarySidebar,
+  openShortcutsSheet,
   openSettings,
   openNewThreadSurface,
   navigateToEntry,
@@ -72,8 +77,9 @@ export function useKeyboardShortcuts({
   setPendingNewThreadWorkspaceId,
   resetNewThreadSurface,
 }: KeyboardShortcutDeps): void {
-  // Install physical key click feedback once.
+  // Install physical key click feedback + hold-⌘ shortcut hints once.
   useEffect(() => installPhysicalKeyFeedback(), []);
+  useEffect(() => installShortcutHints(), []);
 
   useEffect(() => {
     const cycleThinking = () => {
@@ -164,10 +170,24 @@ export function useKeyboardShortcuts({
         return;
       }
 
+      // Cmd+/ toggles the shortcuts reference sheet
+      if ((event.metaKey || event.ctrlKey) && event.key === "/" && !event.shiftKey) {
+        event.preventDefault();
+        openShortcutsSheet();
+        return;
+      }
+
       // Cmd+D toggles diff panel
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "d" && !event.shiftKey) {
         event.preventDefault();
         toggleDiffPanel();
+        return;
+      }
+
+      // Cmd+Shift+A toggles advisor panel
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "a" && event.shiftKey) {
+        event.preventDefault();
+        toggleAdvisorPanel?.();
         return;
       }
 
@@ -292,8 +312,10 @@ export function useKeyboardShortcuts({
     onSetComposerMode,
     focusComposer,
     toggleDiffPanel,
+    toggleAdvisorPanel,
     toggleTerminal,
     handleTogglePrimarySidebar,
+    openShortcutsSheet,
     navigationHistory,
     navigateToEntry,
     openSettings,

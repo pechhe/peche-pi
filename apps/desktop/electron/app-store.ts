@@ -240,6 +240,16 @@ export class DesktopAppStore implements AppStoreInternals {
     }
   }
 
+  /**
+   * Get the transcript for an arbitrary session (not just the selected one).
+   * Loads from persisted storage or driver if not already cached.
+   */
+  async getSessionTranscript(sessionRef: SessionRef): Promise<readonly TranscriptMessage[]> {
+    await this.initialize();
+    await this.ensureTranscriptLoaded(sessionRef);
+    return this.sessionState.transcriptCache.get(sessionKey(sessionRef)) ?? [];
+  }
+
   async flushPersistence(): Promise<void> {
     await this.initialize();
     if (this.persistUiStateTimer) {
@@ -544,6 +554,41 @@ export class DesktopAppStore implements AppStoreInternals {
 
   async createSession(input: CreateSessionInput): Promise<DesktopAppState> {
     return workspace.createSession(this, input);
+  }
+
+  /**
+   * Create a new session seeded with an initial message (e.g. handoff payload).
+   * Returns the new session ID without navigating to it.
+   */
+  async createSeededSession(
+    input: import("./handoff-core").CreateSeededSessionInput,
+  ): Promise<{ readonly sessionId: string }> {
+    await this.initialize();
+    const ws = this.workspaceRefFromState(input.workspaceId);
+    if (!ws) {
+      throw new Error(`Unknown workspace: ${input.workspaceId}`);
+    }
+
+    const createOptions = await this.buildCreateSessionOptions(input.workspaceId);
+    const snapshot = await this.driver.createSession(ws, {
+      ...createOptions,
+      title: input.title || "Advisor",
+    });
+    const key = sessionKey(snapshot.ref);
+    this.sessionState.transcriptCache.set(key, []);
+    this.sessionState.loadedTranscriptKeys.add(key);
+    this.updateSessionConfig(snapshot.ref, snapshot.config);
+
+    // Seed the session with the handoff payload as the first user message.
+    await this.driver.sendUserMessage(snapshot.ref, {
+      text: input.seedText,
+      deliverAs: "steer",
+    });
+
+    // Refresh session list to pick up the new session.
+    await this.refreshState({});
+
+    return { sessionId: snapshot.ref.sessionId };
   }
 
   /* ── View / UI state ───────────────────────────────────── */
