@@ -255,6 +255,14 @@ export function applySessionEventToTimeline(
     case "runFailed": {
       const metrics = runtime.runMetrics;
       clearRunState(runtime);
+      // Provider retries (e.g. rate-limit 429s) fire one runFailed per attempt,
+      // each carrying the same summarized message. Collapse consecutive
+      // identical error activities so the transcript shows a single line
+      // instead of a wall of repeated failures.
+      const last = next[next.length - 1];
+      if (last && last.kind === "activity" && last.tone === "error" && last.label === event.error.message) {
+        break;
+      }
       next.push(
         factory.activity(event.error.message, {
           tone: "error",

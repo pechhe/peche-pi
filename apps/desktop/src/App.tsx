@@ -1983,7 +1983,6 @@ export default function App() {
             externalTerminalApp={snapshot.externalTerminalApp}
             themeMode={themeMode}
             enableTransparency={snapshot.enableTransparency}
-            transcriptVerbose={snapshot.transcriptVerbose}
             composerDeviceMode={snapshot.composerDeviceMode}
             threadTransition={snapshot.threadTransition}
             buttonSoundSettings={buttonSoundSettings}
@@ -2019,9 +2018,6 @@ export default function App() {
             onToggleSkillCommands={settingsHandlers.handleToggleSkillCommands}
             onSetEnableTransparency={(enabled) => {
               void updateSnapshot(api, setSnapshot, () => api.setEnableTransparency(enabled));
-            }}
-            onSetTranscriptVerbose={(enabled) => {
-              void updateSnapshot(api, setSnapshot, () => api.setTranscriptVerbose(enabled));
             }}
             onSetComposerDeviceMode={(enabled) => {
               void updateSnapshot(api, setSnapshot, () => api.setComposerDeviceMode(enabled));
@@ -2218,6 +2214,10 @@ export default function App() {
           onToggleDiffPanel={toggleDiffPanel}
           selectedRuntime={rootRuntime}
           commitPushModel={snapshot.commitPushModel}
+          transcriptVerbose={transcriptVerbose}
+          onSetTranscriptVerbose={(enabled) => {
+            void updateSnapshot(api, setSnapshot, () => api.setTranscriptVerbose(enabled));
+          }}
         />
 
         {showTerminalTakeover ? (

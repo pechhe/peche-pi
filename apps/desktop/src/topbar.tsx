@@ -1,6 +1,6 @@
-import type { MouseEvent as ReactMouseEvent } from "react";
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import type { AppView, SessionRecord, WorkspaceRecord, WorktreeRecord } from "./desktop-state";
-import { DiffIcon, ExternalTerminalIcon, FolderIcon, TerminalIcon } from "./icons";
+import { DiffIcon, ExternalTerminalIcon, FolderIcon, SettingsIcon, TerminalIcon } from "./icons";
 import { playButtonClick } from "./button-click-sound";
 import { getDesktopShortcutLabel, type PiDesktopApi } from "./ipc";
 import type { WorkspaceMenuState } from "./hooks/use-workspace-menu";
@@ -27,6 +27,8 @@ interface TopbarProps {
   readonly onToggleDiffPanel: () => void;
   readonly selectedRuntime?: RuntimeSnapshot;
   readonly commitPushModel?: string;
+  readonly transcriptVerbose: boolean;
+  readonly onSetTranscriptVerbose: (enabled: boolean) => void;
 }
 
 export function Topbar(props: TopbarProps) {
@@ -51,10 +53,28 @@ export function Topbar(props: TopbarProps) {
     onToggleDiffPanel,
     selectedRuntime,
     commitPushModel,
+    transcriptVerbose,
+    onSetTranscriptVerbose,
   } = props;
   const terminalShortcut = getDesktopShortcutLabel(api.platform, "J");
   const diffShortcut = getDesktopShortcutLabel(api.platform, "D");
   const commitShortcut = api.platform === "darwin" ? "⌘⇧K" : "Ctrl+Shift+K";
+  const [viewSettingsOpen, setViewSettingsOpen] = useState(false);
+  const viewSettingsRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!viewSettingsOpen) {
+      return;
+    }
+    const handlePointerDown = (event: PointerEvent) => {
+      if (viewSettingsRef.current?.contains(event.target as Node)) {
+        return;
+      }
+      setViewSettingsOpen(false);
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [viewSettingsOpen]);
 
   const handleDoubleClick = (event: ReactMouseEvent<HTMLElement>) => {
     const target = event.target;
@@ -146,6 +166,34 @@ export function Topbar(props: TopbarProps) {
           sessionStatus={selectedSession?.status}
           shortcutLabel={commitShortcut}
         />
+        <div className="view-settings" ref={viewSettingsRef}>
+          <button
+            aria-label="View settings"
+            aria-expanded={viewSettingsOpen}
+            aria-haspopup="menu"
+            className={`icon-button topbar__icon ${viewSettingsOpen ? "icon-button--active" : ""}`}
+            type="button"
+            onClick={() => { playButtonClick(); setViewSettingsOpen((current) => !current); }}
+          >
+            <SettingsIcon />
+          </button>
+          {viewSettingsOpen ? (
+            <div className="view-settings__menu" role="menu">
+              <label className="view-settings__item">
+                <span>
+                  <strong>Verbose transcript</strong>
+                  <small>Show blackhole + cymbal chatter.</small>
+                </span>
+                <input
+                  aria-label="Verbose transcript"
+                  type="checkbox"
+                  checked={transcriptVerbose}
+                  onChange={(event) => onSetTranscriptVerbose(event.currentTarget.checked)}
+                />
+              </label>
+            </div>
+          ) : null}
+        </div>
         <div className="shortcut-tooltip-wrap topbar__tooltip-wrap">
           <button
             aria-label="Toggle terminal"

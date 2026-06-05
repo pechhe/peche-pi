@@ -144,17 +144,19 @@ export function determineRunOutcome(messages: readonly unknown[]): {
 
     const stopReason = typeof message.stopReason === "string" ? message.stopReason : undefined;
     if (stopReason === "error" || stopReason === "aborted") {
-      const messageText =
+      const rawMessage =
         typeof message.errorMessage === "string" && message.errorMessage.trim().length > 0
           ? message.errorMessage
           : stopReason === "aborted"
             ? "Run aborted"
             : "Run failed";
+      const messageText = summarizeRunError(rawMessage);
       return {
         success: false,
         error: {
           message: messageText,
           code: stopReason.toUpperCase(),
+          ...(messageText !== rawMessage ? { details: { raw: rawMessage } } : {}),
         },
       };
     }
@@ -167,20 +169,79 @@ export function determineRunOutcome(messages: readonly unknown[]): {
 export function toSessionErrorInfo(error: unknown, code: string): SessionErrorInfo {
   if (error instanceof Error) {
     return {
-      message: error.message,
+      message: summarizeRunError(error.message),
       code,
       details: {
         name: error.name,
         stack: error.stack,
+        raw: error.message,
       },
     };
   }
 
   return {
-    message: typeof error === "string" ? error : "Unknown error",
+    message: typeof error === "string" ? summarizeRunError(error) : "Unknown error",
     code,
     details: error,
   };
+}
+
+/**
+ * Collapse noisy upstream provider errors into a single human-readable line.
+ *
+ * Provider rate-limit failures (Codex `usage_limit_reached`, raw 429 bodies)
+ * arrive as a giant JSON blob with every rate-limit header inlined. Rendering
+ * that verbatim — once per internal retry — is the "loud" failure mode we want
+ * to avoid. We parse the payload and surface just the cause plus a reset ETA;
+ * the raw text is preserved in `details.raw` for debugging.
+ */
+export function summarizeRunError(raw: string): string {
+  const text = raw.trim();
+  if (!text) {
+    return text;
+  }
+  const braceIndex = text.indexOf("{");
+  if (braceIndex === -1) {
+    return text;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text.slice(braceIndex));
+  } catch {
+    return text;
+  }
+  if (!isRecord(parsed)) {
+    return text;
+  }
+  const errorObj = isRecord(parsed.error) ? parsed.error : parsed;
+  const kind = typeof errorObj.type === "string" ? errorObj.type : undefined;
+  if (kind === "usage_limit_reached") {
+    const resetsIn =
+      typeof errorObj.resets_in_seconds === "number" ? errorObj.resets_in_seconds : undefined;
+    const suffix = resetsIn !== undefined ? ` — resets in ${formatResetDuration(resetsIn)}` : "";
+    return `Usage limit reached${suffix}`;
+  }
+  if (typeof errorObj.message === "string" && errorObj.message.trim().length > 0) {
+    return errorObj.message.trim();
+  }
+  return text;
+}
+
+function formatResetDuration(totalSeconds: number): string {
+  const seconds = Math.max(0, Math.round(totalSeconds));
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (days > 0) {
+    return `${days}d ${hours}h`;
+  }
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`;
+  }
+  if (minutes > 0) {
+    return `${minutes}m`;
+  }
+  return `${seconds}s`;
 }
 
 export function truncate(value: string, limit = 140): string {

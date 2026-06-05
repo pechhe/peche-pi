@@ -121,8 +121,10 @@ function AgentEditor({ agent, workspaceId, availableModels, availableTools, onSa
     if (workspaceId) onSaveAgent(workspaceId, { name: agent.name, raw, scope: agent.scope });
   };
   const setField = (key: string, value: string) => saveRaw(setFrontmatterField(draftRaw, key, value));
+  const allToolsSelected = (agent.tools ?? []).includes("all");
+  const setAllTools = (enabled: boolean) => setField("tools", enabled ? "all" : "");
   const setTool = (tool: string, enabled: boolean) => {
-    const tools = new Set(agent.tools ?? []);
+    const tools = new Set((agent.tools ?? []).filter((entry) => entry !== "all"));
     if (enabled) tools.add(tool); else tools.delete(tool);
     setField("tools", Array.from(tools).sort((a, b) => a.localeCompare(b)).join(", "));
   };
@@ -151,8 +153,9 @@ function AgentEditor({ agent, workspaceId, availableModels, availableTools, onSa
       </div>
       <div className="subagent-settings-agent__tools">
         <div className="settings-row__title">Tools</div>
-        <div className="settings-row__description">No tools selected means extension default. Select exact tools to restrict agent access.</div>
-        <div className="subagent-settings-agent__tool-grid">{availableTools.map((tool) => <label key={tool} className="subagent-settings-agent__toggle"><input type="checkbox" checked={(agent.tools ?? []).includes(tool)} onChange={(event) => setTool(tool, event.target.checked)} /><span>{tool}</span></label>)}</div>
+        <div className="settings-row__description">Select all tools, or pick exact tools to restrict agent access. Empty uses extension default.</div>
+        <label className="subagent-settings-agent__toggle"><input type="checkbox" checked={allToolsSelected} onChange={(event) => setAllTools(event.target.checked)} /><span>All tools</span></label>
+        <div className="subagent-settings-agent__tool-grid">{availableTools.map((tool) => <label key={tool} className="subagent-settings-agent__toggle"><input type="checkbox" disabled={allToolsSelected} checked={allToolsSelected || (agent.tools ?? []).includes(tool)} onChange={(event) => setTool(tool, event.target.checked)} /><span>{tool}</span></label>)}</div>
       </div>
       <details><summary>Edit raw agent file</summary><textarea className="settings-textarea subagent-settings-agent__raw" value={draftRaw} onChange={(event) => setDraftRaw(event.target.value)} rows={14} onBlur={(event) => saveRaw(event.target.value)} /></details>
       <div className="settings-inline-actions"><span className="settings-hint">Saves on change/blur · {agent.filePath}</span>{workspaceId ? <button className="button button--danger" type="button" onClick={() => onDeleteAgent(workspaceId, agent.name, agent.scope)}>Delete</button> : null}</div>

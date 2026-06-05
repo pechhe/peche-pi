@@ -39,6 +39,7 @@ function fakeSession(overrides: Partial<Record<string, unknown>> = {}) {
     isStreaming: false,
     messages: [],
     model: { contextWindow: 100_000 },
+    getContextUsage: () => ({ tokens: 1234, contextWindow: 100_000, percent: 1.234 }),
     agent: { state: { model: null, thinkingLevel: "medium" }, waitForIdle: async () => {} },
     abort: async () => {},
     dispose: () => {},
@@ -148,6 +149,36 @@ test("snapshotForRecord returns a snapshot reflecting current record state", () 
   assert.equal(snapshot.updatedAt, "2026-01-01T00:00:00.000Z");
   assert.equal(snapshot.preview, "Hello world");
   assert.equal(snapshot.ref.sessionId, record.ref.sessionId);
+});
+
+test("snapshotForRecord reflects authoritative context usage from getContextUsage", () => {
+  const registry = createRegistry();
+  const runtime = fakeRuntime();
+  const record = registry.createRecord(FAKE_WORKSPACE, runtime, "Title");
+
+  const snapshot = registry.snapshotForRecord(record);
+  assert.deepEqual(snapshot.contextUsage, { usedTokens: 1234, contextWindow: 100_000 });
+});
+
+test("snapshotForRecord omits context usage when tokens is null (post-compaction)", () => {
+  const registry = createRegistry();
+  // tokens is null right after compaction / before the next LLM response.
+  const runtime = fakeRuntime({
+    getContextUsage: () => ({ tokens: null, contextWindow: 100_000, percent: null }),
+  });
+  const record = registry.createRecord(FAKE_WORKSPACE, runtime, "Title");
+
+  const snapshot = registry.snapshotForRecord(record);
+  assert.equal(snapshot.contextUsage, undefined);
+});
+
+test("snapshotForRecord omits context usage when getContextUsage returns undefined", () => {
+  const registry = createRegistry();
+  const runtime = fakeRuntime({ getContextUsage: () => undefined });
+  const record = registry.createRecord(FAKE_WORKSPACE, runtime, "Title");
+
+  const snapshot = registry.snapshotForRecord(record);
+  assert.equal(snapshot.contextUsage, undefined);
 });
 
 test("getRecord returns undefined for unknown session", () => {

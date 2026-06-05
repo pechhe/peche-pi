@@ -292,7 +292,7 @@ function TimelineReasoningItem({
       </button>
       {expanded ? (
         <div className="timeline-reasoning__body">
-          <MessageMarkdown text={item.text} />
+          {isStreaming ? <StreamingMessageText text={item.text} /> : <MessageMarkdown text={item.text} />}
         </div>
       ) : null}
     </article>
@@ -360,16 +360,13 @@ function TimelineThinkingSectionItem({
             <div className="timeline-thinking__body">
               {item.children.map((child) =>
                 child.kind === "reasoning" ? (
-                  <div
+                  <TimelineThinkingReasoningChild
                     key={child.id}
-                    className={`timeline-thinking__reasoning${
-                      streamingReasoningId === child.id ? " timeline-thinking__reasoning--streaming" : ""
-                    }`}
-                  >
-                    <MessageMarkdown text={child.text} />
-                  </div>
+                    item={child}
+                    isStreaming={streamingReasoningId === child.id}
+                  />
                 ) : (
-                  <TimelineToolCallItem
+                  <TimelineThinkingToolChild
                     key={child.id}
                     item={child}
                     expanded={expandedToolCallIds?.has(child.callId) ?? false}
@@ -385,6 +382,50 @@ function TimelineThinkingSectionItem({
     </article>
   );
 }
+
+const TimelineThinkingReasoningChild = memo(function TimelineThinkingReasoningChild({
+  item,
+  isStreaming,
+}: {
+  readonly item: TimelineReasoning;
+  readonly isStreaming: boolean;
+}) {
+  return (
+    <div className={`timeline-thinking__reasoning${isStreaming ? " timeline-thinking__reasoning--streaming" : ""}`}>
+      {isStreaming ? <StreamingMessageText text={item.text} /> : <MessageMarkdown text={item.text} />}
+    </div>
+  );
+}, (prev, next) => prev.item.id === next.item.id && prev.item.text === next.item.text && prev.isStreaming === next.isStreaming);
+
+const TimelineThinkingToolChild = memo(function TimelineThinkingToolChild({
+  item,
+  expanded,
+  onToggle,
+  onViewFileInDiff,
+}: {
+  readonly item: TimelineToolCall;
+  readonly expanded: boolean;
+  readonly onToggle?: (callId: string) => void;
+  readonly onViewFileInDiff?: (path: string) => void;
+}) {
+  return (
+    <TimelineToolCallItem
+      item={item}
+      expanded={expanded}
+      onToggle={onToggle}
+      onViewFileInDiff={onViewFileInDiff}
+    />
+  );
+}, (prev, next) => (
+  prev.item.callId === next.item.callId &&
+  prev.item.toolName === next.item.toolName &&
+  prev.item.status === next.item.status &&
+  prev.item.label === next.item.label &&
+  prev.expanded === next.expanded &&
+  prev.onToggle === next.onToggle &&
+  prev.onViewFileInDiff === next.onViewFileInDiff &&
+  prev.item.status !== "running"
+));
 
 // Keep in sync with the grid-rows transition duration in main.css.
 const THINKING_COLLAPSE_MS = 260;

@@ -79,16 +79,26 @@ export function ConversationTimeline({
   // tool finishes, bring Thinking… back so the turn never looks dead while the
   // model decides what to say/do next.
   const lastRow = timelineRows[timelineRows.length - 1];
-  const isStreamingAssistantOutput = lastRow?.kind === "message" && lastRow.role === "assistant";
+  const lastLiveRow = (() => {
+    for (let index = timelineRows.length - 1; index >= 0; index -= 1) {
+      const row = timelineRows[index];
+      if (row?.kind === "summary") {
+        continue;
+      }
+      return row;
+    }
+    return undefined;
+  })();
+  const isStreamingAssistantOutput = lastLiveRow?.kind === "message" && lastLiveRow.role === "assistant";
   // A live thinking section streams its reasoning + tools inline but has no
   // header label of its own; the global braille "Thinking…" pill at the bottom
   // is the single "where the agent currently is" indicator, so we keep showing
   // it while a section is the live tail.
   const liveThinkingSectionId =
-    isRunning && lastRow?.kind === "thinkingSection" && lastRow.trailing ? lastRow.id : undefined;
+    isRunning && lastLiveRow?.kind === "thinkingSection" && lastLiveRow.trailing ? lastLiveRow.id : undefined;
   const isRunningToolAtTail =
-    (lastRow?.kind === "tool" && lastRow.status === "running") ||
-    (lastRow?.kind === "toolBurst" && lastRow.tools.some((tool) => tool.status === "running"));
+    (lastLiveRow?.kind === "tool" && lastLiveRow.status === "running") ||
+    (lastLiveRow?.kind === "toolBurst" && lastLiveRow.tools.some((tool) => tool.status === "running"));
   const showThinkingIndicator = isRunning && !isStreamingAssistantOutput && !isRunningToolAtTail;
   // While running, the trailing assistant message is the one currently being
   // streamed into. Keep rendering that message through StreamingMessageText

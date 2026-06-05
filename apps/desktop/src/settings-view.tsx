@@ -27,7 +27,6 @@ interface SettingsViewProps {
   readonly externalTerminalApp: string;
   readonly themeMode: import("./desktop-state").ThemeMode;
   readonly enableTransparency: boolean;
-  readonly transcriptVerbose: boolean;
   readonly composerDeviceMode: import("./desktop-state").ComposerDeviceMode;
   readonly threadTransition: ThreadTransitionSettings;
   readonly buttonSoundSettings: ButtonSoundSettings;
@@ -50,7 +49,6 @@ interface SettingsViewProps {
   readonly onOpenSystemNotificationSettings: () => void;
   readonly onSetThemeMode: (mode: import("./desktop-state").ThemeMode) => void;
   readonly onSetEnableTransparency: (enabled: boolean) => void;
-  readonly onSetTranscriptVerbose: (enabled: boolean) => void;
   readonly onSetComposerDeviceMode: (mode: import("./desktop-state").ComposerDeviceMode) => void;
   readonly onSetThreadTransition: (settings: Partial<ThreadTransitionSettings>) => void;
   readonly onSetButtonSoundSettings: (settings: ButtonSoundSettings) => void;
@@ -82,7 +80,6 @@ export function SettingsView({
   externalTerminalApp,
   themeMode,
   enableTransparency,
-  transcriptVerbose,
   composerDeviceMode,
   threadTransition,
   buttonSoundSettings,
@@ -105,7 +102,6 @@ export function SettingsView({
   onOpenSystemNotificationSettings,
   onSetThemeMode,
   onSetEnableTransparency,
-  onSetTranscriptVerbose,
   onSetComposerDeviceMode,
   onSetThreadTransition,
   onSetButtonSoundSettings,
@@ -156,8 +152,6 @@ export function SettingsView({
               onSetThemeMode={onSetThemeMode}
               enableTransparency={enableTransparency}
               onSetEnableTransparency={onSetEnableTransparency}
-              transcriptVerbose={transcriptVerbose}
-              onSetTranscriptVerbose={onSetTranscriptVerbose}
               composerDeviceMode={composerDeviceMode}
               onSetComposerDeviceMode={onSetComposerDeviceMode}
               threadTransition={threadTransition}

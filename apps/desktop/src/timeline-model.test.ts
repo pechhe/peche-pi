@@ -201,6 +201,23 @@ test("timeline model surfaces run failures as error activity", () => {
   assert.equal(runtime.runMetrics, undefined);
 });
 
+test("timeline model collapses consecutive identical run failures into one error", () => {
+  const runtime: SessionTimelineRuntimeState = {
+    runMetrics: { startedAt: "2026-01-01T00:00:00.000Z", toolCount: 0, searchCount: 0, fileCount: 0 },
+    runningSince: "2026-01-01T00:00:00.000Z",
+  };
+
+  const err = (ts: string) =>
+    event({ type: "runFailed", error: { message: "Usage limit reached — resets in 3h 46m", code: "ERROR" }, timestamp: ts });
+
+  let transcript = applySessionEventToTimeline([], err("2026-01-01T00:01:00.000Z"), runtime, factory);
+  transcript = applySessionEventToTimeline(transcript, err("2026-01-01T00:02:00.000Z"), runtime, factory);
+  transcript = applySessionEventToTimeline(transcript, err("2026-01-01T00:03:00.000Z"), runtime, factory);
+
+  const errors = transcript.filter((item) => item.kind === "activity" && item.tone === "error");
+  assert.equal(errors.length, 1);
+});
+
 test("timeline model extracts reopened transcript meta activity and groups non-trailing tool bursts", () => {
   const transcript: TranscriptMessage[] = [
     { kind: "message", id: "user-1", role: "user", text: "Hi", createdAt: "2026-01-01T00:00:00.000Z" },

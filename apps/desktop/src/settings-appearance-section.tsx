@@ -6,8 +6,6 @@ interface SettingsAppearanceSectionProps {
   readonly onSetThemeMode: (mode: ThemeMode) => void;
   readonly enableTransparency: boolean;
   readonly onSetEnableTransparency: (enabled: boolean) => void;
-  readonly transcriptVerbose: boolean;
-  readonly onSetTranscriptVerbose: (enabled: boolean) => void;
   readonly composerDeviceMode: ComposerDeviceMode;
   readonly onSetComposerDeviceMode: (mode: ComposerDeviceMode) => void;
   readonly threadTransition: ThreadTransitionSettings;
@@ -41,8 +39,6 @@ export function SettingsAppearanceSection({
   onSetThemeMode,
   enableTransparency,
   onSetEnableTransparency,
-  transcriptVerbose,
-  onSetTranscriptVerbose,
   composerDeviceMode,
   onSetComposerDeviceMode,
   threadTransition,
@@ -73,17 +69,6 @@ export function SettingsAppearanceSection({
             type="checkbox"
             checked={enableTransparency}
             onChange={(event) => onSetEnableTransparency(event.currentTarget.checked)}
-          />
-        </SettingsRow>
-        <SettingsRow
-          title="Verbose transcript"
-          description="Show background extension chatter (blackhole observational memory, cymbal tool nudges, etc.) inline in the conversation. Off by default for a clean transcript."
-        >
-          <input
-            aria-label="Verbose transcript"
-            type="checkbox"
-            checked={transcriptVerbose}
-            onChange={(event) => onSetTranscriptVerbose(event.currentTarget.checked)}
           />
         </SettingsRow>
         {COMPOSER_DEVICE_OPTIONS.map((option) => (

@@ -1,5 +1,4 @@
 import {
-  estimateTokens,
   type AgentSessionRuntime,
   type AgentSession,
   type CreateAgentSessionOptions,
@@ -391,11 +390,15 @@ export class SessionRuntimeRegistry implements SessionRuntimeRegistryInterface {
 function computeContextUsage(
   session: AgentSession | undefined,
 ): SessionContextUsage | undefined {
-  const contextWindow = session?.model?.contextWindow;
-  if (!session || typeof contextWindow !== "number" || contextWindow <= 0) {
+  // Use the runtime's authoritative context accounting (real last-assistant API
+  // usage + trailing estimate), not a naive sum over session.messages.
+  // tokens is null right after compaction / before the next LLM response — return
+  // undefined in that case so the renderer keeps the last known value instead of
+  // overwriting it with a transient 0.
+  const usage = session?.getContextUsage();
+  if (!usage || typeof usage.tokens !== "number" || usage.contextWindow <= 0) {
     return undefined;
   }
 
-  const tokens = session.messages.reduce((sum, m) => sum + estimateTokens(m), 0);
-  return { usedTokens: Math.max(0, tokens), contextWindow };
+  return { usedTokens: Math.max(0, usage.tokens), contextWindow: usage.contextWindow };
 }
