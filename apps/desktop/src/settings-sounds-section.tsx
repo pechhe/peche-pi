@@ -112,7 +112,7 @@ export function SettingsSoundsSection({ soundSettings, onSetSoundSettings }: Set
           <input
             type="checkbox"
             checked={CATEGORIES.every((c) => soundSettings[c] === "none")}
-            onChange={(e) => {
+            onChange={(_e) => {
               const allNone = CATEGORIES.every((c) => soundSettings[c] === "none");
               const newValue: ButtonClickVariant = allNone ? "click" : "none";
               const newSettings: ButtonSoundSettings = {

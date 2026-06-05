@@ -857,6 +857,21 @@ app.whenReady().then(async () => {
       },
       setCommitPushModel: (_event: unknown, workspaceId: string, model: string) =>
         store.setCommitPushModel(workspaceId, model),
+      getSmartCompactSettings: () => store.getSmartCompactSettings(),
+      setSmartCompactSettings: (_event: unknown, settings: Record<string, unknown>) =>
+        store.setSmartCompactSettings(settings),
+      analyzeExtensionConfig: async (_event: unknown, extensionPath: string, model?: string) =>
+        store.analyzeExtensionConfig(extensionPath, model),
+      getExtensionConfig: async (_event: unknown, extensionPath: string) =>
+        store.getExtensionConfig(extensionPath),
+      setExtensionConfig: async (_event: unknown, extensionPath: string, values: readonly { key: string; value: string | number | boolean }[]) =>
+        store.setExtensionConfig(extensionPath, values),
+      installExtension: async (_event: unknown, source: string, local?: boolean) =>
+        store.installExtension(source, local),
+      uninstallExtension: async (_event: unknown, source: string, local?: boolean) =>
+        store.uninstallExtension(source, local),
+      checkExtensionUpdates: async () =>
+        store.checkExtensionUpdates(),
       commitPushExecute: async (_event: unknown, workspaceId: string) => {
         const workspacePath = store.getWorkspacePath(workspaceId);
         if (!workspacePath) {

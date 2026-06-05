@@ -202,7 +202,7 @@ export function useSlashMenu(params: UseSlashMenuParams): SlashMenuState {
       setActiveSlashFlow(undefined);
       setSlashOptionIndex(0);
     }
-  }, [activeSlashFlow, activeSlashQuery, slashQuery]);
+  }, [activeSlashFlow, activeSlashQuery, slashQuery, composerDraft]);
 
   useEffect(() => {
     setActiveSlashFlow(undefined);

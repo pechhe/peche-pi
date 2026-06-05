@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
 import type { ModelSettingsScopeMode, PlanModeIdeologySetting } from "./desktop-state";
+import type { SmartCompactSettings } from "./ipc";
 import { buildModelOptions } from "./composer-commands";
 import { SettingsGroup, SettingsInfoRow, SettingsRow } from "./settings-utils";
+import { SettingsSmartCompactSection } from "./settings-smart-compact-section";
 
 interface RetrySettings {
   readonly enabled: boolean;
@@ -18,6 +20,7 @@ interface SettingsGeneralSectionProps {
   readonly retrySettings: RetrySettings;
   readonly commitPushModel?: string;
   readonly planModeIdeology: PlanModeIdeologySetting;
+  readonly smartCompactSettings: SmartCompactSettings;
   readonly onSetPlanModeIdeology: (ideology: PlanModeIdeologySetting) => void;
   readonly onSetCommitPushModel: (model: string) => void;
   readonly onSetModelSettingsScopeMode: (mode: ModelSettingsScopeMode) => void;
@@ -26,6 +29,7 @@ interface SettingsGeneralSectionProps {
   readonly onClearExternalTerminalApp: () => void;
   readonly onToggleSkillCommands: (enabled: boolean) => void;
   readonly onSetRetrySettings: (settings: RetrySettings) => void;
+  readonly onSetSmartCompactSettings: (settings: Partial<SmartCompactSettings>) => void;
 }
 
 function terminalAppLabel(appPath: string): string {
@@ -63,19 +67,11 @@ export function SettingsGeneralSection({
   onSetRetrySettings,
   planModeIdeology,
   onSetPlanModeIdeology,
+  smartCompactSettings,
+  onSetSmartCompactSettings,
 }: SettingsGeneralSectionProps) {
   const modelOptions = useMemo(() => buildModelOptions(runtime), [runtime]);
-  const commitModelLabel = useMemo(() => {
-    if (!commitPushModel) return "Pick model";
-    const colonIndex = commitPushModel.indexOf(":");
-    if (colonIndex === -1) return commitPushModel;
-    const providerId = commitPushModel.slice(0, colonIndex);
-    const modelId = commitPushModel.slice(colonIndex + 1);
-    const match = modelOptions.find(
-      (m) => m.providerId === providerId && m.modelId === modelId,
-    );
-    return match ? `${match.providerId}:${match.modelId}` : commitPushModel;
-  }, [commitPushModel, modelOptions]);
+
   const connectedCount = runtime?.providers.filter((p) => p.hasAuth).length ?? 0;
   const [terminalShellDraft, setTerminalShellDraft] = useState(integratedTerminalShell);
   const [retryDraft, setRetryDraft] = useState(retrySettings);
@@ -280,6 +276,12 @@ export function SettingsGeneralSection({
           value={retryDraft.enabled ? formatRetryDuration(retryDraft.baseDelayMs, retryDraft.maxRetries) : "Disabled"}
         />
       </SettingsGroup>
+
+      <SettingsSmartCompactSection
+        runtime={runtime}
+        settings={smartCompactSettings}
+        onSetSettings={onSetSmartCompactSettings}
+      />
 
       <SettingsGroup title="Shortcuts">
         <SettingsInfoRow label="New project" value="Cmd+Shift+O" />

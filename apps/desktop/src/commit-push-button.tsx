@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
 import { CommitPushPrDialog } from "./commit-push-pr-dialog";
 import type { PiDesktopApi, WorkspacePrInfo } from "./ipc";
@@ -37,7 +37,7 @@ const SHORTCUT_EVENT = "pi:commit-and-push";
 
 export function CommitPushButton({
   workspaceId,
-  runtime,
+  runtime: _runtime,
   commitPushModel,
   api,
   disabled,

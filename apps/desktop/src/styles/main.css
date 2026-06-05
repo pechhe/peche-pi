@@ -529,7 +529,7 @@
 
 .timeline-item--assistant {
   contain: layout paint;
-  max-width: 760px;
+  max-width: 100%;
 }
 
 .timeline-item--summary-card {
@@ -567,6 +567,59 @@
 .timeline-item--just-sent .timeline-item__bubble {
   animation: user-bubble-in 220ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
   will-change: transform, opacity;
+}
+
+.timeline-plan-prompt {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+}
+
+.timeline-plan-prompt__header {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted-soft);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12.5px;
+  font-style: italic;
+  justify-self: start;
+}
+
+.timeline-plan-prompt__header:hover {
+  color: var(--ink);
+}
+
+.timeline-plan-prompt__chevron {
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: inherit;
+  transition: transform 0.15s ease;
+}
+
+.timeline-plan-prompt__chevron svg {
+  width: 14px;
+  height: 14px;
+}
+
+.timeline-plan-prompt__chevron--expanded {
+  transform: rotate(90deg);
+}
+
+.timeline-plan-prompt__body {
+  margin-left: 18px;
+  padding-left: 12px;
+  border-left: 2px solid var(--border);
+  color: var(--muted-strong);
+  font-size: 12.5px;
 }
 
 @keyframes user-bubble-in {
@@ -2049,20 +2102,35 @@ body.pi-thread-handoff .timeline-item--just-sent .timeline-item__bubble {
 .composer__context-track {
   position: relative;
   height: 4px;
-  overflow: hidden;
+  overflow: visible;
   border-radius: 999px;
   background: color-mix(in srgb, var(--line) 66%, transparent 34%);
 }
 
 .composer__context-compact-tick {
   position: absolute;
-  top: 0;
-  bottom: 0;
+  top: -3px;
+  bottom: -3px;
   width: 2px;
   border-radius: 999px;
   background: #d97706;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--panel) 82%, transparent 18%);
   transform: translateX(-50%);
   z-index: 1;
+}
+
+.composer__context-compact-tick::before {
+  content: attr(data-label);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 3px);
+  transform: translateX(-50%);
+  color: #d97706;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  text-transform: uppercase;
 }
 
 .composer__context-fill {
@@ -4576,6 +4644,38 @@ body.pi-thread-handoff .timeline-item--just-sent .timeline-item__bubble {
   gap: 8px;
 }
 
+.extension-config-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.extension-config-field {
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--surface-1, rgba(0, 0, 0, 0.05));
+}
+
+.extension-config-field .settings-text-input {
+  width: 100%;
+  max-width: 400px;
+}
+
+.extension-config-field .settings-text-input--small {
+  max-width: 150px;
+}
+
+.extension-install-section {
+  border: 1px solid var(--border-subtle, rgba(0, 0, 0, 0.1));
+}
+
+.extension-install-section code {
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--surface-2, rgba(0, 0, 0, 0.08));
+  font-size: 11px;
+}
+
 .extension-dialog-backdrop {
   position: fixed;
   inset: 0;
@@ -5895,6 +5995,8 @@ mark.thread-find-active {
 .composer-device .composer textarea {
   color: var(--crt-bright);
   caret-color: var(--crt-bright);
+  /* Terminal-style block cursor (Chromium 139+ / Electron 42). */
+  caret-shape: block;
   font-family: ui-monospace, "SF Mono", Menlo, "Roboto Mono", monospace;
   letter-spacing: 0.02em;
   text-shadow:
@@ -6199,6 +6301,7 @@ mark.thread-find-active {
 .composer-device--modular .composer__controls {
   grid-column: 1;
   align-self: center;
+  padding-top: 14px;
   display: inline-flex;
   align-items: center;
   gap: 10px;
@@ -6253,13 +6356,43 @@ mark.thread-find-active {
 
 .composer-device--modular .model-selector__anchor {
   display: inline-flex;
+  flex-direction: column;
   align-items: center;
+  position: relative;
+}
+
+/* Section labels engraved above each physical key cluster */
+.composer-device--modular .model-selector__anchor:first-child::before,
+.composer-device--modular .model-selector__anchor:last-child::before,
+.composer-device--modular .caveman-selector::before {
+  content: attr(data-section-label);
+  position: absolute;
+  top: -13px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: ui-monospace, "SF Mono", Menlo, "Roboto Mono", monospace;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: oklch(0.55 0.01 250);
+  line-height: 1;
+  pointer-events: none;
+  user-select: none;
+  white-space: nowrap;
+}
+
+:root.dark .composer-device--modular .model-selector__anchor:first-child::before,
+:root.dark .composer-device--modular .model-selector__anchor:last-child::before,
+:root.dark .composer-device--modular .caveman-selector::before {
+  color: oklch(0.5 0.01 250);
 }
 
 /* Send button: right grid column */
 .composer-device--modular .composer__actions {
   grid-column: 3;
   align-self: center;
+  padding-top: 14px;
   display: flex;
   align-items: center;
   justify-self: end;
@@ -6467,7 +6600,9 @@ mark.thread-find-active {
    and draw our own chevron */
 .composer-device--modular .caveman-selector {
   display: inline-flex;
+  flex-direction: column;
   align-items: center;
+  position: relative;
 }
 
 .composer-device--modular .caveman-selector__icon,
@@ -8104,11 +8239,26 @@ mark.thread-find-active {
   text-shadow: 0 0 7px oklch(0.62 0.13 150 / 0.42);
 }
 
+.composer__screen .questionnaire-composer__screen {
+  min-height: 0;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
 .questionnaire-composer__header {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 22px;
   align-items: start;
+}
+
+.questionnaire-composer__title {
+  margin: 0 0 10px;
+  color: oklch(0.58 0.08 150);
+  font-size: 14px;
+  font-weight: 620;
 }
 
 .questionnaire-composer__prompt {
@@ -8293,7 +8443,7 @@ mark.thread-find-active {
 :root.dark.composer-device.composer-device--modular.composer-device--metal-keys .caveman-selector__select.caveman-selector__select--dial {
   width: 170px;
   min-width: 170px;
-  height: 112px;
+  height: 124px;
   padding: 0;
   border: 0;
   border-radius: 0;

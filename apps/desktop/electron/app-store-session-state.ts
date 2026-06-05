@@ -7,7 +7,6 @@ import type { SessionDriverEvent, SessionRef, SessionSnapshot } from "@pi-gui/se
 import type { DesktopAppState, SelectedTranscriptRecord, SessionRecord, TranscriptMessage } from "../src/desktop-state.ts";
 import { applyTimelineEvent, appendAssistantDelta, appendReasoningDelta } from "./app-store-timeline.ts";
 import {
-  cloneTranscriptMessage,
   hasUnseenSessionUpdate,
   isAwaitingAssistantText,
   latestSessionActivityAt,
@@ -248,7 +247,7 @@ function applySessionEventState(
   lastViewedAtBySession: Map<string, string>,
 ): DesktopAppState {
   const key = sessionKey(event.sessionRef);
-  const transcript = (transcriptCache.get(key) ?? []).map(cloneTranscriptMessage);
+  const transcript = transcriptCache.get(key) ?? [];
   const preview = previewFromTranscript(transcript);
   const lastViewedAt = lastViewedAtBySession.get(key);
 

@@ -56,14 +56,16 @@ interface SettingsViewProps {
   readonly onSetButtonSoundSettings: (settings: ButtonSoundSettings) => void;
   readonly onSetSubagentSettings: (settings: Partial<SubagentSettingsRecord>) => void;
   readonly onRefreshSubagentAgents: (workspaceId: string) => void;
-  readonly onSaveSubagentAgent: (workspaceId: string, input: { readonly name: string; readonly raw: string }) => void;
-  readonly onDeleteSubagentAgent: (workspaceId: string, name: string) => void;
+  readonly onSaveSubagentAgent: (workspaceId: string, input: { readonly name: string; readonly raw: string; readonly scope?: "project" | "global" }) => void;
+  readonly onDeleteSubagentAgent: (workspaceId: string, name: string, scope?: "project" | "global") => void;
   readonly retrySettings: { readonly enabled: boolean; readonly maxRetries: number; readonly baseDelayMs: number };
   readonly onSetRetrySettings: (settings: { readonly enabled: boolean; readonly maxRetries: number; readonly baseDelayMs: number }) => void;
   readonly planModeIdeology: import("./desktop-state").PlanModeIdeologySetting;
   readonly onSetPlanModeIdeology: (ideology: import("./desktop-state").PlanModeIdeologySetting) => void;
   readonly commitPushModel?: string;
   readonly onSetCommitPushModel: (model: string) => void;
+  readonly smartCompactSettings: import("./ipc").SmartCompactSettings;
+  readonly onSetSmartCompactSettings: (settings: Partial<import("./ipc").SmartCompactSettings>) => void;
 }
 
 export function SettingsView({
@@ -71,7 +73,7 @@ export function SettingsView({
   runtime,
   section,
   onSelectSection,
-  onBack,
+  onBack: _onBack,
   notificationPreferences,
   notificationPermissionStatus,
   notificationPermissionPending,
@@ -117,8 +119,10 @@ export function SettingsView({
   onSetPlanModeIdeology,
   commitPushModel,
   onSetCommitPushModel,
+  smartCompactSettings,
+  onSetSmartCompactSettings,
 }: SettingsViewProps) {
-  if (!workspace && section !== "general" && section !== "notifications" && section !== "appearance" && section !== "sounds") {
+  if (!workspace && section !== "general" && section !== "notifications" && section !== "appearance" && section !== "sounds" && section !== "subagents") {
     return (
       <div className="empty-panel">
         <div className="session-header__eyebrow">Settings</div>
@@ -131,7 +135,7 @@ export function SettingsView({
   return (
     <div className="settings-view">
       <nav className="settings-sidebar">
-        {(["appearance", "general", "providers", "models", "notifications", "sounds"] as const).map((item) => (
+        {(["appearance", "general", "providers", "models", "subagents", "notifications", "sounds"] as const).map((item) => (
           <button
             key={item}
             className={`settings-sidebar__item${section === item ? " settings-sidebar__item--active" : ""}`}
@@ -178,6 +182,8 @@ export function SettingsView({
               onSetRetrySettings={onSetRetrySettings}
               planModeIdeology={planModeIdeology}
               onSetPlanModeIdeology={onSetPlanModeIdeology}
+              smartCompactSettings={smartCompactSettings}
+              onSetSmartCompactSettings={onSetSmartCompactSettings}
             />
           ) : null}
 
@@ -192,24 +198,25 @@ export function SettingsView({
           ) : null}
 
           {section === "models" ? (
-            <>
-              <SettingsModelsSection
-                runtime={runtime}
-                onSetDefaultModel={onSetDefaultModel}
-                onSetScopedModelPatterns={onSetScopedModelPatterns}
-                onSetThinkingLevel={onSetThinkingLevel}
-              />
-              <SettingsSubagentsSection
-                workspace={workspace}
-                settings={subagentSettings}
-                agents={subagentAgents}
-                runtime={runtime}
-                onSetSettings={onSetSubagentSettings}
-                onRefreshAgents={onRefreshSubagentAgents}
-                onSaveAgent={onSaveSubagentAgent}
-                onDeleteAgent={onDeleteSubagentAgent}
-              />
-            </>
+            <SettingsModelsSection
+              runtime={runtime}
+              onSetDefaultModel={onSetDefaultModel}
+              onSetScopedModelPatterns={onSetScopedModelPatterns}
+              onSetThinkingLevel={onSetThinkingLevel}
+            />
+          ) : null}
+
+          {section === "subagents" ? (
+            <SettingsSubagentsSection
+              workspace={workspace}
+              settings={subagentSettings}
+              agents={subagentAgents}
+              runtime={runtime}
+              onSetSettings={onSetSubagentSettings}
+              onRefreshAgents={onRefreshSubagentAgents}
+              onSaveAgent={onSaveSubagentAgent}
+              onDeleteAgent={onDeleteSubagentAgent}
+            />
           ) : null}
 
           {section === "notifications" ? (

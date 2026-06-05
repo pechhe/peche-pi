@@ -14,7 +14,7 @@ import {
 import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { AppView, ChatRecord, SessionRecord, WorkspaceRecord, WorktreeRecord } from "./desktop-state";
-import { ArchiveIcon, ChatIcon, ChevronDownIcon, ChevronRightIcon, ComposeIcon, ContextIcon, DoneIcon, ExtensionIcon, FolderIcon, ProjectIcon, RestoreIcon, SettingsIcon, SkillIcon, WorktreeIcon } from "./icons";
+import { ArchiveIcon, ChatIcon, ChevronDownIcon, ComposeIcon, ContextIcon, DoneIcon, ExtensionIcon, FolderIcon, ProjectIcon, RestoreIcon, SettingsIcon, SkillIcon, WorktreeIcon } from "./icons";
 import { WorkingSpinner } from "./working-label";
 import type { PiDesktopApi } from "./ipc";
 import { formatRelativeTime } from "./string-utils";
@@ -128,7 +128,24 @@ function MovingSidebarHighlight({
     for (const item of container.querySelectorAll<HTMLElement>(itemSelector)) {
       observer.observe(item);
     }
-    return () => observer.disconnect();
+
+    // Re-measure the active indicator when the `--active` class moves between
+    // items (e.g. selecting a different thread), since that re-render does not
+    // trigger the ResizeObserver.
+    let mutationObserver: MutationObserver | undefined;
+    if (typeof MutationObserver !== "undefined") {
+      mutationObserver = new MutationObserver(() => updateActiveTarget());
+      mutationObserver.observe(container, {
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["class"],
+      });
+    }
+
+    return () => {
+      observer.disconnect();
+      mutationObserver?.disconnect();
+    };
   }, [itemSelector]);
 
   return (
@@ -239,7 +256,7 @@ export function Sidebar(props: SidebarProps) {
     setSnapshot,
     updateSnapshot,
     onNewThreadForWorkspace,
-    onSetActiveView,
+    onSetActiveView: _onSetActiveView,
     onOpenSkills,
     onOpenExtensions,
     onOpenContext,

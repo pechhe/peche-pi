@@ -50,10 +50,6 @@ export const BUTTON_CATEGORY_DESCRIPTIONS: Record<ButtonCategory, string> = {
 
 let currentSettings: ButtonSoundSettings = { ...DEFAULT_BUTTON_SOUND_SETTINGS };
 
-function setButtonSoundSettings(settings: ButtonSoundSettings): void {
-  currentSettings = { ...settings };
-}
-
 export function getButtonSoundSettings(): ButtonSoundSettings {
   return { ...currentSettings };
 }
@@ -67,12 +63,6 @@ const CLICK_URL = "/sounds/click.mp3";
 const KEY_URLS = ["/sounds/key-on.mp3", "/sounds/key-off.mp3"];
 const ROTARY_URLS = [
   "/sounds/click_01.mp3",
-  "/sounds/click_03.mp3",
-  "/sounds/click_04.mp3",
-  "/sounds/click_05.mp3",
-  "/sounds/click_06.mp3",
-  "/sounds/click_08.mp3",
-  "/sounds/click_11.mp3",
 ];
 
 const CLICK_RATE: Record<ClickKind, number> = { down: 0.78, up: 1 };
@@ -106,16 +96,6 @@ function ensureSettingsLoaded(): void {
   }
 }
 
-/** Persist settings to localStorage */
-function saveButtonSoundSettings(settings: ButtonSoundSettings): void {
-  setButtonSoundSettings(settings);
-  try {
-    localStorage.setItem("pi:button-sound-settings", JSON.stringify(settings));
-  } catch {
-    // ignore storage errors
-  }
-}
-
 function getContext(): AudioContext | null {
   if (typeof window === "undefined") return null;
   if (!context) {
@@ -125,7 +105,7 @@ function getContext(): AudioContext | null {
     if (!Ctor) return null;
     context = new Ctor();
     masterGain = context.createGain();
-    masterGain.gain.value = 0.7;
+    masterGain.gain.value = 0.3;
     masterGain.connect(context.destination);
   }
   return context;
@@ -377,30 +357,6 @@ export function playRotary(): void {
   const idx = Math.floor(Math.random() * rotaryBuffers.length);
   const buffer = rotaryBuffers[idx];
   if (buffer) void fire(buffer, 0.9 + Math.random() * 0.2); // slight pitch variation
-}
-
-/** Unlock audio context (call on first user interaction) */
-async function unlockClickAudio(): Promise<void> {
-  const ctx = getContext();
-  if (ctx) await ensureContextRunning(ctx);
-  await loadAll();
-}
-
-/* ── Public API for button categories ──────────────────────────────────── */
-
-/** Play sound for a specific button category */
-function playButtonForCategory(category: ButtonCategory): void {
-  ensureSettingsLoaded();
-  const variant = currentSettings[category];
-  if (variant === "none") return;
-
-  if (variant === "click") {
-    playClick("down");
-  } else if (variant === "key") {
-    playKey("press");
-  } else if (variant === "rotary") {
-    playRotary();
-  }
 }
 
 /** Play button click (legacy API, uses primary category) */

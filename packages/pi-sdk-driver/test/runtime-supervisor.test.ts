@@ -65,6 +65,21 @@ test("model records hide thinking levels mapped to null", async () => {
   assert.deepEqual(records[0]?.availableThinkingLevels, ["medium", "high", "xhigh"]);
 });
 
+test("model records expose provider-specific thinking level labels", async () => {
+  const [gpt55, opus, plain] = await buildModelRecords([
+    makeModel({ provider: "openai", id: "gpt-5.5", thinkingLevelMap: { off: "none", xhigh: "xhigh" } }),
+    makeModel({ provider: "amazon-bedrock", id: "claude-opus-4-6", thinkingLevelMap: { xhigh: "max" } }),
+    makeModel({ provider: "openai", id: "plain" }),
+  ]);
+
+  // openai sorts before amazon-bedrock? records are sorted by providerId, so
+  // amazon-bedrock comes first. Resolve by id instead of position.
+  const byId = (id: string) => [gpt55, opus, plain].find((r) => r?.modelId === id);
+  assert.equal(byId("gpt-5.5")?.thinkingLevelLabels.xhigh, "xhigh");
+  assert.equal(byId("claude-opus-4-6")?.thinkingLevelLabels.xhigh, "max");
+  assert.deepEqual(byId("plain")?.thinkingLevelLabels, {});
+});
+
 test("model records keep xhigh hidden unless explicitly mapped", async () => {
   const records = await buildModelRecords([
     makeModel({ thinkingLevelMap: { minimal: "low" } }),

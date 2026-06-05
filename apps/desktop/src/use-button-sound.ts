@@ -60,7 +60,7 @@ export function useButtonSound(options: UseButtonSoundOptions = {}): UseButtonSo
   );
 
   const handlePointerUp = useCallback(
-    (e: PointerEvent<HTMLElement>) => {
+    (_e: PointerEvent<HTMLElement>) => {
       if (disabled || !pressingRef.current) return;
       pressingRef.current = false;
 

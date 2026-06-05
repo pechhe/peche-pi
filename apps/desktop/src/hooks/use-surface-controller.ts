@@ -11,7 +11,6 @@
  */
 
 import { useEffect, useRef } from "react";
-import type { AppView } from "../desktop-state";
 import { interpretSurfaceIntent, type SurfaceIntent } from "../desktop-surface-controller";
 import type { DesktopSurface } from "../desktop-surface-controller";
 export type { DesktopSurface } from "../desktop-surface-controller";
@@ -52,7 +51,7 @@ export interface IntentHandlers {
 // Focus execution — which DOM element to focus after an intent.
 // ---------------------------------------------------------------------------
 
-function executeFocus(intent: SurfaceIntent, refs: FocusRefs, handlers: IntentHandlers): void {
+function executeFocus(intent: SurfaceIntent, refs: FocusRefs, _handlers: IntentHandlers): void {
   switch (intent.type) {
     case "open-new-thread":
       // After navigating to new-thread view, focus the new-thread composer.

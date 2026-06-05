@@ -189,6 +189,7 @@ test("renders extension dialogs in the Electron surface and routes responses bac
     await expect(questionnaire).toBeVisible();
     await expect(questionnaire).toContainText("Planner needs more info (1/1)");
     await expect(questionnaire).toContainText("What is the primary goal of this plan?");
+    await expect(window.getByRole("button", { name: /Composer mode:/ })).toBeVisible();
     await questionnaire.getByRole("button", { name: /Refactor \/ Cleanup/ }).click();
     await expect(questionnaire).toHaveCount(0);
     await expect(window.locator(".timeline")).toContainText("Questionnaire refactor");

@@ -3,7 +3,6 @@ import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
 import {
   buildModelOptions,
   MODEL_OPTIONS_EMPTY_TITLE,
-  THINKING_OPTIONS,
   type ComposerModelOption,
 } from "./composer-commands";
 import { ReasoningMeter } from "./reasoning-meter";
@@ -37,15 +36,12 @@ function modelKey(providerId: string, modelId: string): string {
 }
 
 function nextThinkingLevel(level: string, availableLevels: readonly string[]): string {
-  // Only cycle through non-off levels (off is excluded from the cycle)
-  const cycleable = availableLevels.filter((l) => l !== "off");
-  if (cycleable.length === 0) return availableLevels[0] ?? "off";
-  const index = cycleable.indexOf(level);
-  if (index === -1) {
-    // Current level not in cycleable list — clamp to nearest available
-    return cycleable[0]!;
-  }
-  return cycleable[(index + 1) % cycleable.length]!;
+  // Cycle through every level the model supports (in canonical dial order),
+  // including "off", so each slot the dial renders is reachable.
+  if (availableLevels.length === 0) return "off";
+  const index = availableLevels.indexOf(level);
+  if (index === -1) return availableLevels[0]!;
+  return availableLevels[(index + 1) % availableLevels.length]!;
 }
 
 function shortModelLabel(label: string): string {
@@ -66,8 +62,8 @@ export const ModelSelector = forwardRef<ModelSelectorHandle, ModelSelectorProps>
       disabled,
       dropdownPlacement = "above",
       showEmptyModelControl = false,
-      unselectedModelLabel = "Choose model",
-      emptyModelLabel = "Choose model",
+      unselectedModelLabel: _unselectedModelLabel = "Choose model",
+      emptyModelLabel: _emptyModelLabel = "Choose model",
       emptyModelTitle = MODEL_OPTIONS_EMPTY_TITLE,
       onSetModel,
       onSetThinking,
@@ -94,26 +90,38 @@ export const ModelSelector = forwardRef<ModelSelectorHandle, ModelSelectorProps>
       },
       cycleThinkingLevel(direction: -1 | 1) {
         if (!thinkingLevel) return;
-        const cycleable = THINKING_OPTIONS.filter((opt) => availableThinkingLevels.includes(opt.value));
-        if (cycleable.length === 0) return;
-        const currentIndex = cycleable.findIndex((opt) => opt.value === thinkingLevel);
+        // Cycle the full set the model supports (off/minimal included), in the
+        // same canonical order the dial uses.
+        if (availableThinkingLevels.length === 0) return;
+        const currentIndex = availableThinkingLevels.indexOf(thinkingLevel);
         const nextIndex = currentIndex >= 0
-          ? (currentIndex + direction + cycleable.length) % cycleable.length
-          : direction > 0 ? 0 : cycleable.length - 1;
-        const next = cycleable[nextIndex];
-        if (next) onSetThinking(next.value);
+          ? (currentIndex + direction + availableThinkingLevels.length) % availableThinkingLevels.length
+          : direction > 0 ? 0 : availableThinkingLevels.length - 1;
+        const next = availableThinkingLevels[nextIndex];
+        if (next) onSetThinking(next);
       },
     }));
 
     const modelOptions = useMemo(() => buildModelOptions(runtime), [runtime]);
 
-    // Look up the current model's supported thinking levels from the runtime snapshot.
-    // Falls back to a reasonable default if the model isn't found.
-    const availableThinkingLevels = useMemo(() => {
-      if (!runtime || !provider || !modelId) return ["off", "minimal", "low", "medium", "high", "xhigh"];
-      const record = runtime.models.find((m) => m.providerId === provider && m.modelId === modelId);
-      return record?.availableThinkingLevels ?? ["off"];
+    // Resolve the effective model record so the dial only ever offers levels the
+    // model actually supports. When no explicit provider/modelId is set (session
+    // is on the default model), fall back to the runtime's default model rather
+    // than inventing all six levels — otherwise unsupported levels (e.g. off,
+    // minimal) appear as phantom slots that the session clamp immediately rejects.
+    const effectiveModelRecord = useMemo(() => {
+      if (!runtime) return undefined;
+      const p = provider ?? runtime.settings.defaultProvider;
+      const m = modelId ?? runtime.settings.defaultModelId;
+      if (!p || !m) return undefined;
+      return runtime.models.find((record) => record.providerId === p && record.modelId === m);
     }, [runtime, provider, modelId]);
+
+    const availableThinkingLevels = effectiveModelRecord?.availableThinkingLevels ?? ["off"];
+
+    // Provider-specific display names (e.g. xhigh shows as "MAX" for Opus,
+    // "XHIGH" for GPT-5.5) so the dial matches the selected model.
+    const thinkingLevelLabels = effectiveModelRecord?.thinkingLevelLabels;
 
     const visibleModelOptions = useMemo(() => {
       if (showHiddenModels || hiddenModelKeys.size === 0) return modelOptions;
@@ -135,18 +143,13 @@ export const ModelSelector = forwardRef<ModelSelectorHandle, ModelSelectorProps>
     const hasAvailableModelOptions = modelOptions.length > 0;
     const hasModelControl = Boolean(provider && modelId) || hasAvailableModelOptions;
     const shouldRenderModelControl = hasModelControl || showEmptyModelControl;
-    const activeModelLabel = useMemo(() => {
+    const _activeModelLabel = useMemo(() => {
       if (!provider || !modelId) return undefined;
       return modelOptions.find(
         (m) => m.providerId === provider && m.modelId === modelId,
       )?.label;
     }, [modelOptions, provider, modelId]);
-    const modelBadgeLabel =
-      provider && modelId
-        ? (activeModelLabel ?? `${provider}:${modelId}`)
-        : hasAvailableModelOptions
-          ? unselectedModelLabel
-          : emptyModelLabel;
+
     const pinnedModelOptions = useMemo(() => {
       const byKey = new Map(modelOptions.map((option) => [modelKey(option.providerId, option.modelId), option]));
       const picked = pinnedModelKeys
@@ -273,13 +276,13 @@ export const ModelSelector = forwardRef<ModelSelectorHandle, ModelSelectorProps>
       return null;
     }
 
-    const flatFiltered = filteredModels;
+    const _flatFiltered = filteredModels;
     const hiddenCount = modelOptions.length - visibleModelOptions.length;
 
     return (
       <span className="model-selector" ref={containerRef}>
         {shouldRenderModelControl ? (
-          <span className="model-selector__anchor">
+          <span className="model-selector__anchor" data-section-label="Model">
             <span className="composer__key-mount">
               <span
                 className="model-selector__badge model-selector__badge--slider"
@@ -438,7 +441,7 @@ export const ModelSelector = forwardRef<ModelSelectorHandle, ModelSelectorProps>
           </span>
         ) : null}
         {thinkingLevel ? (
-          <span className="model-selector__anchor">
+          <span className="model-selector__anchor" data-section-label="Reasoning">
             <span className="composer__key-mount composer__key-mount--reasoning">
               <button
                 className="model-selector__badge model-selector__badge--reasoning"
@@ -449,7 +452,7 @@ export const ModelSelector = forwardRef<ModelSelectorHandle, ModelSelectorProps>
                 {...rotarySound}
                 onClick={() => onSetThinking(nextThinkingLevel(thinkingLevel, availableThinkingLevels))}
               >
-                <ReasoningMeter level={thinkingLevel} availableLevels={availableThinkingLevels} size={12} />
+                <ReasoningMeter level={thinkingLevel} availableLevels={availableThinkingLevels} levelLabels={thinkingLevelLabels} size={12} />
               </button>
             </span>
           </span>

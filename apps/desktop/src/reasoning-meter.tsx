@@ -24,7 +24,12 @@ function normalizedLevel(level: string): string {
   return level === "max" ? "xhigh" : level;
 }
 
-function displayLabel(level: string): string {
+function displayLabel(level: string, levelLabels?: Readonly<Record<string, string>>): string {
+  // Prefer the provider's own name for xhigh (e.g. Opus "max", GPT-5.5 "xhigh")
+  // instead of a hard-coded label, so the dial matches the selected model.
+  if (level === "xhigh" && levelLabels?.xhigh) {
+    return levelLabels.xhigh.toUpperCase();
+  }
   return LEVEL_LABELS[level] ?? level.toUpperCase();
 }
 
@@ -50,7 +55,10 @@ function pointerAngle(clockAngle: number): number {
   return clockAngle - 270;
 }
 
-function buildDialLevels(availableLevels: readonly string[] | undefined): readonly ReasoningDialLevel[] {
+function buildDialLevels(
+  availableLevels: readonly string[] | undefined,
+  levelLabels?: Readonly<Record<string, string>>,
+): readonly ReasoningDialLevel[] {
   const available = new Set((availableLevels?.length ? availableLevels : LEVEL_ORDER).map(normalizedLevel));
   const values = LEVEL_ORDER.filter((level) => available.has(level));
   const ordered = values.length > 0 ? values : ["off"];
@@ -60,7 +68,7 @@ function buildDialLevels(availableLevels: readonly string[] | undefined): readon
     const point = pointOnDial(clockAngle);
     return {
       value,
-      label: displayLabel(value),
+      label: displayLabel(value, levelLabels),
       clockAngle,
       x: point.x,
       y: point.y,
@@ -71,6 +79,7 @@ function buildDialLevels(availableLevels: readonly string[] | undefined): readon
 interface ReasoningMeterProps {
   readonly level: string;
   readonly availableLevels?: readonly string[];
+  readonly levelLabels?: Readonly<Record<string, string>>;
   readonly size?: number;
   readonly showLabel?: boolean;
   readonly className?: string;
@@ -79,11 +88,12 @@ interface ReasoningMeterProps {
 export function ReasoningMeter({
   level,
   availableLevels,
+  levelLabels,
   size,
   className,
 }: ReasoningMeterProps) {
   const activeLevel = normalizedLevel(level);
-  const dialLevels = buildDialLevels(availableLevels);
+  const dialLevels = buildDialLevels(availableLevels, levelLabels);
   const activeEntry = dialLevels.find((entry) => entry.value === activeLevel) ?? dialLevels[0]!;
   const style = {
     "--reasoning-dial-size": size && size > 32 ? `${size}px` : undefined,

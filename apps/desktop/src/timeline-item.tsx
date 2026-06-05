@@ -1,6 +1,6 @@
 import { memo, useEffect, useState } from "react";
 import type { SessionTranscriptMessage } from "@pi-gui/pi-sdk-driver";
-import type { TimelineActivity, TimelineReasoning, TimelineToolCall, TimelineSummary, TranscriptMessage } from "./timeline-types";
+import type { TimelineActivity, TimelineReasoning, TimelineToolCall, TimelineSummary } from "./timeline-types";
 import type { TimelineEditedFiles, TimelineThinkingSection } from "./timeline-model";
 import type { UndoEditOp, UndoEditReplacement, UndoEditsResult } from "./ipc";
 import type { TimelineRow, TimelineToolBurst } from "./timeline-grouping";
@@ -10,6 +10,7 @@ import { InlineDiff, extractDiffFromOutput } from "./diff-inline";
 import { ChevronRightIcon, CopyIcon, DiffIcon, EditedFilesIcon, FileIcon, FolderIcon, TerminalIcon } from "./icons";
 import { openImageLightbox } from "./image-lightbox";
 import { extensionToLanguage } from "./syntax-highlight";
+import { PLAN_MODE_PROMPT_SEPARATOR } from "./composer-mode";
 import { SubagentToolCard, isSubagentTool } from "./subagent-card";
 
 // Tracks user-message ids whose entrance animation has already played. The
@@ -644,8 +645,18 @@ function TimelineMessage({
   );
 }
 
+function splitPlanModePrompt(text: string): { instructions: string; prompt: string } | undefined {
+  const separatorIndex = text.indexOf(PLAN_MODE_PROMPT_SEPARATOR);
+  if (separatorIndex === -1) return undefined;
+  const instructions = text.slice(0, separatorIndex).trim();
+  const prompt = text.slice(separatorIndex + PLAN_MODE_PROMPT_SEPARATOR.length).trim();
+  return { instructions, prompt };
+}
+
 function UserTimelineMessage({ item }: { readonly item: SessionTranscriptMessage }) {
   const [justSent, setJustSent] = useState(() => isFreshUserBubble(item));
+  const [planInstructionsExpanded, setPlanInstructionsExpanded] = useState(false);
+  const planPrompt = splitPlanModePrompt(item.text);
 
   useEffect(() => {
     if (!justSent) return;
@@ -697,7 +708,34 @@ function UserTimelineMessage({ item }: { readonly item: SessionTranscriptMessage
             )}
           </div>
         ) : null}
-        <MessageMarkdown text={item.text} />
+        {planPrompt ? (
+          <>
+            <div className="timeline-plan-prompt">
+              <button
+                type="button"
+                className="timeline-plan-prompt__header"
+                onClick={() => setPlanInstructionsExpanded((expanded) => !expanded)}
+                aria-expanded={planInstructionsExpanded}
+              >
+                <span
+                  className={`timeline-plan-prompt__chevron${planInstructionsExpanded ? " timeline-plan-prompt__chevron--expanded" : ""}`}
+                  aria-hidden="true"
+                >
+                  <ChevronRightIcon />
+                </span>
+                <span>Plan mode instructions</span>
+              </button>
+              {planInstructionsExpanded ? (
+                <div className="timeline-plan-prompt__body">
+                  <MessageMarkdown text={planPrompt.instructions} />
+                </div>
+              ) : null}
+            </div>
+            <MessageMarkdown text={planPrompt.prompt} />
+          </>
+        ) : (
+          <MessageMarkdown text={item.text} />
+        )}
       </div>
     </article>
   );
@@ -827,7 +865,7 @@ function toolIcon(item: TimelineToolCall) {
   return <TerminalIcon />;
 }
 
-function buildCompactLabel(item: TimelineToolCall, diffStats: { added: number; removed: number } | undefined): string {
+function buildCompactLabel(item: TimelineToolCall, _diffStats: { added: number; removed: number } | undefined): string {
   if (isWriteTool(item.toolName)) {
     const filename = extractFilename(item.input);
     if (filename) {

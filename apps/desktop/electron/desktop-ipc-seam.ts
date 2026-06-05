@@ -230,6 +230,14 @@ const desktopIpc = {
   themeChanged: "pi-gui:theme-changed",
   ping: "app:ping",
   openExternal: "app:open-external",
+  getSmartCompactSettings: "pi-gui:get-smart-compact-settings",
+  setSmartCompactSettings: "pi-gui:set-smart-compact-settings",
+  analyzeExtensionConfig: "pi-gui:analyze-extension-config",
+  getExtensionConfig: "pi-gui:get-extension-config",
+  setExtensionConfig: "pi-gui:set-extension-config",
+  installExtension: "pi-gui:install-extension",
+  uninstallExtension: "pi-gui:uninstall-extension",
+  checkExtensionUpdates: "pi-gui:check-extension-updates",
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -313,6 +321,10 @@ export const desktopIpcContracts: readonly IpcContractEntry[] = [
   { methodName: "setSessionModel", channel: desktopIpc.setSessionModel, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
   { methodName: "setSessionThinkingLevel", channel: desktopIpc.setSessionThinkingLevel, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
 
+  // -- Smart compact --
+  { methodName: "getSmartCompactSettings", channel: desktopIpc.getSmartCompactSettings, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
+  { methodName: "setSmartCompactSettings", channel: desktopIpc.setSmartCompactSettings, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
+
   // -- Provider / auth --
   { methodName: "loginProvider", channel: desktopIpc.loginProvider, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
   { methodName: "logoutProvider", channel: desktopIpc.logoutProvider, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
@@ -326,6 +338,14 @@ export const desktopIpcContracts: readonly IpcContractEntry[] = [
   { methodName: "setSkillEnabled", channel: desktopIpc.setSkillEnabled, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
   { methodName: "setExtensionEnabled", channel: desktopIpc.setExtensionEnabled, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
   { methodName: "deleteExtension", channel: desktopIpc.deleteExtension, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
+  
+  // -- Extension config --
+  { methodName: "analyzeExtensionConfig", channel: desktopIpc.analyzeExtensionConfig, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
+  { methodName: "getExtensionConfig", channel: desktopIpc.getExtensionConfig, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
+  { methodName: "setExtensionConfig", channel: desktopIpc.setExtensionConfig, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
+  { methodName: "installExtension", channel: desktopIpc.installExtension, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
+  { methodName: "uninstallExtension", channel: desktopIpc.uninstallExtension, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
+  { methodName: "checkExtensionUpdates", channel: desktopIpc.checkExtensionUpdates, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
 
   // -- Host UI --
   { methodName: "respondToHostUiRequest", channel: desktopIpc.respondToHostUiRequest, direction: "renderer-to-main", kind: "invoke", adapter: "store" },

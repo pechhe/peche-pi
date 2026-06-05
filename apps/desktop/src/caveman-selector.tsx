@@ -98,7 +98,7 @@ export function CavemanSelector({ level, disabled = false, onSetLevel }: Caveman
   };
 
   return (
-    <span className="caveman-selector" title="Caveman output compression level (click to cycle: off → micro → ultra)">
+    <span className="caveman-selector" data-section-label="Caveman" title="Caveman output compression level (click to cycle: off → micro → ultra)">
       <span aria-hidden="true">🪨</span>
       <span className="sr-only">Caveman compression</span>
       <span className="composer__key-mount composer__key-mount--caveman">

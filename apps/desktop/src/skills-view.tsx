@@ -77,7 +77,7 @@ function SkillsSidebar({
   selectedSkillPath,
   onSelectSkill,
 }: SkillsSidebarProps) {
-  const allSkills = runtime?.skills ?? [];
+  const allSkills = useMemo(() => runtime?.skills ?? [], [runtime?.skills]);
   const filtered = useMemo(
     () => filterSkills(allSkills, query, showDisabled),
     [allSkills, query, showDisabled],
@@ -208,7 +208,7 @@ export function SkillsView({
   onToggleSkill,
   onTrySkill,
 }: SkillsViewProps) {
-  const allSkills = runtime?.skills ?? [];
+  const allSkills = useMemo(() => runtime?.skills ?? [], [runtime?.skills]);
   const filtered = useMemo(
     () => filterSkills(allSkills, query, showDisabled),
     [allSkills, query, showDisabled],

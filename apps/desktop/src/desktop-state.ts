@@ -83,11 +83,14 @@ export interface SubagentAgentRecord {
   readonly description?: string;
   readonly model?: string;
   readonly thinking?: string;
+  readonly tools?: readonly string[];
+  readonly enabled?: boolean;
   readonly mode?: "interactive" | "background";
   readonly async?: boolean;
   readonly autoExit?: boolean;
   readonly sessionMode?: "standalone" | "lineage-only" | "fork";
   readonly allowModelOverride?: boolean;
+  readonly systemPromptMode?: "replace" | "append" | "prepend";
   readonly filePath: string;
   readonly scope: "project" | "global";
   readonly raw: string;

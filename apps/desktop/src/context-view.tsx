@@ -8,7 +8,6 @@ import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
 import {
   ChevronDownIcon,
   ChevronRightIcon,
-  ContextIcon,
   CopyIcon,
   FolderIcon,
   RefreshIcon,
@@ -28,7 +27,7 @@ interface ContextViewProps {
 
 export function ContextView({
   workspace,
-  runtime,
+  runtime: _runtime,
   snapshot,
   loading,
   onRefresh,
@@ -153,7 +152,7 @@ interface ContextSectionRowProps {
   readonly api: PiDesktopApi;
 }
 
-function ContextSectionRow({ section, onOpenFile, api }: ContextSectionRowProps) {
+function ContextSectionRow({ section, onOpenFile, api: _api }: ContextSectionRowProps) {
   const [expanded, setExpanded] = useState(false);
 
   return (

@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type Dispatch, type DragEvent, type KeyboardEvent, type SetStateAction } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type Dispatch, type DragEvent, type KeyboardEvent, type SetStateAction } from "react";
 import type { SessionTreeSnapshot } from "@pi-gui/session-driver/types";
-import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
+
 import {
   getSelectedSession,
   getSelectedWorkspace,
@@ -21,16 +21,12 @@ import {
 import { SessionComposer, type SessionComposerHandle } from "./session-composer";
 import { buildPlanModePrompt, type ComposerMode } from "./composer-mode";
 import { DiffPanel, type DiffPanelFileRequest } from "./diff-panel";
-import { buildModelOptions, THINKING_OPTIONS } from "./composer-commands";
+import { buildModelOptions } from "./composer-commands";
 import { parseTreeComposerCommand } from "./composer-commands";
 import {
-  desktopCommands,
-  getDesktopCommandFromShortcut,
   getDesktopShortcutLabel,
   type DesktopNotificationPermissionStatus,
-  type PiDesktopCommand,
   type CavemanLevel,
-  type UndoEditOp,
 } from "./ipc";
 import { deriveModelOnboardingState } from "./model-onboarding";
 import { type ModelSelectorHandle } from "./model-selector";
@@ -41,13 +37,13 @@ import { SettingsView, type SettingsSection } from "./settings-view";
 import { NewThreadView } from "./new-thread-view";
 import { PendingComposer } from "./pending-thread-view";
 import { buildThreadGroups, PENDING_THREAD_SESSION_ID, type ThreadListEntry } from "./thread-groups";
-import { usePendingThreadGoLive, captureHeroFlip, type PendingThreadStart } from "./hooks/use-pending-thread-go-live";
+import { usePendingThreadGoLive, captureHeroFlip } from "./hooks/use-pending-thread-go-live";
 import { Sidebar } from "./sidebar";
 import { SidebarToggleButton } from "./sidebar-toggle-button";
 import { playButtonClick, DEFAULT_BUTTON_SOUND_SETTINGS, type ButtonSoundSettings } from "./button-click-sound";
 import { Topbar } from "./topbar";
 import { TerminalPanel } from "./terminal-panel";
-import { ConversationTimeline, VIRTUALIZATION_THRESHOLD } from "./conversation-timeline";
+import { ConversationTimeline } from "./conversation-timeline";
 import LoadingBar from "./loading-bar";
 import { useSlashMenu } from "./hooks/use-slash-menu";
 import { useMentionMenu } from "./hooks/use-mention-menu";
@@ -58,7 +54,7 @@ import { useKeyboardShortcuts } from "./hooks/use-keyboard-shortcuts";
 import { useSettingsHandlers } from "./hooks/use-settings-handlers";
 import { useSkillsExtensionsHandlers } from "./hooks/use-skills-extensions";
 import { useNavigationHistory } from "./hooks/use-navigation-history";
-import { installPhysicalKeyFeedback } from "./physical-key-feedback";
+
 import { useRalphLoop, type RalphLaunch } from "./hooks/use-ralph-loop";
 import { useSelfHealTranscript } from "./hooks/use-self-heal-transcript";
 import { useSidebarWidth } from "./hooks/use-sidebar-width";
@@ -77,7 +73,7 @@ import {
   extractFilesFromDataTransfer,
   readComposerAttachmentsFromFiles,
 } from "./composer-attachments";
-import { applyDesktopLiveUpdate, applySelectedTranscriptLiveUpdate, applyTranscriptDelta, type TranscriptDelta } from "./live-update";
+import { applyDesktopLiveUpdate, applySelectedTranscriptLiveUpdate, applyTranscriptDelta } from "./live-update";
 
 const EMPTY_TRANSCRIPT: readonly TranscriptMessage[] = Object.freeze([]) as readonly TranscriptMessage[];
 
@@ -283,12 +279,22 @@ function useDesktopAppState() {
       } else {
         deltaTranscript = applyTranscriptDelta(deltaTranscript ?? [], delta);
       }
-      // Update the transcript state with the delta-merged result.
-      setSelectedTranscript(() => ({
+      const nextTranscript = {
         workspaceId: delta.workspaceId,
         sessionId: delta.sessionId,
         transcript: deltaTranscript!,
-      }));
+      };
+      if (incomingKey !== lastAppliedSessionKey) {
+        applyTranscriptImmediately(nextTranscript);
+        return;
+      }
+      pendingTranscript = nextTranscript;
+      if (rafHandle === null) {
+        rafHandle = requestAnimationFrame(flushTranscript);
+      }
+      if (coalesceTimer === null) {
+        coalesceTimer = setTimeout(flushTranscript, 250);
+      }
     });
 
     return () => {
@@ -347,11 +353,6 @@ function forceSessionsArchived(state: DesktopAppState, doneKeys: ReadonlySet<str
     return { ...workspace, sessions };
   });
   return changed ? { ...state, workspaces } : state;
-}
-
-function isEventInsideTerminal(event: globalThis.KeyboardEvent): boolean {
-  const target = event.target;
-  return target instanceof Element && Boolean(target.closest("[data-pi-terminal]"));
 }
 
 function canTogglePrimarySidebar(view: AppView | undefined): boolean {
@@ -466,6 +467,17 @@ export default function App() {
   const [buttonSoundSettings, setButtonSoundSettings] = useState<ButtonSoundSettings>(
     () => ({ ...DEFAULT_BUTTON_SOUND_SETTINGS })
   );
+  const [smartCompactSettings, setSmartCompactSettings] = useState<import("./ipc").SmartCompactSettings>({});
+
+  // Fetch smart compact settings on mount
+  useEffect(() => {
+    const api = window.piApp;
+    if (!api) return;
+    api.getSmartCompactSettings().then((settings) => {
+      setSmartCompactSettings(settings);
+    }).catch(() => {});
+  }, []);
+
   const [notificationPermissionStatus, setNotificationPermissionStatus] =
     useState<DesktopNotificationPermissionStatus>("unknown");
   const [notificationPermissionPending, setNotificationPermissionPending] = useState(false);
@@ -491,7 +503,7 @@ export default function App() {
   const [takeoverTerminalSessionKey, setTakeoverTerminalSessionKey] = useState("");
   const [terminalHeight, setTerminalHeight] = useState(340);
   const [diffFileRequest, setDiffFileRequest] = useState<DiffPanelFileRequest | null>(null);
-  const [diffRefreshNonce, setDiffRefreshNonce] = useState(0);
+  const [diffRefreshNonce, _setDiffRefreshNonce] = useState(0);
   const threadSearch = useThreadSearch({ current: null } as React.RefObject<HTMLDivElement | null>);
   const api = window.piApp;
   const sidebarToggleStateRef = useRef<{
@@ -537,7 +549,7 @@ export default function App() {
     if (snapshot) {
       document.documentElement.classList.toggle("enable-transparency", snapshot.enableTransparency);
     }
-  }, [snapshot?.enableTransparency]);
+  }, [snapshot, snapshot?.enableTransparency]);
 
   useEffect(() => {
     if (!snapshot) return;
@@ -548,7 +560,7 @@ export default function App() {
     root.classList.toggle("composer-device--modular", mode === "modular" || mode === "modular-metal");
     root.classList.toggle("composer-device--metal-keys", mode === "modular-metal");
     root.classList.toggle("composer-device--neon", mode === "screen-neon");
-  }, [snapshot?.composerDeviceMode]);
+  }, [snapshot, snapshot?.composerDeviceMode]);
 
   useEffect(() => {
     const piApi = window.piApp;
@@ -760,7 +772,7 @@ export default function App() {
   const {
     pendingThreadStart,
     setPendingThreadStart,
-    pendingOptimisticTranscript,
+    pendingOptimisticTranscript: _pendingOptimisticTranscript,
     threadViewTranscript,
     threadViewIsRunning,
     composerFlipFromRef,
@@ -852,7 +864,8 @@ export default function App() {
       });
     }
     prevSessionStatusRef.current = nextStatuses;
-  }, [snapshot]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- focusComposer changes every render, intentional snapshot-only trigger
+  }, [snapshot, api]);
   useEffect(() => {
     setOpenTerminalSessionKey("");
     setTakeoverTerminalSessionKey("");
@@ -986,13 +999,27 @@ export default function App() {
           : group,
       );
     },
-    [snapshot?.workspaces, snapshot?.worktreesByWorkspace, snapshot?.workspaceOrder, snapshot?.chats, snapshot?.selectedSessionId, pendingThreadStart, recentlyDone, newThreadTitleFallback],
+    [snapshot, pendingThreadStart, recentlyDone, newThreadTitleFallback],
   );
   const focusComposer = () => {
     window.requestAnimationFrame(() => {
-      composerRef.current?.focus();
+      if (snapshot?.activeView === "new-thread" && !pendingThreadStart) {
+        newThreadComposerRef.current?.focus();
+      } else {
+        composerRef.current?.focus();
+      }
     });
   };
+  const handleSetComposerMode = useCallback(
+    (mode: ComposerMode) => {
+      if (snapshot?.activeView === "new-thread" && !pendingThreadStart) {
+        setNewThreadComposerMode(mode);
+      } else if (selectedWorkspace && selectedSession) {
+        sessionComposerRef.current?.setComposerMode(mode);
+      }
+    },
+    [snapshot?.activeView, pendingThreadStart, selectedWorkspace, selectedSession],
+  );
   const toggleTerminal = useCallback(() => {
     if (!selectedSessionKey) {
       return;
@@ -1024,32 +1051,6 @@ export default function App() {
     setDiffFileRequest({ path, nonce: Date.now() });
   }, []);
 
-  const handleUndoEdits = useCallback(
-    async (ops: readonly UndoEditOp[]) => {
-      const workspaceId = selectedWorkspaceRef.current?.id;
-      if (!api || !workspaceId) {
-        return { reverted: [], failed: [] };
-      }
-      const result = await api.undoEdits(workspaceId, ops);
-      setDiffRefreshNonce((nonce) => nonce + 1);
-      return result;
-    },
-    [api],
-  );
-
-  const handleRedoEdits = useCallback(
-    async (ops: readonly UndoEditOp[]) => {
-      const workspaceId = selectedWorkspaceRef.current?.id;
-      if (!api || !workspaceId) {
-        return { reverted: [], failed: [] };
-      }
-      const result = await api.redoEdits(workspaceId, ops);
-      setDiffRefreshNonce((nonce) => nonce + 1);
-      return result;
-    },
-    [api],
-  );
-
   const toggleDiffPanel = useCallback(() => {
     const pane = timelineScroll.timelinePaneRef.current;
     const shouldPreserveBottom = pane ? isNearBottom(pane) || timelineScroll.pinnedToBottomRef.current : timelineScroll.pinnedToBottomRef.current;
@@ -1064,7 +1065,7 @@ export default function App() {
     }
 
     timelineScroll.schedulePinnedBottomRealignment(3);
-  }, [timelineScroll.schedulePinnedBottomRealignment, timelineScroll.timelinePaneRef, timelineScroll.pinnedToBottomRef, timelineScroll.preserveBottomOnNextPaneResizeRef]);
+  }, [timelineScroll]);
 
   // --- Settings & Skills/Extensions handlers ---
   const settingsHandlers = useSettingsHandlers({
@@ -1112,6 +1113,7 @@ export default function App() {
           },
     );
     focusComposer();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- focusComposer reads refs, safe stable
   }, []);
 
   const openTreeModal = useCallback(() => {
@@ -1185,6 +1187,7 @@ export default function App() {
           }));
         });
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- setSnapshot/focusComposer are stable or ref-driven
     [api, selectedSession, selectedWorkspace],
   );
 
@@ -1311,6 +1314,7 @@ export default function App() {
     }
     void updateSnapshot(sidebarApi, setSnapshot, () => sidebarApi.setSidebarCollapsed(!sidebarState.sidebarCollapsed));
     return true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refs pattern: reads sidebarToggleStateRef.current
   }, []);
   const sidebarToggleShortcutLabel = api ? getDesktopShortcutLabel(api.platform, "B") : "";
   const modelSelectorRef = useRef<ModelSelectorHandle | null>(null);
@@ -1337,7 +1341,7 @@ export default function App() {
       // so just switching the view is enough.
       void updateSnapshot(api, setSnapshot, () => api.setActiveView(entry.activeView));
     },
-    [api],
+    [api, setSnapshot],
   );
 
   useEffect(() => {
@@ -1384,6 +1388,7 @@ export default function App() {
     }
 
     previousActiveViewRef.current = snapshot.activeView;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- focusComposer/timelineScroll ref reads intentional
   }, [timelineScroll.schedulePinnedBottomRealignment, selectedSession, selectedWorkspace?.id, snapshot]);
 
   // Click-through from the composer "thread finished" toast.
@@ -1412,6 +1417,7 @@ export default function App() {
     };
     window.addEventListener(OPEN_SESSION_EVENT, handler);
     return () => window.removeEventListener(OPEN_SESSION_EVENT, handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- handleSelectSession is intentionally stable (ref-driven)
   }, []);
 
   // --- Keyboard shortcuts (extracted) ---
@@ -1448,7 +1454,7 @@ export default function App() {
     navigationHistory,
     modelSelectorRef,
     composerMode: newThreadComposerMode,
-    onSetComposerMode: setNewThreadComposerMode,
+    onSetComposerMode: handleSetComposerMode,
     focusComposer,
     toggleDiffPanel,
     toggleTerminal,
@@ -2028,6 +2034,14 @@ export default function App() {
             onSetCommitPushModel={(model) => {
               void updateSnapshot(api, setSnapshot, () => api.setCommitPushModel(rootWorkspace?.id ?? "", model));
             }}
+            smartCompactSettings={smartCompactSettings}
+            onSetSmartCompactSettings={(settings) => {
+              const api = window.piApp;
+              if (!api) return;
+              api.setSmartCompactSettings(settings).then((next) => {
+                setSmartCompactSettings(next);
+              }).catch(() => {});
+            }}
           />
         </>
     );
@@ -2109,6 +2123,13 @@ export default function App() {
             }}
             onToggleExtension={skillsExtensionsHandlers.handleToggleExtension}
             onDeleteExtension={skillsExtensionsHandlers.handleDeleteExtension}
+            onAnalyzeExtensionConfig={(extensionPath, model) => window.piApp!.analyzeExtensionConfig(extensionPath, model)}
+            onGetExtensionConfig={(extensionPath) => window.piApp!.getExtensionConfig(extensionPath)}
+            onSetExtensionConfig={(extensionPath, values) => window.piApp!.setExtensionConfig(extensionPath, values)}
+            onInstallExtension={(source, local) => window.piApp!.installExtension(source, local)}
+            onUninstallExtension={(source, local) => window.piApp!.uninstallExtension(source, local)}
+            availableModels={extensionsRuntime?.models?.map((m) => `${m.providerId}:${m.modelId}`) ?? []}
+            defaultAnalysisModel={typeof smartCompactSettings?.summaryModel === "string" ? smartCompactSettings.summaryModel : "deepseek:deepseek-chat"}
           />
         </>
     );
@@ -2431,11 +2452,6 @@ export default function App() {
       {import.meta.env.DEV && <Agentation />}
     </div>
   );
-}
-
-function buildTranscriptChangeMarker(sessionKey: string, transcript: SelectedTranscriptRecord["transcript"]): string {
-  const lastItem = transcript.at(-1);
-  return `${sessionKey}:${transcript.length}:${lastItem ? JSON.stringify(lastItem) : ""}`;
 }
 
 function isNearBottom(element: HTMLDivElement): boolean {

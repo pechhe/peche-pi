@@ -36,6 +36,13 @@ export interface RuntimeModelRecord {
   readonly contextWindow: number;
   /** Thinking levels supported by this model (computed from model.thinkingLevelMap). */
   readonly availableThinkingLevels: readonly string[];
+  /**
+   * Provider-specific display names for thinking levels, keyed by pi level.
+   * Only contains entries the model maps to a concrete provider value (e.g.
+   * `{ xhigh: "max" }` for Opus, `{ xhigh: "xhigh" }` for GPT-5.5). Lets the UI
+   * show the provider's own name instead of a hard-coded label.
+   */
+  readonly thinkingLevelLabels: Readonly<Record<string, string>>;
 }
 
 export interface RuntimeSkillRecord {

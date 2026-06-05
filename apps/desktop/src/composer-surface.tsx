@@ -43,6 +43,7 @@ interface ComposerSurfaceProps {
   readonly textareaTestId: string;
   readonly textareaPlaceholder: string;
   readonly textareaClassName?: string;
+  readonly screenContent?: ReactNode;
   readonly screenFooter?: ReactNode;
   readonly footer: ReactNode;
 }
@@ -120,7 +121,7 @@ export function ComposerSurface({
   composerDraft,
   setComposerDraft,
   composerRef,
-  attachments,
+  attachments: _attachments,
   slashSections,
   slashOptions,
   selectedSlashCommand,
@@ -132,7 +133,7 @@ export function ComposerSurface({
   onComposerKeyDown,
   onComposerPaste,
   onComposerDrop,
-  onRemoveAttachment,
+  onRemoveAttachment: _onRemoveAttachment,
   onSelectSlashCommand,
   onSelectSlashOption,
   showMentionMenu,
@@ -143,6 +144,7 @@ export function ComposerSurface({
   textareaTestId,
   textareaPlaceholder,
   textareaClassName,
+  screenContent,
   screenFooter,
   footer,
 }: ComposerSurfaceProps) {
@@ -163,7 +165,7 @@ export function ComposerSurface({
     setIsDragActive(true);
   };
 
-  const handleDragLeave = (event: DragEvent<HTMLDivElement>) => {
+  const handleDragLeave = (_event: DragEvent<HTMLDivElement>) => {
     if (!isDragActive) {
       return;
     }
@@ -355,19 +357,23 @@ export function ComposerSurface({
             </div>
           </div>
         ) : null}
-          <textarea
-            aria-label={textareaLabel}
-            className={textareaClassName}
-            data-testid={textareaTestId}
-            ref={composerRef}
-            value={composerDraft}
-            onChange={(event) => {
-              setComposerDraft(event.target.value);
-            }}
-            onKeyDown={onComposerKeyDown}
-            placeholder={textareaPlaceholder}
-          />
-          {screenFooter}
+          {screenContent ?? (
+            <>
+              <textarea
+                aria-label={textareaLabel}
+                className={textareaClassName}
+                data-testid={textareaTestId}
+                ref={composerRef}
+                value={composerDraft}
+                onChange={(event) => {
+                  setComposerDraft(event.target.value);
+                }}
+                onKeyDown={onComposerKeyDown}
+                placeholder={textareaPlaceholder}
+              />
+              {screenFooter}
+            </>
+          )}
         </div>
         <div className="composer__bar">{footer}</div>
       </div>

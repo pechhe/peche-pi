@@ -28,16 +28,16 @@ These rules apply for the full session.
 ## Dev Workflow
 
 ### Launching the dev app
-- Use **Pi Dev.app** (`/Applications/Pi Dev.app` or `~/Applications/Pi Dev.app`) — a Dock-friendly wrapper that runs `bun dev` from this repo.
+- Use **Pi Dev.app** (`/Applications/Pi Dev.app` or `~/Applications/Pi Dev.app`) — a Dock-friendly wrapper that runs `pnpm dev` from this repo.
 - It sets `PI_APP_NAME=peche-pi` and uses `~/Library/Application Support/peche-pi` for state, so it never clashes with the production `/Applications/pi-gui.app`.
 - If the dev Electron process is already running, clicking the Dock icon activates the existing window instead of launching a second instance.
 - The wrapper script lives at `scripts/dev-launch-peche-pi.sh`; the .app itself was hand-built and isn't part of the repo.
 
 ### Editing and seeing changes
-- **Source edits:** Edit files in `packages/` or `apps/desktop/`. The `tsc -w` watcher (started by `bun dev`) auto-rebuilds workspace packages to `dist/`.
+- **Source edits:** Edit files in `packages/` or `apps/desktop/`. The `tsc -w` watcher (started by `pnpm dev`) auto-rebuilds workspace packages to `dist/`.
 - **Hot reload:** Changes to the renderer (React in `apps/desktop/src/` under `electron-vite dev`) hot-reload in-place — no restart needed.
 - **Main process restart:** Changes to `packages/pi-sdk-driver`, `packages/session-driver`, or `apps/desktop/electron/` run in the **Node main process** and require an Electron restart. Quit the app and click Pi Dev.app again.
-- **Typecheck before committing:** `cd packages/<pkg> && npx tsc -p tsconfig.json --noEmit` (or `bun run typecheck` where available).
+- **Typecheck before committing:** `cd packages/<pkg> && npx tsc -p tsconfig.json --noEmit` (or `pnpm run typecheck` where available).
 
 ### Package structure
 - `packages/pi-sdk-driver/` — runtime metadata, extension/skill display names, provider/model sync. **Shared between renderer and main via require().**
@@ -51,7 +51,7 @@ These rules apply for the full session.
 
 ## Diagnosing Dev Build Crashes
 
-When `bun dev` (or Pi Dev.app) crashes, check these sources in order:
+When `pnpm dev` (or Pi Dev.app) crashes, check these sources in order:
 
 ### 1. Terminal output — look for the crash box
 

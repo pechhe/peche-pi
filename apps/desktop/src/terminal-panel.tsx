@@ -238,8 +238,9 @@ export function TerminalPanel({
       })));
     });
     terminal.open(container);
-    if (activeSession.replay) {
-      terminal.write(activeSession.replay);
+    const replay = activeSession.replay;
+    if (replay) {
+      terminal.write(replay);
     }
     terminal.focus();
     terminalRef.current = terminal;
@@ -256,7 +257,7 @@ export function TerminalPanel({
       activeTerminalIdRef.current = "";
       terminal.dispose();
     };
-  }, [activeSession?.id, api, createTerminal, fitAndResize]);
+  }, [activeSession, activeSession?.replay, api, createTerminal, fitAndResize]);
 
   const startResize = (event: ReactMouseEvent<HTMLDivElement>) => {
     event.preventDefault();

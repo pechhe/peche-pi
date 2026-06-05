@@ -1,4 +1,4 @@
-import type { SessionTranscriptMessage, SessionTranscriptRole } from "@pi-gui/pi-sdk-driver";
+import type { SessionTranscriptMessage } from "@pi-gui/pi-sdk-driver";
 
 export type TimelineTone = "neutral" | "success" | "warning" | "error";
 export type TimelineToolStatus = "running" | "success" | "error";

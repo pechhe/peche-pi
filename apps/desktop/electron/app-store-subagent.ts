@@ -53,17 +53,25 @@ function parseSubagentAgentFile(filePath: string, raw: string, scope: "project" 
   }
   const mode = fields.get("mode");
   const sessionMode = fields.get("session-mode");
+  const systemPromptMode = fields.get("system-prompt");
+  const tools = fields.get("tools")
+    ?.split(",")
+    .map((tool) => tool.trim())
+    .filter(Boolean);
   return {
     id: filePath,
     name: fields.get("name") || nameFromFile,
     ...(fields.get("description") ? { description: fields.get("description") } : {}),
     ...(fields.get("model") ? { model: fields.get("model") } : {}),
     ...(fields.get("thinking") ? { thinking: fields.get("thinking") } : {}),
+    ...(tools && tools.length > 0 ? { tools } : {}),
+    ...(fields.get("enabled") === "true" ? { enabled: true } : fields.get("enabled") === "false" ? { enabled: false } : {}),
     ...(mode === "interactive" || mode === "background" ? { mode } : {}),
     ...(fields.get("async") === "true" ? { async: true } : fields.get("async") === "false" ? { async: false } : {}),
     ...(fields.get("auto-exit") === "true" ? { autoExit: true } : fields.get("auto-exit") === "false" ? { autoExit: false } : {}),
     ...(sessionMode === "standalone" || sessionMode === "lineage-only" || sessionMode === "fork" ? { sessionMode } : {}),
     ...(fields.get("allow-model-override") === "true" ? { allowModelOverride: true } : fields.get("allow-model-override") === "false" ? { allowModelOverride: false } : {}),
+    ...(systemPromptMode === "replace" || systemPromptMode === "append" || systemPromptMode === "prepend" ? { systemPromptMode } : {}),
     filePath,
     scope,
     raw,
@@ -152,14 +160,21 @@ export async function saveSubagentAgent(
   await store.initialize();
   const workspace = store.state.workspaces.find((entry) => entry.id === workspaceId);
   if (!workspace) return store.withError(`Unknown workspace: ${workspaceId}`);
-  const name = input.name.trim();
-  if (!/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(name)) return store.withError("Agent name must be lower-kebab-case.");
   const scope = input.scope ?? "project";
+  const previousName = input.name.trim();
+  const name = parseSubagentAgentFile(`${previousName || "agent"}.md`, input.raw, scope).name.trim();
+  if (!/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(name)) return store.withError("Agent name must be lower-kebab-case.");
   const agentPath = scope === "global"
     ? join(getSubagentGlobalAgentsDir(), `${name}.md`)
     : join(workspace.path, ".pi", "agents", `${name}.md`);
+  const previousAgentPath = previousName && previousName !== name
+    ? scope === "global"
+      ? join(getSubagentGlobalAgentsDir(), `${previousName}.md`)
+      : join(workspace.path, ".pi", "agents", `${previousName}.md`)
+    : undefined;
   await mkdir(dirname(agentPath), { recursive: true });
   await writeFile(agentPath, input.raw, "utf8");
+  if (previousAgentPath && previousAgentPath !== agentPath) await rm(previousAgentPath, { force: true });
   await reloadSubagentAgentsForWorkspace(store, workspaceId);
   await store.refreshRuntime(workspaceId);
   return store.emit();

@@ -36,11 +36,14 @@ const PLAN_IDEOLOGY_PROMPTS: Record<PlanModeIdeology, string> = {
   grill: GRILL_PLAN_IDEOLOGY,
 };
 
+export const PLAN_MODE_PROMPT_SEPARATOR = "<!--pi-plan-mode-prompt-->";
+
 export function buildPlanModePrompt(userPrompt: string, ideology: PlanModeIdeology = "default"): string {
   const trimmed = userPrompt.trim();
   return [
     PLAN_MODE_INSTRUCTIONS,
     PLAN_IDEOLOGY_PROMPTS[ideology],
+    PLAN_MODE_PROMPT_SEPARATOR,
     "User planning request:",
     trimmed,
   ].join("\n\n");

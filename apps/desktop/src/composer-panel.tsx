@@ -2,9 +2,7 @@ import { type ClipboardEvent, type Dispatch, type DragEvent, type KeyboardEvent,
 import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
 import type { ComposerAttachment, QueuedComposerMessage, RalphLoopStatus, SessionExtensionDialogRecord, SessionRecord } from "./desktop-state";
 import type { ComposerMode } from "./composer-mode";
-import { CavemanSelector } from "./caveman-selector";
-import { ComposerModeSelector } from "./composer-mode-selector";
-import { ModelFeatureBadges } from "./model-feature-badges";
+import { ComposerControlRow } from "./composer-control-row";
 import { ArrowUpIcon, StopSquareIcon } from "./icons";
 import type {
   ComposerSlashCommand,
@@ -17,10 +15,10 @@ import { ComposerCompletionToastHost } from "./composer-completion-toast";
 import { QueuedComposerMessages } from "./queued-composer-messages";
 import { ModelOnboardingNoticeBanner } from "./model-onboarding-notice";
 import type { ModelOnboardingState, ModelOnboardingSettingsSection } from "./model-onboarding";
-import { ModelSelector } from "./model-selector";
 import type { ModelSelectorHandle } from "./model-selector";
 import type { CavemanLevel } from "./ipc";
 import { QuestionnaireComposer } from "./questionnaire-composer";
+import { playClick } from "./button-click-sound";
 
 export interface LoopControlProps {
   readonly status: RalphLoopStatus;
@@ -177,9 +175,9 @@ export function ComposerPanel({
   questionnaireRequest,
   onRespondToQuestionnaire,
 }: ComposerPanelProps) {
-  if (questionnaireRequest && onRespondToQuestionnaire) {
-    return <QuestionnaireComposer request={questionnaireRequest} onRespond={onRespondToQuestionnaire} />;
-  }
+  const questionnaireContent = questionnaireRequest && onRespondToQuestionnaire
+    ? <QuestionnaireComposer request={questionnaireRequest} onRespond={onRespondToQuestionnaire} />
+    : undefined;
 
   if (loopControl) {
     return <LoopControlBar {...loopControl} />;
@@ -268,7 +266,8 @@ export function ComposerPanel({
           onSelectMention={onSelectMention}
           textareaLabel="Composer"
           textareaTestId="composer"
-          textareaPlaceholder="message the clanker"
+          textareaPlaceholder=" message the clanker"
+          screenContent={questionnaireContent}
           screenFooter={(
             <div
               className="composer__context"
@@ -279,8 +278,14 @@ export function ComposerPanel({
               }
             >
               <div className="composer__context-track">
-                {blackholeAvailable && contextUsage ? (
-                  <div className="composer__context-compact-tick" style={{ left: `${compactThresholdPercent}%` }} />
+                {blackholeAvailable && contextUsage && compactThresholdTokens ? (
+                  <div
+                    className="composer__context-compact-tick"
+                    style={{ left: `${compactThresholdPercent}%` }}
+                    title={`Auto-compact at ${formatTokenCount(compactThresholdTokens)} tokens`}
+                    aria-label={`Auto-compact at ${formatTokenCount(compactThresholdTokens)} tokens`}
+                    data-label="auto"
+                  />
                 ) : null}
                 <div className="composer__context-fill" style={{ width: `${contextPercent}%` }} />
               </div>
@@ -291,8 +296,8 @@ export function ComposerPanel({
                 {blackholeAvailable && contextUsage && compactTokensRemaining !== undefined ? (
                   <span className="composer__context-compact-label">
                     {compactTokensRemaining > 0
-                      ? `Blackhole in ${formatTokenCount(compactTokensRemaining)}`
-                      : "Blackhole ready"}
+                      ? `Auto-compact in ${formatTokenCount(compactTokensRemaining)}`
+                      : "Auto-compact ready"}
                   </span>
                 ) : null}
 
@@ -309,34 +314,21 @@ export function ComposerPanel({
                       ? `${runningLabel} · Enter to queue · Cmd+Enter to steer`
                       : "Enter to send · Shift+Enter for newline"}
                   </span>
-                  <span className="composer__controls">
-                    <span className="composer__controls-sep">{" · "}</span>
-                    <ComposerModeSelector
-                      mode={composerMode}
-                      disabled={selectedSession.status === "running"}
-                      onSetMode={onSetComposerMode}
-                    />
-                    <span className="composer__controls-sep">{" · "}</span>
-                    <ModelSelector
-                      ref={modelSelectorRef}
-                      runtime={runtime}
-                      provider={provider}
-                      modelId={modelId}
-                      thinkingLevel={thinkingLevel}
-                      disabled={selectedSession.status === "running"}
-                      unselectedModelLabel={modelOnboarding.unselectedModelLabel}
-                      emptyModelTitle={modelOnboarding.emptyModelTitle}
-                      onSetModel={onSetModel}
-                      onSetThinking={onSetThinking}
-                    />
-                    <span className="composer__controls-sep">{" · "}</span>
-                    <CavemanSelector
-                      level={cavemanLevel}
-                      disabled={selectedSession.status === "running"}
-                      onSetLevel={onSetCavemanLevel}
-                    />
-                    <ModelFeatureBadges runtime={runtime} provider={provider} modelId={modelId} />
-                  </span>
+                  <ComposerControlRow
+                    runtime={runtime}
+                    provider={provider}
+                    modelId={modelId}
+                    thinkingLevel={thinkingLevel}
+                    cavemanLevel={cavemanLevel}
+                    composerMode={composerMode}
+                    modelSelectorRef={modelSelectorRef}
+                    unselectedModelLabel={modelOnboarding.unselectedModelLabel}
+                    emptyModelTitle={modelOnboarding.emptyModelTitle}
+                    onSetComposerMode={onSetComposerMode}
+                    onSetModel={onSetModel}
+                    onSetThinking={onSetThinking}
+                    onSetCavemanLevel={onSetCavemanLevel}
+                  />
                 </div>
                 <div className="composer__actions">
                   <span className="composer__key-mount composer__key-mount--send">
@@ -349,6 +341,7 @@ export function ComposerPanel({
                         !primaryActionIsStop && modelOnboarding.requiresModelSelection
                       }
                       data-has-input={primaryActionIsStop || hasComposerInput ? "" : undefined}
+                      onPointerDown={() => { playClick("down"); }}
                       onClick={onSubmit}
                     >
                       {primaryActionIsStop ? <StopSquareIcon /> : <ArrowUpIcon />}

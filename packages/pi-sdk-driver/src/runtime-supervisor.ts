@@ -497,6 +497,7 @@ export class RuntimeSupervisor implements RuntimeResourceDriver {
       .map<RuntimeModelRecord>((model) => {
         const provider = providers.get(model.provider);
         const availableThinkingLevels = getAvailableThinkingLevels(model);
+        const thinkingLevelLabels = getThinkingLevelLabels(model);
         return {
           providerId: model.provider,
           providerName: provider?.name ?? model.provider,
@@ -508,6 +509,7 @@ export class RuntimeSupervisor implements RuntimeResourceDriver {
           supportsImages: model.input.includes("image"),
           contextWindow: model.contextWindow,
           availableThinkingLevels,
+          thinkingLevelLabels,
         };
       })
       .sort((left, right) =>
@@ -1009,4 +1011,19 @@ function getAvailableThinkingLevels(model: { reasoning?: boolean; thinkingLevelM
     if (level === "xhigh") return mapped !== undefined;
     return true;
   });
+}
+
+/**
+ * Collect the provider-specific names a model uses for each thinking level.
+ * Only levels mapped to a concrete string are included, so the UI can show the
+ * provider's own label (e.g. Opus `xhigh -> "max"`, GPT-5.5 `xhigh -> "xhigh"`).
+ */
+function getThinkingLevelLabels(model: { thinkingLevelMap?: Record<string, string | null> }): Readonly<Record<string, string>> {
+  const labels: Record<string, string> = {};
+  for (const [level, mapped] of Object.entries(model.thinkingLevelMap ?? {})) {
+    if (typeof mapped === "string") {
+      labels[level] = mapped;
+    }
+  }
+  return labels;
 }

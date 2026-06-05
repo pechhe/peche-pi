@@ -59,7 +59,7 @@ export function useTimelineScroll({
   selectedSessionKey,
   activeView,
   activeTranscript,
-  setShowDiffPanel,
+  setShowDiffPanel: _setShowDiffPanel,
 }: {
   readonly selectedSessionKey: string;
   readonly activeView: AppView | undefined;
@@ -241,7 +241,7 @@ export function useTimelineScroll({
       if (timelinePaneRef.current !== node) return;
       setDisableTimelineVirtualization(false);
     });
-  }, [scrollTimelineToBottom, selectedSessionKey, activeView, requestPinnedBottomAlignment, resetExactBottomRestoreState]);
+  }, [selectedSessionKey, activeView, requestPinnedBottomAlignment, resetExactBottomRestoreState]);
 
   const schedulePinnedBottomRealignment = useCallback((delayFrames = 0) => {
     const waitForFrames = (remainingFrames: number) => {
@@ -317,17 +317,21 @@ export function useTimelineScroll({
     disableTimelineVirtualization,
     scrollTimelineToBottom,
     activeView,
+    selectedSessionKey,
   ]);
 
   // Save scroll position when leaving the threads view.
   useLayoutEffect(() => {
     if (activeView !== "threads") return undefined;
 
+    const sessionKey = selectedSessionKey;
+    const pane = timelinePaneRef.current;
+    const scrollTopMap = lastTimelineScrollTopBySessionRef.current;
+    const pinnedMap = lastTimelinePinnedBySessionRef.current;
     return () => {
-      const pane = timelinePaneRef.current;
       if (!pane) return;
-      lastTimelineScrollTopBySessionRef.current.set(selectedSessionKey, pane.scrollTop);
-      lastTimelinePinnedBySessionRef.current.set(selectedSessionKey, isNearBottom(pane));
+      scrollTopMap.set(sessionKey, pane.scrollTop);
+      pinnedMap.set(sessionKey, isNearBottom(pane));
     };
   }, [selectedSessionKey, activeView]);
 

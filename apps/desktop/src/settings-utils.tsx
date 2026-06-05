@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import type { RuntimeSettingsSnapshot, RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
 
-export type SettingsSection = "appearance" | "general" | "providers" | "models" | "notifications" | "sounds";
+export type SettingsSection = "appearance" | "general" | "providers" | "models" | "subagents" | "notifications" | "sounds";
 
 export const THINKING_LEVELS: NonNullable<RuntimeSettingsSnapshot["defaultThinkingLevel"]>[] = [
   "low",
@@ -29,29 +29,14 @@ export function sectionTitle(section: SettingsSection): string {
       return "Providers";
     case "models":
       return "Models";
+    case "subagents":
+      return "Subagents";
     case "notifications":
       return "Notifications";
     case "sounds":
       return "Sounds";
     default:
       return "General";
-  }
-}
-
-function sectionDescription(section: SettingsSection, workspaceName: string): string {
-  switch (section) {
-    case "appearance":
-      return "Choose between light, dark, Dracula, or automatic system theme.";
-    case "providers":
-      return `Connect providers and manage auth for ${workspaceName}.`;
-    case "models":
-      return "Choose the default model and which models appear in pickers.";
-    case "notifications":
-      return "Manage both macOS notification access and which background events should alert you.";
-    case "sounds":
-      return "Customize audio feedback for buttons and interactions.";
-    default:
-      return "Keep the high-value app and runtime controls close to hand.";
   }
 }
 

@@ -1,4 +1,4 @@
-import { access, realpath } from "node:fs/promises";
+import { access, readFile, realpath } from "node:fs/promises";
 import { resolve } from "node:path";
 import {
   ModelRegistry,
@@ -159,7 +159,11 @@ export class SessionSupervisor {
 
   async syncWorkspace(path: string, displayName?: string): Promise<SyncWorkspaceResult> {
     const workspace = await this.registerWorkspace(path, displayName);
-    const infos = await SessionManager.list(path);
+    const infos = (await Promise.all(
+      (await SessionManager.list(path)).map(async (info) =>
+        (await isSubagentChildSession(info.path)) ? undefined : info,
+      ),
+    )).filter((info): info is SessionInfo => Boolean(info));
     const existingSessions = (await this.catalogs.sessions.listSessions(workspace.workspaceId)).sessions;
     const existingByKey = new Map(existingSessions.map((session) => [sessionKey(session.sessionRef), session]));
     const nextEntries = infos.map((info) =>
@@ -180,6 +184,9 @@ export class SessionSupervisor {
           }
 
           try {
+            if (await isSubagentChildSession(session.sessionFilePath)) {
+              return undefined;
+            }
             await access(session.sessionFilePath);
             return session;
           } catch {
@@ -1487,6 +1494,16 @@ export class SessionSupervisor {
   }
 }
 
+async function isSubagentChildSession(sessionFilePath: string): Promise<boolean> {
+  try {
+    const raw = await readFile(sessionFilePath, "utf8");
+    return raw.includes('"customType":"pi-subagents_launch_metadata"') ||
+      raw.includes('"customType": "pi-subagents_launch_metadata"');
+  } catch {
+    return false;
+  }
+}
+
 function resolvedCatalogSessionTitle(existingTitle: string | undefined, infoTitle: string): string {
   const trimmedExisting = existingTitle?.trim();
   if (!trimmedExisting) {
@@ -1499,10 +1516,11 @@ function resolvedCatalogSessionTitle(existingTitle: string | undefined, infoTitl
 }
 
 const DEFAULT_SESSION_THINKING_LEVEL = "medium";
-const THINKING_LEVEL_ORDER = ["off", "low", "medium", "high", "xhigh"] as const;
+const THINKING_LEVEL_ORDER = ["off", "minimal", "low", "medium", "high", "xhigh"] as const;
 type SessionTreeNodeRecord = ReturnType<SessionManager["getTree"]>[number];
 
-function clampThinkingLevel(level: string, availableLevels: readonly string[]): string {
+// Exported for unit testing.
+export function clampThinkingLevel(level: string, availableLevels: readonly string[]): string {
   const available = new Set(availableLevels);
   const requestedIndex = THINKING_LEVEL_ORDER.indexOf(level as (typeof THINKING_LEVEL_ORDER)[number]);
   if (requestedIndex === -1) {

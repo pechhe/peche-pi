@@ -126,37 +126,43 @@ export function QuestionnaireComposer({
   const progressPercent = total > 0 ? ((step + 1) / total) * 100 : 0;
 
   return (
-    <footer className="composer composer--questionnaire">
-      <div
-        className="questionnaire-composer"
-        data-testid="questionnaire-composer"
-        role="group"
-        tabIndex={0}
-        ref={shellRef}
-        onKeyDown={handleKeyDown}
-      >
-        <div className="questionnaire-composer__screen">
-          <div className="questionnaire-composer__header">
-            <div className="questionnaire-composer__prompt">{current.prompt}</div>
-            <div
-              className="composer__context questionnaire-composer__progress"
-              aria-label={`Question ${step + 1} of ${total}`}
-            >
-              <span className="composer__context-label questionnaire-composer__progress-label">
-                {step + 1} / {total}
-              </span>
-              <div className="composer__context-track questionnaire-composer__progress-track">
-                <div className="composer__context-fill" style={{ width: `${progressPercent}%` }} />
+    <div
+      className="questionnaire-composer"
+      data-testid="questionnaire-composer"
+      role="group"
+      tabIndex={0}
+      ref={shellRef}
+      onKeyDown={handleKeyDown}
+    >
+      <div className="questionnaire-composer__screen">
+        <div className="questionnaire-composer__header">
+          <div>
+            {request.title ? (
+              <div className="questionnaire-composer__title">
+                {request.title} ({step + 1}/{total})
               </div>
+            ) : null}
+            <div className="questionnaire-composer__prompt">{current.prompt}</div>
+          </div>
+          <div
+            className="composer__context questionnaire-composer__progress"
+            aria-label={`Question ${step + 1} of ${total}`}
+          >
+            <span className="composer__context-label questionnaire-composer__progress-label">
+              {step + 1} / {total}
+            </span>
+            <div className="composer__context-track questionnaire-composer__progress-track">
+              <div className="composer__context-fill" style={{ width: `${progressPercent}%` }} />
             </div>
           </div>
+        </div>
 
-          {step === 0 && request.intro ? (
-            <div className="questionnaire-composer__intro">{request.intro}</div>
-          ) : null}
-          {current.label ? <div className="questionnaire-composer__label">{current.label}</div> : null}
+        {step === 0 && request.intro ? (
+          <div className="questionnaire-composer__intro">{request.intro}</div>
+        ) : null}
+        {current.label ? <div className="questionnaire-composer__label">{current.label}</div> : null}
 
-          <div className="questionnaire-composer__options">
+        <div className="questionnaire-composer__options">
             {current.options.map((option, index) => (
               <button
                 key={`${option.value}:${index}`}
@@ -183,8 +189,8 @@ export function QuestionnaireComposer({
             ) : null}
           </div>
 
-          {isOtherActive ? (
-            <form
+        {isOtherActive ? (
+          <form
               className="questionnaire-composer__other"
               onSubmit={(event) => {
                 event.preventDefault();
@@ -200,9 +206,8 @@ export function QuestionnaireComposer({
               />
               <button type="submit" disabled={!otherDraft.trim()}>Use</button>
             </form>
-          ) : null}
-        </div>
+        ) : null}
       </div>
-    </footer>
+    </div>
   );
 }

@@ -4,13 +4,13 @@ import {
   getDesktopCommandFromShortcut,
   type PiDesktopCommand,
 } from "../ipc";
-import { THINKING_OPTIONS } from "../composer-commands";
 import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
 import type { DesktopAppState, SessionRecord, WorkspaceRecord } from "../desktop-state";
 import type { useThreadSearch } from "./use-thread-search";
 import type { useNavigationHistory } from "./use-navigation-history";
 import { installPhysicalKeyFeedback } from "../physical-key-feedback";
 import type { PiDesktopApi } from "../ipc";
+import { playRotary } from "../button-click-sound";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -82,20 +82,24 @@ export function useKeyboardShortcuts({
       if (!session || !workspace || !api) return;
       const currentLevel = session.config?.thinkingLevel ?? "off";
       const runtime = snapshot?.runtimeByWorkspace[workspace.id];
-      const modelRecord = runtime?.models.find(
-        (m) => m.providerId === session.config?.provider && m.modelId === session.config?.modelId,
-      );
-      const availableLevels = modelRecord?.availableThinkingLevels ?? ["off", "low", "medium", "high", "xhigh"];
-      const cycleable = THINKING_OPTIONS.filter((opt) => availableLevels.includes(opt.value));
-      if (cycleable.length === 0) return;
-      const currentIndex = cycleable.findIndex((opt) => opt.value === currentLevel);
-      const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % cycleable.length : 0;
-      const next = cycleable[nextIndex];
+      // Resolve the effective model (default model when the session has no
+      // explicit override) so the cycle never offers levels the model doesn't
+      // support — matching the reasoning dial and avoiding clamp snap-back.
+      const provider = session.config?.provider ?? runtime?.settings.defaultProvider;
+      const modelId = session.config?.modelId ?? runtime?.settings.defaultModelId;
+      const modelRecord = runtime?.models.find((m) => m.providerId === provider && m.modelId === modelId);
+      // Cycle through every level the model supports, in canonical dial order
+      // (including "off" and "minimal"), so Shift+Tab matches the reasoning dial.
+      const availableLevels = modelRecord?.availableThinkingLevels ?? ["off"];
+      if (availableLevels.length === 0) return;
+      const currentIndex = availableLevels.indexOf(currentLevel);
+      const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % availableLevels.length : 0;
+      const next = availableLevels[nextIndex];
       if (next) {
         void api.setSessionThinkingLevel(
           workspace.id,
           session.id,
-          next.value as NonNullable<RuntimeSnapshot["settings"]["defaultThinkingLevel"]>,
+          next as NonNullable<RuntimeSnapshot["settings"]["defaultThinkingLevel"]>,
         );
       }
     };
@@ -114,6 +118,14 @@ export function useKeyboardShortcuts({
         return handleTogglePrimarySidebar();
       } else if (command === desktopCommands.commitAndPush) {
         window.dispatchEvent(new CustomEvent("pi:commit-and-push"));
+        return true;
+      } else if (command === desktopCommands.setBuildMode) {
+        playRotary();
+        onSetComposerMode("build");
+        return true;
+      } else if (command === desktopCommands.setPlanMode) {
+        playRotary();
+        onSetComposerMode("plan");
         return true;
       }
       return false;
@@ -169,6 +181,7 @@ export function useKeyboardShortcuts({
       // Cmd+L focuses composer
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "l" && !event.shiftKey) {
         event.preventDefault();
+        playRotary();
         focusComposer();
         return;
       }
@@ -178,11 +191,13 @@ export function useKeyboardShortcuts({
         const digit = parseInt(event.key);
         if (digit >= 1 && digit <= 3) {
           event.preventDefault();
+          playRotary();
           modelSelectorRef.current?.selectSliderSlot(digit - 1);
           return;
         }
         if (digit === 4) {
           event.preventDefault();
+          playRotary();
           modelSelectorRef.current?.openModelDropdown();
           return;
         }
@@ -192,26 +207,31 @@ export function useKeyboardShortcuts({
       if ((event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey) {
         if (event.key.toLowerCase() === "p") {
           event.preventDefault();
+          playRotary();
           onSetComposerMode("plan");
           return;
         }
         if (event.key.toLowerCase() === "b") {
           event.preventDefault();
+          playRotary();
           onSetComposerMode("build");
           return;
         }
       }
 
-      // Cmd+ArrowLeft/Right adjusts thinking level
+      // Cmd+ArrowUp/Down adjusts thinking level. (Cmd+Left/Right are left to the
+      // textarea for native line-start/line-end navigation.)
       if ((event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey) {
-        if (event.key === "ArrowLeft") {
+        if (event.key === "ArrowUp") {
           event.preventDefault();
-          modelSelectorRef.current?.cycleThinkingLevel(-1);
+          playRotary();
+          modelSelectorRef.current?.cycleThinkingLevel(1);
           return;
         }
-        if (event.key === "ArrowRight") {
+        if (event.key === "ArrowDown") {
           event.preventDefault();
-          modelSelectorRef.current?.cycleThinkingLevel(1);
+          playRotary();
+          modelSelectorRef.current?.cycleThinkingLevel(-1);
           return;
         }
       }
@@ -262,6 +282,7 @@ export function useKeyboardShortcuts({
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [
+    selectedWorkspace,
     selectedWorkspace?.id,
     selectedWorkspace?.rootWorkspaceId,
     snapshot,

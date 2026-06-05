@@ -36,6 +36,7 @@ import type { SettingsSection } from "./settings-view";
 import type { CavemanLevel, PiDesktopApi } from "./ipc";
 import { useSlashMenu } from "./hooks/use-slash-menu";
 import { useMentionMenu } from "./hooks/use-mention-menu";
+import { playClick } from "./button-click-sound";
 
 /**
  * Imperative surface the host (App) uses to drive the composer draft without
@@ -47,6 +48,8 @@ export interface SessionComposerHandle {
   readonly setDraft: (value: SetStateAction<string>) => void;
   /** Prefill the composer from a slash command (used by "Try skill"). */
   readonly fillFromSlash: (command: string) => void;
+  /** Set the plan/build composer mode (used by Cmd+P / Cmd+B shortcuts). */
+  readonly setComposerMode: (mode: ComposerMode) => void;
 }
 
 interface SessionComposerProps {
@@ -178,6 +181,8 @@ const SessionComposerInner = forwardRef<SessionComposerHandle, SessionComposerPr
   const hydratedComposerSessionKeyRef = useRef("");
   const handledComposerSyncNonceRef = useRef(0);
   const composerAutoGrowHeightRef = useRef(0);
+  const composerDraftLengthRef = useRef(0);
+  const lastComposerElementRef = useRef<HTMLTextAreaElement | null>(null);
 
   const composerAttachments = (() => {
     if (!submitClearedAttachmentIds) {
@@ -220,6 +225,7 @@ const SessionComposerInner = forwardRef<SessionComposerHandle, SessionComposerPr
     () => ({
       setDraft: (value) => setComposerDraft(value),
       fillFromSlash: (command) => slashMenu.fillComposerFromSlash(command),
+      setComposerMode: (mode) => setComposerMode(mode),
     }),
     [slashMenu],
   );
@@ -272,9 +278,30 @@ const SessionComposerInner = forwardRef<SessionComposerHandle, SessionComposerPr
       return undefined;
     }
 
-    composer.style.height = "auto";
-    const nextHeight = Math.min(composer.scrollHeight, 400);
-    const previousHeight = composerAutoGrowHeightRef.current;
+    // Auto-grow without thrashing layout on every keystroke. Resetting the
+    // height to "auto" to measure forces a full reflow (the composer height
+    // feeds the timeline pane), so we only do it when the draft could have
+    // shrunk. While the draft only grows, reading scrollHeight against the
+    // current fixed height already reports the full content height, so the
+    // common in-line keystroke neither writes the height nor reflows the pane.
+    const elementChanged = lastComposerElementRef.current !== composer;
+    lastComposerElementRef.current = composer;
+    const previousHeight = elementChanged ? 0 : composerAutoGrowHeightRef.current;
+    const previousLength = composerDraftLengthRef.current;
+    composerDraftLengthRef.current = composerDraft.length;
+
+    let nextHeight: number;
+    if (composerDraft.length > previousLength && previousHeight > 0) {
+      const measured = Math.min(composer.scrollHeight, 400);
+      if (measured <= previousHeight) {
+        return undefined;
+      }
+      nextHeight = measured;
+    } else {
+      composer.style.height = "auto";
+      nextHeight = Math.min(composer.scrollHeight, 400);
+    }
+
     if (Math.abs(nextHeight - previousHeight) < 1) {
       if (previousHeight > 0) {
         composer.style.height = `${previousHeight}px`;
@@ -302,7 +329,7 @@ const SessionComposerInner = forwardRef<SessionComposerHandle, SessionComposerPr
         });
       });
     }
-  }, [composerDraft, requestPinnedBottomAlignment]);
+  }, [composerDraft, requestPinnedBottomAlignment, composerRef, pinnedToBottomRef, timelinePaneRef, preserveBottomOnNextPaneResizeRef]);
 
   async function addAttachmentsToSessionComposer(files: File[]) {
     if (!api) {
@@ -460,8 +487,21 @@ const SessionComposerInner = forwardRef<SessionComposerHandle, SessionComposerPr
       return;
     }
 
+    // Holding Enter auto-repeats keydown; submit only on the initial press.
+    // (The held-down button visual is handled by physical-key-feedback.)
+    if (
+      event.key === "Enter" &&
+      !event.shiftKey &&
+      !event.nativeEvent.isComposing &&
+      event.repeat
+    ) {
+      event.preventDefault();
+      return;
+    }
+
     if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing && selectedSession.status === "running") {
       event.preventDefault();
+      playClick("down");
       submitComposerDraft({ deliverAs: event.metaKey || event.ctrlKey ? "steer" : "followUp" });
       return;
     }
@@ -478,6 +518,7 @@ const SessionComposerInner = forwardRef<SessionComposerHandle, SessionComposerPr
       return;
     }
 
+    playClick("down");
     submitComposerDraft();
   };
 

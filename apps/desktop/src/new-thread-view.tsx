@@ -2,11 +2,10 @@ import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type
 import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
 import type { ComposerAttachment, NewThreadEnvironment, WorkspaceRecord } from "./desktop-state";
 import type { ComposerMode } from "./composer-mode";
-import { CavemanSelector } from "./caveman-selector";
-import { ComposerModeSelector } from "./composer-mode-selector";
-import { ModelFeatureBadges } from "./model-feature-badges";
+import { ComposerControlRow } from "./composer-control-row";
 import { ArrowUpIcon, PiLogoMark } from "./icons";
 import { useButtonSound } from "./use-button-sound";
+import { playClick } from "./button-click-sound";
 import {
   MODEL_OPTIONS_EMPTY_TITLE,
   type ComposerSlashCommand,
@@ -17,7 +16,6 @@ import {
 import { ComposerAttachments, ComposerSurface } from "./composer-surface";
 import { ModelOnboardingNoticeBanner } from "./model-onboarding-notice";
 import type { ModelOnboardingState, ModelOnboardingSettingsSection } from "./model-onboarding";
-import { ModelSelector } from "./model-selector";
 import type { ModelSelectorHandle } from "./model-selector";
 import type { CavemanLevel } from "./ipc";
 
@@ -167,6 +165,7 @@ export function NewThreadView({
       return;
     }
 
+    playClick("down");
     submitDraft();
   };
 
@@ -251,7 +250,7 @@ export function NewThreadView({
               onSelectMention={onSelectMention}
               textareaLabel="New project prompt"
               textareaTestId="new-thread-composer"
-              textareaPlaceholder={composerMode === "plan" ? "Describe what you want to plan. Pi will grill you, write a PRD, then prepare Ralph." : "message the clanker"}
+              textareaPlaceholder={composerMode === "plan" ? "Describe what you want to plan. Pi will grill you, write a PRD, then prepare Ralph." : " message the clanker"}
               screenFooter={(
                 <div className="composer__context" aria-label="Context usage unavailable">
                   <div className="composer__context-track">
@@ -346,35 +345,31 @@ function NewThreadComposerFooter({
   onSetComposerMode,
   onSubmit,
 }: NewThreadComposerFooterProps) {
-  const submitButtonSound = useButtonSound({ category: "primary", disabled: !hasContent || modelOnboarding.requiresModelSelection });
+  const submitButtonSound = useButtonSound({ variant: "click", disabled: !hasContent || modelOnboarding.requiresModelSelection });
   return (
     <>
       <div className="composer__footer">
         <div className="composer__footer-row">
           <div className="composer__hint new-thread__hint">
             <span className="composer__hint-prose">Enter to send · Shift+Enter for newline</span>
-            <span className="composer__controls">
-              <span className="composer__controls-sep">{" \u00b7 "}</span>
-              <ComposerModeSelector mode={composerMode} onSetMode={onSetComposerMode} />
-              <span className="composer__controls-sep">{" \u00b7 "}</span>
-              <ModelSelector
-                ref={modelSelectorRef}
-                runtime={runtime}
-                provider={provider}
-                modelId={modelId}
-                thinkingLevel={thinkingLevel}
-                dropdownPlacement="below"
-                showEmptyModelControl
-                unselectedModelLabel={modelOnboarding.unselectedModelLabel}
-                emptyModelLabel={MODEL_OPTIONS_EMPTY_TITLE}
-                emptyModelTitle={modelOnboarding.emptyModelTitle}
-                onSetModel={onSetModel}
-                onSetThinking={onSetThinking}
-              />
-              <span className="composer__controls-sep">{" \u00b7 "}</span>
-              <CavemanSelector level={cavemanLevel} onSetLevel={onSetCavemanLevel} />
-              <ModelFeatureBadges runtime={runtime} provider={provider} modelId={modelId} />
-            </span>
+            <ComposerControlRow
+              runtime={runtime}
+              provider={provider}
+              modelId={modelId}
+              thinkingLevel={thinkingLevel}
+              cavemanLevel={cavemanLevel}
+              composerMode={composerMode}
+              modelSelectorRef={modelSelectorRef}
+              dropdownPlacement="below"
+              showEmptyModelControl
+              unselectedModelLabel={modelOnboarding.unselectedModelLabel}
+              emptyModelLabel={MODEL_OPTIONS_EMPTY_TITLE}
+              emptyModelTitle={modelOnboarding.emptyModelTitle}
+              onSetComposerMode={onSetComposerMode}
+              onSetModel={onSetModel}
+              onSetThinking={onSetThinking}
+              onSetCavemanLevel={onSetCavemanLevel}
+            />
           </div>
 
           <div className="composer__actions">

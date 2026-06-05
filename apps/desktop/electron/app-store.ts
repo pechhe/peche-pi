@@ -1,6 +1,11 @@
 import type { BrowserWindow } from "electron";
+import { exec } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
+import { homedir } from "node:os";
+import { promisify } from "node:util";
+
+const execAsync = promisify(exec);
 import {
   type GenerateThreadTitleOptions,
   JsonCatalogStore,
@@ -123,8 +128,13 @@ type StateListener = (state: DesktopAppState) => void;
 type SelectedTranscriptListener = (payload: SelectedTranscriptRecord | null) => void;
 type SessionEventListener = (event: SessionDriverEvent, state: DesktopAppState) => void | Promise<void>;
 type StatePatchListener = (patch: { readonly workspaceId: string; readonly session: SessionRecord | null }) => void;
-type TranscriptDeltaListener = (delta: { readonly sessionId: string; readonly workspaceId: string; readonly initial: boolean; readonly messages: readonly TranscriptMessage[] }) => void;
+type TranscriptDeltaPayload = { readonly sessionId: string; readonly workspaceId: string; readonly initial: boolean; readonly messages: readonly TranscriptMessage[] };
+type TranscriptDeltaListener = (delta: TranscriptDeltaPayload) => void;
 type TranscriptMessageRow = Extract<TranscriptMessage, { kind: "message" }>;
+
+function isStreamingSessionEvent(event: SessionDriverEvent): boolean {
+  return event.type === "assistantDelta" || event.type === "reasoningDelta" || event.type === "toolUpdated";
+}
 
 const LEGACY_TRANSCRIPT_HISTORY_LIMIT = 180;
 interface PersistedTranscriptRecord {
@@ -159,6 +169,8 @@ export class DesktopAppStore implements AppStoreInternals {
   private readonly statePatchListeners = new Set<StatePatchListener>();
   private readonly transcriptDeltaListeners = new Set<TranscriptDeltaListener>();
   private readonly transcriptLastSentCount = new Map<string, number>();
+  private readonly pendingTranscriptDeltaBySession = new Map<string, TranscriptDeltaPayload>();
+  private transcriptDeltaFlushTimer: NodeJS.Timeout | undefined;
   private readonly sessionEventListeners = new Set<SessionEventListener>();
   readonly driver: PiSdkDriver;
   readonly catalogStore: JsonCatalogStore;
@@ -627,6 +639,348 @@ export class DesktopAppStore implements AppStoreInternals {
 
   async setCommitPushModel(workspaceId: string, model: string): Promise<DesktopAppState> {
     return review.setCommitPushModel(this, workspaceId, model);
+  }
+
+  private agentSettingsPath(): string {
+    return join(homedir(), ".pi", "agent", "settings.json");
+  }
+
+  async getSmartCompactSettings(): Promise<Record<string, unknown>> {
+    try {
+      const raw = await readFile(this.agentSettingsPath(), "utf8");
+      const parsed = JSON.parse(raw);
+      return (typeof parsed === "object" && parsed !== null ? parsed : {}).smartCompact ?? {};
+    } catch {
+      return {};
+    }
+  }
+
+  async setSmartCompactSettings(settings: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const filePath = this.agentSettingsPath();
+    let raw: Record<string, unknown> = {};
+    try {
+      const content = await readFile(filePath, "utf8");
+      raw = JSON.parse(content);
+      if (typeof raw !== "object" || raw === null) raw = {};
+    } catch {
+      // file doesn't exist yet
+    }
+    const current = (raw.smartCompact ?? {}) as Record<string, unknown>;
+    const next = { ...current, ...settings };
+    // Remove undefined/null values
+    for (const key of Object.keys(next)) {
+      if (next[key] === undefined || next[key] === null) delete next[key];
+    }
+    raw.smartCompact = next;
+    await mkdir(dirname(filePath), { recursive: true });
+    await writeFile(filePath, `${JSON.stringify(raw, null, 2)}\n`, "utf8");
+    return next;
+  }
+
+  private extensionConfigDir(): string {
+    return join(homedir(), ".pi", "agent", "extension-configs");
+  }
+
+  private extensionConfigPath(extensionPath: string): string {
+    // Create a safe filename from the extension path
+    const safeName = extensionPath
+      .replace(/[^a-zA-Z0-9]/g, "_")
+      .replace(/_+/g, "_")
+      .toLowerCase();
+    return join(this.extensionConfigDir(), `${safeName}.json`);
+  }
+
+  async getExtensionConfig(extensionPath: string): Promise<import("../src/ipc").ExtensionConfigSchema | null> {
+    try {
+      const configPath = this.extensionConfigPath(extensionPath);
+      const raw = await readFile(configPath, "utf8");
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
+
+  async setExtensionConfig(extensionPath: string, values: readonly { key: string; value: string | number | boolean }[]): Promise<void> {
+    const existing = await this.getExtensionConfig(extensionPath);
+    if (!existing) return;
+
+    // Update field values
+    const updatedFields = existing.fields.map((field) => {
+      const override = values.find((v) => v.key === field.key);
+      if (override) {
+        return { ...field, currentValue: override.value };
+      }
+      return field;
+    });
+
+    const updated: import("../src/ipc").ExtensionConfigSchema = {
+      ...existing,
+      fields: updatedFields,
+    };
+
+    const configPath = this.extensionConfigPath(extensionPath);
+    await mkdir(dirname(configPath), { recursive: true });
+    await writeFile(configPath, `${JSON.stringify(updated, null, 2)}\n`, "utf8");
+
+    // Also write env vars to a .env file if any
+    const envFields = updatedFields.filter((f) => f.source === "env" && f.currentValue !== undefined);
+    if (envFields.length > 0) {
+      const envPath = join(this.extensionConfigDir(), ".env");
+      let envContent = "";
+      try {
+        envContent = await readFile(envPath, "utf8");
+      } catch {}
+      for (const field of envFields) {
+        const regex = new RegExp(`^${field.key}=.*$`, "m");
+        const line = `${field.key}=${field.currentValue}`;
+        if (regex.test(envContent)) {
+          envContent = envContent.replace(regex, line);
+        } else {
+          envContent += `\n${line}`;
+        }
+      }
+      await writeFile(envPath, envContent.trim() + "\n", "utf8");
+    }
+  }
+
+  async analyzeExtensionConfig(extensionPath: string, model?: string): Promise<import("../src/ipc").ExtensionConfigSchema> {
+    // Read the extension source code
+    let sourceCode = "";
+    try {
+      sourceCode = await readFile(extensionPath, "utf8");
+    } catch (err) {
+      throw new Error(`Cannot read extension file: ${extensionPath}`);
+    }
+
+    // Try to read README if exists
+    let readme = "";
+    const dir = dirname(extensionPath);
+    for (const readmeName of ["README.md", "readme.md", "README.txt", "readme.txt"]) {
+      try {
+        readme = await readFile(join(dir, readmeName), "utf8");
+        break;
+      } catch {}
+    }
+
+    // Try LLM-based analysis first
+    const llmResult = await this.analyzeExtensionConfigWithLLM(extensionPath, sourceCode, readme, model);
+    if (llmResult) {
+      return llmResult;
+    }
+
+    // Fallback to regex-based analysis
+    const fields: import("../src/ipc").ExtensionConfigField[] = [];
+
+    // Find environment variables: process.env.VARIABLE_NAME
+    const envRegex = /process\.env\.([A-Z_][A-Z0-9_]*)/g;
+    let envMatch;
+    while ((envMatch = envRegex.exec(sourceCode)) !== null) {
+      const varName = envMatch[1];
+      if (varName && !fields.some((f) => f.key === varName)) {
+        fields.push({
+          key: varName,
+          label: varName.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase()),
+          type: "string",
+          source: "env",
+          description: `Environment variable: ${varName}`,
+        });
+      }
+    }
+
+    const schema: import("../src/ipc").ExtensionConfigSchema = {
+      extensionPath,
+      displayName: basename(extensionPath, ".ts"),
+      fields,
+      analyzedAt: new Date().toISOString(),
+    };
+
+    // Save the schema
+    const configPath = this.extensionConfigPath(extensionPath);
+    await mkdir(dirname(configPath), { recursive: true });
+    await writeFile(configPath, `${JSON.stringify(schema, null, 2)}\n`, "utf8");
+
+    return schema;
+  }
+
+  private async analyzeExtensionConfigWithLLM(
+    extensionPath: string,
+    sourceCode: string,
+    readme: string,
+    model?: string,
+  ): Promise<import("../src/ipc").ExtensionConfigSchema | null> {
+    try {
+      const { PROVIDER_CONFIGS, parseProviderAndModel } = await import("./llm-helpers.js");
+
+      // Use provided model, smart-compact model, or fallback to deepseek
+      let modelString = model;
+      if (!modelString) {
+        const settings = await this.getSmartCompactSettings();
+        modelString = (typeof settings.summaryModel === "string" ? settings.summaryModel : null) ?? "deepseek:deepseek-chat";
+      }
+      const { providerId, modelId } = parseProviderAndModel(modelString);
+      const config = PROVIDER_CONFIGS[providerId];
+      if (!config) return null;
+
+      // Get API key from store
+      const apiKey = await this.getProviderApiKey(providerId);
+      if (!apiKey) return null;
+
+      // Truncate source if too long
+      const maxSourceLen = 15000;
+      const truncatedSource = sourceCode.length > maxSourceLen
+        ? sourceCode.slice(0, maxSourceLen) + "\n... (truncated)"
+        : sourceCode;
+
+      const truncatedReadme = readme.length > 5000
+        ? readme.slice(0, 5000) + "\n... (truncated)"
+        : readme;
+
+      const systemPrompt = `You are analyzing a pi coding agent extension to extract its configuration options.
+
+An extension can have these types of configuration:
+1. Environment variables (process.env.VAR_NAME) - credentials, API keys, feature flags
+2. JSON config files (settings.json, config.json) - structured settings
+3. CLI flags (registerFlag) - command-line options
+4. Hardcoded constants that should be configurable - URLs, timeouts, limits
+
+For each configuration option found, extract:
+- key: the identifier (env var name, config key, flag name)
+- label: human-readable name
+- type: "string" | "number" | "boolean" | "select"
+- description: what this option controls
+- defaultValue: if found in the code
+- options: for select type, the allowed values
+- source: "env" | "file" | "flag" | "constant"
+- sourcePath: for file type, the config file path
+
+Return a JSON array of configuration fields. Only include ACTUAL configuration options, not internal constants.`;
+
+      const userMessage = `Analyze this extension and extract all configuration options.
+
+Extension path: ${extensionPath}
+
+Source code:
+\`\`\`
+${truncatedSource}
+\`\`\`
+${truncatedReadme ? `\nREADME:\n\`\`\`\n${truncatedReadme}\n\`\`\`` : ""}
+
+Return ONLY a JSON array of configuration fields, no explanation.`;
+
+      const response = await fetch(`${config.apiBase}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: modelId,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userMessage },
+          ],
+          max_tokens: 2000,
+          temperature: 0.1,
+        }),
+      });
+
+      if (!response.ok) return null;
+
+      const data = await response.json() as any;
+      const content = data.choices?.[0]?.message?.content;
+      if (!content) return null;
+
+      // Extract JSON from response (handle markdown code blocks)
+      let jsonStr = content;
+      const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (jsonMatch) {
+        jsonStr = jsonMatch[1];
+      }
+      // Also try to find raw JSON array
+      const arrayMatch = jsonStr.match(/\[\s*\{[\s\S]*\}\s*\]/);
+      if (arrayMatch) {
+        jsonStr = arrayMatch[0];
+      }
+
+      const parsed = JSON.parse(jsonStr);
+      if (!Array.isArray(parsed)) return null;
+
+      const fields: import("../src/ipc").ExtensionConfigField[] = parsed.map((item: any) => ({
+        key: String(item.key || ""),
+        label: String(item.label || item.key || ""),
+        type: ["string", "number", "boolean", "select"].includes(item.type) ? item.type : "string",
+        description: item.description ? String(item.description) : undefined,
+        defaultValue: item.defaultValue,
+        currentValue: item.defaultValue,
+        options: Array.isArray(item.options) ? item.options.map(String) : undefined,
+        source: ["env", "file", "flag", "constant"].includes(item.source) ? item.source : "constant",
+        sourcePath: item.sourcePath ? String(item.sourcePath) : undefined,
+      }));
+
+      const schema: import("../src/ipc").ExtensionConfigSchema = {
+        extensionPath,
+        displayName: basename(extensionPath, ".ts"),
+        fields,
+        analyzedAt: new Date().toISOString(),
+        analyzedBy: modelString,
+      };
+
+      // Save the schema
+      const configPath = this.extensionConfigPath(extensionPath);
+      await mkdir(dirname(configPath), { recursive: true });
+      await writeFile(configPath, `${JSON.stringify(schema, null, 2)}\n`, "utf8");
+
+      return schema;
+    } catch (err) {
+      console.error("LLM analysis failed, falling back to regex:", err);
+      return null;
+    }
+  }
+
+  async installExtension(source: string, local?: boolean): Promise<{ success: boolean; message: string }> {
+    try {
+      const args = ["install", source];
+      if (local) args.push("-l");
+      const { stdout, stderr } = await execAsync(`pi ${args.join(" ")}`);
+      return {
+        success: true,
+        message: stdout || stderr || `Installed ${source}`,
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        message: err.stderr || err.stdout || err.message || "Installation failed",
+      };
+    }
+  }
+
+  async uninstallExtension(source: string, local?: boolean): Promise<{ success: boolean; message: string }> {
+    try {
+      const args = ["uninstall", source];
+      if (local) args.push("-l");
+      const { stdout, stderr } = await execAsync(`pi ${args.join(" ")}`);
+      return {
+        success: true,
+        message: stdout || stderr || `Uninstalled ${source}`,
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        message: err.stderr || err.stdout || err.message || "Uninstallation failed",
+      };
+    }
+  }
+
+  async checkExtensionUpdates(): Promise<{ source: string; current: string; latest: string }[]> {
+    try {
+      const { stdout } = await execAsync("pi list --updates");
+      // Parse the output - this is a simplified parser
+      // In reality, you'd want to parse the actual format of pi list --updates
+      const updates: { source: string; current: string; latest: string }[] = [];
+      return updates;
+    } catch {
+      return [];
+    }
   }
 
   async setEnableTransparency(enabled: boolean): Promise<DesktopAppState> {
@@ -1652,13 +2006,13 @@ export class DesktopAppStore implements AppStoreInternals {
     } else if (patch.shouldSchedulePersistUi) {
       this.schedulePersistUiState();
     }
-    const isBackgroundSession = !this.isSelectedSession(event.sessionRef);
-    const snapshot = this.emit();
-    if (isBackgroundSession) {
-      this.publishStatePatchFor(event.sessionRef);
+    const shouldPublishFullState = !isStreamingSessionEvent(event);
+    const snapshot = shouldPublishFullState ? this.emit() : this.state;
+    this.publishStatePatchFor(event.sessionRef);
+    this.publishTranscriptDeltaFor(event.sessionRef, { coalesce: isStreamingSessionEvent(event) });
+    if (shouldPublishFullState) {
+      this.publishSelectedTranscriptFor(event.sessionRef);
     }
-    this.publishTranscriptDeltaFor(event.sessionRef);
-    this.publishSelectedTranscriptFor(event.sessionRef);
     await this.emitSessionEvent(event, snapshot);
   }
 
@@ -2199,7 +2553,7 @@ export class DesktopAppStore implements AppStoreInternals {
   }
 
   emit(): DesktopAppState {
-    const snapshot = structuredClone(this.state);
+    const snapshot = this.state;
     for (const listener of this.listeners) {
       listener(snapshot);
     }
@@ -2213,7 +2567,7 @@ export class DesktopAppStore implements AppStoreInternals {
     };
   }
 
-  private publishTranscriptDeltaFor(sessionRef: SessionRef): void {
+  private publishTranscriptDeltaFor(sessionRef: SessionRef, options: { readonly coalesce?: boolean } = {}): void {
     if (!this.isSelectedSession(sessionRef)) {
       return;
     }
@@ -2222,25 +2576,51 @@ export class DesktopAppStore implements AppStoreInternals {
     const lastSent = this.transcriptLastSentCount.get(key) ?? 0;
     const isInitial = lastSent === 0;
     const newMessages = fullTranscript.slice(lastSent);
+    const changedMessages = newMessages.length > 0 ? newMessages : fullTranscript.slice(-1);
     this.transcriptLastSentCount.set(key, fullTranscript.length);
-    if (newMessages.length === 0 && !isInitial) {
+    if (changedMessages.length === 0 && !isInitial) {
       return;
     }
     const delta = {
       sessionId: sessionRef.sessionId,
       workspaceId: sessionRef.workspaceId,
       initial: isInitial,
-      messages: newMessages,
+      messages: changedMessages,
     };
+    this.publishTranscriptDelta(key, delta, options);
+  }
+
+  private publishTranscriptDelta(
+    key: string,
+    delta: TranscriptDeltaPayload,
+    options: { readonly coalesce?: boolean } = {},
+  ): void {
+    if (!options.coalesce) {
+      this.pendingTranscriptDeltaBySession.delete(key);
+      this.sendTranscriptDelta(delta);
+      return;
+    }
+    this.pendingTranscriptDeltaBySession.set(key, delta);
+    if (this.transcriptDeltaFlushTimer) {
+      return;
+    }
+    this.transcriptDeltaFlushTimer = setTimeout(() => {
+      this.transcriptDeltaFlushTimer = undefined;
+      const pending = [...this.pendingTranscriptDeltaBySession.values()];
+      this.pendingTranscriptDeltaBySession.clear();
+      for (const item of pending) {
+        this.sendTranscriptDelta(item);
+      }
+    }, 250);
+  }
+
+  private sendTranscriptDelta(delta: TranscriptDeltaPayload): void {
     for (const listener of this.transcriptDeltaListeners) {
       listener(delta);
     }
   }
 
   publishStatePatchFor(sessionRef: SessionRef): void {
-    if (this.isSelectedSession(sessionRef)) {
-      return;
-    }
     const session = this.sessionFromState(sessionRef);
     const patch = {
       workspaceId: sessionRef.workspaceId,

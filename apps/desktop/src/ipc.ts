@@ -143,6 +143,12 @@ export const desktopIpc = {
   redoEdits: "pi-gui:redo-edits",
   commitPushExecute: "pi-gui:commit-push-execute",
   setCommitPushModel: "pi-gui:set-commit-push-model",
+  getSmartCompactSettings: "pi-gui:get-smart-compact-settings",
+  setSmartCompactSettings: "pi-gui:set-smart-compact-settings",
+  analyzeExtensionConfig: "pi-gui:analyze-extension-config",
+  getExtensionConfig: "pi-gui:get-extension-config",
+  setExtensionConfig: "pi-gui:set-extension-config",
+  installExtension: "pi-gui:install-extension",
   getWorkspacePrInfo: "pi-gui:get-workspace-pr-info",
   startChat: "pi-gui:start-chat",
   selectChat: "pi-gui:select-chat",
@@ -169,6 +175,8 @@ export const desktopCommands = {
   toggleTerminal: "toggle-terminal",
   toggleSidebar: "toggle-sidebar",
   commitAndPush: "commit-and-push",
+  setBuildMode: "set-build-mode",
+  setPlanMode: "set-plan-mode",
 } as const;
 
 export const piDesktopApiLocalEntries = [
@@ -280,6 +288,12 @@ export const piDesktopApiIpcBridge = {
   redoEdits: { kind: "invoke", channel: desktopIpc.redoEdits },
   commitPushExecute: { kind: "invoke", channel: desktopIpc.commitPushExecute },
   setCommitPushModel: { kind: "invoke", channel: desktopIpc.setCommitPushModel },
+  getSmartCompactSettings: { kind: "invoke", channel: desktopIpc.getSmartCompactSettings },
+  setSmartCompactSettings: { kind: "invoke", channel: desktopIpc.setSmartCompactSettings },
+  analyzeExtensionConfig: { kind: "invoke", channel: desktopIpc.analyzeExtensionConfig },
+  getExtensionConfig: { kind: "invoke", channel: desktopIpc.getExtensionConfig },
+  setExtensionConfig: { kind: "invoke", channel: desktopIpc.setExtensionConfig },
+  installExtension: { kind: "invoke", channel: desktopIpc.installExtension },
   getWorkspacePrInfo: { kind: "invoke", channel: desktopIpc.getWorkspacePrInfo },
   generatePrDraft: { kind: "invoke", channel: desktopIpc.generatePrDraft },
   prCreate: { kind: "invoke", channel: desktopIpc.prCreate },
@@ -390,6 +404,17 @@ export function getDesktopCommandFromShortcut(input: DesktopShortcutInput): PiDe
     return desktopCommands.commitAndPush;
   }
 
+  const isB = lowerKey === "b" || input.code === "KeyB";
+  const isP = lowerKey === "p" || input.code === "KeyP";
+
+  if (!input.shift && isB) {
+    return desktopCommands.setBuildMode;
+  }
+
+  if (!input.shift && isP) {
+    return desktopCommands.setPlanMode;
+  }
+
   return undefined;
 }
 
@@ -454,6 +479,39 @@ export interface TranscriptDelta {
   readonly workspaceId: string;
   readonly initial: boolean;
   readonly messages: readonly TranscriptMessage[];
+}
+
+export interface ExtensionConfigField {
+  readonly key: string;
+  readonly label: string;
+  readonly type: "string" | "number" | "boolean" | "select";
+  readonly description?: string;
+  readonly defaultValue?: string | number | boolean;
+  readonly currentValue?: string | number | boolean;
+  readonly options?: readonly string[];
+  readonly source: "env" | "file" | "flag" | "constant";
+  readonly sourcePath?: string;
+}
+
+export interface ExtensionConfigSchema {
+  readonly extensionPath: string;
+  readonly displayName: string;
+  readonly fields: readonly ExtensionConfigField[];
+  readonly analyzedAt: string;
+  readonly analyzedBy?: string;
+}
+
+export interface ExtensionConfigValue {
+  readonly key: string;
+  readonly value: string | number | boolean;
+}
+
+export interface SmartCompactSettings {
+  readonly summaryModel?: string;
+  readonly segmentationModel?: string;
+  readonly minContextPercent?: number;
+  readonly minTokenThreshold?: number;
+  readonly autoTrigger?: boolean;
 }
 
 export interface PiDesktopApi {
@@ -601,6 +659,14 @@ export interface PiDesktopApi {
   redoEdits(workspaceId: string, ops: readonly UndoEditOp[]): Promise<UndoEditsResult>;
   commitPushExecute(workspaceId: string): Promise<{ readonly success: boolean; readonly message: string; readonly commitMessage?: string }>;
   setCommitPushModel(workspaceId: string, model: string): Promise<DesktopAppState>;
+  getSmartCompactSettings(): Promise<SmartCompactSettings>;
+  setSmartCompactSettings(settings: Partial<SmartCompactSettings>): Promise<SmartCompactSettings>;
+  analyzeExtensionConfig(extensionPath: string, model?: string): Promise<ExtensionConfigSchema>;
+  getExtensionConfig(extensionPath: string): Promise<ExtensionConfigSchema | null>;
+  setExtensionConfig(extensionPath: string, values: readonly ExtensionConfigValue[]): Promise<void>;
+  installExtension(source: string, local?: boolean): Promise<{ success: boolean; message: string }>;
+  uninstallExtension(source: string, local?: boolean): Promise<{ success: boolean; message: string }>;
+  checkExtensionUpdates(): Promise<{ source: string; current: string; latest: string }[]>;
   getWorkspacePrInfo(workspaceId: string): Promise<WorkspacePrInfo>;
   startChat(input: StartChatInput): Promise<DesktopAppState>;
   selectChat(chatId: string): Promise<DesktopAppState>;

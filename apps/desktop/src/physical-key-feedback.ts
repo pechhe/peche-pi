@@ -24,9 +24,11 @@ function isInComposer(target: EventTarget | null): boolean {
 
 export function installPhysicalKeyFeedback(): () => void {
   const onKeyDown = (event: KeyboardEvent): void => {
-    // Enter to send (not Shift+Enter newline, not while IME composing).
+    // Enter to send: stay depressed for as long as the key is physically held
+    // (no auto-release timeout). Released on keyup below.
     if (event.key === "Enter" && !event.shiftKey && !event.isComposing && isInComposer(event.target)) {
-      flash(document.querySelector(".composer__send"));
+      const el = document.querySelector(".composer__send");
+      if (el && !(el as HTMLButtonElement).disabled) el.classList.add("is-pressed");
       return;
     }
     // Shift+Tab cycles thinking level.
@@ -40,6 +42,15 @@ export function installPhysicalKeyFeedback(): () => void {
       return;
     }
   };
+  const onKeyUp = (event: KeyboardEvent): void => {
+    if (event.key === "Enter") {
+      document.querySelector(".composer__send")?.classList.remove("is-pressed");
+    }
+  };
   window.addEventListener("keydown", onKeyDown, true);
-  return () => window.removeEventListener("keydown", onKeyDown, true);
+  window.addEventListener("keyup", onKeyUp, true);
+  return () => {
+    window.removeEventListener("keydown", onKeyDown, true);
+    window.removeEventListener("keyup", onKeyUp, true);
+  };
 }
