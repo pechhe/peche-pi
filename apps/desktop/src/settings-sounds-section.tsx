@@ -22,6 +22,8 @@ function variantLabel(variant: ButtonClickVariant): string {
       return "Click";
     case "key":
       return "Key";
+    case "rotary":
+      return "Rotary";
     case "none":
       return "Silent";
   }
@@ -37,9 +39,10 @@ export function SettingsSoundsSection({ soundSettings, onSetSoundSettings }: Set
   const handlePreview = (category: ButtonCategory, variant: ButtonClickVariant) => {
     setPreviewing({ category, variant });
     // Dynamic import to avoid circular dependency
-    import("./button-click-sound").then(({ playClick, playKey }) => {
+    import("./button-click-sound").then(({ playClick, playKey, playRotary }) => {
       if (variant === "click") playClick("down");
       else if (variant === "key") playKey("press");
+      else if (variant === "rotary") playRotary();
     });
     setTimeout(() => setPreviewing(null), 300);
   };

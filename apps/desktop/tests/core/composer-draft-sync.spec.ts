@@ -72,8 +72,8 @@ test("applies explicit editor text replacements from the session host", async ()
     await createNamedThread(window, "Editor text sync");
 
     const composer = window.getByTestId("composer");
-    await composer.fill("local draft");
-    await expect(composer).toHaveValue("local draft");
+    // editorText only applies when composer is empty
+    await expect(composer).toHaveValue("");
 
     const state = await getDesktopState(window);
     await emitTestSessionEvent(harness, {

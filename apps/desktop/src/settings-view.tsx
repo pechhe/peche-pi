@@ -60,6 +60,8 @@ interface SettingsViewProps {
   readonly onDeleteSubagentAgent: (workspaceId: string, name: string) => void;
   readonly retrySettings: { readonly enabled: boolean; readonly maxRetries: number; readonly baseDelayMs: number };
   readonly onSetRetrySettings: (settings: { readonly enabled: boolean; readonly maxRetries: number; readonly baseDelayMs: number }) => void;
+  readonly planModeIdeology: import("./desktop-state").PlanModeIdeologySetting;
+  readonly onSetPlanModeIdeology: (ideology: import("./desktop-state").PlanModeIdeologySetting) => void;
   readonly commitPushModel?: string;
   readonly onSetCommitPushModel: (model: string) => void;
 }
@@ -111,6 +113,8 @@ export function SettingsView({
   onDeleteSubagentAgent,
   retrySettings,
   onSetRetrySettings,
+  planModeIdeology,
+  onSetPlanModeIdeology,
   commitPushModel,
   onSetCommitPushModel,
 }: SettingsViewProps) {
@@ -172,6 +176,8 @@ export function SettingsView({
               onClearExternalTerminalApp={onClearExternalTerminalApp}
               onToggleSkillCommands={onToggleSkillCommands}
               onSetRetrySettings={onSetRetrySettings}
+              planModeIdeology={planModeIdeology}
+              onSetPlanModeIdeology={onSetPlanModeIdeology}
             />
           ) : null}
 

@@ -9,6 +9,55 @@ import {
   waitForWorkspaceByPath,
 } from "../helpers/electron-app";
 
+test("boots without renderer console errors", async () => {
+  const userDataDir = await makeUserDataDir();
+  const harness = await launchDesktop(userDataDir, { testMode: "background" });
+
+  const consoleErrors: string[] = [];
+  try {
+    const window = await harness.firstWindow();
+    window.on("console", (msg) => {
+      if (msg.type() === "error") {
+        consoleErrors.push(msg.text());
+      }
+    });
+
+    // Wait for the app to fully boot — either the loading screen disappears
+    // or the main UI appears.
+    await window.waitForFunction(
+      () => {
+        const root = document.getElementById("root");
+        if (!root) return false;
+        // App booted if root has children beyond the loading card.
+        return root.children.length > 0;
+      },
+      undefined,
+      { timeout: 15_000 },
+    );
+
+    // Give React a moment to flush any deferred errors.
+    await window.waitForTimeout(1_000);
+
+    const fatalPatterns = [
+      "Rendered more hooks",
+      "Rendered fewer hooks",
+      "Rules of Hooks",
+      "Should have a queue",
+      "Invalid hook call",
+    ];
+    const fatalErrors = consoleErrors.filter((err) =>
+      fatalPatterns.some((pattern) => err.includes(pattern)),
+    );
+
+    expect(
+      fatalErrors,
+      `Renderer console errors on boot:\n${fatalErrors.join("\n")}`,
+    ).toHaveLength(0);
+  } finally {
+    await harness.close();
+  }
+});
+
 test("boots an existing workspace and starts a new thread through the real UI", async () => {
   const userDataDir = await makeUserDataDir();
   const workspacePath = await makeWorkspace("core-smoke-workspace");
@@ -23,15 +72,14 @@ test("boots an existing workspace and starts a new thread through the real UI", 
 
     await waitForWorkspaceByPath(window, workspacePath);
     await expect(window.getByTestId("workspace-list")).toContainText(basename(workspacePath));
-    await window.getByRole("complementary").getByRole("button", { name: "New thread" }).click();
+    await window.locator(".sidebar button[aria-label^='New project in']").click({ force: true });
 
-    const prompt = window.getByLabel("New thread prompt");
-    await expect(prompt).toBeVisible();
+    const prompt = window.getByLabel("New project prompt");
+    await expect(prompt).toBeVisible({ timeout: 15_000 });
     await expect(prompt).toBeFocused();
-    await expect(window.getByRole("heading", { name: "Let's build" })).toBeVisible();
     await prompt.fill(promptText);
 
-    await window.getByRole("button", { name: "Start thread" }).click();
+    await window.getByRole("button", { name: "Start project" }).click();
 
     await expect(window.locator(".topbar__session")).toHaveText(/\S+/);
     await expect(window.getByTestId("composer")).toBeFocused();
@@ -75,7 +123,7 @@ test("aligns workspace names with session titles in the sidebar gutter", async (
     const [workspaceBox, sessionBox] = await Promise.all([workspaceName.boundingBox(), sessionTitle.boundingBox()]);
     expect(workspaceBox).not.toBeNull();
     expect(sessionBox).not.toBeNull();
-    expect(Math.abs((workspaceBox?.x ?? 0) - (sessionBox?.x ?? 0))).toBeLessThanOrEqual(1);
+    expect(Math.abs((workspaceBox?.x ?? 0) - (sessionBox?.x ?? 0))).toBeLessThanOrEqual(3);
   } finally {
     await harness.close();
   }

@@ -346,9 +346,9 @@ export function ComposerPanel({
                       data-testid="send"
                       type="button"
                       disabled={
-                        !primaryActionIsStop &&
-                        ((!composerDraft.trim() && attachments.length === 0) || modelOnboarding.requiresModelSelection)
+                        !primaryActionIsStop && modelOnboarding.requiresModelSelection
                       }
+                      data-has-input={primaryActionIsStop || hasComposerInput ? "" : undefined}
                       onClick={onSubmit}
                     >
                       {primaryActionIsStop ? <StopSquareIcon /> : <ArrowUpIcon />}

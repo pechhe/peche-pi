@@ -9,7 +9,7 @@
  *  - /sounds/key-off.mp3 - Alternative key sound (split into press/release)
  */
 
-export type ButtonClickVariant = "click" | "key" | "none";
+export type ButtonClickVariant = "click" | "key" | "rotary" | "none";
 
 /** Button categories for per-category sound settings */
 export type ButtonCategory = "primary" | "navigation" | "toggle" | "secondary" | "destructive";
@@ -30,7 +30,7 @@ export const DEFAULT_BUTTON_SOUND_SETTINGS: ButtonSoundSettings = {
   destructive: "click",
 };
 
-export const BUTTON_CLICK_VARIANTS: readonly ButtonClickVariant[] = ["click", "key", "none"];
+export const BUTTON_CLICK_VARIANTS: readonly ButtonClickVariant[] = ["click", "key", "rotary", "none"];
 
 export const BUTTON_CATEGORY_LABELS: Record<ButtonCategory, string> = {
   primary: "Primary actions",
@@ -65,6 +65,15 @@ type KeyPhase = "press" | "release";
 
 const CLICK_URL = "/sounds/click.mp3";
 const KEY_URLS = ["/sounds/key-on.mp3", "/sounds/key-off.mp3"];
+const ROTARY_URLS = [
+  "/sounds/click_01.mp3",
+  "/sounds/click_03.mp3",
+  "/sounds/click_04.mp3",
+  "/sounds/click_05.mp3",
+  "/sounds/click_06.mp3",
+  "/sounds/click_08.mp3",
+  "/sounds/click_11.mp3",
+];
 
 const CLICK_RATE: Record<ClickKind, number> = { down: 0.78, up: 1 };
 
@@ -73,6 +82,7 @@ let masterGain: GainNode | undefined;
 
 let clickBuffer: AudioBuffer | undefined;
 let keyBuffers: Array<{ press: AudioBuffer; release: AudioBuffer }> = [];
+let rotaryBuffers: AudioBuffer[] = [];
 
 let loadPromise: Promise<void> | undefined;
 
@@ -290,6 +300,13 @@ function loadAll(): Promise<void> {
     keyBuffers = rawKeys
       .filter((b): b is AudioBuffer => Boolean(b))
       .map((b) => splitKeySample(ctx, b));
+    
+    const rawRotary = await Promise.all(
+      ROTARY_URLS.map((url) => fetchBuffer(ctx, url))
+    );
+    rotaryBuffers = rawRotary
+      .filter((b): b is AudioBuffer => Boolean(b))
+      .map((b) => trimSilence(ctx, b));
   })();
 
   return loadPromise;
@@ -348,6 +365,20 @@ export function playKey(phase: KeyPhase = "press"): void {
   }
 }
 
+/** Play a random rotary switch sound */
+export function playRotary(): void {
+  if (rotaryBuffers.length === 0) {
+    void loadAll().then(() => {
+      if (rotaryBuffers.length > 0) playRotary();
+    });
+    return;
+  }
+
+  const idx = Math.floor(Math.random() * rotaryBuffers.length);
+  const buffer = rotaryBuffers[idx];
+  if (buffer) void fire(buffer, 0.9 + Math.random() * 0.2); // slight pitch variation
+}
+
 /** Unlock audio context (call on first user interaction) */
 async function unlockClickAudio(): Promise<void> {
   const ctx = getContext();
@@ -367,6 +398,8 @@ function playButtonForCategory(category: ButtonCategory): void {
     playClick("down");
   } else if (variant === "key") {
     playKey("press");
+  } else if (variant === "rotary") {
+    playRotary();
   }
 }
 
@@ -380,6 +413,8 @@ export function playButtonClick(variant?: ButtonClickVariant): void {
     playClick("down");
   } else if (resolvedVariant === "key") {
     playKey("press");
+  } else if (resolvedVariant === "rotary") {
+    playRotary();
   }
 }
 
@@ -393,5 +428,7 @@ export function playButtonSecondary(variant?: ButtonClickVariant): void {
     playClick("up"); // up is higher-pitched
   } else if (resolvedVariant === "key") {
     playKey("release");
+  } else if (resolvedVariant === "rotary") {
+    playRotary();
   }
 }

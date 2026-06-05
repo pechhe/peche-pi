@@ -1002,18 +1002,11 @@ function firstNonEmptyLine(value: string): string | undefined {
 function getAvailableThinkingLevels(model: { reasoning?: boolean; thinkingLevelMap?: Record<string, string | null> }): readonly string[] {
   const ALL_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh"];
   if (!model.reasoning) return ["off"];
-  // If no thinkingLevelMap, all non-xhigh levels are available by default
-  if (!model.thinkingLevelMap) {
-    return ALL_LEVELS.filter((level) => level !== "xhigh");
-  }
-  // With thinkingLevelMap: only levels with non-null mappings are available
-  // (xhigh requires explicit non-null entry, other levels also require explicit entry)
-  // 'off' is always available for reasoning models (to disable thinking)
-  return ["off", ...ALL_LEVELS.filter((level) => {
-    if (level === "off") return false; // Already included
+
+  return ALL_LEVELS.filter((level) => {
     const mapped = model.thinkingLevelMap?.[level];
-    if (mapped === null) return false; // Explicitly disabled
-    if (mapped !== undefined) return true; // Explicitly mapped to a value
-    return false; // Not in map = not available
-  })];
+    if (mapped === null) return false;
+    if (level === "xhigh") return mapped !== undefined;
+    return true;
+  });
 }

@@ -7,6 +7,7 @@ import type {
   DesktopAppState,
   ModelSettingsScopeMode,
   NotificationPreferences,
+  PlanModeIdeologySetting,
   ThemeMode,
   ThreadTransitionSettings,
 } from "../src/desktop-state";
@@ -39,6 +40,7 @@ export type DesktopAction =
   | { readonly type: "settings/setEnableTransparency"; readonly enableTransparency: boolean }
   | { readonly type: "settings/setTranscriptVerbose"; readonly transcriptVerbose: boolean }
   | { readonly type: "settings/setComposerDeviceMode"; readonly composerDeviceMode: ComposerDeviceMode }
+  | { readonly type: "settings/setPlanModeIdeology"; readonly planModeIdeology: PlanModeIdeologySetting }
   | { readonly type: "settings/mergeThreadTransition"; readonly preferences: Partial<ThreadTransitionSettings> }
   | { readonly type: "settings/setThemeMode"; readonly themeMode: ThemeMode }
   | { readonly type: "settings/setIntegratedTerminalShell"; readonly integratedTerminalShell: string }
@@ -99,6 +101,12 @@ export function reduce(state: DesktopAppState, action: DesktopAction): DesktopAp
         return state;
       }
       return bump({ ...state, composerDeviceMode: action.composerDeviceMode });
+    }
+    case "settings/setPlanModeIdeology": {
+      if (state.planModeIdeology === action.planModeIdeology) {
+        return state;
+      }
+      return bump({ ...state, planModeIdeology: action.planModeIdeology });
     }
     case "settings/mergeThreadTransition": {
       return bump({

@@ -2336,19 +2336,162 @@ body.pi-thread-handoff .timeline-item--just-sent .timeline-item__bubble {
   color: var(--muted);
 }
 
-/* Reasoning meter */
+/* Reasoning dial */
 
 .reasoning-meter {
+  --reasoning-panel-width: calc(var(--reasoning-dial-size, 74px) * 2.45);
+  --reasoning-panel-height: calc(var(--reasoning-dial-size, 74px) * 1.62);
+  --reasoning-knob-size: var(--reasoning-dial-size, 74px);
+  position: relative;
   display: inline-flex;
+  flex-direction: column;
   align-items: center;
-  gap: 3px;
+  justify-content: flex-start;
+  width: var(--reasoning-panel-width);
+  height: var(--reasoning-panel-height);
+  color: var(--crt-ink, var(--text));
   vertical-align: middle;
 }
 
-.reasoning-meter__label {
-  font-size: 0.8em;
+.reasoning-meter__face {
+  position: absolute;
+  inset: 0;
+  border-radius: 10px;
+}
+
+.reasoning-meter__setting {
+  position: absolute;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--crt-ink-muted, var(--muted-strong));
+  font-family: ui-monospace, "SF Mono", Menlo, "Roboto Mono", monospace;
+  font-size: 8.5px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
   line-height: 1;
-  color: var(--muted-strong);
+  text-shadow: 0 1px 0 oklch(1 0.002 250 / 0.32);
+}
+
+.reasoning-meter__setting {
+  left: var(--reasoning-setting-x);
+  top: var(--reasoning-setting-y);
+  transform: translate(-50%, -50%);
+}
+
+.reasoning-meter__setting--right {
+  flex-direction: row-reverse;
+}
+
+.reasoning-meter__label {
+  color: currentColor;
+  font-size: inherit;
+  line-height: 1;
+}
+
+.reasoning-meter__light {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: radial-gradient(circle at 36% 32%, oklch(0.82 0.01 250), oklch(0.18 0.005 250) 55%, oklch(0.04 0.005 250) 100%);
+  box-shadow:
+    inset 0 0 0 1px oklch(0 0 0 / 0.62),
+    0 1px 0 oklch(1 0.002 250 / 0.34);
+}
+
+.reasoning-meter__setting--active {
+  color: var(--crt-ink, var(--text-strong));
+}
+
+.reasoning-meter__setting--active .reasoning-meter__light {
+  background: radial-gradient(circle at 34% 28%, oklch(1 0.13 78), oklch(0.83 0.18 63) 38%, oklch(0.54 0.18 49) 72%, oklch(0.18 0.05 45) 100%);
+  box-shadow:
+    inset 0 0 0 1px oklch(0.42 0.11 45 / 0.72),
+    0 0 4px oklch(0.84 0.17 66 / 0.86),
+    0 0 10px oklch(0.82 0.18 60 / 0.42);
+}
+
+.reasoning-meter__knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--reasoning-knob-size);
+  height: var(--reasoning-knob-size);
+  z-index: 1;
+  border-radius: 999px;
+  overflow: hidden;
+  transform: translate(-50%, -50%);
+  transition: transform 360ms cubic-bezier(0.2, 0.85, 0.2, 1);
+  background:
+    radial-gradient(circle at 50% 44%, oklch(1 0.002 250 / 0.56), transparent 46%),
+    conic-gradient(
+      from -14deg,
+      oklch(0.70 0.004 250) 0deg,
+      oklch(0.94 0.003 250) 36deg,
+      oklch(0.64 0.004 250) 76deg,
+      oklch(0.97 0.002 250) 118deg,
+      oklch(0.66 0.004 250) 168deg,
+      oklch(0.45 0.004 250) 215deg,
+      oklch(0.82 0.004 250) 262deg,
+      oklch(0.98 0.002 250) 312deg,
+      oklch(0.70 0.004 250) 360deg
+    );
+  box-shadow:
+    /* face bevel */
+    inset 0 1.5px 0 oklch(1 0.002 250 / 0.94),
+    inset 1px 0 0 oklch(1 0.002 250 / 0.45),
+    inset -1px 0 0 oklch(0.46 0.004 250 / 0.38),
+    inset 0 -1.5px 1px oklch(0.34 0.004 250 / 0.62),
+    inset 0 0 0 1px oklch(0.64 0.004 250 / 0.48),
+    /* sharp machined outside edge: highlight, lower shadow, dark seat, spill */
+    0 0 0 0.5px oklch(0.92 0.002 250 / 0.78),
+    0 -0.5px 0 0.5px oklch(0.98 0.002 250 / 0.72),
+    0 1px 0 1px oklch(0.56 0.004 250 / 0.72),
+    0 2px 3px 1px oklch(0.18 0.004 250 / 0.62),
+    0 7px 14px -4px oklch(0 0 0 / 0.44);
+}
+
+.reasoning-meter__knob::before {
+  content: "";
+  position: absolute;
+  inset: 6%;
+  border-radius: inherit;
+  background:
+    radial-gradient(ellipse 70% 50% at 30% 22%, oklch(1 0.002 250 / 0.34), transparent 62%),
+    radial-gradient(ellipse 62% 42% at 74% 78%, oklch(1 0.002 250 / 0.22), transparent 64%),
+    conic-gradient(
+      from 0deg,
+      transparent 0deg 32deg,
+      oklch(1 0.002 250 / 0.16) 48deg,
+      transparent 70deg 128deg,
+      oklch(1 0.002 250 / 0.20) 142deg,
+      transparent 164deg 214deg,
+      oklch(0.16 0.004 250 / 0.12) 232deg,
+      transparent 252deg 308deg,
+      oklch(1 0.002 250 / 0.18) 324deg,
+      transparent 346deg 360deg
+    ),
+    repeating-conic-gradient(from 0deg, oklch(1 0.002 250 / 0.055) 0 1.2deg, oklch(0.30 0.004 250 / 0.05) 1.2deg 2.5deg);
+  transform: rotate(var(--reasoning-dial-angle, -125deg));
+  transition: transform 360ms cubic-bezier(0.2, 0.85, 0.2, 1);
+}
+
+.reasoning-meter__knob::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 3px;
+  height: calc(var(--reasoning-knob-size) * 0.24);
+  border-radius: 999px;
+  background: linear-gradient(180deg, oklch(0.08 0.004 250 / 0.86), oklch(0.38 0.004 250 / 0.62));
+  box-shadow:
+    0 1px 0 oklch(1 0.002 250 / 0.34),
+    0 -1px 0 oklch(0 0 0 / 0.32);
+  transform: translate(-50%, -50%) rotate(var(--reasoning-dial-angle, -125deg)) translateY(calc(var(--reasoning-knob-size) * -0.28));
+  transform-origin: center;
+  transition: transform 360ms cubic-bezier(0.2, 0.85, 0.2, 1);
 }
 
 /* Model selector */
@@ -5601,14 +5744,18 @@ mark.thread-find-active {
       oklch(0.55 0.2 50) 100%
     );
   --crt-orange-metal-shadow:
-    inset 1px 1px 0 oklch(1 0.05 76 / 0.76),
-    inset 0 4px 0 -1px oklch(1 0.06 74 / 0.48),
-    inset 0 12px 18px -14px oklch(1 0.05 74 / 0.42),
-    inset -1px -1px 0 oklch(0.24 0.11 44 / 0.82),
-    inset 0 -5px 0 -1px oklch(0.24 0.1 42 / 0.78),
-    inset 0 -16px 18px -14px oklch(0.18 0.09 42 / 0.52),
-    inset 0 0 0 1px oklch(0.58 0.19 52 / 0.82),
-    0 1px 2px oklch(0 0 0 / 0.38),
+    /* face bevel */
+    inset 0 1.5px 0 oklch(1 0.06 76 / 0.88),
+    inset 1px 0 0 oklch(1 0.05 76 / 0.42),
+    inset -1px 0 0 oklch(0.36 0.14 46 / 0.44),
+    inset 0 -1.5px 1px oklch(0.24 0.1 42 / 0.72),
+    inset 0 0 0 1px oklch(0.63 0.2 55 / 0.72),
+    /* sharp machined outside edge: highlight, lower shadow, seat, spill */
+    0 0 0 0.5px oklch(0.96 0.05 76 / 0.78),
+    0 -0.5px 0 0.5px oklch(1 0.05 76 / 0.70),
+    0 1px 0 1px oklch(0.42 0.15 48 / 0.78),
+    0 2px 3px 1px oklch(0.16 0.08 42 / 0.62),
+    0 6px 12px -4px oklch(0 0 0 / 0.44),
     0 0 22px oklch(0.72 0.2 55 / 0.22);
   --crt-orange-metal-sheen:
     linear-gradient(90deg, transparent 0%, oklch(1 0.05 74 / 0.1) 8%, transparent 18%),
@@ -6341,23 +6488,36 @@ mark.thread-find-active {
   display: none;
 }
 
-/* Reasoning (thinking-level) key: match the other keycaps exactly so the
-   bottom row reads as one consistent set of physical buttons. */
-.composer-device--modular .reasoning-meter {
-  gap: 6px;
+/* Reasoning (thinking-level): not a keycap. The dial sits directly on the
+   chassis surface, like a physical selector mounted through the front panel. */
+.composer-device--modular .composer__key-mount:has(.model-selector__badge--reasoning) {
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
-/* Keep the reasoning ring from adding inline descender height so the
-   thinking key matches the other keycaps exactly. */
-.composer-device--modular .reasoning-meter svg {
-  display: block;
+.composer-device--modular .model-selector__badge--reasoning {
+  height: 124px;
+  min-width: 170px;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
 }
 
-.composer-device--modular .reasoning-meter__label {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  color: var(--crt-ink);
+.composer-device--modular .model-selector__badge--reasoning:hover:not(:disabled) {
+  background: transparent;
+  filter: none;
+}
+
+.composer-device--modular .model-selector__badge--reasoning:active:not(:disabled) {
+  transform: none;
+  box-shadow: none;
+}
+
+.composer-device--modular .model-selector__badge--reasoning .reasoning-meter {
+  --reasoning-dial-size: 68px;
 }
 
 /* ---------------------------------------------------------------- */
@@ -6494,13 +6654,21 @@ mark.thread-find-active {
   color: rgb(198 178 255);
 }
 
-/* Reasoning meter inside its pill: recolor to the shared phosphor purple. */
-.composer-device--screen .reasoning-meter__label {
+/* Reasoning dial inside its pill: keep dial physical, tint lamps/text to screen phosphor. */
+.composer-device--screen .model-selector__badge--reasoning {
+  padding: 6px 8px;
+  border-radius: 12px;
+}
+
+.composer-device--screen .model-selector__badge--reasoning .reasoning-meter {
+  --reasoning-dial-size: 54px;
   color: rgb(198 178 255);
 }
 
-.composer-device--screen .reasoning-meter svg circle {
-  stroke: rgb(198 178 255);
+.composer-device--screen .reasoning-meter__title,
+.composer-device--screen .reasoning-meter__label {
+  color: rgb(198 178 255);
+  text-shadow: 0 0 6px rgb(198 178 255 / 0.28);
 }
 
 /* ================================================================ */
@@ -6966,11 +7134,11 @@ mark.thread-find-active {
 }
 
 /* enabled (something to send): lit orange arrow + glow halo */
-:root:not(.dark).composer-device.composer-device--modular .composer__send:not(:disabled) {
+:root:not(.dark).composer-device.composer-device--modular .composer__send[data-has-input] {
   color: oklch(0.74 0.185 52);
 }
 
-:root:not(.dark).composer-device.composer-device--modular .composer__send:not(:disabled)::after {
+:root:not(.dark).composer-device.composer-device--modular .composer__send[data-has-input]::after {
   background:
     radial-gradient(circle at 50% 58%, oklch(0.80 0.20 55 / 0.32), transparent 26%);
 }
@@ -6984,7 +7152,7 @@ mark.thread-find-active {
     drop-shadow(0 -0.5px 0.5px oklch(0.22 0.005 250 / 0.7));
 }
 
-:root:not(.dark).composer-device.composer-device--modular .composer__send:not(:disabled) svg {
+:root:not(.dark).composer-device.composer-device--modular .composer__send[data-has-input] svg {
   filter:
     drop-shadow(0 1px 0 oklch(1 0.002 250 / 0.55))
     drop-shadow(0 -0.5px 0.5px oklch(0.22 0.06 40 / 0.7))
@@ -7282,11 +7450,11 @@ mark.thread-find-active {
   box-shadow: none;
 }
 
-:root.dark.composer-device.composer-device--modular .composer__send:not(:disabled) {
+:root.dark.composer-device.composer-device--modular .composer__send[data-has-input] {
   color: oklch(0.74 0.185 52);
 }
 
-:root.dark.composer-device.composer-device--modular .composer__send:not(:disabled)::after {
+:root.dark.composer-device.composer-device--modular .composer__send[data-has-input]::after {
   background:
     radial-gradient(circle at 50% 58%, oklch(0.80 0.20 55 / 0.34), transparent 26%);
 }
@@ -7299,7 +7467,7 @@ mark.thread-find-active {
     drop-shadow(0 -0.5px 0.5px oklch(0 0 0 / 0.7));
 }
 
-:root.dark.composer-device.composer-device--modular .composer__send:not(:disabled) svg {
+:root.dark.composer-device.composer-device--modular .composer__send[data-has-input] svg {
   filter:
     drop-shadow(0 1px 0 oklch(0.48 0.004 250 / 0.4))
     drop-shadow(0 -0.5px 0.5px oklch(0.18 0.06 40 / 0.7))
@@ -7911,17 +8079,7 @@ mark.thread-find-active {
 }
 
 .questionnaire-composer {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 14px;
-  align-items: stretch;
-  padding: 10px;
-  border-radius: 28px;
-  border: 1px solid oklch(0.78 0.01 250);
-  background: linear-gradient(180deg, oklch(0.91 0.006 250), oklch(0.78 0.008 250));
-  box-shadow:
-    inset 0 1px 0 oklch(1 0 0 / 0.72),
-    0 12px 28px oklch(0 0 0 / 0.18);
+  min-width: 0;
 }
 
 .questionnaire-composer:focus {
@@ -7929,133 +8087,1713 @@ mark.thread-find-active {
 }
 
 .questionnaire-composer__screen {
-  min-width: 0;
-  padding: 18px 22px;
+  min-height: 210px;
+  padding: 28px 36px 30px;
   border-radius: 18px;
   color: oklch(0.72 0.12 150);
   background:
-    radial-gradient(circle at 30% 0%, oklch(0.18 0.04 150 / 0.36), transparent 32%),
-    oklch(0.03 0.006 150);
+    radial-gradient(circle at 24% 0%, oklch(0.18 0.04 150 / 0.22), transparent 30%),
+    oklch(0.015 0.004 150);
   box-shadow:
-    inset 0 0 0 1px oklch(0.5 0.08 150 / 0.26),
-    inset 0 0 18px oklch(0 0 0 / 0.8);
+    inset 0 0 0 1px oklch(0.36 0.08 150 / 0.26),
+    inset 0 0 24px oklch(0 0 0 / 0.9);
   font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 720;
+  letter-spacing: 0.025em;
+  text-shadow: 0 0 7px oklch(0.62 0.13 150 / 0.42);
 }
 
-.questionnaire-composer__title,
+.questionnaire-composer__header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 22px;
+  align-items: start;
+}
+
 .questionnaire-composer__prompt {
-  text-shadow: 0 0 8px oklch(0.66 0.13 150 / 0.42);
+  margin: 0;
+  color: oklch(0.74 0.13 150);
 }
 
-.questionnaire-composer__title {
-  font-size: 15px;
-  font-weight: 760;
-  letter-spacing: 0.04em;
+.questionnaire-composer__progress {
+  grid-template-columns: auto 110px;
+  gap: 16px;
+  align-self: start;
+  color: oklch(0.74 0.13 150);
+  font-size: 18px;
+  font-weight: 720;
+}
+
+.questionnaire-composer__progress-track {
+  width: 110px;
+  height: 16px;
+  border-radius: 0;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      oklch(0.22 0.05 150) 0 13px,
+      transparent 13px 17px
+    );
+}
+
+.questionnaire-composer__progress-track .composer__context-fill {
+  border-radius: 0;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      oklch(0.76 0.14 150) 0 13px,
+      transparent 13px 17px
+    );
+}
+
+.questionnaire-composer__progress-label {
+  gap: 0;
 }
 
 .questionnaire-composer__intro,
 .questionnaire-composer__label {
-  margin-top: 8px;
+  margin-top: 10px;
   color: oklch(0.58 0.08 150);
-  font-size: 12px;
-}
-
-.questionnaire-composer__prompt {
-  margin-top: 16px;
   font-size: 14px;
-  font-weight: 680;
+  font-weight: 620;
 }
 
 .questionnaire-composer__options {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-top: 18px;
+  display: grid;
+  gap: 8px;
+  margin-top: 34px;
+  max-width: 720px;
 }
 
 .questionnaire-composer__option {
-  min-height: 44px;
-  padding: 10px 18px;
-  border-radius: 7px;
-  border: 1px solid oklch(0.55 0.09 150 / 0.55);
-  background: oklch(0.04 0.006 150);
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  align-items: baseline;
+  width: fit-content;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: oklch(0.72 0.12 150);
   font: inherit;
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
+  font-size: 18px;
+  font-weight: 720;
+  letter-spacing: inherit;
+  text-align: left;
   cursor: pointer;
-  box-shadow: inset 0 0 0 1px oklch(0 0 0 / 0.5), 0 0 10px oklch(0.45 0.11 150 / 0.12);
 }
 
 .questionnaire-composer__option:hover,
 .questionnaire-composer__option--selected {
-  border-color: oklch(0.78 0.15 150);
-  box-shadow: inset 0 0 0 1px oklch(0.7 0.14 150 / 0.45), 0 0 14px oklch(0.62 0.14 150 / 0.24);
+  color: oklch(0.82 0.15 150);
 }
 
-.questionnaire-composer__option small,
-.questionnaire-composer__badge {
-  display: block;
-  margin-top: 4px;
-  color: oklch(0.54 0.08 150);
-  font-size: 10px;
-  font-weight: 560;
+.questionnaire-composer__cursor {
+  color: oklch(0.82 0.15 150);
 }
 
 .questionnaire-composer__other {
-  display: flex;
+  display: grid;
+  grid-template-columns: 32px minmax(180px, 420px) auto;
   gap: 8px;
-  margin-top: 12px;
+  align-items: center;
+  margin-top: 14px;
 }
 
 .questionnaire-composer__other input {
-  flex: 1;
-  min-width: 180px;
-  border-radius: 8px;
-  border: 1px solid oklch(0.55 0.09 150 / 0.6);
-  background: oklch(0.02 0.005 150);
+  min-width: 0;
+  border: 0;
+  border-bottom: 1px solid oklch(0.54 0.1 150 / 0.64);
+  background: transparent;
   color: oklch(0.78 0.13 150);
-  padding: 9px 10px;
+  padding: 2px 0 3px;
   font: inherit;
+  outline: none;
 }
 
-.questionnaire-composer__other button,
-.questionnaire-composer__back,
-.questionnaire-composer__skip {
-  border-radius: 999px;
-  border: 1px solid oklch(0.62 0.01 250);
-  background: oklch(0.88 0.006 250);
-  color: oklch(0.24 0.006 250);
-  font-size: 12px;
-  font-weight: 720;
-  cursor: pointer;
+.questionnaire-composer__other input::placeholder {
+  color: oklch(0.46 0.07 150);
 }
 
 .questionnaire-composer__other button {
-  padding: 8px 12px;
+  border: 0;
+  background: transparent;
+  color: oklch(0.72 0.12 150);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
 }
 
-.questionnaire-composer__hint {
-  margin-top: 14px;
-  color: oklch(0.48 0.07 150);
-  font-size: 12px;
-}
-
-.questionnaire-composer__controls {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 8px;
-  min-width: 76px;
-}
-
-.questionnaire-composer__back,
-.questionnaire-composer__skip {
-  padding: 9px 12px;
-}
-
-.questionnaire-composer__back:disabled {
+.questionnaire-composer__other button:disabled {
   opacity: 0.45;
-  cursor: not-allowed;
+  cursor: default;
+}
+
+/* Reasoning dial final override: never inherit keycap styling. The hidden
+   button only supplies click/keyboard semantics; visually, control is mounted
+   straight through chassis surface. */
+:root.composer-device.composer-device--modular .composer__key-mount--reasoning,
+:root:not(.dark).composer-device.composer-device--modular .composer__key-mount--reasoning,
+:root.dark.composer-device.composer-device--modular .composer__key-mount--reasoning {
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+:root.composer-device.composer-device--modular .model-selector__badge.model-selector__badge--reasoning,
+:root:not(.dark).composer-device.composer-device--modular .model-selector__badge.model-selector__badge--reasoning,
+:root.dark.composer-device.composer-device--modular .model-selector__badge.model-selector__badge--reasoning,
+:root.composer-device.composer-device--modular.composer-device--metal-keys .model-selector__badge.model-selector__badge--reasoning,
+:root:not(.dark).composer-device.composer-device--modular.composer-device--metal-keys .model-selector__badge.model-selector__badge--reasoning,
+:root.dark.composer-device.composer-device--modular.composer-device--metal-keys .model-selector__badge.model-selector__badge--reasoning {
+  width: 170px;
+  min-width: 170px;
+  height: 124px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  color: var(--crt-ink, var(--text));
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
+  text-shadow: none;
+  transform: none;
+  filter: none;
+}
+
+:root.composer-device.composer-device--modular .model-selector__badge.model-selector__badge--reasoning:hover:not(:disabled),
+:root.composer-device.composer-device--modular .model-selector__badge.model-selector__badge--reasoning:is(:active, .is-pressed, [aria-expanded="true"]):not(:disabled),
+:root:not(.dark).composer-device.composer-device--modular .model-selector__badge.model-selector__badge--reasoning:hover:not(:disabled),
+:root:not(.dark).composer-device.composer-device--modular .model-selector__badge.model-selector__badge--reasoning:is(:active, .is-pressed, [aria-expanded="true"]):not(:disabled),
+:root.dark.composer-device.composer-device--modular .model-selector__badge.model-selector__badge--reasoning:hover:not(:disabled),
+:root.dark.composer-device.composer-device--modular .model-selector__badge.model-selector__badge--reasoning:is(:active, .is-pressed, [aria-expanded="true"]):not(:disabled) {
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+  filter: none;
+}
+
+/* Caveman dial: same chassis-mounted physical selector as reasoning. */
+:root.composer-device.composer-device--modular .composer__key-mount--caveman,
+:root:not(.dark).composer-device.composer-device--modular .composer__key-mount--caveman,
+:root.dark.composer-device.composer-device--modular .composer__key-mount--caveman {
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+:root.composer-device.composer-device--modular .caveman-selector__select.caveman-selector__select--dial,
+:root:not(.dark).composer-device.composer-device--modular .caveman-selector__select.caveman-selector__select--dial,
+:root.dark.composer-device.composer-device--modular .caveman-selector__select.caveman-selector__select--dial,
+:root.composer-device.composer-device--modular.composer-device--metal-keys .caveman-selector__select.caveman-selector__select--dial,
+:root:not(.dark).composer-device.composer-device--modular.composer-device--metal-keys .caveman-selector__select.caveman-selector__select--dial,
+:root.dark.composer-device.composer-device--modular.composer-device--metal-keys .caveman-selector__select.caveman-selector__select--dial {
+  width: 170px;
+  min-width: 170px;
+  height: 112px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  color: var(--crt-ink, var(--text));
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
+  text-shadow: none;
+  transform: none;
+  filter: none;
+}
+
+:root.composer-device.composer-device--modular .caveman-selector__select.caveman-selector__select--dial:hover:not(:disabled),
+:root.composer-device.composer-device--modular .caveman-selector__select.caveman-selector__select--dial:is(:active, .is-pressed, [aria-expanded="true"]):not(:disabled),
+:root:not(.dark).composer-device.composer-device--modular .caveman-selector__select.caveman-selector__select--dial:hover:not(:disabled),
+:root:not(.dark).composer-device.composer-device--modular .caveman-selector__select.caveman-selector__select--dial:is(:active, .is-pressed, [aria-expanded="true"]):not(:disabled),
+:root.dark.composer-device.composer-device--modular .caveman-selector__select.caveman-selector__select--dial:hover:not(:disabled),
+:root.dark.composer-device.composer-device--modular .caveman-selector__select.caveman-selector__select--dial:is(:active, .is-pressed, [aria-expanded="true"]):not(:disabled) {
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+  filter: none;
+}
+
+:root.composer-device.composer-device--modular .caveman-dial {
+  --reasoning-dial-size: 68px;
+}
+
+/* Dial interaction/colors. Keep button hit area above chassis, but visual
+   children ignore pointer targeting so click always reaches button. */
+:root.composer-device.composer-device--modular .caveman-selector__select--dial {
+  position: relative;
+  z-index: 4;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+:root.composer-device.composer-device--modular .caveman-selector__select--dial .caveman-dial {
+  pointer-events: none;
+}
+
+:root.composer-device.composer-device--modular .caveman-dial__setting--off.reasoning-meter__setting--active .reasoning-meter__light {
+  background: radial-gradient(circle at 34% 28%, oklch(1 0.10 28), oklch(0.72 0.22 28) 38%, oklch(0.45 0.20 28) 72%, oklch(0.16 0.06 28) 100%);
+  box-shadow:
+    inset 0 0 0 1px oklch(0.38 0.14 28 / 0.72),
+    0 0 4px oklch(0.72 0.22 28 / 0.86),
+    0 0 10px oklch(0.70 0.22 28 / 0.42);
+}
+
+:root.composer-device.composer-device--modular .caveman-dial__setting--micro.reasoning-meter__setting--active .reasoning-meter__light {
+  background: radial-gradient(circle at 34% 28%, oklch(1 0.13 78), oklch(0.83 0.18 63) 38%, oklch(0.54 0.18 49) 72%, oklch(0.18 0.05 45) 100%);
+}
+
+:root.composer-device.composer-device--modular .caveman-dial__setting--ultra.reasoning-meter__setting--active .reasoning-meter__light {
+  background: radial-gradient(circle at 34% 28%, oklch(1 0.10 145), oklch(0.78 0.20 145) 38%, oklch(0.46 0.18 145) 72%, oklch(0.14 0.06 145) 100%);
+  box-shadow:
+    inset 0 0 0 1px oklch(0.36 0.13 145 / 0.72),
+    0 0 4px oklch(0.76 0.20 145 / 0.86),
+    0 0 10px oklch(0.74 0.20 145 / 0.42);
+}
+
+/* Start dial movement immediately when CSS var changes, without shortening
+   travel duration. */
+.reasoning-meter__knob,
+.reasoning-meter__knob::before,
+.reasoning-meter__knob::after {
+  will-change: transform;
+}
+
+/* Model selector: long physical slider with machined thumb, using existing
+   model button/dropdown semantics underneath. */
+:root.composer-device.composer-device--modular .composer__key-mount:has(.model-selector__badge:not(.model-selector__badge--reasoning)),
+:root:not(.dark).composer-device.composer-device--modular .composer__key-mount:has(.model-selector__badge:not(.model-selector__badge--reasoning)),
+:root.dark.composer-device.composer-device--modular .composer__key-mount:has(.model-selector__badge:not(.model-selector__badge--reasoning)) {
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+:root.composer-device.composer-device--modular .model-selector__badge:not(.model-selector__badge--reasoning),
+:root:not(.dark).composer-device.composer-device--modular .model-selector__badge:not(.model-selector__badge--reasoning),
+:root.dark.composer-device.composer-device--modular .model-selector__badge:not(.model-selector__badge--reasoning),
+:root.composer-device.composer-device--modular.composer-device--metal-keys .model-selector__badge:not(.model-selector__badge--reasoning),
+:root:not(.dark).composer-device.composer-device--modular.composer-device--metal-keys .model-selector__badge:not(.model-selector__badge--reasoning),
+:root.dark.composer-device.composer-device--modular.composer-device--metal-keys .model-selector__badge:not(.model-selector__badge--reasoning) {
+  width: 300px;
+  min-width: 300px;
+  height: 74px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  color: var(--crt-ink, var(--text));
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
+  text-shadow: none;
+  transform: none;
+  filter: none;
+}
+
+:root.composer-device.composer-device--modular .model-selector__badge:not(.model-selector__badge--reasoning):hover:not(:disabled),
+:root.composer-device.composer-device--modular .model-selector__badge:not(.model-selector__badge--reasoning):is(:active, .is-pressed, [aria-expanded="true"]):not(:disabled),
+:root:not(.dark).composer-device.composer-device--modular .model-selector__badge:not(.model-selector__badge--reasoning):hover:not(:disabled),
+:root:not(.dark).composer-device.composer-device--modular .model-selector__badge:not(.model-selector__badge--reasoning):is(:active, .is-pressed, [aria-expanded="true"]):not(:disabled),
+:root.dark.composer-device.composer-device--modular .model-selector__badge:not(.model-selector__badge--reasoning):hover:not(:disabled),
+:root.dark.composer-device.composer-device--modular .model-selector__badge:not(.model-selector__badge--reasoning):is(:active, .is-pressed, [aria-expanded="true"]):not(:disabled) {
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+  filter: none;
+}
+
+.model-selector__slider {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.model-selector__slider-ticks {
+  position: absolute;
+  left: 20px;
+  right: 20px;
+  top: 6px;
+  height: 13px;
+  background: repeating-linear-gradient(
+    90deg,
+    transparent 0 calc(10% - 1px),
+    oklch(0.48 0.004 250 / 0.36) calc(10% - 1px) 10%
+  );
+  mask: linear-gradient(180deg, black 0 80%, transparent 100%);
+}
+
+.model-selector__slider-rail {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  top: 30px;
+  height: 12px;
+  border-radius: 999px;
+  background:
+    linear-gradient(180deg, oklch(1 0.002 250 / 0.16), transparent 40%),
+    linear-gradient(90deg, oklch(0.02 0.004 250), oklch(0.10 0.04 50) 46%, oklch(0.30 0.11 48) 50%, oklch(0.10 0.04 50) 54%, oklch(0.02 0.004 250));
+  box-shadow:
+    inset 0 1px 2px oklch(0 0 0 / 0.82),
+    inset 0 -1px 0 oklch(1 0.002 250 / 0.24),
+    0 0 0 1px oklch(0.12 0.004 250 / 0.80),
+    0 1px 0 oklch(1 0.002 250 / 0.34);
+}
+
+.model-selector__slider-glow {
+  position: absolute;
+  left: 50%;
+  top: 32px;
+  width: 48px;
+  height: 8px;
+  border-radius: 999px;
+  transform: translateX(-50%);
+  background: oklch(0.72 0.19 52);
+  box-shadow: 0 0 8px oklch(0.74 0.20 55 / 0.62);
+}
+
+.model-selector__slider-thumb {
+  position: absolute;
+  left: 50%;
+  top: 25px;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  transform: translateX(-50%);
+  background:
+    radial-gradient(circle at 50% 44%, oklch(1 0.002 250 / 0.58), transparent 46%),
+    conic-gradient(from 0deg,
+      oklch(0.78 0.004 250) 0deg, oklch(0.60 0.004 250) 45deg,
+      oklch(0.80 0.004 250) 90deg, oklch(0.97 0.002 250) 135deg,
+      oklch(0.80 0.004 250) 180deg, oklch(0.60 0.004 250) 225deg,
+      oklch(0.80 0.004 250) 270deg, oklch(0.97 0.002 250) 315deg,
+      oklch(0.78 0.004 250) 360deg);
+  box-shadow:
+    inset 0 1.5px 0 oklch(1 0.002 250 / 0.94),
+    inset 0 -1.5px 1px oklch(0.34 0.004 250 / 0.62),
+    inset 0 0 0 1px oklch(0.64 0.004 250 / 0.48),
+    0 0 0 0.5px oklch(0.92 0.002 250 / 0.78),
+    0 -0.5px 0 0.5px oklch(0.98 0.002 250 / 0.72),
+    0 1px 0 1px oklch(0.56 0.004 250 / 0.72),
+    0 2px 3px 1px oklch(0.18 0.004 250 / 0.62),
+    0 7px 14px -4px oklch(0 0 0 / 0.44);
+}
+
+.model-selector__slider-label {
+  position: absolute;
+  bottom: 2px;
+  max-width: 96px;
+  overflow: hidden;
+  color: var(--crt-ink, var(--text));
+  font-family: ui-monospace, "SF Mono", Menlo, "Roboto Mono", monospace;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 0 oklch(1 0.002 250 / 0.52);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.model-selector__slider-label--previous { left: 2px; text-align: left; }
+.model-selector__slider-label--active {
+  left: 50%;
+  max-width: 112px;
+  color: oklch(0.72 0.18 52);
+  text-align: center;
+  text-shadow: 0 0 6px oklch(0.74 0.20 55 / 0.42);
+  transform: translateX(-50%);
+}
+.model-selector__slider-label--active::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -5px;
+  width: 12px;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+  transform: translateX(-50%);
+}
+.model-selector__slider-label--next { right: 2px; text-align: right; }
+
+/* Model slider: four slots (previous / active / next / menu), small wrapped
+   labels, and mechanical throw when choosing adjacent models. */
+:root.composer-device.composer-device--modular .model-selector__badge.model-selector__badge--slider,
+:root:not(.dark).composer-device.composer-device--modular .model-selector__badge.model-selector__badge--slider,
+:root.dark.composer-device.composer-device--modular .model-selector__badge.model-selector__badge--slider,
+:root.composer-device.composer-device--modular.composer-device--metal-keys .model-selector__badge.model-selector__badge--slider,
+:root:not(.dark).composer-device.composer-device--modular.composer-device--metal-keys .model-selector__badge.model-selector__badge--slider,
+:root.dark.composer-device.composer-device--modular.composer-device--metal-keys .model-selector__badge.model-selector__badge--slider {
+  width: 360px;
+  min-width: 360px;
+  height: 80px;
+  cursor: default;
+}
+
+.model-selector__badge--slider .model-selector__slider-thumb,
+.model-selector__badge--slider .model-selector__slider-glow {
+  transition: transform 420ms cubic-bezier(0.16, 0.92, 0.14, 1.08), filter 180ms ease;
+}
+
+.model-selector__badge--slider:has(.model-selector__slider-label--previous:active) .model-selector__slider-thumb,
+.model-selector__badge--slider:has(.model-selector__slider-label--previous:active) .model-selector__slider-glow {
+  transform: translateX(calc(-50% - 82px));
+}
+
+.model-selector__badge--slider:has(.model-selector__slider-label--next:active) .model-selector__slider-thumb,
+.model-selector__badge--slider:has(.model-selector__slider-label--next:active) .model-selector__slider-glow {
+  transform: translateX(calc(-50% + 82px));
+}
+
+.model-selector__badge--slider:has(.model-selector__slider-label--menu:active) .model-selector__slider-thumb {
+  transform: translateX(calc(-50% + 138px));
+  filter: brightness(1.08);
+}
+
+.model-selector__badge--slider .model-selector__slider-label {
+  bottom: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  width: 76px;
+  max-width: 76px;
+  min-height: 24px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font-size: 8.5px;
+  line-height: 1.08;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.model-selector__badge--slider .model-selector__slider-label:disabled {
+  cursor: default;
+  opacity: 0.36;
+}
+
+.model-selector__badge--slider .model-selector__slider-label--previous {
+  left: 4px;
+  text-align: left;
+  justify-content: flex-start;
+}
+
+.model-selector__badge--slider .model-selector__slider-label--active {
+  left: 50%;
+  width: 92px;
+  max-width: 92px;
+}
+
+.model-selector__badge--slider .model-selector__slider-label--next {
+  right: 42px;
+  text-align: right;
+  justify-content: flex-end;
+}
+
+.model-selector__badge--slider .model-selector__slider-label--menu {
+  right: 0;
+  width: 30px;
+  max-width: 30px;
+  color: var(--crt-ink-muted, var(--muted-strong));
+  font-size: 18px;
+  line-height: 0.8;
+  letter-spacing: 0;
+  text-align: center;
+}
+
+/* Model slider fixed slots: labels stay on chassis; only thumb moves. */
+.model-selector__badge--slider .model-selector__slider-thumb,
+.model-selector__badge--slider .model-selector__slider-glow {
+  left: calc(52px + (var(--model-slider-position, 1) * 128px));
+  transition:
+    left 460ms cubic-bezier(0.18, 0.9, 0.16, 1.08),
+    filter 180ms ease;
+  transform: translateX(-50%);
+}
+
+.model-selector__badge--slider:has(.model-selector__slider-label--slot-0:active) .model-selector__slider-thumb,
+.model-selector__badge--slider:has(.model-selector__slider-label--slot-0:active) .model-selector__slider-glow {
+  left: 52px;
+}
+
+.model-selector__badge--slider:has(.model-selector__slider-label--slot-1:active) .model-selector__slider-thumb,
+.model-selector__badge--slider:has(.model-selector__slider-label--slot-1:active) .model-selector__slider-glow {
+  left: 180px;
+}
+
+.model-selector__badge--slider:has(.model-selector__slider-label--slot-2:active) .model-selector__slider-thumb,
+.model-selector__badge--slider:has(.model-selector__slider-label--slot-2:active) .model-selector__slider-glow {
+  left: 308px;
+}
+
+.model-selector__badge--slider:has(.model-selector__slider-label--previous:active) .model-selector__slider-thumb,
+.model-selector__badge--slider:has(.model-selector__slider-label--previous:active) .model-selector__slider-glow,
+.model-selector__badge--slider:has(.model-selector__slider-label--next:active) .model-selector__slider-thumb,
+.model-selector__badge--slider:has(.model-selector__slider-label--next:active) .model-selector__slider-glow {
+  transform: translateX(-50%);
+}
+
+.model-selector__badge--slider .model-selector__slider-label--slot {
+  top: 22px;
+  bottom: auto;
+  z-index: 3;
+  height: 58px;
+  padding-top: 34px;
+  box-sizing: border-box;
+}
+
+.model-selector__badge--slider .model-selector__slider-label--slot-0 {
+  left: 0;
+  right: auto;
+  transform: none;
+  text-align: left;
+  justify-content: flex-start;
+}
+
+.model-selector__badge--slider .model-selector__slider-label--slot-1 {
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+  text-align: center;
+  justify-content: center;
+}
+
+.model-selector__badge--slider .model-selector__slider-label--slot-2 {
+  right: 34px;
+  left: auto;
+  transform: none;
+  text-align: right;
+  justify-content: flex-end;
+}
+
+.model-selector__badge--slider .model-selector__slider-label--selected {
+  color: oklch(0.72 0.18 52);
+  text-shadow: 0 0 6px oklch(0.74 0.20 55 / 0.42);
+}
+
+.model-selector__badge--slider .model-selector__slider-label--selected::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -5px;
+  width: 12px;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+  transform: translateX(-50%);
+}
+
+.model-selector__badge--slider .model-selector__slider-label--menu {
+  top: 46px;
+  bottom: auto;
+  z-index: 3;
+}
+
+/* Model slider refinement: pinned slots, no carousel flicker, lower pointer ticks. */
+.model-selector__badge--slider .model-selector__slider-ticks {
+  left: 0;
+  right: 34px;
+  top: 52px;
+  height: 8px;
+  background: none;
+  mask: none;
+  pointer-events: none;
+}
+
+.model-selector__badge--slider .model-selector__slider-tick {
+  position: absolute;
+  top: 0;
+  width: 1px;
+  height: 7px;
+  border-radius: 999px;
+  background: oklch(0.30 0.004 250 / 0.46);
+  box-shadow: 0 1px 0 oklch(1 0.002 250 / 0.42);
+}
+
+.model-selector__badge--slider .model-selector__slider-tick--0 { left: 52px; }
+.model-selector__badge--slider .model-selector__slider-tick--1 { left: 180px; }
+.model-selector__badge--slider .model-selector__slider-tick--2 { left: 308px; }
+
+.model-selector__badge--slider .model-selector__slider-thumb,
+.model-selector__badge--slider .model-selector__slider-glow {
+  left: calc(52px + (var(--model-slider-position, 1) * 128px));
+  transform: translateX(-50%);
+  transition:
+    left 460ms cubic-bezier(0.18, 0.9, 0.16, 1.08),
+    filter 180ms ease;
+}
+
+.model-selector__badge--slider .model-selector__slider-label--slot {
+  top: 22px;
+  height: 58px;
+  padding-top: 36px;
+}
+
+.model-selector__badge--slider .model-selector__slider-label--slot-0 {
+  left: 14px;
+  width: 76px;
+  text-align: center;
+  justify-content: center;
+}
+
+.model-selector__badge--slider .model-selector__slider-label--slot-1 {
+  left: 50%;
+  width: 96px;
+  transform: translateX(-50%);
+  text-align: center;
+  justify-content: center;
+}
+
+.model-selector__badge--slider .model-selector__slider-label--slot-2 {
+  right: 14px;
+  width: 76px;
+  text-align: center;
+  justify-content: center;
+}
+
+.model-selector__badge--slider .model-selector__slider-label--selected::after {
+  display: none;
+}
+
+.model-selector__badge--slider .model-selector__item-hide {
+  color: oklch(0.72 0.18 52);
+}
+
+/* Model slider final: four equal detents, no overshoot. */
+.model-selector__badge--slider {
+  --model-slider-slot-start: 44px;
+  --model-slider-slot-step: 90.666px;
+}
+
+.model-selector__badge--slider .model-selector__slider-thumb,
+.model-selector__badge--slider .model-selector__slider-glow {
+  left: calc(var(--model-slider-slot-start) + (var(--model-slider-position, 1) * var(--model-slider-slot-step)));
+  transform: translateX(-50%);
+  transition:
+    left 420ms cubic-bezier(0.22, 0.72, 0.18, 1),
+    filter 160ms ease-out;
+}
+
+.model-selector__badge--slider:has(.model-selector__slider-label--slot-0:active) .model-selector__slider-thumb,
+.model-selector__badge--slider:has(.model-selector__slider-label--slot-0:active) .model-selector__slider-glow { left: 44px; }
+.model-selector__badge--slider:has(.model-selector__slider-label--slot-1:active) .model-selector__slider-thumb,
+.model-selector__badge--slider:has(.model-selector__slider-label--slot-1:active) .model-selector__slider-glow { left: 134.666px; }
+.model-selector__badge--slider:has(.model-selector__slider-label--slot-2:active) .model-selector__slider-thumb,
+.model-selector__badge--slider:has(.model-selector__slider-label--slot-2:active) .model-selector__slider-glow { left: 225.333px; }
+.model-selector__badge--slider:has(.model-selector__slider-label--slot-3:active) .model-selector__slider-thumb,
+.model-selector__badge--slider:has(.model-selector__slider-label--slot-3:active) .model-selector__slider-glow { left: 316px; }
+
+.model-selector__badge--slider .model-selector__slider-tick--0 { left: 44px; }
+.model-selector__badge--slider .model-selector__slider-tick--1 { left: 134.666px; }
+.model-selector__badge--slider .model-selector__slider-tick--2 { left: 225.333px; }
+.model-selector__badge--slider .model-selector__slider-tick--3 { left: 316px; }
+
+.model-selector__badge--slider .model-selector__slider-label--slot {
+  width: 78px;
+  max-width: 78px;
+  text-align: center;
+  justify-content: center;
+}
+
+.model-selector__badge--slider .model-selector__slider-label--slot-0 { left: 5px; right: auto; transform: none; }
+.model-selector__badge--slider .model-selector__slider-label--slot-1 { left: 95.666px; right: auto; transform: none; }
+.model-selector__badge--slider .model-selector__slider-label--slot-2 { left: 186.333px; right: auto; transform: none; }
+.model-selector__badge--slider .model-selector__slider-label--slot-3 { left: 277px; right: auto; transform: none; }
+
+.model-selector__badge--slider .model-selector__slider-label--menu {
+  top: 22px;
+  height: 58px;
+  padding-top: 36px;
+  color: var(--crt-ink-muted, var(--muted-strong));
+  font-size: 16px;
+  line-height: 0.8;
+}
+
+/* Model slider polish: centered machined thumb and reference-style orange insert. */
+.model-selector__badge--slider .model-selector__slider-rail {
+  top: 30px;
+  height: 12px;
+}
+
+.model-selector__badge--slider .model-selector__slider-thumb {
+  top: 22px;
+}
+
+.model-selector__badge--slider .model-selector__slider-glow {
+  top: 32px;
+  width: 116px;
+  height: 8px;
+  border-radius: 2px;
+  background:
+    linear-gradient(180deg,
+      oklch(0.84 0.18 55) 0%,
+      oklch(0.72 0.20 49) 48%,
+      oklch(0.58 0.17 44) 100%);
+  box-shadow:
+    inset 0 1px 0 oklch(1 0.002 250 / 0.42),
+    inset 0 -1px 0 oklch(0.30 0.08 42 / 0.56),
+    0 0 3px oklch(0.70 0.18 50 / 0.34);
+  opacity: 0.95;
+}
+
+/* Model slider glow correction: subtle in-track amber lamp, no edge spill. */
+.model-selector__badge--slider .model-selector__slider-glow {
+  width: 70px;
+  height: 7px;
+  top: 32.5px;
+  border-radius: 3px;
+  background:
+    linear-gradient(180deg,
+      oklch(0.82 0.16 57 / 0.92) 0%,
+      oklch(0.68 0.17 50 / 0.88) 54%,
+      oklch(0.50 0.13 43 / 0.86) 100%);
+  box-shadow:
+    0 0 10px 2px oklch(0.70 0.18 50 / 0.20),
+    0 0 4px oklch(0.74 0.18 52 / 0.24),
+    inset 0 1px 0 oklch(1 0.002 250 / 0.24),
+    inset 0 -1px 0 oklch(0.24 0.07 40 / 0.46);
+  opacity: 0.82;
+}
+
+/* Model slider fixes: menu detent opens only; amber light is clipped in-track. */
+.model-selector__badge--slider:has(.model-selector__slider-label--slot-3:active) .model-selector__slider-thumb,
+.model-selector__badge--slider:has(.model-selector__slider-label--slot-3:active) .model-selector__slider-glow,
+.model-selector__badge--slider:has(.model-selector__slider-label--menu:active) .model-selector__slider-thumb,
+.model-selector__badge--slider:has(.model-selector__slider-label--menu:active) .model-selector__slider-glow {
+  left: calc(var(--model-slider-slot-start) + (var(--model-slider-position, 1) * var(--model-slider-slot-step)));
+  transform: translateX(-50%);
+  filter: none;
+}
+
+.model-selector__badge--slider .model-selector__slider-glow {
+  width: 64px;
+  height: 7px;
+  top: 32.5px;
+  border-radius: 2px;
+  overflow: hidden;
+  clip-path: inset(0 round 2px);
+  background:
+    radial-gradient(ellipse at 50% 50%, oklch(0.86 0.17 57 / 0.42) 0 22%, transparent 68%),
+    linear-gradient(180deg,
+      oklch(0.78 0.15 56 / 0.72) 0%,
+      oklch(0.64 0.15 49 / 0.62) 55%,
+      oklch(0.45 0.11 43 / 0.58) 100%);
+  box-shadow:
+    inset 0 1px 0 oklch(1 0.002 250 / 0.18),
+    inset 0 -1px 0 oklch(0.18 0.05 38 / 0.42);
+  opacity: 0.76;
+}
+
+/* Model slider amber clipping: glow lives inside rail viewport, not shrunk to hide spill. */
+.model-selector__badge--slider .model-selector__slider-track {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  top: 30px;
+  height: 12px;
+  border-radius: 999px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.model-selector__badge--slider .model-selector__slider-track .model-selector__slider-rail {
+  position: absolute;
+  inset: 0;
+  height: auto;
+  left: 0;
+  right: 0;
+  top: 0;
+}
+
+.model-selector__badge--slider .model-selector__slider-track .model-selector__slider-glow {
+  top: 2.5px;
+  width: 112px;
+  height: 7px;
+  border-radius: 2px;
+  left: calc((var(--model-slider-slot-start) - 14px) + (var(--model-slider-position, 1) * var(--model-slider-slot-step)));
+  transform: translateX(-50%);
+  overflow: visible;
+  clip-path: none;
+  background:
+    radial-gradient(ellipse at 50% 50%, oklch(0.94 0.14 58 / 0.34) 0 16%, transparent 74%),
+    linear-gradient(180deg,
+      oklch(0.80 0.15 56 / 0.70) 0%,
+      oklch(0.64 0.15 49 / 0.58) 55%,
+      oklch(0.46 0.11 43 / 0.54) 100%);
+  box-shadow:
+    0 0 12px 3px oklch(0.72 0.18 52 / 0.22),
+    inset 0 1px 0 oklch(1 0.002 250 / 0.18),
+    inset 0 -1px 0 oklch(0.18 0.05 38 / 0.42);
+  opacity: 0.72;
+}
+
+.model-selector__badge--slider:has(.model-selector__slider-label--slot-0:active) .model-selector__slider-track .model-selector__slider-glow { left: calc(44px - 14px); }
+.model-selector__badge--slider:has(.model-selector__slider-label--slot-1:active) .model-selector__slider-track .model-selector__slider-glow { left: calc(134.666px - 14px); }
+.model-selector__badge--slider:has(.model-selector__slider-label--slot-2:active) .model-selector__slider-track .model-selector__slider-glow { left: calc(225.333px - 14px); }
+.model-selector__badge--slider:has(.model-selector__slider-label--slot-3:active) .model-selector__slider-track .model-selector__slider-glow,
+.model-selector__badge--slider:has(.model-selector__slider-label--menu:active) .model-selector__slider-track .model-selector__slider-glow {
+  left: calc((var(--model-slider-slot-start) - 14px) + (var(--model-slider-position, 1) * var(--model-slider-slot-step)));
+}
+
+/* Model menu controls: choose fixed slider slot or hide from overflow menu. */
+.model-selector__item-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.model-selector__item-slot,
+.model-selector__item-hide {
+  border: 1px solid oklch(0.42 0.02 250 / 0.35);
+  border-radius: 4px;
+  background: oklch(0.16 0.01 250 / 0.18);
+  color: var(--crt-ink-muted, var(--muted-strong));
+  font-family: ui-monospace, "SF Mono", Menlo, "Roboto Mono", monospace;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+  padding: 3px 5px;
+  text-transform: uppercase;
+}
+
+.model-selector__item-slot:hover,
+.model-selector__item-hide:hover {
+  border-color: oklch(0.72 0.18 52 / 0.55);
+  color: oklch(0.72 0.18 52);
+}
+
+/* Snappier, non-overshooting model slide. */
+.model-selector__badge--slider .model-selector__slider-thumb,
+.model-selector__badge--slider .model-selector__slider-track .model-selector__slider-glow {
+  will-change: left;
+  transition:
+    left 260ms cubic-bezier(0.2, 0.78, 0.25, 1),
+    filter 120ms ease-out;
+}
+
+/* Model slider amber lamp: soft glow trapped inside black slot, like reference. */
+.model-selector__badge--slider .model-selector__slider-track .model-selector__slider-glow {
+  width: 92px;
+  height: 10px;
+  top: 1px;
+  border-radius: 999px;
+  background:
+    radial-gradient(ellipse at 50% 50%,
+      oklch(0.95 0.15 62 / 0.88) 0%,
+      oklch(0.82 0.18 55 / 0.72) 22%,
+      oklch(0.68 0.17 48 / 0.42) 48%,
+      transparent 76%);
+  box-shadow:
+    0 0 8px 2px oklch(0.78 0.18 54 / 0.30),
+    0 0 18px 4px oklch(0.70 0.16 48 / 0.16);
+  opacity: 0.86;
+}
+
+/* Model slider amber lamp: brighter orange, less brown. */
+.model-selector__badge--slider .model-selector__slider-track .model-selector__slider-glow {
+  background:
+    radial-gradient(ellipse at 50% 50%,
+      oklch(0.98 0.20 68 / 0.94) 0%,
+      oklch(0.86 0.23 58 / 0.82) 24%,
+      oklch(0.74 0.22 49 / 0.52) 50%,
+      transparent 78%);
+  box-shadow:
+    0 0 8px 2px oklch(0.82 0.23 57 / 0.38),
+    0 0 18px 5px oklch(0.76 0.22 48 / 0.22);
+  opacity: 0.92;
+}
+
+/* Composer mode: vertical version of machined slider style. */
+.composer-device--modular .composer__key-mount--mode {
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.composer-device--modular .composer-mode {
+  display: grid;
+  grid-template-rows: 28px 92px 28px;
+  grid-template-columns: 72px;
+  gap: 4px;
+  width: 72px;
+  min-width: 72px;
+  height: 152px;
+  place-items: center;
+  cursor: pointer;
+}
+
+.composer-device--modular .composer-mode__label {
+  min-width: 0;
+  width: 72px;
+  font-size: 8.5px;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.composer-device--modular .composer-mode__track {
+  position: relative;
+  width: 18px;
+  height: 92px;
+  margin: 0;
+  border-radius: 999px;
+  overflow: hidden;
+  background:
+    linear-gradient(90deg, oklch(1 0.002 250 / 0.18), transparent 38% 62%, oklch(0 0 0 / 0.28)),
+    linear-gradient(180deg, oklch(0.02 0.004 250), oklch(0.10 0.04 50) 44%, oklch(0.20 0.08 48) 50%, oklch(0.10 0.04 50) 56%, oklch(0.02 0.004 250));
+  box-shadow:
+    inset 1px 0 2px oklch(0 0 0 / 0.78),
+    inset -1px 0 0 oklch(1 0.002 250 / 0.22),
+    0 0 0 1px oklch(0.12 0.004 250 / 0.80),
+    1px 0 0 oklch(1 0.002 250 / 0.30);
+}
+
+.composer-device--modular .composer-mode__track::before {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  width: 10px;
+  height: 58px;
+  border-radius: 999px;
+  background:
+    radial-gradient(ellipse at 50% 50%,
+      oklch(0.98 0.20 68 / 0.92) 0%,
+      oklch(0.86 0.23 58 / 0.78) 24%,
+      oklch(0.74 0.22 49 / 0.46) 50%,
+      transparent 78%);
+  box-shadow:
+    0 0 8px 2px oklch(0.82 0.23 57 / 0.34),
+    0 0 18px 5px oklch(0.76 0.22 48 / 0.18);
+  opacity: 0.88;
+  transform: translateY(-50%);
+}
+
+.composer-device--modular .composer-mode__thumb {
+  top: 8px;
+  left: 50%;
+  width: 38px;
+  height: 38px;
+  transform: translateX(-50%);
+  transition: top 260ms cubic-bezier(0.2, 0.78, 0.25, 1);
+  will-change: top;
+}
+
+.composer-device--modular .composer-mode--plan .composer-mode__thumb {
+  top: 46px;
+  transform: translateX(-50%);
+}
+
+/* Composer mode final: chassis-mounted vertical slider, no rectangular button/socket. */
+:root.composer-device.composer-device--modular .composer__key-mount--mode,
+:root:not(.dark).composer-device.composer-device--modular .composer__key-mount--mode,
+:root.dark.composer-device.composer-device--modular .composer__key-mount--mode,
+:root.composer-device.composer-device--modular.composer-device--metal-keys .composer__key-mount--mode,
+:root:not(.dark).composer-device.composer-device--modular.composer-device--metal-keys .composer__key-mount--mode,
+:root.dark.composer-device.composer-device--modular.composer-device--metal-keys .composer__key-mount--mode {
+  width: 92px;
+  height: 150px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
+}
+
+:root.composer-device.composer-device--modular .composer-mode,
+:root:not(.dark).composer-device.composer-device--modular .composer-mode,
+:root.dark.composer-device.composer-device--modular .composer-mode,
+:root.composer-device.composer-device--modular.composer-device--metal-keys .composer-mode,
+:root:not(.dark).composer-device.composer-device--modular.composer-device--metal-keys .composer-mode,
+:root.dark.composer-device.composer-device--modular.composer-device--metal-keys .composer-mode,
+:root.composer-device.composer-device--modular .composer-mode:hover:not(:disabled),
+:root.composer-device.composer-device--modular .composer-mode:is(:active, .is-pressed, .composer-mode--plan):not(:disabled) {
+  position: relative;
+  display: block;
+  width: 92px;
+  min-width: 92px;
+  height: 150px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  filter: none;
+  transform: none;
+  overflow: visible;
+}
+
+:root.composer-device.composer-device--modular .composer-mode__label {
+  position: absolute;
+  left: 50%;
+  z-index: 2;
+  width: 76px;
+  min-width: 0;
+  color: var(--crt-ink, var(--text));
+  font-family: ui-monospace, "SF Mono", Menlo, "Roboto Mono", monospace;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.10em;
+  line-height: 1;
+  text-align: center;
+  text-transform: uppercase;
+  text-shadow: 0 1px 0 oklch(1 0.002 250 / 0.45);
+  transform: translateX(-50%);
+}
+
+:root.composer-device.composer-device--modular .composer-mode__label:first-child {
+  top: 0;
+}
+
+:root.composer-device.composer-device--modular .composer-mode__label:last-child {
+  bottom: 0;
+}
+
+:root.composer-device.composer-device--modular .composer-mode__label--active {
+  color: oklch(0.82 0.22 58);
+  text-shadow:
+    0 0 5px oklch(0.82 0.23 57 / 0.56),
+    0 0 12px oklch(0.76 0.22 48 / 0.24);
+}
+
+:root.composer-device.composer-device--modular .composer-mode__track {
+  position: absolute;
+  left: 50%;
+  top: 22px;
+  width: 18px;
+  height: 106px;
+  margin: 0;
+  border-radius: 999px;
+  overflow: hidden;
+  transform: translateX(-50%);
+}
+
+:root.composer-device.composer-device--modular .composer-mode__thumb {
+  top: 14px;
+  left: 50%;
+  width: 38px;
+  height: 38px;
+  transform: translateX(-50%);
+}
+
+:root.composer-device.composer-device--modular .composer-mode--plan .composer-mode__thumb {
+  top: 72px;
+  transform: translateX(-50%);
+}
+
+/* Composer mode scale + layering: thumb rides above capsule. */
+:root.composer-device.composer-device--modular .composer__key-mount--mode,
+:root:not(.dark).composer-device.composer-device--modular .composer__key-mount--mode,
+:root.dark.composer-device.composer-device--modular .composer__key-mount--mode,
+:root.composer-device.composer-device--modular.composer-device--metal-keys .composer__key-mount--mode,
+:root:not(.dark).composer-device.composer-device--modular.composer-device--metal-keys .composer__key-mount--mode,
+:root.dark.composer-device.composer-device--modular.composer-device--metal-keys .composer__key-mount--mode {
+  width: 70px;
+  height: 122px;
+}
+
+:root.composer-device.composer-device--modular .composer-mode,
+:root:not(.dark).composer-device.composer-device--modular .composer-mode,
+:root.dark.composer-device.composer-device--modular .composer-mode,
+:root.composer-device.composer-device--modular.composer-device--metal-keys .composer-mode,
+:root:not(.dark).composer-device.composer-device--modular.composer-device--metal-keys .composer-mode,
+:root.dark.composer-device.composer-device--modular.composer-device--metal-keys .composer-mode,
+:root.composer-device.composer-device--modular .composer-mode:hover:not(:disabled),
+:root.composer-device.composer-device--modular .composer-mode:is(:active, .is-pressed, .composer-mode--plan):not(:disabled) {
+  width: 70px;
+  min-width: 70px;
+  height: 122px;
+}
+
+:root.composer-device.composer-device--modular .composer-mode__label {
+  width: 62px;
+  font-size: 8px;
+}
+
+:root.composer-device.composer-device--modular .composer-mode__track {
+  top: 20px;
+  width: 16px;
+  height: 82px;
+  z-index: 1;
+}
+
+:root.composer-device.composer-device--modular .composer-mode__thumb {
+  top: 14px;
+  z-index: 3;
+  width: 32px;
+  height: 32px;
+  box-shadow:
+    inset 0 1.5px 0 oklch(1 0.002 250 / 0.9),
+    inset 0 -1.5px 1px oklch(0.42 0.004 250 / 0.55),
+    inset 0 0 0 1px oklch(0.60 0.004 250 / 0.4),
+    0 0 0 1px oklch(0.34 0.004 250 / 0.6),
+    0 2px 3px oklch(0 0 0 / 0.34),
+    0 6px 10px -3px oklch(0 0 0 / 0.34);
+}
+
+:root.composer-device.composer-device--modular .composer-mode--plan .composer-mode__thumb {
+  top: 56px;
+}
+
+/* Composer mode: recessed vertical slot with round slider thumb. */
+:root.composer-device.composer-device--modular .composer-mode__track {
+  top: 22px;
+  width: 40px;
+  height: 72px;
+  border-radius: 999px;
+  overflow: visible;
+  background:
+    linear-gradient(180deg, oklch(0 0 0 / 0.20), transparent 34%),
+    linear-gradient(90deg, oklch(0.12 0.004 250), oklch(0.31 0.004 250) 45%, oklch(0.38 0.004 250) 55%, oklch(0.14 0.004 250));
+  box-shadow:
+    inset 2px 2px 4px oklch(0 0 0 / 0.42),
+    inset -1px -1px 1px oklch(1 0.002 250 / 0.24),
+    0 0 0 1px oklch(0.18 0.004 250 / 0.70),
+    0 1px 0 oklch(1 0.002 250 / 0.28);
+}
+
+:root.composer-device.composer-device--modular .composer-mode__track::before {
+  display: none;
+}
+
+:root.composer-device.composer-device--modular .composer-mode__thumb {
+  top: 50px;
+  width: 36px;
+  height: 36px;
+  transition: top 240ms cubic-bezier(0.2, 0.78, 0.25, 1);
+}
+
+:root.composer-device.composer-device--modular .composer-mode--plan .composer-mode__thumb {
+  top: 58px;
+}
+
+:root.composer-device.composer-device--modular .composer-mode:not(.composer-mode--plan) .composer-mode__thumb {
+  top: 26px;
+}
+
+:root.composer-device.composer-device--modular .composer-mode__label:first-child {
+  top: 0;
+  color: oklch(0.82 0.22 58);
+}
+
+:root.composer-device.composer-device--modular .composer-mode__label:last-child {
+  bottom: 0;
+}
+
+:root.composer-device.composer-device--modular .composer-mode:not(.composer-mode--plan) .composer-mode__label:first-child,
+:root.composer-device.composer-device--modular .composer-mode--plan .composer-mode__label:last-child {
+  color: oklch(0.82 0.22 58);
+  text-shadow:
+    0 0 5px oklch(0.82 0.23 57 / 0.48),
+    0 0 10px oklch(0.76 0.22 48 / 0.22);
+}
+
+:root.composer-device.composer-device--modular .composer-mode:not(.composer-mode--plan) .composer-mode__label:last-child,
+:root.composer-device.composer-device--modular .composer-mode--plan .composer-mode__label:first-child {
+  color: var(--crt-ink, var(--text));
+  text-shadow: 0 1px 0 oklch(1 0.002 250 / 0.45);
+}
+
+/* Composer mode correction: thumb snaps to real end stops; no pressed/depressed motion. */
+:root.composer-device.composer-device--modular .composer-mode__track {
+  height: 74px;
+  width: 38px;
+  overflow: visible;
+}
+
+:root.composer-device.composer-device--modular .composer-mode__thumb,
+:root.composer-device.composer-device--modular .composer-mode:active:not(:disabled) .composer-mode__thumb,
+:root.composer-device.composer-device--modular .composer-mode.is-pressed:not(:disabled) .composer-mode__thumb {
+  top: 2px;
+  left: 50%;
+  width: 34px;
+  height: 34px;
+  transform: translateX(-50%);
+  filter: none;
+}
+
+:root.composer-device.composer-device--modular .composer-mode--plan .composer-mode__thumb,
+:root.composer-device.composer-device--modular .composer-mode--plan:active:not(:disabled) .composer-mode__thumb,
+:root.composer-device.composer-device--modular .composer-mode--plan.is-pressed:not(:disabled) .composer-mode__thumb {
+  top: 38px;
+  transform: translateX(-50%);
+  filter: none;
+}
+
+:root.composer-device.composer-device--modular .composer-mode:not(.composer-mode--plan) .composer-mode__thumb,
+:root.composer-device.composer-device--modular .composer-mode:not(.composer-mode--plan):active:not(:disabled) .composer-mode__thumb,
+:root.composer-device.composer-device--modular .composer-mode:not(.composer-mode--plan).is-pressed:not(:disabled) .composer-mode__thumb {
+  top: 2px;
+  transform: translateX(-50%);
+  filter: none;
+}
+
+:root.composer-device.composer-device--modular .composer-mode:active:not(:disabled),
+:root.composer-device.composer-device--modular .composer-mode.is-pressed:not(:disabled),
+:root.composer-device.composer-device--modular .composer-mode--plan:active:not(:disabled),
+:root.composer-device.composer-device--modular .composer-mode--plan.is-pressed:not(:disabled) {
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+  filter: none;
+}
+
+/* Build/Plan final polish: no native/button pressed depression; state colours. */
+:root.composer-device.composer-device--modular .composer-mode,
+:root.composer-device.composer-device--modular .composer-mode:hover:not(:disabled),
+:root.composer-device.composer-device--modular .composer-mode:active:not(:disabled),
+:root.composer-device.composer-device--modular .composer-mode:focus:not(:disabled),
+:root.composer-device.composer-device--modular .composer-mode:focus-visible:not(:disabled),
+:root.composer-device.composer-device--modular .composer-mode.is-pressed:not(:disabled),
+:root.composer-device.composer-device--modular .composer-mode--plan,
+:root.composer-device.composer-device--modular .composer-mode--plan:active:not(:disabled),
+:root.composer-device.composer-device--modular .composer-mode--plan:focus:not(:disabled),
+:root.composer-device.composer-device--modular .composer-mode--plan.is-pressed:not(:disabled) {
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  border: 0 !important;
+  outline: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  filter: none !important;
+  transform: none !important;
+}
+
+:root.composer-device.composer-device--modular .composer__key-mount--mode,
+:root.composer-device.composer-device--modular .composer__key-mount--mode:active,
+:root.composer-device.composer-device--modular .composer__key-mount--mode:has(.composer-mode:active),
+:root.composer-device.composer-device--modular .composer__key-mount--mode:has(.composer-mode--plan) {
+  background: transparent !important;
+  box-shadow: none !important;
+  filter: none !important;
+  transform: none !important;
+}
+
+:root.composer-device.composer-device--modular .composer-mode__track,
+:root.composer-device.composer-device--modular .composer-mode:active:not(:disabled) .composer-mode__track,
+:root.composer-device.composer-device--modular .composer-mode--plan .composer-mode__track,
+:root.composer-device.composer-device--modular .composer-mode--plan:active:not(:disabled) .composer-mode__track {
+  transform: translateX(-50%) !important;
+  filter: none !important;
+}
+
+:root.composer-device.composer-device--modular .composer-mode:not(.composer-mode--plan) .composer-mode__label:first-child {
+  color: oklch(0.72 0.22 145) !important;
+  text-shadow:
+    0 0 5px oklch(0.72 0.22 145 / 0.58),
+    0 0 12px oklch(0.68 0.20 145 / 0.26) !important;
+}
+
+:root.composer-device.composer-device--modular .composer-mode--plan .composer-mode__label:last-child {
+  color: oklch(0.68 0.22 305) !important;
+  text-shadow:
+    0 0 5px oklch(0.68 0.22 305 / 0.58),
+    0 0 12px oklch(0.64 0.20 305 / 0.26) !important;
+}
+
+:root.composer-device.composer-device--modular .composer-mode:not(.composer-mode--plan) .composer-mode__label:last-child,
+:root.composer-device.composer-device--modular .composer-mode--plan .composer-mode__label:first-child {
+  color: var(--crt-ink, var(--text)) !important;
+  text-shadow: 0 1px 0 oklch(1 0.002 250 / 0.45) !important;
+}
+
+/* Build/Plan track edge tuning: grey recessed pill with crisp machined lip. */
+:root.composer-device.composer-device--modular .composer-mode__track {
+  width: 42px;
+  height: 76px;
+  border-radius: 21px;
+  overflow: visible;
+  background:
+    radial-gradient(ellipse 90% 70% at 72% 50%, oklch(0.58 0.004 250 / 0.20), transparent 62%),
+    linear-gradient(180deg,
+      oklch(0.22 0.004 250) 0%,
+      oklch(0.36 0.004 250) 18%,
+      oklch(0.48 0.004 250) 58%,
+      oklch(0.43 0.004 250) 100%);
+  box-shadow:
+    /* hard inner upper shadow: track is recessed */
+    inset 0 1.5px 2px oklch(0 0 0 / 0.62),
+    inset 1px 0 1.5px oklch(0 0 0 / 0.28),
+    inset -1px 0 1px oklch(1 0.002 250 / 0.10),
+    /* crisp lip sequence: face -> near-white hairline -> grey shadow */
+    0 0.5px 0 0 oklch(0.92 0.002 250 / 0.62),
+    0 1px 0 0.5px oklch(0.56 0.004 250 / 0.48),
+    0 -1px 0 0 oklch(0.12 0.004 250 / 0.58),
+    0 2px 3px oklch(0 0 0 / 0.18);
+}
+
+:root.composer-device.composer-device--modular .composer-mode__track::after {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, oklch(1 0.002 250 / 0.10), transparent 20% 72%, oklch(1 0.002 250 / 0.16)),
+    repeating-linear-gradient(90deg, oklch(1 0.002 250 / 0.035) 0 1px, transparent 1px 3px);
+  background-blend-mode: soft-light, normal;
+}
+
+:root.composer-device.composer-device--modular .composer-mode__thumb {
+  z-index: 4;
+}
+
+/* Build/Plan track: soft textured metal, no hard groove lines; thumb just bigger than slot. */
+:root.composer-device.composer-device--modular .composer-mode__track {
+  width: 40px;
+  height: 76px;
+  border-radius: 22px;
+  background:
+    radial-gradient(ellipse 120% 80% at 28% 18%, oklch(0.68 0.004 250 / 0.16), transparent 58%),
+    radial-gradient(ellipse 110% 75% at 78% 82%, oklch(0.20 0.004 250 / 0.14), transparent 62%),
+    repeating-linear-gradient(90deg,
+      oklch(1 0.002 250 / 0.035) 0 1px,
+      transparent 1px 3px),
+    linear-gradient(180deg,
+      oklch(0.34 0.004 250) 0%,
+      oklch(0.48 0.004 250) 45%,
+      oklch(0.42 0.004 250) 100%);
+  background-blend-mode: soft-light, multiply, normal, normal;
+  box-shadow:
+    inset 0 1px 1.5px oklch(0 0 0 / 0.34),
+    inset 0 -1px 1px oklch(1 0.002 250 / 0.16),
+    inset 1px 0 1px oklch(1 0.002 250 / 0.08),
+    inset -1px 0 1px oklch(0 0 0 / 0.14),
+    0 0 0 0.5px oklch(0.90 0.002 250 / 0.54),
+    0 1px 0 0.5px oklch(0.46 0.004 250 / 0.42),
+    0 2px 4px oklch(0 0 0 / 0.16);
+}
+
+:root.composer-device.composer-device--modular .composer-mode__track::after {
+  inset: 1px;
+  background:
+    radial-gradient(ellipse 100% 60% at 36% 22%, oklch(1 0.002 250 / 0.08), transparent 60%),
+    radial-gradient(ellipse 90% 70% at 68% 78%, oklch(0 0 0 / 0.055), transparent 66%);
+  background-blend-mode: soft-light, multiply;
+}
+
+:root.composer-device.composer-device--modular .composer-mode__thumb,
+:root.composer-device.composer-device--modular .composer-mode:active:not(:disabled) .composer-mode__thumb,
+:root.composer-device.composer-device--modular .composer-mode.is-pressed:not(:disabled) .composer-mode__thumb {
+  width: 44px;
+  height: 44px;
+  top: -2px;
+}
+
+:root.composer-device.composer-device--modular .composer-mode--plan .composer-mode__thumb,
+:root.composer-device.composer-device--modular .composer-mode--plan:active:not(:disabled) .composer-mode__thumb,
+:root.composer-device.composer-device--modular .composer-mode--plan.is-pressed:not(:disabled) .composer-mode__thumb {
+  top: 34px;
+}
+
+:root.composer-device.composer-device--modular .composer-mode:not(.composer-mode--plan) .composer-mode__thumb,
+:root.composer-device.composer-device--modular .composer-mode:not(.composer-mode--plan):active:not(:disabled) .composer-mode__thumb,
+:root.composer-device.composer-device--modular .composer-mode:not(.composer-mode--plan).is-pressed:not(:disabled) .composer-mode__thumb {
+  top: -2px;
+}
+
+/* Build/Plan compact sizing. */
+:root.composer-device.composer-device--modular .composer__key-mount--mode,
+:root:not(.dark).composer-device.composer-device--modular .composer__key-mount--mode,
+:root.dark.composer-device.composer-device--modular .composer__key-mount--mode,
+:root.composer-device.composer-device--modular.composer-device--metal-keys .composer__key-mount--mode,
+:root:not(.dark).composer-device.composer-device--modular.composer-device--metal-keys .composer__key-mount--mode,
+:root.dark.composer-device.composer-device--modular.composer-device--metal-keys .composer__key-mount--mode {
+  width: 62px;
+  height: 108px;
+}
+
+:root.composer-device.composer-device--modular .composer-mode,
+:root:not(.dark).composer-device.composer-device--modular .composer-mode,
+:root.dark.composer-device.composer-device--modular .composer-mode,
+:root.composer-device.composer-device--modular.composer-device--metal-keys .composer-mode,
+:root:not(.dark).composer-device.composer-device--modular.composer-device--metal-keys .composer-mode,
+:root.dark.composer-device.composer-device--modular.composer-device--metal-keys .composer-mode,
+:root.composer-device.composer-device--modular .composer-mode:hover:not(:disabled),
+:root.composer-device.composer-device--modular .composer-mode:is(:active, .is-pressed, .composer-mode--plan):not(:disabled) {
+  width: 62px;
+  min-width: 62px;
+  height: 108px;
+}
+
+:root.composer-device.composer-device--modular .composer-mode__label {
+  width: 58px;
+  font-size: 7.5px;
+}
+
+:root.composer-device.composer-device--modular .composer-mode__track {
+  top: 20px;
+  width: 34px;
+  height: 62px;
+  border-radius: 19px;
+}
+
+:root.composer-device.composer-device--modular .composer-mode__thumb,
+:root.composer-device.composer-device--modular .composer-mode:active:not(:disabled) .composer-mode__thumb,
+:root.composer-device.composer-device--modular .composer-mode.is-pressed:not(:disabled) .composer-mode__thumb,
+:root.composer-device.composer-device--modular .composer-mode:not(.composer-mode--plan) .composer-mode__thumb,
+:root.composer-device.composer-device--modular .composer-mode:not(.composer-mode--plan):active:not(:disabled) .composer-mode__thumb,
+:root.composer-device.composer-device--modular .composer-mode:not(.composer-mode--plan).is-pressed:not(:disabled) .composer-mode__thumb {
+  top: -1px;
+  width: 38px;
+  height: 38px;
+}
+
+:root.composer-device.composer-device--modular .composer-mode--plan .composer-mode__thumb,
+:root.composer-device.composer-device--modular .composer-mode--plan:active:not(:disabled) .composer-mode__thumb,
+:root.composer-device.composer-device--modular .composer-mode--plan.is-pressed:not(:disabled) .composer-mode__thumb {
+  top: 25px;
+  width: 38px;
+  height: 38px;
+}
+
+/* Build/Plan slimmer track and smaller thumb. */
+:root.composer-device.composer-device--modular .composer-mode__track {
+  width: 28px;
+  height: 60px;
+  border-radius: 16px;
+}
+
+:root.composer-device.composer-device--modular .composer-mode__thumb,
+:root.composer-device.composer-device--modular .composer-mode:active:not(:disabled) .composer-mode__thumb,
+:root.composer-device.composer-device--modular .composer-mode.is-pressed:not(:disabled) .composer-mode__thumb,
+:root.composer-device.composer-device--modular .composer-mode:not(.composer-mode--plan) .composer-mode__thumb,
+:root.composer-device.composer-device--modular .composer-mode:not(.composer-mode--plan):active:not(:disabled) .composer-mode__thumb,
+:root.composer-device.composer-device--modular .composer-mode:not(.composer-mode--plan).is-pressed:not(:disabled) .composer-mode__thumb {
+  top: 1px;
+  width: 32px;
+  height: 32px;
+}
+
+:root.composer-device.composer-device--modular .composer-mode--plan .composer-mode__thumb,
+:root.composer-device.composer-device--modular .composer-mode--plan:active:not(:disabled) .composer-mode__thumb,
+:root.composer-device.composer-device--modular .composer-mode--plan.is-pressed:not(:disabled) .composer-mode__thumb {
+  top: 27px;
+  width: 32px;
+  height: 32px;
+}
+
+/* Model selector: use same snappy non-overshoot motion as Build/Plan slider. */
+.model-selector__badge--slider .model-selector__slider-thumb,
+.model-selector__badge--slider .model-selector__slider-track .model-selector__slider-glow {
+  transition:
+    left 240ms cubic-bezier(0.2, 0.78, 0.25, 1),
+    filter 120ms ease-out;
+  will-change: left;
+}
+
+/* Model selector perf fix: animate compositor transform, not layout `left`. */
+.model-selector__badge--slider {
+  --model-slider-x: calc(var(--model-slider-slot-start) + (var(--model-slider-position, 1) * var(--model-slider-slot-step)));
+  --model-slider-track-x: calc(var(--model-slider-x) - 14px);
+}
+
+.model-selector__badge--slider .model-selector__slider-thumb {
+  left: 0 !important;
+  transform: translate3d(calc(var(--model-slider-x) - 50%), 0, 0) !important;
+  transition: transform 240ms cubic-bezier(0.2, 0.78, 0.25, 1) !important;
+  will-change: transform;
+  contain: layout paint style;
+}
+
+.model-selector__badge--slider .model-selector__slider-track .model-selector__slider-glow {
+  left: 0 !important;
+  transform: translate3d(calc(var(--model-slider-track-x) - 50%), 0, 0) !important;
+  transition: transform 240ms cubic-bezier(0.2, 0.78, 0.25, 1) !important;
+  will-change: transform;
+  contain: layout paint style;
+}
+
+/* Old :has(:active) rules changed `left` before React state landed, causing jump + layout work. */
+.model-selector__badge--slider:has(.model-selector__slider-label--slot-0:active) .model-selector__slider-thumb,
+.model-selector__badge--slider:has(.model-selector__slider-label--slot-1:active) .model-selector__slider-thumb,
+.model-selector__badge--slider:has(.model-selector__slider-label--slot-2:active) .model-selector__slider-thumb,
+.model-selector__badge--slider:has(.model-selector__slider-label--slot-3:active) .model-selector__slider-thumb,
+.model-selector__badge--slider:has(.model-selector__slider-label--menu:active) .model-selector__slider-thumb {
+  left: 0 !important;
+  transform: translate3d(calc(var(--model-slider-x) - 50%), 0, 0) !important;
+  filter: none;
+}
+
+.model-selector__badge--slider:has(.model-selector__slider-label--slot-0:active) .model-selector__slider-track .model-selector__slider-glow,
+.model-selector__badge--slider:has(.model-selector__slider-label--slot-1:active) .model-selector__slider-track .model-selector__slider-glow,
+.model-selector__badge--slider:has(.model-selector__slider-label--slot-2:active) .model-selector__slider-track .model-selector__slider-glow,
+.model-selector__badge--slider:has(.model-selector__slider-label--slot-3:active) .model-selector__slider-track .model-selector__slider-glow,
+.model-selector__badge--slider:has(.model-selector__slider-label--menu:active) .model-selector__slider-track .model-selector__slider-glow {
+  left: 0 !important;
+  transform: translate3d(calc(var(--model-slider-track-x) - 50%), 0, 0) !important;
+  filter: none;
+}
+
+/* Model slider amber lamp: reference-style broad light bar clipped by black rail. */
+.model-selector__badge--slider .model-selector__slider-track .model-selector__slider-glow {
+  top: 0;
+  width: 172px;
+  height: 12px;
+  border-radius: 999px;
+  overflow: visible;
+  background: transparent;
+  box-shadow: none;
+  opacity: 1;
+}
+
+.model-selector__badge--slider .model-selector__slider-track .model-selector__slider-glow::before,
+.model-selector__badge--slider .model-selector__slider-track .model-selector__slider-glow::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.model-selector__badge--slider .model-selector__slider-track .model-selector__slider-glow::before {
+  background:
+    linear-gradient(90deg,
+      transparent 0%,
+      oklch(0.78 0.20 52 / 0.28) 10%,
+      oklch(0.86 0.23 58 / 0.62) 23%,
+      oklch(0.88 0.24 60 / 0.70) 50%,
+      oklch(0.86 0.23 58 / 0.62) 77%,
+      oklch(0.78 0.20 52 / 0.28) 90%,
+      transparent 100%);
+  filter: blur(2.2px);
+}
+
+.model-selector__badge--slider .model-selector__slider-track .model-selector__slider-glow::after {
+  inset: 2px 16px;
+  background:
+    linear-gradient(180deg,
+      oklch(0.98 0.18 68 / 0.58) 0%,
+      oklch(0.86 0.24 58 / 0.88) 44%,
+      oklch(0.70 0.21 48 / 0.72) 100%);
+  box-shadow:
+    0 0 5px oklch(0.86 0.23 58 / 0.38),
+    inset 0 1px 0 oklch(1 0.002 250 / 0.22),
+    inset 0 -1px 0 oklch(0.34 0.08 42 / 0.30);
+}
+
+/* Model slider amber lamp narrower. */
+.model-selector__badge--slider .model-selector__slider-track .model-selector__slider-glow {
+  width: 132px;
+}
+
+.model-selector__badge--slider .model-selector__slider-track .model-selector__slider-glow::after {
+  inset: 2px 14px;
+}
+
+/* Model slider amber lamp fine-tune: slightly narrower core, softer brighter halo. */
+.model-selector__badge--slider .model-selector__slider-track .model-selector__slider-glow {
+  width: 120px;
+}
+
+.model-selector__badge--slider .model-selector__slider-track .model-selector__slider-glow::before {
+  background:
+    linear-gradient(90deg,
+      transparent 0%,
+      oklch(0.78 0.20 52 / 0.34) 8%,
+      oklch(0.84 0.22 57 / 0.54) 22%,
+      oklch(0.86 0.23 59 / 0.60) 50%,
+      oklch(0.84 0.22 57 / 0.54) 78%,
+      oklch(0.78 0.20 52 / 0.34) 92%,
+      transparent 100%);
+  filter: blur(3.4px);
+}
+
+.model-selector__badge--slider .model-selector__slider-track .model-selector__slider-glow::after {
+  inset: 2px 13px;
+  background:
+    linear-gradient(180deg,
+      oklch(0.94 0.17 68 / 0.48) 0%,
+      oklch(0.82 0.22 58 / 0.76) 44%,
+      oklch(0.66 0.20 48 / 0.62) 100%);
+  box-shadow:
+    0 0 7px oklch(0.84 0.22 58 / 0.42),
+    inset 0 1px 0 oklch(1 0.002 250 / 0.18),
+    inset 0 -1px 0 oklch(0.34 0.08 42 / 0.24);
+}
+
+/* Model slider amber lamp: shorter so lit bar ends before capsule edge. */
+.model-selector__badge--slider .model-selector__slider-track .model-selector__slider-glow {
+  width: 104px;
+}
+
+.model-selector__badge--slider .model-selector__slider-track .model-selector__slider-glow::after {
+  inset: 2px 11px;
+}
+
+.model-selector__badge--slider .model-selector__slider-track .model-selector__slider-glow::before {
+  background:
+    linear-gradient(90deg,
+      transparent 0%,
+      oklch(0.78 0.20 52 / 0.28) 12%,
+      oklch(0.84 0.22 57 / 0.50) 26%,
+      oklch(0.86 0.23 59 / 0.58) 50%,
+      oklch(0.84 0.22 57 / 0.50) 74%,
+      oklch(0.78 0.20 52 / 0.28) 88%,
+      transparent 100%);
+}
+
+/* Model selector capsule: recessed glass cavity, copied from screen lip logic. */
+.model-selector__badge--slider .model-selector__slider-track {
+  left: 14px;
+  right: 14px;
+  top: 30px;
+  height: 13px;
+  border-radius: 999px;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 95% 160% at 16% 20%, oklch(0.18 0.018 55 / 0.24), transparent 58%),
+    linear-gradient(180deg, oklch(0.026 0.004 250), oklch(0.006 0.002 250) 78%);
+  box-shadow:
+    inset 0 3px 8px oklch(0 0 0 / 0.88),
+    inset 0 -1px 4px oklch(0 0 0 / 0.46),
+    inset 0 0 0 1px oklch(0 0 0 / 0.86),
+    0 0 0 1.25px oklch(0.34 0.004 250 / 0.72),
+    0 1px 2px 1px oklch(0.98 0.002 250 / 0.72),
+    0 0 4px 2px oklch(0.96 0.002 250 / 0.38),
+    0 3px 7px -2px oklch(0 0 0 / 0.28);
+}
+
+.model-selector__badge--slider .model-selector__slider-track .model-selector__slider-rail {
+  inset: 0;
+  background:
+    linear-gradient(180deg, oklch(1 0.002 250 / 0.08), transparent 38%),
+    linear-gradient(90deg,
+      oklch(0.004 0.002 250) 0%,
+      oklch(0.030 0.010 55) 43%,
+      oklch(0.072 0.030 55) 50%,
+      oklch(0.030 0.010 55) 57%,
+      oklch(0.004 0.002 250) 100%);
+  box-shadow:
+    inset 0 1px 2px oklch(0 0 0 / 0.84),
+    inset 0 -1px 0 oklch(1 0.002 250 / 0.12);
+}
+
+.model-selector__badge--slider .model-selector__slider-track .model-selector__slider-glow {
+  top: 0.5px;
+  height: 12px;
+}
+
+/* Model selector animation perf: isolate moving layers from heavy rail paint. */
+.model-selector__badge--slider .model-selector__slider-thumb,
+.model-selector__badge--slider .model-selector__slider-track .model-selector__slider-glow {
+  backface-visibility: hidden;
+  transform-style: preserve-3d;
+  isolation: isolate;
+}
+
+.model-selector__badge--slider .model-selector__slider-track .model-selector__slider-glow::before,
+.model-selector__badge--slider .model-selector__slider-track .model-selector__slider-glow::after {
+  will-change: opacity;
 }

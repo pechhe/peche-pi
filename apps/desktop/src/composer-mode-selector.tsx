@@ -9,7 +9,7 @@ interface ComposerModeSelectorProps {
 
 export function ComposerModeSelector({ mode, disabled = false, onSetMode }: ComposerModeSelectorProps) {
   const isPlan = mode === "plan";
-  const buttonSound = useButtonSound({ category: "toggle", disabled });
+  const buttonSound = useButtonSound({ variant: "rotary", disabled });
   return (
     <span className="composer__key-mount composer__key-mount--mode">
       <button

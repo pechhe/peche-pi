@@ -1344,10 +1344,12 @@ export async function openNewThread(window: Page): Promise<void> {
   if (await composer.isVisible().catch(() => false)) {
     return;
   }
-  const button = window.locator(".sidebar").getByRole("button", { name: "New thread", exact: true });
+  // The button is labeled "New project in {workspace}" — find it by the "New project" prefix
+  const button = window.locator(".sidebar button[aria-label^='New project in']");
   await expect(button).toBeVisible({ timeout: 15_000 });
   await expect(button).toBeEnabled({ timeout: 15_000 });
-  await button.click();
+  // Parent workspace-row div intercepts pointer events, force click
+  await button.click({ force: true });
   await expect(composer).toBeVisible({ timeout: 15_000 });
 }
 

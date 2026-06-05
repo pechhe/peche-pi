@@ -3,6 +3,7 @@ import {
   type ButtonCategory,
   playClick,
   playKey,
+  playRotary,
   type ButtonClickVariant,
 } from "./button-click-sound";
 
@@ -43,6 +44,7 @@ export function useButtonSound(options: UseButtonSoundOptions = {}): UseButtonSo
         // Use explicit variant
         if (variant === "click") playClick("down");
         else if (variant === "key") playKey("press");
+        else if (variant === "rotary") playRotary();
       } else if (category) {
         // Import settings dynamically to avoid circular deps
         import("./button-click-sound.js").then(({ getButtonSoundSettings }) => {
@@ -50,6 +52,7 @@ export function useButtonSound(options: UseButtonSoundOptions = {}): UseButtonSo
           const v = settings[category];
           if (v === "click") playClick("down");
           else if (v === "key") playKey("press");
+          else if (v === "rotary") playRotary();
         });
       }
     },
@@ -65,12 +68,14 @@ export function useButtonSound(options: UseButtonSoundOptions = {}): UseButtonSo
         // Use explicit variant
         if (variant === "click") playClick("up");
         else if (variant === "key") playKey("release");
+        else if (variant === "rotary") playRotary();
       } else if (category) {
         import("./button-click-sound.js").then(({ getButtonSoundSettings }) => {
           const settings = getButtonSoundSettings();
           const v = settings[category];
           if (v === "click") playClick("up");
           else if (v === "key") playKey("release");
+          else if (v === "rotary") playRotary();
         });
       }
     },

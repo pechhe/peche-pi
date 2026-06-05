@@ -139,12 +139,10 @@
 
 .sidebar-moving-highlight__indicator--hover {
   background: rgba(0, 0, 0, 0.05);
-  border-color: rgba(0, 0, 0, 0.06);
 }
 
 .sidebar-moving-highlight__indicator--active {
   background: var(--surface-overlay);
-  border-color: var(--line);
   box-shadow: 0 1px 2px rgba(20, 27, 45, 0.04);
 }
 
@@ -155,12 +153,10 @@
 
 :root.dark .sidebar-moving-highlight__indicator--hover {
   background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.08);
 }
 
 :root.dark .sidebar-moving-highlight__indicator--active {
   background: var(--surface);
-  border-color: var(--line);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
@@ -696,8 +692,8 @@
   position: absolute;
   left: 2px;
   right: 2px;
-  top: 4px;
-  bottom: 4px;
+  top: 2px;
+  bottom: 2px;
   border-radius: 10px;
   background: color-mix(in srgb, var(--accent) 10%, transparent);
   animation: session-row-complete-pulse-before 600ms ease-out 1;

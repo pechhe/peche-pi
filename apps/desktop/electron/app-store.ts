@@ -44,6 +44,7 @@ import {
   type DesktopAppState,
   type NotificationPreferences,
   type ComposerDeviceMode,
+  type PlanModeIdeologySetting,
   type ThreadTransitionSettings,
   type ThemeMode,
   type QueuedComposerMessage,
@@ -653,6 +654,17 @@ export class DesktopAppStore implements AppStoreInternals {
   async setComposerDeviceMode(mode: ComposerDeviceMode): Promise<DesktopAppState> {
     await this.initialize();
     const next = reduce(this.state, { type: "settings/setComposerDeviceMode", composerDeviceMode: mode });
+    if (next === this.state) {
+      return structuredClone(this.state);
+    }
+    this.state = next;
+    await this.persistUiState();
+    return this.emit();
+  }
+
+  async setPlanModeIdeology(ideology: PlanModeIdeologySetting): Promise<DesktopAppState> {
+    await this.initialize();
+    const next = reduce(this.state, { type: "settings/setPlanModeIdeology", planModeIdeology: ideology });
     if (next === this.state) {
       return structuredClone(this.state);
     }

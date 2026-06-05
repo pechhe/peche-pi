@@ -172,6 +172,7 @@ const desktopIpc = {
   setEnableTransparency: "pi-gui:set-enable-transparency",
   setTranscriptVerbose: "pi-gui:set-transcript-verbose",
   setComposerDeviceMode: "pi-gui:set-composer-device-mode",
+  setPlanModeIdeology: "pi-gui:set-plan-mode-ideology",
   setThreadTransition: "pi-gui:set-thread-transition",
   terminalEnsurePanel: "pi-gui:terminal-ensure-panel",
   terminalCreateSession: "pi-gui:terminal-create-session",
@@ -361,6 +362,7 @@ export const desktopIpcContracts: readonly IpcContractEntry[] = [
   { methodName: "setEnableTransparency", channel: desktopIpc.setEnableTransparency, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
   { methodName: "setTranscriptVerbose", channel: desktopIpc.setTranscriptVerbose, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
   { methodName: "setComposerDeviceMode", channel: desktopIpc.setComposerDeviceMode, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
+  { methodName: "setPlanModeIdeology", channel: desktopIpc.setPlanModeIdeology, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
   { methodName: "setThreadTransition", channel: desktopIpc.setThreadTransition, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
 
   // -- Composer --

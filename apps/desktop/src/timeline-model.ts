@@ -177,7 +177,7 @@ export function applySessionEventToTimeline(
     return transcript.slice();
   }
 
-  let next = [...transcript];
+  const next = [...transcript];
 
   switch (event.type) {
     case "sessionOpened":

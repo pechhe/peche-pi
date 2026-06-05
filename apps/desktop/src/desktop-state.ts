@@ -267,6 +267,8 @@ export interface RemoveWorktreeInput {
   readonly worktreeId: string;
 }
 
+export type PlanModeIdeologySetting = "default" | "grill";
+
 export interface DesktopAppState {
   readonly workspaces: readonly WorkspaceRecord[];
   readonly worktreesByWorkspace: Readonly<Record<string, readonly WorktreeRecord[]>>;
@@ -299,6 +301,7 @@ export interface DesktopAppState {
   readonly transcriptVerbose: boolean;
   readonly autoAcceptVisionProxy: boolean;
   readonly composerDeviceMode: ComposerDeviceMode;
+  readonly planModeIdeology: PlanModeIdeologySetting;
   readonly threadTransition: ThreadTransitionSettings;
   readonly themeMode: ThemeMode;
   readonly buttonSoundSettings: ButtonSoundSettings;
@@ -394,6 +397,7 @@ export function createEmptyDesktopAppState(): DesktopAppState {
     transcriptVerbose: false,
     autoAcceptVisionProxy: false,
     composerDeviceMode: "off",
+    planModeIdeology: "default",
     threadTransition: { motion: "curve", heroExit: false, bubbleHandoff: false },
     themeMode: "system",
     buttonSoundSettings: { ...DEFAULT_BUTTON_SOUND_SETTINGS },

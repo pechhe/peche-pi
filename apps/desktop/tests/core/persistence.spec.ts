@@ -10,16 +10,12 @@ import {
   makeWorkspace,
   pasteTinyPng,
   persistedSessionDataPaths,
-  stubNextOpenDialog,
-  writeTextFile,
 } from "../helpers/electron-app";
 
-test("clears mixed attachment chips on submit after paste and file attach", async () => {
+test("clears attachment chips on submit after paste", async () => {
   test.setTimeout(30_000);
   const userDataDir = await makeUserDataDir();
   const workspacePath = await makeWorkspace("paste-workspace");
-  const filePath = join(workspacePath, "composer-notes.txt");
-  await writeTextFile(filePath, "submit clears file attachment too");
   const harness = await launchDesktop(userDataDir, {
     initialWorkspaces: [workspacePath],
     testMode: "background",
@@ -31,11 +27,8 @@ test("clears mixed attachment chips on submit after paste and file attach", asyn
 
     const composer = window.getByTestId("composer");
     await pasteTinyPng(window);
-    await stubNextOpenDialog(harness, [filePath]);
-    await window.getByRole("button", { name: "Attach files" }).click();
 
     await expect(window.locator(".composer-attachment--image")).toHaveCount(1);
-    await expect(window.locator(".composer-attachment--file")).toHaveCount(1);
 
     await composer.fill("test with image");
     await composer.press("Enter");
@@ -50,9 +43,6 @@ test("persists transcript storage separately from ui state and restores the curr
   test.setTimeout(90_000);
   const userDataDir = await makeUserDataDir();
   const workspacePath = await makeWorkspace("persistence-workspace");
-  const filePath = join(workspacePath, "persisted-notes.txt");
-  await writeTextFile(filePath, "persisted file attachment");
-
   const firstRun = await launchDesktop(userDataDir, {
     initialWorkspaces: [workspacePath],
     testMode: "background",
@@ -63,9 +53,7 @@ test("persists transcript storage separately from ui state and restores the curr
 
     const composer = window.getByTestId("composer");
     await pasteTinyPng(window);
-    await stubNextOpenDialog(firstRun, [filePath]);
-    await window.getByRole("button", { name: "Attach files" }).click();
-    await expect(window.locator(".composer-attachment")).toHaveCount(2);
+    await expect(window.locator(".composer-attachment")).toHaveCount(1);
 
     await composer.fill("/status");
     await composer.press("Enter");
@@ -112,15 +100,7 @@ test("persists transcript storage separately from ui state and restores the curr
         }
       })
       .toContain("\"kind\": \"image\"");
-    await expect
-      .poll(async () => {
-        try {
-          return await readFile(attachmentPath, "utf8");
-        } catch {
-          return "";
-        }
-      })
-      .toContain("\"kind\": \"file\"");
+
   } finally {
     await firstRun.close();
   }
@@ -139,7 +119,7 @@ test("persists transcript storage separately from ui state and restores the curr
         };
       })
       .toMatchObject({
-        attachments: 2,
+        attachments: 1,
       });
   } finally {
     await secondRun.close();

@@ -93,13 +93,17 @@ test("supports keyboard shortcuts, slash menus, and topbar controls through the 
     const optionsMenu = window.getByTestId("slash-options-menu");
     await expect(optionsMenu).toBeVisible();
     await expect(optionsMenu).toContainText("Low");
-    await expect(optionsMenu).toContainText("Extra High");
+    await expect(optionsMenu).toContainText("Max");
     await composer.press("ArrowDown");
     await composer.press("ArrowDown");
     await composer.press("Enter");
     await expect(optionsMenu).toHaveCount(0);
-    await expect(window.getByTestId("transcript")).toContainText("Thinking set to high");
-    await expect(window.locator(".composer__hint")).toContainText("high");
+    // Thinking-level notification is now silent; verify the setting took effect via state.
+    const stateAfterThinking = await getDesktopState(window);
+    const activeSession = stateAfterThinking.workspaces
+      .flatMap((w) => w.sessions)
+      .find((s) => s.id === stateAfterThinking.selectedSessionId);
+    expect(activeSession?.config?.thinkingLevel).toBe("high");
 
     await composer.fill("Keep the draft /thinking");
     await expect(optionsMenu).toBeVisible();
@@ -133,7 +137,11 @@ test("supports keyboard shortcuts, slash menus, and topbar controls through the 
     await onboardingNotice.getByRole("button", { name: "Open Settings > Models" }).click();
     await expect(window.getByTestId("settings-surface")).toBeVisible();
     await expect(window.locator(".view-header__title")).toHaveText("Models");
-    await window.getByRole("button", { name: "Back to app", exact: true }).click();
+    // Close settings via IPC since the UI back button was removed
+    await window.evaluate(async () => {
+      const app = (window as any).piApp;
+      if (app) await app.setActiveView("threads");
+    });
     await expect(window.getByTestId("send")).toBeDisabled();
 
     const appRegions = await window.evaluate(() => {
@@ -182,12 +190,12 @@ test("dark mode keeps the send button visible before and after typing", async ()
     await expect(settingsSurface).toBeVisible();
     await settingsSurface.getByRole("button", { name: "Appearance", exact: true }).click();
     await expect(window.locator(".view-header__title")).toHaveText("Appearance");
-    await settingsSurface.locator(".settings-row", { hasText: "Dark" }).locator('input[type="radio"]').click();
+    await settingsSurface.locator(".settings-row", { hasText: "Dark" }).locator('input[type="radio"]').first().click();
     await expect
       .poll(() => window.evaluate(() => document.documentElement.classList.contains("dark")))
       .toBe(true);
 
-    await settingsSurface.getByRole("button", { name: "Back to app" }).click();
+    await window.keyboard.press("Escape");
     await selectSession(window, "Dark send button session");
 
     const sendButton = window.getByTestId("send");

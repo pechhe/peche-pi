@@ -29,7 +29,7 @@
     }
   },
   "devDependencies": {
-    "@playwright/test": "^1.52.0",
+    "@playwright/test": "^1.60.0",
     "@types/node": "^24.0.0",
     "fallow": "^2.88.2",
     "typescript": "^5.9.3"

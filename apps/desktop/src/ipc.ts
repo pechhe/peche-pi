@@ -103,6 +103,7 @@ export const desktopIpc = {
   setEnableTransparency: "pi-gui:set-enable-transparency",
   setTranscriptVerbose: "pi-gui:set-transcript-verbose",
   setComposerDeviceMode: "pi-gui:set-composer-device-mode",
+  setPlanModeIdeology: "pi-gui:set-plan-mode-ideology",
   setThreadTransition: "pi-gui:set-thread-transition",
   terminalEnsurePanel: "pi-gui:terminal-ensure-panel",
   terminalCreateSession: "pi-gui:terminal-create-session",
@@ -240,6 +241,7 @@ export const piDesktopApiIpcBridge = {
   setEnableTransparency: { kind: "invoke", channel: desktopIpc.setEnableTransparency },
   setTranscriptVerbose: { kind: "invoke", channel: desktopIpc.setTranscriptVerbose },
   setComposerDeviceMode: { kind: "invoke", channel: desktopIpc.setComposerDeviceMode },
+  setPlanModeIdeology: { kind: "invoke", channel: desktopIpc.setPlanModeIdeology },
   setThreadTransition: { kind: "invoke", channel: desktopIpc.setThreadTransition },
   ensureTerminalPanel: { kind: "invoke", channel: desktopIpc.terminalEnsurePanel },
   createTerminalSession: { kind: "invoke", channel: desktopIpc.terminalCreateSession },
@@ -363,7 +365,7 @@ export function getDesktopCommandFromShortcut(input: DesktopShortcutInput): PiDe
 
   const lowerKey = input.key.toLowerCase();
   const isComma = input.key === "," || input.code === "Comma";
-  const isB = lowerKey === "b" || input.code === "KeyB";
+  const isS = lowerKey === "s" || input.code === "KeyS";
   const isJ = lowerKey === "j" || input.code === "KeyJ";
   const isShiftO = input.shift && (lowerKey === "o" || input.code === "KeyO");
   const isShiftK = input.shift && (lowerKey === "k" || input.code === "KeyK");
@@ -376,7 +378,7 @@ export function getDesktopCommandFromShortcut(input: DesktopShortcutInput): PiDe
     return desktopCommands.toggleTerminal;
   }
 
-  if (!input.shift && isB) {
+  if (!input.shift && isS) {
     return desktopCommands.toggleSidebar;
   }
 
@@ -542,6 +544,7 @@ export interface PiDesktopApi {
   setEnableTransparency(enabled: boolean): Promise<DesktopAppState>;
   setTranscriptVerbose(enabled: boolean): Promise<DesktopAppState>;
   setComposerDeviceMode(mode: ComposerDeviceMode): Promise<DesktopAppState>;
+  setPlanModeIdeology(ideology: import("./desktop-state").PlanModeIdeologySetting): Promise<DesktopAppState>;
   setThreadTransition(settings: Partial<ThreadTransitionSettings>): Promise<DesktopAppState>;
   ensureTerminalPanel(
     workspaceId: string,

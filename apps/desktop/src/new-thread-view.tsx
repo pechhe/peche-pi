@@ -194,9 +194,9 @@ export function NewThreadView({
     return (
       <section className="canvas canvas--empty">
         <div className="empty-panel">
-          <div className="session-header__eyebrow">New thread</div>
+          <div className="session-header__eyebrow">New project</div>
           <h1>Open a folder to begin</h1>
-          <p>Select a repository from the sidebar first, then start a local or worktree-backed thread.</p>
+          <p>Select a repository from the sidebar first, then start a local or worktree-backed project.</p>
         </div>
       </section>
     );
@@ -209,7 +209,7 @@ export function NewThreadView({
           <div className="new-thread__logo" data-testid="new-thread-logo">
             <PiLogoMark />
           </div>
-          <div className="new-thread__eyebrow">{isChat ? "New chat" : "New thread"}</div>
+          <div className="new-thread__eyebrow">{isChat ? "New chat" : "New project"}</div>
           <h1 className="new-thread__title">{isChat ? "What\u2019s up?" : "Let\u2019s build"}</h1>
         </div>
 
@@ -249,7 +249,7 @@ export function NewThreadView({
               mentionOptions={mentionOptions}
               selectedMentionIndex={selectedMentionIndex}
               onSelectMention={onSelectMention}
-              textareaLabel="New thread prompt"
+              textareaLabel="New project prompt"
               textareaTestId="new-thread-composer"
               textareaPlaceholder={composerMode === "plan" ? "Describe what you want to plan. Pi will grill you, write a PRD, then prepare Ralph." : "message the clanker"}
               screenFooter={(
@@ -380,7 +380,7 @@ function NewThreadComposerFooter({
           <div className="composer__actions">
             <span className="composer__key-mount composer__key-mount--send">
               <button
-                aria-label="Start thread"
+                aria-label="Start project"
                 className="button button--primary button--cta-icon composer__send"
                 type="button"
                 disabled={!hasContent || modelOnboarding.requiresModelSelection}

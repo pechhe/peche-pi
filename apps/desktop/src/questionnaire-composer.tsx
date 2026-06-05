@@ -123,6 +123,8 @@ export function QuestionnaireComposer({
     }
   };
 
+  const progressPercent = total > 0 ? ((step + 1) / total) * 100 : 0;
+
   return (
     <footer className="composer composer--questionnaire">
       <div
@@ -134,25 +136,36 @@ export function QuestionnaireComposer({
         onKeyDown={handleKeyDown}
       >
         <div className="questionnaire-composer__screen">
-          <div className="questionnaire-composer__title">
-            {request.title ?? "Planner needs more info"} ({step + 1}/{total})
+          <div className="questionnaire-composer__header">
+            <div className="questionnaire-composer__prompt">{current.prompt}</div>
+            <div
+              className="composer__context questionnaire-composer__progress"
+              aria-label={`Question ${step + 1} of ${total}`}
+            >
+              <span className="composer__context-label questionnaire-composer__progress-label">
+                {step + 1} / {total}
+              </span>
+              <div className="composer__context-track questionnaire-composer__progress-track">
+                <div className="composer__context-fill" style={{ width: `${progressPercent}%` }} />
+              </div>
+            </div>
           </div>
+
           {step === 0 && request.intro ? (
             <div className="questionnaire-composer__intro">{request.intro}</div>
           ) : null}
           {current.label ? <div className="questionnaire-composer__label">{current.label}</div> : null}
-          <div className="questionnaire-composer__prompt">{current.prompt}</div>
+
           <div className="questionnaire-composer__options">
             {current.options.map((option, index) => (
               <button
                 key={`${option.value}:${index}`}
                 type="button"
-                className={`questionnaire-composer__option${index === selectedIndex && !isOtherActive ? " questionnaire-composer__option--selected" : ""}${index === recommendedIndex ? " questionnaire-composer__option--recommended" : ""}`}
+                className={`questionnaire-composer__option${index === selectedIndex && !isOtherActive ? " questionnaire-composer__option--selected" : ""}`}
                 onClick={() => pickOption(index)}
               >
+                <span className="questionnaire-composer__cursor">{index === selectedIndex && !isOtherActive ? ">" : ""}</span>
                 <span>{option.label}</span>
-                {index === recommendedIndex ? <span className="questionnaire-composer__badge">recommended</span> : null}
-                {option.description ? <small>{option.description}</small> : null}
               </button>
             ))}
             {current.allowOther ? (
@@ -164,10 +177,12 @@ export function QuestionnaireComposer({
                   setIsOtherActive(true);
                 }}
               >
-                Other...
+                <span className="questionnaire-composer__cursor">{selectedIndex === current.options.length || isOtherActive ? ">" : ""}</span>
+                <span>Other (please specify)</span>
               </button>
             ) : null}
           </div>
+
           {isOtherActive ? (
             <form
               className="questionnaire-composer__other"
@@ -176,35 +191,16 @@ export function QuestionnaireComposer({
                 submitOther();
               }}
             >
+              <span className="questionnaire-composer__cursor">&gt;</span>
               <input
                 autoFocus
                 value={otherDraft}
                 placeholder={current.otherPlaceholder ?? "Type another answer"}
                 onChange={(event) => setOtherDraft(event.target.value)}
               />
-              <button type="submit" disabled={!otherDraft.trim()}>Use answer</button>
+              <button type="submit" disabled={!otherDraft.trim()}>Use</button>
             </form>
           ) : null}
-          <div className="questionnaire-composer__hint">
-            Use ↑↓ to navigate • Enter to select • Esc to skip
-          </div>
-        </div>
-        <div className="questionnaire-composer__controls">
-          <button
-            type="button"
-            className="questionnaire-composer__back"
-            disabled={step === 0}
-            onClick={() => setStep((value) => Math.max(0, value - 1))}
-          >
-            Back
-          </button>
-          <button
-            type="button"
-            className="questionnaire-composer__skip"
-            onClick={() => onRespond({ requestId: request.requestId, cancelled: true })}
-          >
-            Skip
-          </button>
         </div>
       </div>
     </footer>

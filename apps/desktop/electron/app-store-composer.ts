@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { sessionKey } from "@pi-gui/pi-sdk-driver";
 import type { SessionConfig, SessionQueuedMessage, SessionRef } from "@pi-gui/session-driver";
 import type { ComposerAttachment, DesktopAppState, QueuedComposerMessage, WorkspaceSessionTarget } from "../src/desktop-state";
-import { buildPlanModePrompt, type ComposerMode } from "../src/composer-mode";
+import { buildPlanModePrompt, type ComposerMode, type PlanModeIdeology } from "../src/composer-mode";
 import { toSessionRef } from "./app-store-utils";
 import {
   formatSessionConfigStatus,
@@ -271,7 +271,10 @@ export async function submitComposer(
   } = {},
 ): Promise<DesktopAppState> {
   await store.initialize();
-  const submittedText = options.mode === "plan" ? buildPlanModePrompt(textInput) : textInput;
+  const planIdeology = resolvePlanModeIdeology(textInput, store.state.planModeIdeology);
+  const submittedText = options.mode === "plan"
+    ? buildPlanModePrompt(stripPlanModeIdeologyPrefix(textInput, planIdeology), planIdeology)
+    : textInput;
   const text = submittedText.trim();
   const sessionRef = store.selectedSessionRef();
   const attachments = sessionRef
@@ -421,7 +424,7 @@ export async function setSessionModel(
   return store.withErrorHandling(async () => {
     await store.driver.setSessionModel(sessionRef, { provider, modelId });
     syncSessionConfig(store, key, { provider, modelId });
-    return finishComposerCommand(store, sessionRef, key, `Model set to ${provider}:${modelId}`, { keepDraft: true });
+    return finishComposerCommand(store, sessionRef, key, `Model set to ${provider}:${modelId}`, { keepDraft: true, silent: true });
   });
 }
 
@@ -435,7 +438,7 @@ export async function setSessionThinkingLevel(
   return store.withErrorHandling(async () => {
     await store.driver.setSessionThinkingLevel(sessionRef, thinkingLevel);
     syncSessionConfig(store, key, { thinkingLevel });
-    return finishComposerCommand(store, sessionRef, key, `Thinking set to ${thinkingLevel}`, { keepDraft: true });
+    return finishComposerCommand(store, sessionRef, key, `Thinking set to ${thinkingLevel}`, { keepDraft: true, silent: true });
   });
 }
 
@@ -461,6 +464,19 @@ export async function cancelCurrentRun(store: AppStoreInternals): Promise<Deskto
 }
 
 /* ── Internal helpers ───────────────────────────────────── */
+
+function resolvePlanModeIdeology(text: string, defaultIdeology: PlanModeIdeology = "default"): PlanModeIdeology {
+  if (/^\s*\/(?:plan-)?grill\b/i.test(text)) return "grill";
+  return defaultIdeology;
+}
+
+function stripPlanModeIdeologyPrefix(text: string, ideology: PlanModeIdeology): string {
+  if (ideology !== "grill") {
+    return text;
+  }
+  return text.replace(/^\s*\/(?:plan-)?grill\b\s*/i, "");
+}
+
 
 export async function sendMessageToSession(
   store: AppStoreInternals,
@@ -578,13 +594,13 @@ async function runComposerCommand(
       modelId: parsed.modelId,
     });
     syncSessionConfig(store, key, { provider: parsed.provider, modelId: parsed.modelId });
-    return finishComposerCommand(store, sessionRef, key, `Model set to ${parsed.provider}:${parsed.modelId}`);
+    return finishComposerCommand(store, sessionRef, key, `Model set to ${parsed.provider}:${parsed.modelId}`, { silent: true });
   }
 
   if (parsed.type === "thinking") {
     await store.driver.setSessionThinkingLevel(sessionRef, parsed.thinkingLevel);
     syncSessionConfig(store, key, { thinkingLevel: parsed.thinkingLevel });
-    return finishComposerCommand(store, sessionRef, key, `Thinking set to ${parsed.thinkingLevel}`);
+    return finishComposerCommand(store, sessionRef, key, `Thinking set to ${parsed.thinkingLevel}`, { silent: true });
   }
 
   if (parsed.type === "status") {
@@ -643,14 +659,16 @@ function finishComposerCommand(
   sessionRef: SessionRef,
   key: string,
   label: string,
-  options?: { readonly keepDraft?: boolean },
+  options?: { readonly keepDraft?: boolean; readonly silent?: boolean },
 ): DesktopAppState {
   const keepDraft = options?.keepDraft ?? false;
   if (!keepDraft) {
     store.sessionState.composerDraftsBySession.delete(key);
     store.sessionState.composerAttachmentsBySession.delete(key);
   }
-  appendLocalActivity(store, sessionRef, label);
+  if (!options?.silent) {
+    appendLocalActivity(store, sessionRef, label);
+  }
   const transcript = store.sessionState.transcriptCache.get(key) ?? [];
   const preview = previewFromTranscript(transcript);
   store.state = {

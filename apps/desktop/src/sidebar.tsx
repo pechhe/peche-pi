@@ -14,7 +14,7 @@ import {
 import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { AppView, ChatRecord, SessionRecord, WorkspaceRecord, WorktreeRecord } from "./desktop-state";
-import { ArchiveIcon, ChevronDownIcon, ChevronRightIcon, ComposeIcon, ContextIcon, DoneIcon, ExtensionIcon, FolderIcon, RestoreIcon, SettingsIcon, SkillIcon, WorktreeIcon } from "./icons";
+import { ArchiveIcon, ChatIcon, ChevronDownIcon, ChevronRightIcon, ComposeIcon, ContextIcon, DoneIcon, ExtensionIcon, FolderIcon, ProjectIcon, RestoreIcon, SettingsIcon, SkillIcon, WorktreeIcon } from "./icons";
 import { WorkingSpinner } from "./working-label";
 import type { PiDesktopApi } from "./ipc";
 import { formatRelativeTime } from "./string-utils";
@@ -129,7 +129,7 @@ function MovingSidebarHighlight({
       observer.observe(item);
     }
     return () => observer.disconnect();
-  });
+  }, [itemSelector]);
 
   return (
     <div
@@ -161,9 +161,9 @@ function MovingSidebarHighlight({
         aria-hidden="true"
         className="sidebar-moving-highlight__indicator sidebar-moving-highlight__indicator--hover"
         style={{
-          transform: `translate3d(${hoverIndicator.left + 2}px, ${hoverIndicator.top + 4}px, 0)`,
+          transform: `translate3d(${hoverIndicator.left + 2}px, ${hoverIndicator.top + 2}px, 0)`,
           width: Math.max(0, hoverIndicator.width - 4),
-          height: Math.max(0, hoverIndicator.height - 8),
+          height: Math.max(0, hoverIndicator.height - 4),
           opacity: hoverIndicator.visible ? 1 : 0,
           transition: shouldAnimate
             ? "transform 350ms cubic-bezier(0.32, 1.15, 0.60, 1.00), width 250ms cubic-bezier(0.22, 1, 0.36, 1), height 250ms cubic-bezier(0.22, 1, 0.36, 1), opacity 150ms ease"
@@ -174,9 +174,9 @@ function MovingSidebarHighlight({
         aria-hidden="true"
         className="sidebar-moving-highlight__indicator sidebar-moving-highlight__indicator--active"
         style={{
-          transform: `translate3d(${activeIndicator.left + 2}px, ${activeIndicator.top + 4}px, 0)`,
+          transform: `translate3d(${activeIndicator.left + 2}px, ${activeIndicator.top + 2}px, 0)`,
           width: Math.max(0, activeIndicator.width - 4),
-          height: Math.max(0, activeIndicator.height - 8),
+          height: Math.max(0, activeIndicator.height - 4),
           opacity: activeIndicator.visible ? 1 : 0,
           transition: shouldAnimate
             ? "transform 350ms cubic-bezier(0.32, 1.15, 0.60, 1.00), width 250ms cubic-bezier(0.22, 1, 0.36, 1), height 250ms cubic-bezier(0.22, 1, 0.36, 1), opacity 150ms ease"
@@ -354,12 +354,12 @@ export function Sidebar(props: SidebarProps) {
       <div className="sidebar__section">
         <div className="section__head">
           <div className="section__title-row">
-            <span className="section__title">{queueMode ? "Queue" : "Threads"}</span>
+            <ProjectIcon /><span className="section__title">{queueMode ? "Queue" : "Projects"}</span>
             <button
               className={`queue-toggle ${queueMode ? "queue-toggle--on" : ""}`}
               type="button"
               onClick={() => { playButtonClick(); onSetQueueMode(!queueMode); }}
-              aria-label={queueMode ? "Switch to threads view" : "Switch to queue mode"}
+              aria-label={queueMode ? "Switch to projects view" : "Switch to queue mode"}
             >
               <span className="queue-toggle__track">
                 <span className="queue-toggle__thumb" />
@@ -462,7 +462,10 @@ export function Sidebar(props: SidebarProps) {
       </div>
       <div className="sidebar__section sidebar__chats">
         <div className="section__head">
-          <span>Chats</span>
+          <div className="section__title-row">
+            <ChatIcon />
+            <span>Chats</span>
+          </div>
           <div className="section__tools">
             <button
               aria-label="New chat"
@@ -607,7 +610,7 @@ function WorkspaceGroupContent(
           ref={wsMenu.workspaceMenuId === rootWorkspace.id ? wsMenu.workspaceMenuWrapRef : undefined}
         >
           <button
-            aria-label={`New thread in ${rootWorkspace.name}`}
+            aria-label={`New project in ${rootWorkspace.name}`}
             className="icon-button workspace-row__compose-button"
             type="button"
             onClick={(event) => {

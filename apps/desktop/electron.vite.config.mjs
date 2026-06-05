@@ -2,6 +2,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "electron-vite";
 import react from "@vitejs/plugin-react";
+import checker from "vite-plugin-checker";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = __dirname;
@@ -42,7 +43,10 @@ export default defineConfig(({ command }) => {
     renderer: {
       root: projectRoot,
       base: "./",
-      plugins: [react()],
+      plugins: [
+        react(),
+        checker({ oxlint: { lintCommand: "npx oxlint src/" } }),
+      ],
       resolve: {
         tsconfigPaths: true,
       },

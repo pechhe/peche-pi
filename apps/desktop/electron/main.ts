@@ -800,6 +800,7 @@ app.whenReady().then(async () => {
       },
       setTranscriptVerbose: async (_event: unknown, enabled: boolean) => store.setTranscriptVerbose(enabled),
       setComposerDeviceMode: async (_event: unknown, mode: string) => store.setComposerDeviceMode(mode as never),
+      setPlanModeIdeology: async (_event: unknown, ideology: string) => store.setPlanModeIdeology(ideology as never),
       setThreadTransition: async (_event: unknown, preferences: unknown) => store.setThreadTransition(preferences as never),
 
       // -- Composer --

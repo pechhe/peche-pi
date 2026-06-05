@@ -53,6 +53,10 @@ import { useSlashMenu } from "./hooks/use-slash-menu";
 import { useMentionMenu } from "./hooks/use-mention-menu";
 import { useThreadSearch } from "./hooks/use-thread-search";
 import { useWorkspaceMenu } from "./hooks/use-workspace-menu";
+import { useTimelineScroll } from "./hooks/use-timeline-scroll";
+import { useKeyboardShortcuts } from "./hooks/use-keyboard-shortcuts";
+import { useSettingsHandlers } from "./hooks/use-settings-handlers";
+import { useSkillsExtensionsHandlers } from "./hooks/use-skills-extensions";
 import { useNavigationHistory } from "./hooks/use-navigation-history";
 import { installPhysicalKeyFeedback } from "./physical-key-feedback";
 import { useRalphLoop, type RalphLaunch } from "./hooks/use-ralph-loop";
@@ -86,7 +90,7 @@ const EMPTY_TRANSCRIPT: readonly TranscriptMessage[] = Object.freeze([]) as read
 // Default title the main process assigns a freshly created session until its
 // auto-generated title resolves. Keep in sync with the source of truth in
 // electron/thread-title-constants.ts (NEW_THREAD_PLACEHOLDER_TITLE).
-const NEW_THREAD_PLACEHOLDER_TITLE = "New thread";
+const NEW_THREAD_PLACEHOLDER_TITLE = "New project";
 
 function deriveThreadTitle(prompt: string): string {
   const firstLine = prompt.split("\n").map((line) => line.trim()).find(Boolean) ?? "";
@@ -478,30 +482,17 @@ export default function App() {
   });
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const newThreadComposerRef = useRef<HTMLTextAreaElement | null>(null);
-  const timelinePaneRef = useRef<HTMLDivElement | null>(null);
-  const lastTranscriptMarkerRef = useRef("");
-  const pinnedToBottomRef = useRef(true);
-  const previousTimelinePaneSizeRef = useRef<{ width: number; height: number } | null>(null);
-  const lastTimelineScrollTopBySessionRef = useRef(new Map<string, number>());
-  const lastTimelinePinnedBySessionRef = useRef(new Map<string, boolean>());
-  const preserveBottomOnNextPaneResizeRef = useRef(false);
-  const exactBottomRestoreSessionKeyRef = useRef<string | null>(null);
-  const deferredPinnedBottomAlignmentRef = useRef(false);
-  const pendingPinnedBottomBehaviorRef = useRef<ScrollBehavior>("auto");
   const previousActiveViewRef = useRef<AppView | null>(null);
   const sessionComposerRef = useRef<SessionComposerHandle>(null);
   const prevSessionStatusRef = useRef<Map<string, SessionStatus>>(new Map());
   const lastErrorToastKeyRef = useRef("");
-  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
   const [showDiffPanel, setShowDiffPanel] = useState(false);
   const [openTerminalSessionKey, setOpenTerminalSessionKey] = useState("");
   const [takeoverTerminalSessionKey, setTakeoverTerminalSessionKey] = useState("");
   const [terminalHeight, setTerminalHeight] = useState(340);
   const [diffFileRequest, setDiffFileRequest] = useState<DiffPanelFileRequest | null>(null);
   const [diffRefreshNonce, setDiffRefreshNonce] = useState(0);
-  const [timelinePaneMountVersion, setTimelinePaneMountVersion] = useState(0);
-  const [disableTimelineVirtualization, setDisableTimelineVirtualization] = useState(true);
-  const threadSearch = useThreadSearch(timelinePaneRef);
+  const threadSearch = useThreadSearch({ current: null } as React.RefObject<HTMLDivElement | null>);
   const api = window.piApp;
   const sidebarToggleStateRef = useRef<{
     readonly api: typeof window.piApp;
@@ -788,6 +779,15 @@ export default function App() {
   const selectedWorkspaceCommandCompatibility = selectedWorkspace
     ? snapshot?.extensionCommandCompatibilityByWorkspace[selectedWorkspace.id] ?? []
     : [];
+
+  // --- Extracted hooks ---
+  const timelineScroll = useTimelineScroll({
+    selectedSessionKey,
+    activeView: snapshot?.activeView,
+    activeTranscript,
+    setShowDiffPanel,
+  });
+
   useEffect(() => {
     if (snapshot && snapshot.workspaces.length === 0) {
       setOpenTerminalSessionKey("");
@@ -1015,199 +1015,10 @@ export default function App() {
       newThreadComposerRef.current?.focus();
     });
   };
-  const resetExactBottomRestoreState = (nextSessionKey: string | null = null) => {
-    exactBottomRestoreSessionKeyRef.current = nextSessionKey;
-    deferredPinnedBottomAlignmentRef.current = false;
-    pendingPinnedBottomBehaviorRef.current = "auto";
-  };
   const updateNewThreadPrompt = useCallback((value: SetStateAction<string>) => {
     setNewThreadComposerError(undefined);
     setNewThreadPrompt(value);
   }, [setNewThreadPrompt]);
-  const scrollTimelineToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
-    const pane = timelinePaneRef.current;
-    if (!pane) {
-      return;
-    }
-
-    const align = (remainingChecks: number) => {
-      if (behavior === "auto") {
-        pane.scrollTop = pane.scrollHeight;
-      } else {
-        pane.scrollTo({ top: pane.scrollHeight, behavior });
-      }
-      pinnedToBottomRef.current = true;
-      lastTimelineScrollTopBySessionRef.current.set(selectedSessionKey, pane.scrollTop);
-      lastTimelinePinnedBySessionRef.current.set(selectedSessionKey, true);
-      setShowJumpToLatest(false);
-
-      if (remainingChecks <= 0) {
-        return;
-      }
-
-      window.requestAnimationFrame(() => {
-        const remaining = pane.scrollHeight - pane.scrollTop - pane.clientHeight;
-        if (remaining > 1 || remainingChecks > 1) {
-          align(remainingChecks - 1);
-        }
-      });
-    };
-
-    align(6);
-  }, [selectedSessionKey]);
-
-  const requestPinnedBottomAlignment = useCallback((
-    behavior: ScrollBehavior = "auto",
-    options?: { readonly preferExactRestore?: boolean },
-  ) => {
-    if (exactBottomRestoreSessionKeyRef.current === selectedSessionKey && selectedSessionKey) {
-      pendingPinnedBottomBehaviorRef.current = behavior;
-      deferredPinnedBottomAlignmentRef.current = true;
-      return;
-    }
-
-    if (options?.preferExactRestore && selectedSessionKey && activeTranscript.length > VIRTUALIZATION_THRESHOLD) {
-      exactBottomRestoreSessionKeyRef.current = selectedSessionKey;
-      pendingPinnedBottomBehaviorRef.current = behavior;
-      preserveBottomOnNextPaneResizeRef.current = true;
-      setDisableTimelineVirtualization(true);
-      return;
-    }
-
-    scrollTimelineToBottom(behavior);
-  }, [activeTranscript.length, scrollTimelineToBottom, selectedSessionKey]);
-
-  const finalizeTimelineVirtualizationDisable = useCallback(() => {
-    const pane = timelinePaneRef.current;
-    const restoreSessionKey = exactBottomRestoreSessionKeyRef.current;
-    if (!pane || snapshot?.activeView !== "threads") {
-      resetExactBottomRestoreState();
-      setDisableTimelineVirtualization(false);
-      return;
-    }
-
-    if (restoreSessionKey !== selectedSessionKey || !restoreSessionKey) {
-      setDisableTimelineVirtualization(false);
-      return;
-    }
-
-    const shouldRestoreBottom =
-      pinnedToBottomRef.current || preserveBottomOnNextPaneResizeRef.current || deferredPinnedBottomAlignmentRef.current;
-    if (!shouldRestoreBottom) {
-      resetExactBottomRestoreState();
-      setDisableTimelineVirtualization(false);
-      return;
-    }
-
-    const finishRestore = (remainingChecks: number, stableChecks: number) => {
-      window.requestAnimationFrame(() => {
-        if (timelinePaneRef.current !== pane || exactBottomRestoreSessionKeyRef.current !== restoreSessionKey) {
-          return;
-        }
-
-        if (pinnedToBottomRef.current || preserveBottomOnNextPaneResizeRef.current) {
-          scrollTimelineToBottom();
-        }
-
-        const remaining = pane.scrollHeight - pane.scrollTop - pane.clientHeight;
-        const nextStableChecks = remaining <= 16 ? stableChecks + 1 : 0;
-        if (remainingChecks <= 1 || nextStableChecks >= 2) {
-          const shouldApplyDeferredAlignment = deferredPinnedBottomAlignmentRef.current;
-          resetExactBottomRestoreState();
-          if (shouldApplyDeferredAlignment) {
-            scrollTimelineToBottom();
-          }
-          preserveBottomOnNextPaneResizeRef.current = false;
-          return;
-        }
-
-        finishRestore(remainingChecks - 1, nextStableChecks);
-      });
-    };
-
-    if (pinnedToBottomRef.current || preserveBottomOnNextPaneResizeRef.current) {
-      scrollTimelineToBottom();
-    }
-
-    window.requestAnimationFrame(() => {
-      if (timelinePaneRef.current !== pane || exactBottomRestoreSessionKeyRef.current !== restoreSessionKey) {
-        return;
-      }
-      setDisableTimelineVirtualization(false);
-      scrollTimelineToBottom(pendingPinnedBottomBehaviorRef.current);
-      pendingPinnedBottomBehaviorRef.current = "auto";
-      finishRestore(6, 0);
-    });
-  }, [scrollTimelineToBottom, selectedSessionKey, snapshot?.activeView]);
-
-  const setTimelinePaneElement = useCallback((node: HTMLDivElement | null) => {
-    timelinePaneRef.current = node;
-    if (!node) {
-      return;
-    }
-
-    setTimelinePaneMountVersion((current) => current + 1);
-
-    const savedPinned = lastTimelinePinnedBySessionRef.current.get(selectedSessionKey);
-    const savedScrollTop = lastTimelineScrollTopBySessionRef.current.get(selectedSessionKey);
-
-    if (!selectedSessionKey || snapshot?.activeView !== "threads") {
-      setDisableTimelineVirtualization(false);
-      return;
-    }
-
-    const shouldRestoreBottom = (savedPinned ?? pinnedToBottomRef.current) || preserveBottomOnNextPaneResizeRef.current;
-    if (shouldRestoreBottom) {
-      preserveBottomOnNextPaneResizeRef.current = true;
-      node.scrollTop = node.scrollHeight;
-      window.requestAnimationFrame(() => {
-        if (timelinePaneRef.current !== node) {
-          return;
-        }
-        if (pinnedToBottomRef.current || preserveBottomOnNextPaneResizeRef.current) {
-          requestPinnedBottomAlignment("auto", { preferExactRestore: true });
-        }
-      });
-      return;
-    }
-
-    if (savedScrollTop == null) {
-      setDisableTimelineVirtualization(false);
-      return;
-    }
-
-    node.scrollTop = savedScrollTop;
-    pinnedToBottomRef.current = false;
-    resetExactBottomRestoreState();
-    lastTimelinePinnedBySessionRef.current.set(selectedSessionKey, false);
-    window.requestAnimationFrame(() => {
-      if (timelinePaneRef.current !== node) {
-        return;
-      }
-      setDisableTimelineVirtualization(false);
-    });
-  }, [scrollTimelineToBottom, selectedSessionKey, snapshot?.activeView]);
-
-  const schedulePinnedBottomRealignment = useCallback((delayFrames = 0) => {
-    const waitForFrames = (remainingFrames: number) => {
-      window.requestAnimationFrame(() => {
-        if (remainingFrames > 0) {
-          waitForFrames(remainingFrames - 1);
-          return;
-        }
-        requestPinnedBottomAlignment("auto", { preferExactRestore: true });
-        window.requestAnimationFrame(() => {
-          preserveBottomOnNextPaneResizeRef.current = false;
-          if (pinnedToBottomRef.current) {
-            requestPinnedBottomAlignment("auto", { preferExactRestore: true });
-          }
-        });
-      });
-    };
-
-    waitForFrames(delayFrames);
-  }, [requestPinnedBottomAlignment]);
-
   const handleViewFileInDiff = useCallback((path: string) => {
     setShowDiffPanel(true);
     setDiffFileRequest({ path, nonce: Date.now() });
@@ -1240,10 +1051,10 @@ export default function App() {
   );
 
   const toggleDiffPanel = useCallback(() => {
-    const pane = timelinePaneRef.current;
-    const shouldPreserveBottom = pane ? isNearBottom(pane) || pinnedToBottomRef.current : pinnedToBottomRef.current;
+    const pane = timelineScroll.timelinePaneRef.current;
+    const shouldPreserveBottom = pane ? isNearBottom(pane) || timelineScroll.pinnedToBottomRef.current : timelineScroll.pinnedToBottomRef.current;
     if (shouldPreserveBottom) {
-      preserveBottomOnNextPaneResizeRef.current = true;
+      timelineScroll.preserveBottomOnNextPaneResizeRef.current = true;
     }
 
     setShowDiffPanel((prev) => !prev);
@@ -1252,8 +1063,26 @@ export default function App() {
       return;
     }
 
-    schedulePinnedBottomRealignment(3);
-  }, [schedulePinnedBottomRealignment]);
+    timelineScroll.schedulePinnedBottomRealignment(3);
+  }, [timelineScroll.schedulePinnedBottomRealignment, timelineScroll.timelinePaneRef, timelineScroll.pinnedToBottomRef, timelineScroll.preserveBottomOnNextPaneResizeRef]);
+
+  // --- Settings & Skills/Extensions handlers ---
+  const settingsHandlers = useSettingsHandlers({
+    api,
+    setSnapshot,
+    updateSnapshot,
+    settingsWorkspace,
+    selectedWorkspace,
+    selectedSession,
+    setThemeMode,
+  });
+  const skillsExtensionsHandlers = useSkillsExtensionsHandlers({
+    api,
+    setSnapshot,
+    updateSnapshot,
+    skillsWorkspace,
+    extensionsWorkspace,
+  });
 
   const openSettings = (workspaceId?: string, section?: SettingsSection) => {
     if (!api) {
@@ -1511,177 +1340,6 @@ export default function App() {
     [api],
   );
 
-  useEffect(() => installPhysicalKeyFeedback(), []);
-
-  useEffect(() => {
-    const cycleThinking = () => {
-      const session = selectedSessionRef.current;
-      const workspace = selectedWorkspaceRef.current;
-      if (!session || !workspace || !api) return;
-      const currentLevel = session.config?.thinkingLevel ?? "off";
-      // Filter THINKING_OPTIONS to only include levels the current model supports
-      const runtime = workspace ? snapshot?.runtimeByWorkspace[workspace.id] : undefined;
-      const modelRecord = runtime?.models.find(
-        (m) => m.providerId === session.config?.provider && m.modelId === session.config?.modelId,
-      );
-      const availableLevels = modelRecord?.availableThinkingLevels ?? ["off", "low", "medium", "high", "xhigh"];
-      const cycleable = THINKING_OPTIONS.filter((opt) => availableLevels.includes(opt.value));
-      if (cycleable.length === 0) return;
-      const currentIndex = cycleable.findIndex((opt) => opt.value === currentLevel);
-      const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % cycleable.length : 0;
-      const next = cycleable[nextIndex];
-      if (next) {
-        void api.setSessionThinkingLevel(workspace.id, session.id, next.value as NonNullable<RuntimeSnapshot["settings"]["defaultThinkingLevel"]>);
-      }
-    };
-
-    const handleCommand = (command: PiDesktopCommand): boolean => {
-      if (command === desktopCommands.openSettings) {
-        openSettings(selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id);
-        return true;
-      } else if (command === desktopCommands.openNewThread) {
-        openNewThreadSurface(selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id);
-        return true;
-      } else if (command === desktopCommands.toggleTerminal) {
-        toggleTerminal();
-        return true;
-      } else if (command === desktopCommands.toggleSidebar) {
-        return handleTogglePrimarySidebar();
-      } else if (command === desktopCommands.commitAndPush) {
-        window.dispatchEvent(new CustomEvent("pi:commit-and-push"));
-        return true;
-      }
-      return false;
-    };
-
-    const removeCommandListener = window.piApp?.onCommand?.(handleCommand);
-    const removeWorkspacePickedListener = window.piApp?.onWorkspacePicked?.((workspaceId) => {
-      setPendingNewThreadWorkspaceId(workspaceId);
-      resetNewThreadSurface();
-    });
-    const removeClipboardImageListener = window.piApp?.onClipboardImagePasted?.(handlePastedClipboardImage);
-    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (isEventInsideTerminal(event)) {
-        const command = getDesktopCommandFromShortcut({
-          modifier: event.metaKey || event.ctrlKey,
-          shift: event.shiftKey,
-          key: event.key,
-          code: event.code,
-        });
-        if (command === desktopCommands.toggleTerminal) {
-          event.preventDefault();
-          handleCommand(command);
-        }
-        return;
-      }
-      // Cmd+F toggles thread search
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "f" && !event.shiftKey) {
-        event.preventDefault();
-        if (threadSearch.isOpen) {
-          threadSearch.close();
-        } else {
-          threadSearch.open();
-        }
-        return;
-      }
-      // Cmd+D toggles diff panel
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "d" && !event.shiftKey) {
-        event.preventDefault();
-        toggleDiffPanel();
-        return;
-      }
-      // Cmd+T opens model picker (outside terminal)
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "t" && !event.shiftKey) {
-        event.preventDefault();
-        modelSelectorRef.current?.openModelDropdown();
-        return;
-      }
-      // Shift+Tab cycles thinking level
-      if (event.key === "Tab" && event.shiftKey && !(event.metaKey || event.ctrlKey)) {
-        event.preventDefault();
-        cycleThinking();
-        return;
-      }
-      // Cmd+[ / Cmd+] navigates back/forward through location history.
-      if ((event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey) {
-        if (event.key === "[") {
-          const target = navigationHistory.goBack();
-          if (target) {
-            event.preventDefault();
-            navigateToEntry(target);
-          }
-          return;
-        }
-        if (event.key === "]") {
-          const target = navigationHistory.goForward();
-          if (target) {
-            event.preventDefault();
-            navigateToEntry(target);
-          }
-          return;
-        }
-      }
-      const command = getDesktopCommandFromShortcut({
-        modifier: event.metaKey || event.ctrlKey,
-        shift: event.shiftKey,
-        key: event.key,
-        code: event.code,
-      });
-      if (command && handleCommand(command)) {
-        event.preventDefault();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      removeCommandListener?.();
-      removeWorkspacePickedListener?.();
-      removeClipboardImageListener?.();
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [
-    selectedWorkspace?.id,
-    selectedWorkspace?.rootWorkspaceId,
-    threadSearch,
-    api,
-    toggleDiffPanel,
-    toggleTerminal,
-    handleTogglePrimarySidebar,
-    navigationHistory,
-    navigateToEntry,
-  ]);
-
-  useLayoutEffect(() => {
-    setShowJumpToLatest(false);
-    lastTranscriptMarkerRef.current = "";
-    pinnedToBottomRef.current =
-      lastTimelinePinnedBySessionRef.current.get(selectedSessionKey) ?? true;
-    previousTimelinePaneSizeRef.current = null;
-    preserveBottomOnNextPaneResizeRef.current = false;
-    resetExactBottomRestoreState(selectedSessionKey || null);
-    setDisableTimelineVirtualization(Boolean(selectedSessionKey));
-  }, [selectedSessionKey]);
-
-  useLayoutEffect(() => {
-    if (snapshot?.activeView !== "threads" || !selectedSession || activeTranscript.length === 0) {
-      return;
-    }
-    if (exactBottomRestoreSessionKeyRef.current !== selectedSessionKey) {
-      return;
-    }
-    if (!pinnedToBottomRef.current && !preserveBottomOnNextPaneResizeRef.current) {
-      return;
-    }
-
-    scrollTimelineToBottom();
-  }, [
-    activeTranscript,
-    disableTimelineVirtualization,
-    scrollTimelineToBottom,
-    selectedSession,
-    selectedSessionKey,
-    snapshot?.activeView,
-  ]);
-
   useEffect(() => {
     setTreeModalState((current) =>
       current.open
@@ -1711,8 +1369,6 @@ export default function App() {
     }
 
     if (snapshot.activeView !== "threads") {
-      previousTimelinePaneSizeRef.current = null;
-      resetExactBottomRestoreState();
     }
 
     if (
@@ -1721,113 +1377,14 @@ export default function App() {
       selectedSession
     ) {
       focusComposer();
-      if (pinnedToBottomRef.current || preserveBottomOnNextPaneResizeRef.current) {
-        preserveBottomOnNextPaneResizeRef.current = true;
-        schedulePinnedBottomRealignment(1);
+      if (timelineScroll.pinnedToBottomRef.current || timelineScroll.preserveBottomOnNextPaneResizeRef.current) {
+        timelineScroll.preserveBottomOnNextPaneResizeRef.current = true;
+        timelineScroll.schedulePinnedBottomRealignment(1);
       }
     }
 
     previousActiveViewRef.current = snapshot.activeView;
-  }, [schedulePinnedBottomRealignment, selectedSession, selectedWorkspace?.id, snapshot]);
-
-  useLayoutEffect(() => {
-    if (snapshot?.activeView !== "threads" || !selectedSession) {
-      return undefined;
-    }
-
-    return () => {
-      const pane = timelinePaneRef.current;
-      if (!pane) {
-        return;
-      }
-      lastTimelineScrollTopBySessionRef.current.set(selectedSessionKey, pane.scrollTop);
-      lastTimelinePinnedBySessionRef.current.set(selectedSessionKey, isNearBottom(pane));
-    };
-  }, [selectedSession, selectedSessionKey, snapshot?.activeView]);
-
-  useLayoutEffect(() => {
-    const pane = timelinePaneRef.current;
-    if (!pane || !selectedSession || snapshot?.activeView !== "threads") {
-      previousTimelinePaneSizeRef.current = null;
-      return undefined;
-    }
-
-    const stickToBottomAfterLayoutChange = () => {
-      preserveBottomOnNextPaneResizeRef.current = false;
-      pinnedToBottomRef.current = true;
-      window.requestAnimationFrame(() => {
-        requestPinnedBottomAlignment("auto", { preferExactRestore: true });
-        window.requestAnimationFrame(() => {
-          if (pinnedToBottomRef.current) {
-            requestPinnedBottomAlignment("auto", { preferExactRestore: true });
-          }
-        });
-      });
-    };
-
-    const updateMeasuredSize = (nextSize: { width: number; height: number }) => {
-      const previousSize = previousTimelinePaneSizeRef.current;
-      previousTimelinePaneSizeRef.current = nextSize;
-      const shouldStickToBottom = preserveBottomOnNextPaneResizeRef.current || pinnedToBottomRef.current;
-      const widthChanged = previousSize ? Math.abs(nextSize.width - previousSize.width) >= 1 : false;
-      const heightChanged = previousSize ? Math.abs(nextSize.height - previousSize.height) >= 1 : false;
-      if (!previousSize || (!widthChanged && !heightChanged) || !shouldStickToBottom) {
-        return;
-      }
-
-      stickToBottomAfterLayoutChange();
-    };
-
-    const paneRect = pane.getBoundingClientRect();
-    updateMeasuredSize({ width: paneRect.width, height: paneRect.height });
-
-    const resizeObserver = new ResizeObserver((entries) => {
-      const entry = entries[0];
-      if (!entry) {
-        return;
-      }
-      updateMeasuredSize({ width: entry.contentRect.width, height: entry.contentRect.height });
-    });
-
-    resizeObserver.observe(pane);
-    return () => {
-      resizeObserver.disconnect();
-      previousTimelinePaneSizeRef.current = null;
-    };
-  }, [requestPinnedBottomAlignment, selectedSessionKey, showDiffPanel, snapshot?.activeView, timelinePaneMountVersion]);
-
-  useEffect(() => {
-    const pane = timelinePaneRef.current;
-    if (!pane || !selectedSession) {
-      return;
-    }
-
-    const marker = buildTranscriptChangeMarker(selectedSessionKey, activeTranscript);
-    if (marker === lastTranscriptMarkerRef.current) {
-      return;
-    }
-    lastTranscriptMarkerRef.current = marker;
-
-    if (pinnedToBottomRef.current) {
-      requestPinnedBottomAlignment("auto", { preferExactRestore: true });
-      return;
-    }
-
-    setShowJumpToLatest(true);
-  }, [activeTranscript, requestPinnedBottomAlignment, selectedSession, selectedSessionKey]);
-
-  const handleTimelineContentHeightChange = useCallback(() => {
-    if (!pinnedToBottomRef.current && !preserveBottomOnNextPaneResizeRef.current) {
-      return;
-    }
-
-    window.requestAnimationFrame(() => {
-      if (!pinnedToBottomRef.current && !preserveBottomOnNextPaneResizeRef.current) {
-        return;
-      }
-      requestPinnedBottomAlignment("auto", { preferExactRestore: true });
-    });
-  }, [requestPinnedBottomAlignment]);
+  }, [timelineScroll.schedulePinnedBottomRealignment, selectedSession, selectedWorkspace?.id, snapshot]);
 
   // Click-through from the composer "thread finished" toast.
   // Must be declared before the early return below to preserve hook order.
@@ -1856,6 +1413,67 @@ export default function App() {
     window.addEventListener(OPEN_SESSION_EVENT, handler);
     return () => window.removeEventListener(OPEN_SESSION_EVENT, handler);
   }, []);
+
+  // --- Keyboard shortcuts (extracted) ---
+  // Must be before the early return to preserve hook order.
+  const setActiveView = (view: AppView) => {
+    if (!api) return;
+    void updateSnapshot(api, setSnapshot, () => api.setActiveView(view));
+  };
+  const openNewThreadSurface = (workspaceId?: string) => {
+    setPendingNewThreadWorkspaceId("");
+    setNewThreadIsChat(false);
+    resetNewThreadSurface(workspaceId);
+    if (api) setActiveView("new-thread");
+  };
+  function handlePastedClipboardImage(clipboardImage: ComposerImageAttachment) {
+    const activeElement = document.activeElement;
+    if (activeElement === composerRef.current) {
+      if (!api) {
+        return;
+      }
+      void updateSnapshot(api, setSnapshot, () => api.addComposerAttachments([clipboardImage]));
+      return;
+    }
+    if (activeElement === newThreadComposerRef.current) {
+      setNewThreadAttachments((current) => [...current, clipboardImage]);
+    }
+  }
+  useKeyboardShortcuts({
+    api,
+    snapshot: snapshot!,
+    selectedWorkspace,
+    selectedSession,
+    threadSearch,
+    navigationHistory,
+    modelSelectorRef,
+    composerMode: newThreadComposerMode,
+    onSetComposerMode: setNewThreadComposerMode,
+    focusComposer,
+    toggleDiffPanel,
+    toggleTerminal,
+    handleTogglePrimarySidebar,
+    openSettings,
+    openNewThreadSurface,
+    navigateToEntry,
+    handlePastedClipboardImage,
+    setPendingNewThreadWorkspaceId,
+    resetNewThreadSurface,
+  });
+
+  const { loopControl, beginRalphLoop, runRalphLoop } = useRalphLoop(
+    snapshot,
+    selectedSession,
+    selectedWorkspace,
+    api!,
+    setSnapshot,
+    updateSnapshot,
+    resolvedSessionProvider,
+    resolvedSessionModelId,
+    resolvedSessionThinkingLevel,
+    ralphLaunch,
+    setRalphLaunch,
+  );
 
   if (!api || !snapshot) {
     return (
@@ -1897,10 +1515,6 @@ export default function App() {
     />
   ) : null;
 
-  const setActiveView = (view: AppView) => {
-    void updateSnapshot(api, setSnapshot, () => api.setActiveView(view));
-  };
-
   const openSkills = (workspaceId?: string) => {
     const nextWorkspaceId =
       workspaceId && rootWorkspaceOptions.some((workspace) => workspace.id === workspaceId)
@@ -1923,12 +1537,7 @@ export default function App() {
     setActiveView("extensions");
   };
 
-  const openNewThreadSurface = (workspaceId?: string) => {
-    setPendingNewThreadWorkspaceId("");
-    setNewThreadIsChat(false);
-    resetNewThreadSurface(workspaceId);
-    setActiveView("new-thread");
-  };
+
 
   const openContext = () => {
     setActiveView("context");
@@ -2008,240 +1617,11 @@ export default function App() {
     return true;
   };
 
-  function handlePastedClipboardImage(clipboardImage: ComposerImageAttachment) {
-    const activeElement = document.activeElement;
-    if (activeElement === composerRef.current) {
-      if (!api) {
-        return;
-      }
-      void updateSnapshot(api, setSnapshot, () => api.addComposerAttachments([clipboardImage]));
-      return;
-    }
 
-    if (activeElement === newThreadComposerRef.current) {
-      setNewThreadAttachments((current) => [...current, clipboardImage]);
-    }
-  }
-
-  const handleSetSessionModel = (provider: string, modelId: string) => {
-    if (!selectedWorkspace || !selectedSession) {
-      return;
-    }
-    void updateSnapshot(api, setSnapshot, () =>
-      api.setSessionModel(selectedWorkspace.id, selectedSession.id, provider, modelId),
-    );
-  };
-
-  const handleSetSessionThinking = (level: string) => {
-    if (!selectedWorkspace || !selectedSession) {
-      return;
-    }
-    void updateSnapshot(api, setSnapshot, () =>
-      api.setSessionThinkingLevel(
-        selectedWorkspace.id,
-        selectedSession.id,
-        level as NonNullable<RuntimeSnapshot["settings"]["defaultThinkingLevel"]>,
-      ),
-    );
-  };
-
-  const handleSetDefaultCavemanLevel = (level: CavemanLevel) => {
-    setCavemanLevel(level);
-    void api.setCavemanDefaultLevel(level);
-  };
-
-  const handleSetSessionCavemanLevel = (level: CavemanLevel) => {
-    handleSetDefaultCavemanLevel(level);
-    if (selectedSession) {
-      void updateSnapshot(api, setSnapshot, () => api.submitComposer(`/caveman ${level}`));
-    }
-  };
-
-  const { loopControl, beginRalphLoop, runRalphLoop } = useRalphLoop(
-    snapshot,
-    selectedSession,
-    selectedWorkspace,
-    api,
-    setSnapshot,
-    updateSnapshot,
-    resolvedSessionProvider,
-    resolvedSessionModelId,
-    resolvedSessionThinkingLevel,
-    ralphLaunch,
-    setRalphLaunch,
-  );
-
-  const handleSetDefaultModel = (provider: string, modelId: string) => {
-    if (!settingsWorkspace) {
-      return;
-    }
-    void updateSnapshot(api, setSnapshot, () => api.setDefaultModel(settingsWorkspace.id, provider, modelId));
-  };
-
-  const handleSetThinkingLevel = (thinkingLevel: RuntimeSnapshot["settings"]["defaultThinkingLevel"]) => {
-    if (!settingsWorkspace) {
-      return;
-    }
-    void updateSnapshot(api, setSnapshot, () => api.setDefaultThinkingLevel(settingsWorkspace.id, thinkingLevel));
-  };
-
-  const handleToggleSkillCommands = (enabled: boolean) => {
-    if (!settingsWorkspace) {
-      return;
-    }
-    void updateSnapshot(api, setSnapshot, () => api.setEnableSkillCommands(settingsWorkspace.id, enabled));
-  };
-
-  const handleSetScopedModelPatterns = (patterns: readonly string[]) => {
-    if (!settingsWorkspace) {
-      return;
-    }
-    void updateSnapshot(api, setSnapshot, () => api.setScopedModelPatterns(settingsWorkspace.id, patterns));
-  };
-
-  const handleSetModelSettingsScopeMode = (mode: "app-global" | "per-repo") => {
-    if (!api) {
-      return;
-    }
-    void updateSnapshot(api, setSnapshot, () => api.setModelSettingsScopeMode(mode));
-  };
-
-  const handleLoginProvider = (providerId: string) => {
-    if (!settingsWorkspace) {
-      return;
-    }
-    void updateSnapshot(api, setSnapshot, () => api.loginProvider(settingsWorkspace.id, providerId));
-  };
-
-  const handleLogoutProvider = (providerId: string) => {
-    if (!settingsWorkspace) {
-      return;
-    }
-    void updateSnapshot(api, setSnapshot, () => api.logoutProvider(settingsWorkspace.id, providerId));
-  };
-
-  const handleSetProviderApiKey = async (providerId: string, apiKey: string): Promise<string | undefined> => {
-    if (!api || !settingsWorkspace) {
-      return "Select a workspace first.";
-    }
-    const state = await updateSnapshot(api, setSnapshot, () =>
-      api.setProviderApiKey(settingsWorkspace.id, providerId, apiKey),
-    );
-    return state.lastError;
-  };
-
-  const handleRemoveProviderApiKey = async (providerId: string): Promise<string | undefined> => {
-    if (!api || !settingsWorkspace) {
-      return "Select a workspace first.";
-    }
-    const state = await updateSnapshot(api, setSnapshot, () =>
-      api.logoutProvider(settingsWorkspace.id, providerId),
-    );
-    return state.lastError;
-  };
-
-  const handleToggleSkill = (filePath: string, enabled: boolean) => {
-    if (!skillsWorkspace) {
-      return;
-    }
-    void updateSnapshot(api, setSnapshot, () => api.setSkillEnabled(skillsWorkspace.id, filePath, enabled));
-  };
-
-  const handleOpenSkillFolder = (filePath: string) => {
-    if (!skillsWorkspace) {
-      return;
-    }
-    void api.openSkillInFinder(skillsWorkspace.id, filePath);
-  };
-
-  const handleToggleExtension = (filePath: string, enabled: boolean) => {
-    if (!extensionsWorkspace) {
-      return;
-    }
-    void updateSnapshot(api, setSnapshot, () => api.setExtensionEnabled(extensionsWorkspace.id, filePath, enabled));
-  };
-
-  const handleOpenExtensionFolder = (filePath: string) => {
-    if (!extensionsWorkspace) {
-      return;
-    }
-    void api.openExtensionInFinder(extensionsWorkspace.id, filePath);
-  };
-
-  const handleDeleteExtension = (filePath: string) => {
-    console.log("[deleteExtension] called with:", filePath);
-    if (!extensionsWorkspace) {
-      console.warn("[deleteExtension] no extensionsWorkspace");
-      return;
-    }
-    if (!api || typeof api.deleteExtension !== "function") {
-      console.warn("[deleteExtension] api.deleteExtension not available");
-      window.alert("Delete extension is not available. Please restart the app to pick up the latest changes.");
-      return;
-    }
-    console.log("[deleteExtension] api.deleteExtension exists, workspace:", extensionsWorkspace.id);
-    const confirmed = window.confirm("Delete this extension? This will permanently remove the extension files from disk.");
-    if (!confirmed) {
-      console.log("[deleteExtension] user cancelled");
-      return;
-    }
-    console.log("[deleteExtension] confirmed, calling IPC...");
-    updateSnapshot(api, setSnapshot, () => {
-      console.log("[deleteExtension] invoking api.deleteExtension...");
-      return api.deleteExtension(extensionsWorkspace.id, filePath);
-    }).then((state) => {
-      console.log("[deleteExtension] success, new state:", state.lastError ? "has error: " + state.lastError : "ok");
-      const stillThere = state.runtimeByWorkspace[extensionsWorkspace.id]?.extensions?.find((e: { path: string }) => e.path === filePath);
-      console.log("[deleteExtension] extension still in runtime?", !!stillThere);
-    }).catch((error: unknown) => {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error("[deleteExtension] FAILED:", message);
-      window.alert(`Failed to delete extension: ${message}`);
-    });
-  };
 
   const handleTrySkill = (command: string) => {
     void updateSnapshot(api, setSnapshot, () => api.setActiveView("threads"));
     sessionComposerRef.current?.fillFromSlash(command);
-  };
-
-  const handleSetThemeMode = (mode: "system" | "light" | "dark" | "dracula") => {
-    if (!api) return;
-    setThemeMode(mode);
-    document.documentElement.classList.toggle("dracula", mode === "dracula");
-    void api.setThemeMode(mode);
-  };
-
-  const handleSetNotificationPreferences = (preferences: Partial<DesktopAppState["notificationPreferences"]>) => {
-    void updateSnapshot(api, setSnapshot, () => api.setNotificationPreferences(preferences));
-  };
-
-  const handleSetIntegratedTerminalShell = (shellPath: string) => {
-    void updateSnapshot(api, setSnapshot, () => api.setIntegratedTerminalShell(shellPath));
-  };
-
-  const handleSetSubagentSettings = (settings: Partial<DesktopAppState["subagentSettings"]>) => {
-    void updateSnapshot(api, setSnapshot, () => api.setSubagentSettings(settings));
-  };
-
-  const handleRefreshSubagentAgents = (workspaceId: string) => {
-    void updateSnapshot(api, setSnapshot, () => api.refreshSubagentAgents(workspaceId));
-  };
-
-  const handleSaveSubagentAgent = (workspaceId: string, input: { readonly name: string; readonly raw: string; readonly scope?: "project" | "global" }) => {
-    void updateSnapshot(api, setSnapshot, () => api.saveSubagentAgent(workspaceId, input));
-  };
-
-  const handleDeleteSubagentAgent = (workspaceId: string, name: string, scope?: "project" | "global") => {
-    void updateSnapshot(api, setSnapshot, () => api.deleteSubagentAgent(workspaceId, name, scope));
-  };
-
-  const handleChooseExternalTerminalApp = () => {
-    void updateSnapshot(api, setSnapshot, () => api.chooseExternalTerminalApp());
-  };
-
-  const handleClearExternalTerminalApp = () => {
-    void updateSnapshot(api, setSnapshot, () => api.clearExternalTerminalApp());
   };
 
   const handleRequestNotificationPermission = () => {
@@ -2494,29 +1874,6 @@ export default function App() {
     });
   };
 
-  const handleTimelineScroll = () => {
-    const pane = timelinePaneRef.current;
-    if (!pane) {
-      return;
-    }
-
-    const pinned = isNearBottom(pane);
-    if (preserveBottomOnNextPaneResizeRef.current && !pinned) {
-      return;
-    }
-
-    pinnedToBottomRef.current = pinned;
-    lastTimelineScrollTopBySessionRef.current.set(selectedSessionKey, pane.scrollTop);
-    lastTimelinePinnedBySessionRef.current.set(selectedSessionKey, pinned);
-    if (pinned) {
-      setShowJumpToLatest(false);
-    }
-  };
-
-  const jumpToLatest = () => {
-    requestPinnedBottomAlignment("smooth", { preferExactRestore: true });
-  };
-
   const handleNewThreadComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (handleClipboardImageShortcut(event, (clipboardImage) => {
       setNewThreadAttachments((current) => [...current, clipboardImage]);
@@ -2535,54 +1892,59 @@ export default function App() {
     return;
   };
 
+  const utilityShellClass = `shell shell--skills${snapshot.sidebarCollapsed ? " shell--sidebar-collapsed" : ""}${sidebarResize.isResizing ? " shell--sidebar-resizing" : ""}`;
+  const utilityShellStyle = snapshot.sidebarCollapsed
+    ? undefined
+    : ({ ["--sidebar-width" as string]: `${sidebarResize.width}px` } as React.CSSProperties);
+  const renderUtilitySurface = (testId: string, children: React.ReactNode) => (
+    <div className={utilityShellClass} style={utilityShellStyle} data-testid={testId}>
+      {primarySidebarToggleVisible ? (
+        <SidebarToggleButton
+          collapsed={snapshot.sidebarCollapsed}
+          shortcutLabel={sidebarToggleShortcutLabel}
+          onToggle={handleTogglePrimarySidebar}
+        />
+      ) : null}
+      {!snapshot.sidebarCollapsed ? (
+        <Sidebar
+          resize={sidebarResize}
+          activeView={snapshot.activeView}
+          selectedWorkspace={selectedWorkspace}
+          selectedSession={selectedSession}
+          chats={chats}
+          visibleWorkspaces={visibleWorkspaces}
+          threadGroups={threadGroups}
+          linkedWorktreeByWorkspaceId={linkedWorktreeByWorkspaceId}
+          wsMenu={wsMenu}
+          api={api}
+          setSnapshot={setSnapshot}
+          updateSnapshot={updateSnapshot}
+          onNewThreadForWorkspace={(rootWorkspaceId) => openNewThreadSurface(rootWorkspaceId)}
+          onSetActiveView={setActiveView}
+          onOpenSkills={openSkills}
+          onOpenExtensions={openExtensions}
+          onOpenSettings={openSettings}
+          onOpenContext={openContext}
+          queueMode={snapshot.queueMode}
+          onSetQueueMode={setQueueMode}
+          onArchiveSession={handleArchiveSession}
+          onArchiveAllNonRunningSessions={handleArchiveAllNonRunningSessions}
+          onSelectSession={handleSelectSession}
+          onUnarchiveSession={handleUnarchiveSession}
+          onCreateChat={handleCreateChat}
+          onSelectChat={handleSelectChat}
+          onArchiveChat={handleArchiveChat}
+          onUnarchiveChat={handleUnarchiveChat}
+          onRemoveChat={handleRemoveChat}
+        />
+      ) : null}
+      <main className="main main--skills">{children}</main>
+      {import.meta.env.DEV && <Agentation />}
+    </div>
+  );
+
   if (snapshot.activeView === "settings") {
-    const settingsShellClass = `shell shell--skills${snapshot.sidebarCollapsed ? " shell--sidebar-collapsed" : ""}${sidebarResize.isResizing ? " shell--sidebar-resizing" : ""}`;
-    const settingsShellStyle = snapshot.sidebarCollapsed
-      ? undefined
-      : ({ ["--sidebar-width" as string]: `${sidebarResize.width}px` } as React.CSSProperties);
-    return (
-      <div className={settingsShellClass} style={settingsShellStyle} data-testid="settings-surface">
-        {primarySidebarToggleVisible ? (
-          <SidebarToggleButton
-            collapsed={snapshot.sidebarCollapsed}
-            shortcutLabel={sidebarToggleShortcutLabel}
-            onToggle={handleTogglePrimarySidebar}
-          />
-        ) : null}
-        {!snapshot.sidebarCollapsed ? (
-          <Sidebar
-            resize={sidebarResize}
-            activeView={snapshot.activeView}
-            selectedWorkspace={selectedWorkspace}
-            selectedSession={selectedSession}
-            chats={chats}
-            visibleWorkspaces={visibleWorkspaces}
-            threadGroups={threadGroups}
-            linkedWorktreeByWorkspaceId={linkedWorktreeByWorkspaceId}
-            wsMenu={wsMenu}
-            api={api}
-            setSnapshot={setSnapshot}
-            updateSnapshot={updateSnapshot}
-            onNewThreadForWorkspace={(rootWorkspaceId) => openNewThreadSurface(rootWorkspaceId)}
-            onSetActiveView={setActiveView}
-            onOpenSkills={openSkills}
-            onOpenExtensions={openExtensions}
-            onOpenSettings={openSettings}
-            onOpenContext={openContext}
-            queueMode={snapshot.queueMode}
-            onSetQueueMode={setQueueMode}
-            onArchiveSession={handleArchiveSession}
-            onArchiveAllNonRunningSessions={handleArchiveAllNonRunningSessions}
-            onSelectSession={handleSelectSession}
-            onUnarchiveSession={handleUnarchiveSession}
-            onCreateChat={handleCreateChat}
-            onSelectChat={handleSelectChat}
-            onArchiveChat={handleArchiveChat}
-            onUnarchiveChat={handleUnarchiveChat}
-            onRemoveChat={handleRemoveChat}
-          />
-        ) : null}
-        <main className="main main--skills">
+    return renderUtilitySurface("settings-surface", <>
           {settingsSection === "providers" || (settingsSection === "models" && snapshot.modelSettingsScopeMode === "per-repo") ? (
             <div className="surface-toolbar">
 
@@ -2621,30 +1983,34 @@ export default function App() {
             buttonSoundSettings={buttonSoundSettings}
             subagentSettings={snapshot.subagentSettings}
             retrySettings={snapshot.retrySettings}
+            planModeIdeology={snapshot.planModeIdeology}
+            onSetPlanModeIdeology={(ideology) => {
+              void updateSnapshot(api, setSnapshot, () => api.setPlanModeIdeology(ideology));
+            }}
             onSetRetrySettings={(settings) => {
               void updateSnapshot(api, setSnapshot, () => api.setRetrySettings(settings));
             }}
             subagentAgents={settingsWorkspace ? snapshot.subagentAgentsByWorkspace[settingsWorkspace.id] ?? [] : []}
-            onLoginProvider={handleLoginProvider}
-            onLogoutProvider={handleLogoutProvider}
-            onSetProviderApiKey={handleSetProviderApiKey}
-            onRemoveProviderApiKey={handleRemoveProviderApiKey}
-            onSetModelSettingsScopeMode={handleSetModelSettingsScopeMode}
-            onSetDefaultModel={handleSetDefaultModel}
-            onSetNotificationPreferences={handleSetNotificationPreferences}
-            onSetIntegratedTerminalShell={handleSetIntegratedTerminalShell}
-            onSetSubagentSettings={handleSetSubagentSettings}
-            onRefreshSubagentAgents={handleRefreshSubagentAgents}
-            onSaveSubagentAgent={handleSaveSubagentAgent}
-            onDeleteSubagentAgent={handleDeleteSubagentAgent}
-            onChooseExternalTerminalApp={handleChooseExternalTerminalApp}
-            onClearExternalTerminalApp={handleClearExternalTerminalApp}
+            onLoginProvider={settingsHandlers.handleLoginProvider}
+            onLogoutProvider={settingsHandlers.handleLogoutProvider}
+            onSetProviderApiKey={settingsHandlers.handleSetProviderApiKey}
+            onRemoveProviderApiKey={settingsHandlers.handleRemoveProviderApiKey}
+            onSetModelSettingsScopeMode={settingsHandlers.handleSetModelSettingsScopeMode}
+            onSetDefaultModel={settingsHandlers.handleSetDefaultModel}
+            onSetNotificationPreferences={settingsHandlers.handleSetNotificationPreferences}
+            onSetIntegratedTerminalShell={settingsHandlers.handleSetIntegratedTerminalShell}
+            onSetSubagentSettings={settingsHandlers.handleSetSubagentSettings}
+            onRefreshSubagentAgents={settingsHandlers.handleRefreshSubagentAgents}
+            onSaveSubagentAgent={settingsHandlers.handleSaveSubagentAgent}
+            onDeleteSubagentAgent={settingsHandlers.handleDeleteSubagentAgent}
+            onChooseExternalTerminalApp={settingsHandlers.handleChooseExternalTerminalApp}
+            onClearExternalTerminalApp={settingsHandlers.handleClearExternalTerminalApp}
             onRequestNotificationPermission={handleRequestNotificationPermission}
             onOpenSystemNotificationSettings={handleOpenSystemNotificationSettings}
-            onSetScopedModelPatterns={handleSetScopedModelPatterns}
-            onSetThemeMode={handleSetThemeMode}
-            onSetThinkingLevel={handleSetThinkingLevel}
-            onToggleSkillCommands={handleToggleSkillCommands}
+            onSetScopedModelPatterns={settingsHandlers.handleSetScopedModelPatterns}
+            onSetThemeMode={settingsHandlers.handleSetThemeMode}
+            onSetThinkingLevel={settingsHandlers.handleSetThinkingLevel}
+            onToggleSkillCommands={settingsHandlers.handleToggleSkillCommands}
             onSetEnableTransparency={(enabled) => {
               void updateSnapshot(api, setSnapshot, () => api.setEnableTransparency(enabled));
             }}
@@ -2663,9 +2029,7 @@ export default function App() {
               void updateSnapshot(api, setSnapshot, () => api.setCommitPushModel(rootWorkspace?.id ?? "", model));
             }}
           />
-        </main>
-        {import.meta.env.DEV && <Agentation />}
-      </div>
+        </>
     );
   }
 
@@ -2681,53 +2045,7 @@ export default function App() {
         return next;
       });
     };
-    const skillsShellClass = `shell shell--skills${snapshot.sidebarCollapsed ? " shell--sidebar-collapsed" : ""}${sidebarResize.isResizing ? " shell--sidebar-resizing" : ""}`;
-    const skillsShellStyle = snapshot.sidebarCollapsed
-      ? undefined
-      : ({ ["--sidebar-width" as string]: `${sidebarResize.width}px` } as React.CSSProperties);
-    return (
-      <div className={skillsShellClass} style={skillsShellStyle} data-testid="skills-surface">
-        {primarySidebarToggleVisible ? (
-          <SidebarToggleButton
-            collapsed={snapshot.sidebarCollapsed}
-            shortcutLabel={sidebarToggleShortcutLabel}
-            onToggle={handleTogglePrimarySidebar}
-          />
-        ) : null}
-        {!snapshot.sidebarCollapsed ? (
-          <Sidebar
-            resize={sidebarResize}
-            activeView={snapshot.activeView}
-            selectedWorkspace={selectedWorkspace}
-            selectedSession={selectedSession}
-            chats={chats}
-            visibleWorkspaces={visibleWorkspaces}
-            threadGroups={threadGroups}
-            linkedWorktreeByWorkspaceId={linkedWorktreeByWorkspaceId}
-            wsMenu={wsMenu}
-            api={api}
-            setSnapshot={setSnapshot}
-            updateSnapshot={updateSnapshot}
-            onNewThreadForWorkspace={(rootWorkspaceId) => openNewThreadSurface(rootWorkspaceId)}
-            onSetActiveView={setActiveView}
-            onOpenSkills={openSkills}
-            onOpenExtensions={openExtensions}
-            onOpenSettings={openSettings}
-            onOpenContext={openContext}
-            queueMode={snapshot.queueMode}
-            onSetQueueMode={setQueueMode}
-            onArchiveSession={handleArchiveSession}
-            onArchiveAllNonRunningSessions={handleArchiveAllNonRunningSessions}
-            onSelectSession={handleSelectSession}
-            onUnarchiveSession={handleUnarchiveSession}
-            onCreateChat={handleCreateChat}
-            onSelectChat={handleSelectChat}
-            onArchiveChat={handleArchiveChat}
-            onUnarchiveChat={handleUnarchiveChat}
-            onRemoveChat={handleRemoveChat}
-          />
-        ) : null}
-        <main className="main main--skills">
+    return renderUtilitySurface("skills-surface", <>
           {rootWorkspaceOptions.length > 1 ? (
             <div className="surface-toolbar">
               <label className="surface-toolbar__field">
@@ -2756,14 +2074,14 @@ export default function App() {
             onToggleGroup={handleToggleSkillGroup}
             selectedSkillPath={skillsSelectedPath}
             onSelectSkill={setSkillsSelectedPath}
-            onOpenSkillFolder={handleOpenSkillFolder}
+            onOpenSkillFolder={skillsExtensionsHandlers.handleOpenSkillFolder}
             onRefresh={() => {
               if (!skillsWorkspace) {
                 return;
               }
               void updateSnapshot(api, setSnapshot, () => api.refreshRuntime(skillsWorkspace.id));
             }}
-            onToggleSkill={handleToggleSkill}
+            onToggleSkill={skillsExtensionsHandlers.handleToggleSkill}
             onTrySkill={(skill) =>
               handleTrySkill(
                 skill.filePath
@@ -2772,128 +2090,32 @@ export default function App() {
               )
             }
           />
-        </main>
-        {import.meta.env.DEV && <Agentation />}
-      </div>
+        </>
     );
   }
 
   if (snapshot.activeView === "extensions") {
-    const extensionsShellClass = `shell shell--skills${snapshot.sidebarCollapsed ? " shell--sidebar-collapsed" : ""}${sidebarResize.isResizing ? " shell--sidebar-resizing" : ""}`;
-    const extensionsShellStyle = snapshot.sidebarCollapsed
-      ? undefined
-      : ({ ["--sidebar-width" as string]: `${sidebarResize.width}px` } as React.CSSProperties);
-    return (
-      <div className={extensionsShellClass} style={extensionsShellStyle} data-testid="extensions-surface">
-        {primarySidebarToggleVisible ? (
-          <SidebarToggleButton
-            collapsed={snapshot.sidebarCollapsed}
-            shortcutLabel={sidebarToggleShortcutLabel}
-            onToggle={handleTogglePrimarySidebar}
-          />
-        ) : null}
-        {!snapshot.sidebarCollapsed ? (
-          <Sidebar
-            resize={sidebarResize}
-            activeView={snapshot.activeView}
-            selectedWorkspace={selectedWorkspace}
-            selectedSession={selectedSession}
-            chats={chats}
-            visibleWorkspaces={visibleWorkspaces}
-            threadGroups={threadGroups}
-            linkedWorktreeByWorkspaceId={linkedWorktreeByWorkspaceId}
-            wsMenu={wsMenu}
-            api={api}
-            setSnapshot={setSnapshot}
-            updateSnapshot={updateSnapshot}
-            onNewThreadForWorkspace={(rootWorkspaceId) => openNewThreadSurface(rootWorkspaceId)}
-            onSetActiveView={setActiveView}
-            onOpenSkills={openSkills}
-            onOpenExtensions={openExtensions}
-            onOpenSettings={openSettings}
-            onOpenContext={openContext}
-            queueMode={snapshot.queueMode}
-            onSetQueueMode={setQueueMode}
-            onArchiveSession={handleArchiveSession}
-            onArchiveAllNonRunningSessions={handleArchiveAllNonRunningSessions}
-            onSelectSession={handleSelectSession}
-            onUnarchiveSession={handleUnarchiveSession}
-            onCreateChat={handleCreateChat}
-            onSelectChat={handleSelectChat}
-            onArchiveChat={handleArchiveChat}
-            onUnarchiveChat={handleUnarchiveChat}
-            onRemoveChat={handleRemoveChat}
-          />
-        ) : null}
-        <main className="main main--skills">
+    return renderUtilitySurface("extensions-surface", <>
           <ExtensionsView
             workspace={extensionsWorkspace}
             runtime={extensionsRuntime}
             commandCompatibility={extensionsCommandCompatibility}
-            onOpenExtensionFolder={handleOpenExtensionFolder}
+            onOpenExtensionFolder={skillsExtensionsHandlers.handleOpenExtensionFolder}
             onRefresh={() => {
               if (!extensionsWorkspace) {
                 return;
               }
               void updateSnapshot(api, setSnapshot, () => api.refreshRuntime(extensionsWorkspace.id));
             }}
-            onToggleExtension={handleToggleExtension}
-            onDeleteExtension={handleDeleteExtension}
+            onToggleExtension={skillsExtensionsHandlers.handleToggleExtension}
+            onDeleteExtension={skillsExtensionsHandlers.handleDeleteExtension}
           />
-        </main>
-        {import.meta.env.DEV && <Agentation />}
-      </div>
+        </>
     );
   }
 
   if (snapshot.activeView === "context") {
-    const contextShellClass = `shell shell--skills${snapshot.sidebarCollapsed ? " shell--sidebar-collapsed" : ""}${sidebarResize.isResizing ? " shell--sidebar-resizing" : ""}`;
-    const contextShellStyle = snapshot.sidebarCollapsed
-      ? undefined
-      : ({ ["--sidebar-width" as string]: `${sidebarResize.width}px` } as React.CSSProperties);
-    return (
-      <div className={contextShellClass} style={contextShellStyle} data-testid="context-surface">
-        {primarySidebarToggleVisible ? (
-          <SidebarToggleButton
-            collapsed={snapshot.sidebarCollapsed}
-            shortcutLabel={sidebarToggleShortcutLabel}
-            onToggle={handleTogglePrimarySidebar}
-          />
-        ) : null}
-        {!snapshot.sidebarCollapsed ? (
-          <Sidebar
-            resize={sidebarResize}
-            activeView={snapshot.activeView}
-            selectedWorkspace={selectedWorkspace}
-            selectedSession={selectedSession}
-            chats={chats}
-            visibleWorkspaces={visibleWorkspaces}
-            threadGroups={threadGroups}
-            linkedWorktreeByWorkspaceId={linkedWorktreeByWorkspaceId}
-            wsMenu={wsMenu}
-            api={api}
-            setSnapshot={setSnapshot}
-            updateSnapshot={updateSnapshot}
-            onNewThreadForWorkspace={(rootWorkspaceId) => openNewThreadSurface(rootWorkspaceId)}
-            onSetActiveView={setActiveView}
-            onOpenSkills={openSkills}
-            onOpenExtensions={openExtensions}
-            onOpenSettings={openSettings}
-            onOpenContext={openContext}
-            queueMode={snapshot.queueMode}
-            onSetQueueMode={setQueueMode}
-            onArchiveSession={handleArchiveSession}
-            onArchiveAllNonRunningSessions={handleArchiveAllNonRunningSessions}
-            onSelectSession={handleSelectSession}
-            onUnarchiveSession={handleUnarchiveSession}
-            onCreateChat={handleCreateChat}
-            onSelectChat={handleSelectChat}
-            onArchiveChat={handleArchiveChat}
-            onUnarchiveChat={handleUnarchiveChat}
-            onRemoveChat={handleRemoveChat}
-          />
-        ) : null}
-        <main className="main main--skills">
+    return renderUtilitySurface("context-surface", <>
           <ContextView
             workspace={contextWorkspace}
             runtime={contextRuntime}
@@ -2902,9 +2124,7 @@ export default function App() {
             onRefresh={loadContextSnapshot}
             api={api}
           />
-        </main>
-        {import.meta.env.DEV && <Agentation />}
-      </div>
+        </>
     );
   }
 
@@ -3018,7 +2238,7 @@ export default function App() {
               onSelectEnvironment={setNewThreadEnvironment}
               onSetModel={(provider, modelId) => { setNewThreadProvider(provider); setNewThreadModelId(modelId); }}
               onSetThinking={setNewThreadThinkingLevel}
-              onSetCavemanLevel={handleSetDefaultCavemanLevel}
+              onSetCavemanLevel={settingsHandlers.handleSetDefaultCavemanLevel}
               onSetComposerMode={setNewThreadComposerMode}
               onOpenModelSettings={(section) => openSettings(newThreadWorkspace?.id, section)}
               onComposerKeyDown={handleNewThreadComposerKeyDown}
@@ -3053,18 +2273,18 @@ export default function App() {
                 <ConversationTimeline
                   transcript={threadViewTranscript}
                   isTranscriptLoading={pendingThreadStart ? false : isTranscriptLoading}
-                  timelinePaneRef={timelinePaneRef}
-                  timelinePaneElementRef={setTimelinePaneElement}
-                  disableVirtualization={disableTimelineVirtualization}
-                  onDisableVirtualizationReady={finalizeTimelineVirtualizationDisable}
-                  onTimelineScroll={handleTimelineScroll}
+                  timelinePaneRef={timelineScroll.timelinePaneRef}
+                  timelinePaneElementRef={timelineScroll.setTimelinePaneElement}
+                  disableVirtualization={timelineScroll.disableTimelineVirtualization}
+                  onDisableVirtualizationReady={timelineScroll.finalizeTimelineVirtualizationDisable}
+                  onTimelineScroll={timelineScroll.handleTimelineScroll}
                   threadSearch={threadSearch}
-                  showJumpToLatest={showJumpToLatest}
-                  onJumpToLatest={jumpToLatest}
-                  onContentHeightChange={handleTimelineContentHeightChange}
+                  showJumpToLatest={timelineScroll.showJumpToLatest}
+                  onJumpToLatest={timelineScroll.jumpToLatest}
+                  onContentHeightChange={timelineScroll.handleTimelineContentHeightChange}
                   onViewFileInDiff={handleViewFileInDiff}
-                  onUndoEdits={handleUndoEdits}
-                  onRedoEdits={handleRedoEdits}
+                  onUndoEdits={settingsHandlers.handleUndoEdits}
+                  onRedoEdits={settingsHandlers.handleRedoEdits}
                   isRunning={threadViewIsRunning}
                   workingLabel={pendingThreadStart ? "Preparing your thread…" : undefined}
                 />
@@ -3103,16 +2323,16 @@ export default function App() {
               composerDraftSyncSource={snapshot?.composerDraftSyncSource}
               composerRef={composerRef}
               modelSelectorRef={modelSelectorRef}
-              timelinePaneRef={timelinePaneRef}
-              pinnedToBottomRef={pinnedToBottomRef}
-              preserveBottomOnNextPaneResizeRef={preserveBottomOnNextPaneResizeRef}
-              requestPinnedBottomAlignment={requestPinnedBottomAlignment}
+              timelinePaneRef={timelineScroll.timelinePaneRef}
+              pinnedToBottomRef={timelineScroll.pinnedToBottomRef}
+              preserveBottomOnNextPaneResizeRef={timelineScroll.preserveBottomOnNextPaneResizeRef}
+              requestPinnedBottomAlignment={timelineScroll.requestPinnedBottomAlignment}
               focusComposer={focusComposer}
               openTreeModal={openTreeModal}
               openSettings={openSettings}
-              onSetModel={handleSetSessionModel}
-              onSetThinking={handleSetSessionThinking}
-              onSetCavemanLevel={handleSetSessionCavemanLevel}
+              onSetModel={settingsHandlers.handleSetSessionModel}
+              onSetThinking={settingsHandlers.handleSetSessionThinking}
+              onSetCavemanLevel={settingsHandlers.handleSetSessionCavemanLevel}
               onOpenModelSettings={(section) =>
                 openSettings(selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id, section)
               }
@@ -3177,7 +2397,7 @@ export default function App() {
                   type="button"
                   onClick={() => { playButtonClick(); openNewThreadSurface(selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id); }}
                 >
-                  New thread
+                  New project
                 </button>
               </div>
             </div>

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
-import type { ModelSettingsScopeMode } from "./desktop-state";
+import type { ModelSettingsScopeMode, PlanModeIdeologySetting } from "./desktop-state";
 import { buildModelOptions } from "./composer-commands";
 import { SettingsGroup, SettingsInfoRow, SettingsRow } from "./settings-utils";
 
@@ -17,6 +17,8 @@ interface SettingsGeneralSectionProps {
   readonly externalTerminalApp: string;
   readonly retrySettings: RetrySettings;
   readonly commitPushModel?: string;
+  readonly planModeIdeology: PlanModeIdeologySetting;
+  readonly onSetPlanModeIdeology: (ideology: PlanModeIdeologySetting) => void;
   readonly onSetCommitPushModel: (model: string) => void;
   readonly onSetModelSettingsScopeMode: (mode: ModelSettingsScopeMode) => void;
   readonly onSetIntegratedTerminalShell: (shellPath: string) => void;
@@ -59,6 +61,8 @@ export function SettingsGeneralSection({
   onClearExternalTerminalApp,
   onToggleSkillCommands,
   onSetRetrySettings,
+  planModeIdeology,
+  onSetPlanModeIdeology,
 }: SettingsGeneralSectionProps) {
   const modelOptions = useMemo(() => buildModelOptions(runtime), [runtime]);
   const commitModelLabel = useMemo(() => {
@@ -197,6 +201,29 @@ export function SettingsGeneralSection({
         </SettingsRow>
       </SettingsGroup>
 
+      <SettingsGroup title="Plan mode" description="Choose the default planning ideology for Plan mode.">
+        <SettingsRow title="Plan ideology" description="Default is a scoped engineering plan. Grill interviews the user relentlessly first.">
+          <div className="settings-pill-row">
+            <button
+              className={`settings-pill${planModeIdeology === "default" ? " settings-pill--active" : ""}`}
+              type="button"
+              aria-pressed={planModeIdeology === "default"}
+              onClick={() => onSetPlanModeIdeology("default")}
+            >
+              Default
+            </button>
+            <button
+              className={`settings-pill${planModeIdeology === "grill" ? " settings-pill--active" : ""}`}
+              type="button"
+              aria-pressed={planModeIdeology === "grill"}
+              onClick={() => onSetPlanModeIdeology("grill")}
+            >
+              Grill
+            </button>
+          </div>
+        </SettingsRow>
+      </SettingsGroup>
+
       <SettingsGroup title="Retry on connection loss" description="Auto-retry when the LLM connection drops or the provider returns an error.">
         <SettingsRow title="Enable auto-retry" description="Automatically retry on transient errors (connection lost, rate limits, server errors).">
           <input
@@ -255,7 +282,7 @@ export function SettingsGeneralSection({
       </SettingsGroup>
 
       <SettingsGroup title="Shortcuts">
-        <SettingsInfoRow label="New thread" value="Cmd+Shift+O" />
+        <SettingsInfoRow label="New project" value="Cmd+Shift+O" />
         <SettingsInfoRow label="Open settings" value="Cmd+," />
         <SettingsInfoRow label="Toggle terminal" value="Cmd+J" />
         <SettingsInfoRow label="Commit &amp; push" value="Cmd+Shift+K" />
