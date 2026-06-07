@@ -50,9 +50,11 @@ function execCmd(
           });
           return;
         }
+        // Node's execFile sets `error.status` to the child exit code.
+        // `error.code` is always a string (e.g. 'ERR_CHILD_PROCESS...'), never a number.
         const exitCode =
-          typeof (error as { code?: number }).code === "number"
-            ? ((error as { code: number }).code)
+          typeof (error as unknown as { status?: number }).status === "number"
+            ? (error as unknown as { status: number }).status
             : 1;
         resolve({
           stdout: stdout?.trim() ?? "",

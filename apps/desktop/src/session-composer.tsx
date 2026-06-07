@@ -48,8 +48,6 @@ export interface SessionComposerHandle {
   readonly setDraft: (value: SetStateAction<string>) => void;
   /** Prefill the composer from a slash command (used by "Try skill"). */
   readonly fillFromSlash: (command: string) => void;
-  /** Set the plan/build composer mode (used by Cmd+P / Cmd+B shortcuts). */
-  readonly setComposerMode: (mode: ComposerMode) => void;
 }
 
 interface SessionComposerProps {
@@ -81,10 +79,18 @@ interface SessionComposerProps {
   readonly editingQueuedMessageId?: string;
 
   readonly cavemanLevel: CavemanLevel;
+  /** Plan/build mode for this session, owned by the host so it survives submits. */
+  readonly composerMode: ComposerMode;
+  readonly onSetComposerMode: (mode: ComposerMode) => void;
+  /** True once a plan-mode run has produced a plan and the session is idle. */
+  readonly planReady: boolean;
+  /** Approve the written plan: sends an execute message + flips to build. */
+  readonly onExecutePlan: () => void;
+  /** Notify the host that a plan-mode message was just submitted. */
+  readonly onPlanSubmitted: () => void;
   readonly runningLabel: string;
   readonly loopControl?: LoopControlProps;
   readonly beginRalphLoop?: BeginRalphLoopProps;
-  readonly lastError?: string;
 
   // Draft persistence + cross-session sync (from snapshot).
   readonly hasSnapshot: boolean;
@@ -145,10 +151,14 @@ const SessionComposerInner = forwardRef<SessionComposerHandle, SessionComposerPr
     queuedMessages,
     editingQueuedMessageId,
     cavemanLevel,
+    composerMode,
+    onSetComposerMode,
+    planReady,
+    onExecutePlan,
+    onPlanSubmitted,
     runningLabel,
     loopControl,
     beginRalphLoop,
-    lastError,
     hasSnapshot,
     persistedComposerDraft,
     composerDraftSyncNonce,
@@ -173,7 +183,6 @@ const SessionComposerInner = forwardRef<SessionComposerHandle, SessionComposerPr
   ref,
 ) {
   const [composerDraft, setComposerDraft] = useState("");
-  const [composerMode, setComposerMode] = useState<ComposerMode>("build");
   // While a submit is in flight the snapshot still lists the attachments the
   // backend hasn't cleared yet; hide them optimistically so the chips vanish
   // the instant the user sends (but newly pasted attachments still render).
@@ -225,7 +234,6 @@ const SessionComposerInner = forwardRef<SessionComposerHandle, SessionComposerPr
     () => ({
       setDraft: (value) => setComposerDraft(value),
       fillFromSlash: (command) => slashMenu.fillComposerFromSlash(command),
-      setComposerMode: (mode) => setComposerMode(mode),
     }),
     [slashMenu],
   );
@@ -382,6 +390,9 @@ const SessionComposerInner = forwardRef<SessionComposerHandle, SessionComposerPr
 
     const previousDraft = composerDraft;
     const submitMode = composerMode;
+    if (submitMode === "plan") {
+      onPlanSubmitted();
+    }
     const clearedIds = composerAttachments.map((attachment) => attachment.id);
     setComposerDraft("");
     setSubmitClearedAttachmentIds(clearedIds);
@@ -561,13 +572,14 @@ const SessionComposerInner = forwardRef<SessionComposerHandle, SessionComposerPr
       onSetModel={onSetModel}
       onSetThinking={onSetThinking}
       onSetCavemanLevel={onSetCavemanLevel}
-      onSetComposerMode={setComposerMode}
+      onSetComposerMode={onSetComposerMode}
+      planReady={planReady}
+      onExecutePlan={onExecutePlan}
       modelOnboarding={modelOnboarding}
       onOpenModelSettings={onOpenModelSettings}
       onSubmit={submitComposerDraft}
       runningLabel={runningLabel}
       selectedSession={selectedSession}
-      lastError={lastError}
       selectedSlashCommand={slashMenu.activeSlashOptionCommand ?? slashMenu.selectedSlashCommand}
       selectedSlashOption={slashMenu.selectedSlashOption}
       slashOptionEmptyState={slashMenu.slashOptionEmptyState}
@@ -643,10 +655,14 @@ function sameSessionComposerProps(
     sameQueuedMessages(previous.queuedMessages, next.queuedMessages) &&
     previous.editingQueuedMessageId === next.editingQueuedMessageId &&
     previous.cavemanLevel === next.cavemanLevel &&
+    previous.composerMode === next.composerMode &&
+    previous.onSetComposerMode === next.onSetComposerMode &&
+    previous.planReady === next.planReady &&
+    previous.onExecutePlan === next.onExecutePlan &&
+    previous.onPlanSubmitted === next.onPlanSubmitted &&
     previous.runningLabel === next.runningLabel &&
     previous.loopControl === next.loopControl &&
     previous.beginRalphLoop === next.beginRalphLoop &&
-    previous.lastError === next.lastError &&
     previous.hasSnapshot === next.hasSnapshot &&
     previous.persistedComposerDraft === next.persistedComposerDraft &&
     previous.composerDraftSyncNonce === next.composerDraftSyncNonce &&

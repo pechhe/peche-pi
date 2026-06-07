@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import {
   createNamedThread,
+  getDesktopState,
   launchDesktop,
   makeUserDataDir,
   makeWorkspace,
@@ -68,6 +69,51 @@ test("active thread highlight follows the selected session", async () => {
         const { box } = await activeIndicatorBox(window);
         const rowBox = await rowTwo.boundingBox();
         if (!box || !rowBox) return null;
+        const indicatorCenter = box.y + box.height / 2;
+        return indicatorCenter >= rowBox.y && indicatorCenter <= rowBox.y + rowBox.height;
+      })
+      .toBe(true);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("active thread highlight follows selected session after composer submit reorders rows", async () => {
+  const userDataDir = await makeUserDataDir();
+  const workspacePath = await makeWorkspace("active-highlight-reorder-workspace");
+
+  const harness = await launchDesktop(userDataDir, {
+    initialWorkspaces: [workspacePath],
+    testMode: "background",
+  });
+  try {
+    const window = await harness.firstWindow();
+    await waitForWorkspaceByPath(window, workspacePath);
+
+    await createNamedThread(window, "Finished top thread");
+    await createNamedThread(window, "Selected second thread");
+    await selectSession(window, "Selected second thread");
+
+    const selectedRow = window.locator(".session-list > .session-row").filter({ hasText: "Selected second thread" }).first();
+    await expect(selectedRow).toHaveClass(/session-row--active/);
+
+    const composer = window.getByTestId("composer");
+    await composer.fill("Move selected thread upward");
+    await composer.press("Enter");
+
+    await expect
+      .poll(async () => {
+        const state = await getDesktopState(window);
+        return state.workspaces[0]?.sessions[0]?.title ?? "";
+      })
+      .toBe("Selected second thread");
+
+    await expect(selectedRow).toHaveClass(/session-row--active/);
+    await expect
+      .poll(async () => {
+        const { box } = await activeIndicatorBox(window);
+        const rowBox = await selectedRow.boundingBox();
+        if (!box || !rowBox) return false;
         const indicatorCenter = box.y + box.height / 2;
         return indicatorCenter >= rowBox.y && indicatorCenter <= rowBox.y + rowBox.height;
       })

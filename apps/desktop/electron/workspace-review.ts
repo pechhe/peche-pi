@@ -277,7 +277,7 @@ async function applyEditReplacements(
   workspacePath: string,
   op: UndoEditOp,
   reverse: boolean,
-  git: GitAdapter,
+  _git: GitAdapter,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   const replacements = op.replacements ?? [];
   if (replacements.length === 0) {

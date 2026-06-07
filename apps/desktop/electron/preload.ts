@@ -1,3 +1,4 @@
+// fallow-ignore-file unused-file
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import { PRELOAD_DEV_RELOAD_MARKER } from "./dev-reload-preload-probe";
 import { buildPreloadApi } from "./desktop-ipc-seam";

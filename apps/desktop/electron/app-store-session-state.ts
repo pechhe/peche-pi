@@ -98,9 +98,10 @@ export class DesktopSessionState {
       selectedTranscript: this.isSelectedSession(state, event.sessionRef)
         ? this.buildSelectedTranscriptRecord(event.sessionRef)
         : null,
-      shouldPersistTranscript: event.type !== "hostUiRequest",
+      // "runRetrying" only adds a transient in-memory retry row; never persist it.
+      shouldPersistTranscript: event.type !== "hostUiRequest" && event.type !== "runRetrying",
       shouldPersistUiImmediately: event.type === "runCompleted" || event.type === "runFailed" || event.type === "sessionClosed",
-      shouldSchedulePersistUi: event.type !== "hostUiRequest" && event.type !== "runCompleted" && event.type !== "runFailed" && event.type !== "sessionClosed",
+      shouldSchedulePersistUi: event.type !== "hostUiRequest" && event.type !== "runRetrying" && event.type !== "runCompleted" && event.type !== "runFailed" && event.type !== "sessionClosed",
     };
   }
 

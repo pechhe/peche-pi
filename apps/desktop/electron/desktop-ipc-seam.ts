@@ -101,7 +101,7 @@ export function validateTerminalId(terminalId: unknown): void {
   validateNonEmptyString(terminalId, "terminalId");
 }
 
-function validateWorkspaceId(workspaceId: unknown): void {
+function _validateWorkspaceId(workspaceId: unknown): void {
   validateNonEmptyString(workspaceId, "workspaceId");
 }
 
@@ -224,6 +224,14 @@ const desktopIpc = {
   generatePrDraft: "pi-gui:generate-pr-draft",
   prCreate: "pi-gui:pr-create",
   getContextSnapshot: "pi-gui:get-context-snapshot",
+  getGraphifyProjectMapStatus: "pi-gui:get-graphify-project-map-status",
+  updateGraphifyProjectMap: "pi-gui:update-graphify-project-map",
+  buildGraphifyProjectMap: "pi-gui:build-graphify-project-map",
+  getGraphifyHealthCheck: "pi-gui:get-graphify-health-check",
+  getGraphifyHookStatus: "pi-gui:get-graphify-hook-status",
+  setGraphifyHook: "pi-gui:set-graphify-hook",
+  getGraphifyWatchStatus: "pi-gui:get-graphify-watch-status",
+  setGraphifyWatch: "pi-gui:set-graphify-watch",
   getThemeMode: "pi-gui:get-theme-mode",
   getResolvedTheme: "pi-gui:get-resolved-theme",
   setThemeMode: "pi-gui:set-theme-mode",
@@ -241,13 +249,19 @@ const desktopIpc = {
   buildHandoffPayload: "pi-gui:build-handoff-payload",
   createSeededSession: "pi-gui:create-seeded-session",
   getSessionTranscript: "pi-gui:get-session-transcript",
+  searchTranscriptText: "pi-gui:search-transcript-text",
+  automationCreate: "pi-gui:automation-create",
+  automationUpdate: "pi-gui:automation-update",
+  automationDelete: "pi-gui:automation-delete",
+  automationList: "pi-gui:automation-list",
+  automationFireNow: "pi-gui:automation-fire-now",
 } as const;
 
 // ---------------------------------------------------------------------------
 // Local-only methods (no IPC channel)
 // ---------------------------------------------------------------------------
 
-const piDesktopApiLocalEntries = ["platform", "versions", "getPathForFile"] as const;
+const _piDesktopApiLocalEntries = ["platform", "versions", "getPathForFile"] as const;
 
 // ---------------------------------------------------------------------------
 // Contract registry
@@ -411,6 +425,14 @@ export const desktopIpcContracts: readonly IpcContractEntry[] = [
   { methodName: "generatePrDraft", channel: desktopIpc.generatePrDraft, direction: "renderer-to-main", kind: "invoke", adapter: "git" },
   { methodName: "prCreate", channel: desktopIpc.prCreate, direction: "renderer-to-main", kind: "invoke", adapter: "git" },
   { methodName: "getContextSnapshot", channel: desktopIpc.getContextSnapshot, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
+  { methodName: "getGraphifyProjectMapStatus", channel: desktopIpc.getGraphifyProjectMapStatus, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
+  { methodName: "updateGraphifyProjectMap", channel: desktopIpc.updateGraphifyProjectMap, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
+  { methodName: "buildGraphifyProjectMap", channel: desktopIpc.buildGraphifyProjectMap, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
+  { methodName: "getGraphifyHealthCheck", channel: desktopIpc.getGraphifyHealthCheck, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
+  { methodName: "getGraphifyHookStatus", channel: desktopIpc.getGraphifyHookStatus, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
+  { methodName: "setGraphifyHook", channel: desktopIpc.setGraphifyHook, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
+  { methodName: "getGraphifyWatchStatus", channel: desktopIpc.getGraphifyWatchStatus, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
+  { methodName: "setGraphifyWatch", channel: desktopIpc.setGraphifyWatch, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
 
   // -- Chat --
   { methodName: "startChat", channel: desktopIpc.startChat, direction: "renderer-to-main", kind: "invoke", adapter: "chat" },
@@ -426,6 +448,14 @@ export const desktopIpcContracts: readonly IpcContractEntry[] = [
   { methodName: "buildHandoffPayload", channel: desktopIpc.buildHandoffPayload, direction: "renderer-to-main", kind: "invoke", adapter: "session" },
   { methodName: "createSeededSession", channel: desktopIpc.createSeededSession, direction: "renderer-to-main", kind: "invoke", adapter: "session" },
   { methodName: "getSessionTranscript", channel: desktopIpc.getSessionTranscript, direction: "renderer-to-main", kind: "invoke", adapter: "session" },
+  { methodName: "searchTranscriptText", channel: desktopIpc.searchTranscriptText, direction: "renderer-to-main", kind: "invoke", adapter: "session" },
+
+  // -- Automation --
+  { methodName: "automationCreate", channel: desktopIpc.automationCreate, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
+  { methodName: "automationUpdate", channel: desktopIpc.automationUpdate, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
+  { methodName: "automationDelete", channel: desktopIpc.automationDelete, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
+  { methodName: "automationList", channel: desktopIpc.automationList, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
+  { methodName: "automationFireNow", channel: desktopIpc.automationFireNow, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
 ] as const;
 
 // ---------------------------------------------------------------------------
@@ -457,7 +487,7 @@ export function getContractByChannel(channel: string): IpcContractEntry | undefi
 }
 
 /** Get all contracts for a given adapter group. */
-function getContractsByAdapter(adapter: AdapterGroup): readonly IpcContractEntry[] {
+function _getContractsByAdapter(adapter: AdapterGroup): readonly IpcContractEntry[] {
   return desktopIpcContracts.filter((c) => c.adapter === adapter);
 }
 
@@ -555,7 +585,7 @@ function getAllChannelValues(): readonly string[] {
 /**
  * Get all method names from the registry.
  */
-function getAllMethodNames(): readonly string[] {
+function _getAllMethodNames(): readonly string[] {
   return desktopIpcContracts.map((c) => c.methodName);
 }
 

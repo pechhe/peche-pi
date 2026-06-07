@@ -30,6 +30,38 @@ interface QuestionnaireAnswer {
   readonly index?: number;
 }
 
+const questionsArraySchema = {
+  type: "array",
+  minItems: 1,
+  items: {
+    type: "object",
+    additionalProperties: false,
+    required: ["id", "prompt", "options"],
+    properties: {
+      id: { type: "string" },
+      label: { type: "string" },
+      prompt: { type: "string" },
+      allowOther: { type: "boolean" },
+      otherPlaceholder: { type: "string" },
+      options: {
+        type: "array",
+        minItems: 2,
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["value", "label"],
+          properties: {
+            value: { type: "string" },
+            label: { type: "string" },
+            description: { type: "string" },
+            recommended: { type: "boolean" },
+          },
+        },
+      },
+    },
+  },
+} as const;
+
 const questionnaireParameters = {
   type: "object",
   additionalProperties: false,
@@ -37,39 +69,29 @@ const questionnaireParameters = {
   properties: {
     title: { type: "string" },
     intro: { type: "string" },
+    // Accept either a real array or a JSON-stringified array. Models frequently
+    // serialize nested array args to a string, and the runtime coercer has no
+    // string->array path, so we tolerate the string form and parse in execute().
     questions: {
-      type: "array",
-      minItems: 1,
-      items: {
-        type: "object",
-        additionalProperties: false,
-        required: ["id", "prompt", "options"],
-        properties: {
-          id: { type: "string" },
-          label: { type: "string" },
-          prompt: { type: "string" },
-          allowOther: { type: "boolean" },
-          otherPlaceholder: { type: "string" },
-          options: {
-            type: "array",
-            minItems: 2,
-            items: {
-              type: "object",
-              additionalProperties: false,
-              required: ["value", "label"],
-              properties: {
-                value: { type: "string" },
-                label: { type: "string" },
-                description: { type: "string" },
-                recommended: { type: "boolean" },
-              },
-            },
-          },
-        },
-      },
+      anyOf: [questionsArraySchema, { type: "string" }],
     },
   },
 } as const;
+
+function normalizeQuestions(raw: unknown): readonly QuestionnaireQuestion[] | { error: string } {
+  let parsed: unknown = raw;
+  if (typeof raw === "string") {
+    try {
+      parsed = JSON.parse(raw);
+    } catch (err) {
+      return { error: `questions was a string but not valid JSON: ${err instanceof Error ? err.message : String(err)}` };
+    }
+  }
+  if (!Array.isArray(parsed)) {
+    return { error: "questions must be an array (or a JSON string encoding an array)." };
+  }
+  return parsed as readonly QuestionnaireQuestion[];
+}
 
 export function createQuestionnaireTool(): ToolDefinition {
   const tool: ToolDefinition<typeof questionnaireParameters, { readonly cancelled: boolean; readonly answers?: readonly QuestionnaireAnswer[] }> = {
@@ -95,7 +117,23 @@ export function createQuestionnaireTool(): ToolDefinition {
         };
       }
 
-      const answers = await ui.questionnaire(params as QuestionnaireInput);
+      const { title, intro } = params as { title?: string; intro?: string };
+      const normalized = normalizeQuestions((params as { questions: unknown }).questions);
+      if ("error" in normalized) {
+        return {
+          content: [{ type: "text", text: `Invalid questionnaire input: ${normalized.error}` }],
+          details: { cancelled: true },
+        };
+      }
+
+      const input: QuestionnaireInput = { questions: normalized };
+      if (typeof title === "string") {
+        (input as { title?: string }).title = title;
+      }
+      if (typeof intro === "string") {
+        (input as { intro?: string }).intro = intro;
+      }
+      const answers = await ui.questionnaire(input);
       if (!answers) {
         return {
           content: [{ type: "text", text: "User cancelled the questionnaire." }],

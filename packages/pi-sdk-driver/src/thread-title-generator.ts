@@ -82,8 +82,12 @@ export async function generateThreadTitle(
     if (!session.model) {
       return null;
     }
+    // Only require that auth resolves (auth.ok). Do NOT require auth.apiKey:
+    // OAuth / subscription providers (Claude Pro/Max, ChatGPT) authenticate via
+    // injected bearer tokens, not a stored apiKey, so apiKey is undefined there.
+    // Requiring it silently skipped titles for every OAuth-backed thread.
     const auth = await session.modelRegistry.getApiKeyAndHeaders(session.model);
-    if (!auth.ok || !auth.apiKey) {
+    if (!auth.ok) {
       return null;
     }
 

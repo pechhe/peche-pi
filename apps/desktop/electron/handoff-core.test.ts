@@ -30,8 +30,6 @@ import {
   buildHandoffPayload,
   buildAdvisorPayload,
   buildQuestionnaireAdvisorPayload,
-  type HandoffScope,
-  type BuildHandoffPayloadInput,
 } from "./handoff-core.ts";
 import type { TranscriptMessage } from "../src/desktop-state.ts";
 

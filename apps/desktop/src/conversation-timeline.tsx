@@ -99,7 +99,10 @@ export function ConversationTimeline({
   const isRunningToolAtTail =
     (lastLiveRow?.kind === "tool" && lastLiveRow.status === "running") ||
     (lastLiveRow?.kind === "toolBurst" && lastLiveRow.tools.some((tool) => tool.status === "running"));
-  const showThinkingIndicator = isRunning && !isStreamingAssistantOutput && !isRunningToolAtTail;
+  // The auto-retry line already carries its own spinner + countdown, so suppress
+  // the global "Thinking…" pill while it is the live tail (keep it to one line).
+  const isRetryAtTail = lastLiveRow?.kind === "activity" && Boolean(lastLiveRow.retry);
+  const showThinkingIndicator = isRunning && !isStreamingAssistantOutput && !isRunningToolAtTail && !isRetryAtTail;
   // While running, the trailing assistant message is the one currently being
   // streamed into. Keep rendering that message through StreamingMessageText
   // even after the run completes until the render-side typewriter has caught

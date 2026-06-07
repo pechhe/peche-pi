@@ -39,6 +39,7 @@ import { deriveModelOnboardingState } from "./model-onboarding";
 import { type ModelSelectorHandle } from "./model-selector";
 import { SkillsView } from "./skills-view";
 import { ExtensionsView } from "./extensions-view";
+import { AutomationsView } from "./automations-view";
 import { ContextView } from "./context-view";
 import { SettingsView, type SettingsSection } from "./settings-view";
 import { NewThreadView } from "./new-thread-view";
@@ -48,7 +49,7 @@ import { buildThreadGroups, PENDING_THREAD_SESSION_ID, type ThreadListEntry } fr
 import { usePendingThreadGoLive, captureHeroFlip } from "./hooks/use-pending-thread-go-live";
 import { Sidebar } from "./sidebar";
 import { SidebarToggleButton } from "./sidebar-toggle-button";
-import { playButtonClick, DEFAULT_BUTTON_SOUND_SETTINGS, type ButtonSoundSettings } from "./button-click-sound";
+import { playButtonClick, preloadSounds, DEFAULT_BUTTON_SOUND_SETTINGS, type ButtonSoundSettings } from "./button-click-sound";
 import { Topbar } from "./topbar";
 import { TerminalPanel } from "./terminal-panel";
 import { ConversationTimeline } from "./conversation-timeline";
@@ -56,9 +57,13 @@ import LoadingBar from "./loading-bar";
 import { useSlashMenu } from "./hooks/use-slash-menu";
 import { useMentionMenu } from "./hooks/use-mention-menu";
 import { useThreadSearch } from "./hooks/use-thread-search";
+import { useGlobalSearch } from "./hooks/use-global-search";
+import type { GlobalSearchResult } from "./hooks/use-global-search";
+import { SearchPalette } from "./search-palette";
 import { useWorkspaceMenu } from "./hooks/use-workspace-menu";
 import { useTimelineScroll } from "./hooks/use-timeline-scroll";
 import { useKeyboardShortcuts } from "./hooks/use-keyboard-shortcuts";
+import type { SidebarNavEntry } from "./hooks/build-sidebar-nav-list";
 import { useSettingsHandlers } from "./hooks/use-settings-handlers";
 import { useSkillsExtensionsHandlers } from "./hooks/use-skills-extensions";
 import { useNavigationHistory } from "./hooks/use-navigation-history";
@@ -73,7 +78,7 @@ import { TreeModal } from "./tree-modal";
 import { ShortcutsSheet } from "./shortcuts-sheet";
 import { ImageLightbox } from "./image-lightbox";
 import { Agentation } from "agentation";
-import { ToastHost, showToast } from "./toast";
+import { showToast } from "./toast";
 import { notifyThreadComplete, OPEN_SESSION_EVENT, type OpenSessionDetail } from "./composer-completion-toast";
 import { getEffectiveModelRuntime } from "./model-settings";
 import { resolveRepoWorkspaceId } from "./workspace-roots";
@@ -479,7 +484,6 @@ export default function App() {
   const [newThreadProvider, setNewThreadProvider] = useState<string | undefined>();
   const [newThreadModelId, setNewThreadModelId] = useState<string | undefined>();
   const [newThreadThinkingLevel, setNewThreadThinkingLevel] = useState<string | undefined>();
-  const [newThreadComposerError, setNewThreadComposerError] = useState<string | undefined>();
   const [themeMode, setThemeMode] = useState<"system" | "light" | "dark" | "dracula">("system");
   const [buttonSoundSettings, setButtonSoundSettings] = useState<ButtonSoundSettings>(
     () => ({ ...DEFAULT_BUTTON_SOUND_SETTINGS })
@@ -487,6 +491,9 @@ export default function App() {
   const [smartCompactSettings, setSmartCompactSettings] = useState<import("./ipc").SmartCompactSettings>({});
 
   // Fetch smart compact settings on mount
+  // Preload button click audio buffers so first Enter press has no latency
+  useEffect(() => { preloadSounds(); }, []);
+
   useEffect(() => {
     const api = window.piApp;
     if (!api) return;
@@ -612,7 +619,8 @@ export default function App() {
   }, [refreshNotificationPermissionStatus, settingsSection, snapshot?.activeView]);
 
   const selectedWorkspace = snapshot ? (getSelectedWorkspace(snapshot) ?? snapshot.workspaces[0]) : undefined;
-  const selectedSession = snapshot ? (getSelectedSession(snapshot) ?? selectedWorkspace?.sessions[0]) : undefined;
+  const selectedSession = snapshot ? getSelectedSession(snapshot) : undefined;
+  const globalSearch = useGlobalSearch({ state: snapshot, selectedWorkspace, selectedSession });
   const chats = snapshot?.chats ?? [];
   // Sidebar-facing derivations depend only on workspaces/worktrees, not selection.
   // Keeping them off `selectedWorkspace` lets the memoized Sidebar skip re-renders
@@ -827,7 +835,6 @@ export default function App() {
     }
   }, [snapshot, planAwaitingBySession]);
   const snapshotLastError = snapshot?.lastError;
-  const composerLastError = isRequestAbortedError(snapshotLastError) ? undefined : snapshotLastError;
   const isTerminalVisibleForSelectedThread = Boolean(selectedSessionKey) && openTerminalSessionKey === selectedSessionKey;
   const isTerminalTakeoverForSelectedThread = Boolean(selectedSessionKey) && takeoverTerminalSessionKey === selectedSessionKey;
   const activeTranscript =
@@ -1042,26 +1049,30 @@ export default function App() {
           : undefined);
       if (realId) {
         // The real session exists. Don't inject the sentinel row; instead keep
-        // its row "running" through the create→first-token gap (the backend
+        // its row "running" only through the create→dispatch gap (the backend
         // emits the new session before the message dispatch flips it to
-        // running) and keep the prompt title until the generated one lands, so
-        // the spinner never pauses and the title never flashes "New thread".
+        // running) and keep the prompt title until the generated one lands. If
+        // the real row has already completed, preserve that terminal status so
+        // the sidebar spinner stops even if transcript hydration is late.
         const pendingTitle = pendingThreadStart.title;
         return groups.map((group) => ({
           ...group,
-          threads: group.threads.map((thread) =>
-            thread.session.id === realId
-              ? {
-                  ...thread,
-                  session: {
-                    ...thread.session,
-                    status: "running" as const,
-                    title:
-                      thread.session.title === NEW_THREAD_PLACEHOLDER_TITLE ? pendingTitle : thread.session.title,
-                  },
-                }
-              : thread,
-          ),
+          threads: group.threads.map((thread) => {
+            if (thread.session.id !== realId) {
+              return thread;
+            }
+            const shouldHoldRunning =
+              thread.session.status === "running" || thread.session.isAwaitingAssistantText;
+            return {
+              ...thread,
+              session: {
+                ...thread.session,
+                ...(shouldHoldRunning ? { status: "running" as const } : {}),
+                title:
+                  thread.session.title === NEW_THREAD_PLACEHOLDER_TITLE ? pendingTitle : thread.session.title,
+              },
+            };
+          }),
         }));
       }
       const optimistic: ThreadListEntry = {
@@ -1127,7 +1138,6 @@ export default function App() {
     });
   };
   const updateNewThreadPrompt = useCallback((value: SetStateAction<string>) => {
-    setNewThreadComposerError(undefined);
     setNewThreadPrompt(value);
   }, [setNewThreadPrompt]);
   const handleViewFileInDiff = useCallback((path: string) => {
@@ -1136,6 +1146,7 @@ export default function App() {
   }, []);
 
   const [shortcutsSheetOpen, setShortcutsSheetOpen] = useState(false);
+  const [pendingSidebarSelection, setPendingSidebarSelection] = useState<SidebarNavEntry | null>(null);
   const toggleShortcutsSheet = useCallback(() => setShortcutsSheetOpen((open) => !open), []);
 
   // --- Advisor panel ---
@@ -1484,7 +1495,6 @@ export default function App() {
     setNewThreadModelId(undefined);
     setNewThreadThinkingLevel(undefined);
     setNewThreadComposerMode("build");
-    setNewThreadComposerError(undefined);
   };
 
   const primarySidebarToggleVisible = canTogglePrimarySidebar(snapshot?.activeView);
@@ -1627,11 +1637,21 @@ export default function App() {
       setNewThreadAttachments((current) => [...current, clipboardImage]);
     }
   }
+
+  const handleSelectChat = (chatId: string) => {
+    if (!api) return;
+    void updateSnapshot(api, setSnapshot, () => api.selectChat(chatId)).then(() => {
+      focusComposer();
+    });
+  };
+
   useKeyboardShortcuts({
     api,
     snapshot: snapshot!,
     selectedWorkspace,
     selectedSession,
+    threadGroups,
+    chats,
     threadSearch,
     navigationHistory,
     modelSelectorRef,
@@ -1643,12 +1663,16 @@ export default function App() {
     toggleTerminal,
     handleTogglePrimarySidebar,
     openShortcutsSheet: toggleShortcutsSheet,
+    openSearchPalette: () => globalSearch?.open(),
     openSettings,
     openNewThreadSurface,
     navigateToEntry,
     handlePastedClipboardImage,
     setPendingNewThreadWorkspaceId,
     resetNewThreadSurface,
+    onSelectSession: handleSelectSession,
+    onSelectChat: handleSelectChat,
+    onPendingSidebarSelection: setPendingSidebarSelection,
   });
 
   const { loopControl, beginRalphLoop, runRalphLoop } = useRalphLoop(
@@ -1728,6 +1752,15 @@ export default function App() {
     setActiveView("extensions");
   };
 
+  const openAutomations = (workspaceId?: string) => {
+    void updateSnapshot(api, setSnapshot, () => api.setActiveView("automations"));
+    // Apply workspace filter if provided
+    void updateSnapshot(api, setSnapshot, async () => {
+      const state = await api.getState();
+      return { ...state, automationFilterWorkspaceId: workspaceId || undefined };
+    });
+  };
+
 
 
   const openContext = () => {
@@ -1749,7 +1782,6 @@ export default function App() {
     setNewThreadModelId(undefined);
     setNewThreadThinkingLevel(undefined);
     setNewThreadComposerMode("build");
-    setNewThreadComposerError(undefined);
     setActiveView("new-thread");
     focusNewThreadComposer();
   };
@@ -1886,12 +1918,6 @@ export default function App() {
     openNewChatSurface();
   };
 
-  const handleSelectChat = (chatId: string) => {
-    void updateSnapshot(api, setSnapshot, () => api.selectChat(chatId)).then(() => {
-      focusComposer();
-    });
-  };
-
   const handleArchiveChat = (chatId: string) => {
     void updateSnapshot(api, setSnapshot, () => api.archiveChat(chatId));
   };
@@ -1914,11 +1940,11 @@ export default function App() {
     }
     const treeCommand = parseTreeComposerCommand(submittedPrompt);
     if (treeCommand?.type === "error") {
-      setNewThreadComposerError(treeCommand.message);
+      showToast({ variant: "error", message: treeCommand.message, autoDismissMs: 6000 });
       return;
     }
     if (treeCommand?.type === "tree") {
-      setNewThreadComposerError("/tree is only available inside an existing session.");
+      showToast({ variant: "error", message: "/tree is only available inside an existing session.", autoDismissMs: 6000 });
       return;
     }
     const input: StartChatInput = {
@@ -1974,9 +2000,11 @@ export default function App() {
         setNewThreadIsChat(true);
         setNewThreadPrompt(capturedPrompt);
         setNewThreadAttachments(capturedAttachments);
-        setNewThreadComposerError(
-          error instanceof Error ? error.message : "Failed to start chat.",
-        );
+        showToast({
+          variant: "error",
+          message: error instanceof Error ? error.message : "Failed to start chat.",
+          autoDismissMs: 6000,
+        });
       });
   };
 
@@ -1994,11 +2022,11 @@ export default function App() {
     }
     const treeCommand = parseTreeComposerCommand(submittedPrompt);
     if (treeCommand?.type === "error") {
-      setNewThreadComposerError(treeCommand.message);
+      showToast({ variant: "error", message: treeCommand.message, autoDismissMs: 6000 });
       return;
     }
     if (treeCommand?.type === "tree") {
-      setNewThreadComposerError("/tree is only available inside an existing session.");
+      showToast({ variant: "error", message: "/tree is only available inside an existing session.", autoDismissMs: 6000 });
       return;
     }
     const modelConfig = {
@@ -2074,9 +2102,11 @@ export default function App() {
       setPendingThreadStart(null);
       setNewThreadPrompt(submittedPrompt);
       setNewThreadAttachments(newThreadAttachments);
-      setNewThreadComposerError(
-        error instanceof Error ? error.message : "Failed to start thread.",
-      );
+      showToast({
+        variant: "error",
+        message: error instanceof Error ? error.message : "Failed to start thread.",
+        autoDismissMs: 6000,
+      });
     });
   };
 
@@ -2098,12 +2128,40 @@ export default function App() {
     return;
   };
 
+  const handleGlobalSearchSelect = (result: GlobalSearchResult) => {
+    globalSearch.close();
+    if (result.kind === "chat" && result.chatId) {
+      handleSelectChat(result.chatId);
+      return;
+    }
+    if (result.workspaceId && result.sessionId) {
+      handleSelectSession({ workspaceId: result.workspaceId, sessionId: result.sessionId });
+    }
+  };
+
+  const renderGlobalSearchPalette = () => globalSearch.isOpen ? (
+    <SearchPalette
+      query={globalSearch.query}
+      scope={globalSearch.scope}
+      archiveFilter={globalSearch.archiveFilter}
+      results={globalSearch.results}
+      activeIndex={globalSearch.activeIndex}
+      onQueryChange={globalSearch.setQuery}
+      onScopeChange={globalSearch.setScope}
+      onArchiveFilterChange={globalSearch.setArchiveFilter}
+      onActiveIndexChange={globalSearch.setActiveIndex}
+      onSelect={handleGlobalSearchSelect}
+      onClose={globalSearch.close}
+    />
+  ) : null;
+
   const utilityShellClass = `shell shell--skills${snapshot.sidebarCollapsed ? " shell--sidebar-collapsed" : ""}${sidebarResize.isResizing ? " shell--sidebar-resizing" : ""}`;
   const utilityShellStyle = snapshot.sidebarCollapsed
     ? undefined
     : ({ ["--sidebar-width" as string]: `${sidebarResize.width}px` } as React.CSSProperties);
   const renderUtilitySurface = (testId: string, children: React.ReactNode) => (
     <div className={utilityShellClass} style={utilityShellStyle} data-testid={testId}>
+      {renderGlobalSearchPalette()}
       {shortcutsSheetOpen ? (
         <ShortcutsSheet platform={api.platform} onClose={() => setShortcutsSheetOpen(false)} />
       ) : null}
@@ -2146,6 +2204,9 @@ export default function App() {
           onArchiveChat={handleArchiveChat}
           onUnarchiveChat={handleUnarchiveChat}
           onRemoveChat={handleRemoveChat}
+          pendingSidebarSelection={pendingSidebarSelection}
+          automations={snapshot.automations ?? []}
+          onOpenAutomations={openAutomations}
         />
       ) : null}
       <main className="main main--skills">{children}</main>
@@ -2335,6 +2396,38 @@ export default function App() {
     );
   }
 
+  if (snapshot.activeView === "automations") {
+    return renderUtilitySurface("automations-surface", <>
+          <AutomationsView
+            automations={snapshot.automations ?? []}
+            workspaces={rootWorkspaceOptions}
+            filterWorkspaceId={snapshot.automationFilterWorkspaceId}
+            onCreateAutomation={(input) => {
+              void updateSnapshot(api, setSnapshot, () => api.automationCreate(input));
+            }}
+            onUpdateAutomation={(id, patch) => {
+              void updateSnapshot(api, setSnapshot, () => api.automationUpdate(id, patch));
+            }}
+            onDeleteAutomation={(id) => {
+              void updateSnapshot(api, setSnapshot, () => api.automationDelete(id));
+            }}
+            onFireNow={(id) => {
+              void updateSnapshot(api, setSnapshot, () => api.automationFireNow(id));
+            }}
+            onClearFilter={() => {
+              void updateSnapshot(api, setSnapshot, async () => {
+                const state = await api.getState();
+                return { ...state, automationFilterWorkspaceId: undefined };
+              });
+            }}
+            onSelectSession={(workspaceId, sessionId) => {
+              void updateSnapshot(api, setSnapshot, () => api.selectSession({ workspaceId, sessionId }));
+            }}
+          />
+        </>
+    );
+  }
+
   if (snapshot.activeView === "context") {
     return renderUtilitySurface("context-surface", <>
           <ContextView
@@ -2356,6 +2449,7 @@ export default function App() {
 
   return (
     <div className={shellClassName} style={shellStyle}>
+      {renderGlobalSearchPalette()}
       {shortcutsSheetOpen ? (
         <ShortcutsSheet platform={api.platform} onClose={() => setShortcutsSheetOpen(false)} />
       ) : null}
@@ -2398,6 +2492,9 @@ export default function App() {
           onArchiveChat={handleArchiveChat}
           onUnarchiveChat={handleUnarchiveChat}
           onRemoveChat={handleRemoveChat}
+          pendingSidebarSelection={pendingSidebarSelection}
+          automations={snapshot.automations ?? []}
+          onOpenAutomations={openAutomations}
         />
       ) : null}
 
@@ -2444,7 +2541,6 @@ export default function App() {
               environment={newThreadEnvironment}
               prompt={newThreadPrompt}
               attachments={newThreadAttachments}
-              lastError={newThreadComposerError}
               provider={resolvedNewThreadProvider}
               modelId={resolvedNewThreadModelId}
               thinkingLevel={resolvedNewThreadThinkingLevel}
@@ -2561,7 +2657,6 @@ export default function App() {
               runningLabel={runningLabel}
               loopControl={loopControl}
               beginRalphLoop={beginRalphLoop}
-              lastError={composerLastError}
               hasSnapshot={Boolean(snapshot)}
               persistedComposerDraft={persistedComposerDraft}
               composerDraftSyncNonce={snapshot?.composerDraftSyncNonce ?? 0}
@@ -2701,7 +2796,6 @@ export default function App() {
         ) : null}
       </main>
       <ImageLightbox />
-      <ToastHost />
       {import.meta.env.DEV && <Agentation />}
     </div>
   );
@@ -2712,6 +2806,3 @@ function isNearBottom(element: HTMLDivElement): boolean {
   return remaining < 32;
 }
 
-function isRequestAbortedError(message: string | undefined): boolean {
-  return Boolean(message && /\brequest\s+(?:was\s+)?aborted\b/i.test(message));
-}

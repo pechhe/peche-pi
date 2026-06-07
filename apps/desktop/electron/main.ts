@@ -10,9 +10,15 @@ import {
   type MessageBoxOptions,
 } from "electron";
 import { randomUUID } from "node:crypto";
+import { execFile, spawn } from "node:child_process";
+import { AutomationStore } from "./automation-store.ts";
+import { AutomationScheduler } from "./automation-scheduler.ts";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
+
+// Track graphify watch processes by workspace ID
+const graphifyWatchProcesses = new Map<string, number>();
 import { pathToFileURL } from "node:url";
 import { DesktopAppStore } from "./app-store";
 import { getChangedFiles, getFileDiff, getWorkspaceGitInfo, redoEdits, stageFile, undoEdits } from "./app-store-diff";
@@ -36,7 +42,7 @@ import { TerminalService } from "./terminal-service";
 import type { DesktopAppState, ThemeMode } from "../src/desktop-state";
 import { buildContextSnapshot, readContextFiles } from "./context-snapshot";
 import type { ComposerMode } from "../src/composer-mode";
-import { desktopIpc, getDesktopCommandFromShortcut, type CavemanConfigSnapshot, type CavemanLevel, type UndoEditOp } from "../src/ipc";
+import { desktopIpc, getDesktopCommandFromShortcut, type CavemanConfigSnapshot, type CavemanLevel, type GraphifyCommunitySummary, type GraphifyProjectMapStatus, type GraphifyRunResult, type UndoEditOp } from "../src/ipc";
 import { registerMainHandlers, type MainHandlerAdapters } from "./desktop-ipc-seam-main";
 import { SUPPORTED_COMPOSER_IMAGE_TYPES } from "../src/composer-attachments";
 import type {
@@ -77,6 +83,137 @@ let stopPruningTerminals: (() => void) | undefined;
 let retainedTerminalWorkspacePathSignature = "";
 const terminalFocusedWebContentsIds = new Set<number>();
 let quittingAfterStoreFlush = false;
+
+const GRAPHIFY_REPORT_PREVIEW_CHARS = 12000;
+const GRAPHIFY_COMMUNITY_LIMIT = 48;
+
+async function getGraphifyProjectMapStatusForWorkspace(workspaceId: string, workspacePath: string): Promise<GraphifyProjectMapStatus> {
+  if (!workspacePath) {
+    return { workspaceId, workspacePath, available: false, stale: false, communities: [], error: "Unknown workspace" };
+  }
+
+  const graphPath = path.join(workspacePath, "graphify-out", "graph.json");
+  const reportPath = path.join(workspacePath, "graphify-out", "GRAPH_REPORT.md");
+  const htmlPath = path.join(workspacePath, "graphify-out", "graph.html");
+
+  try {
+    const graphRaw = await readFile(graphPath, "utf8");
+    const graph = JSON.parse(graphRaw) as {
+      nodes?: readonly unknown[];
+      edges?: readonly unknown[];
+      links?: readonly unknown[];
+      communities?: readonly unknown[] | Record<string, unknown>;
+      metadata?: { built_from_commit?: string; commit?: string };
+    };
+    const reportPreview = await readFile(reportPath, "utf8").then((text) => text.slice(0, GRAPHIFY_REPORT_PREVIEW_CHARS)).catch(() => undefined);
+    const htmlAvailable = await stat(htmlPath).then(() => true).catch(() => false);
+    const builtCommit = extractBuiltCommit(reportPreview) ?? graph.metadata?.built_from_commit ?? graph.metadata?.commit;
+    const currentCommit = await readGitCommit(workspacePath);
+    return {
+      workspaceId,
+      workspacePath,
+      available: true,
+      stale: Boolean(builtCommit && currentCommit && !currentCommit.startsWith(builtCommit) && builtCommit !== currentCommit),
+      graphPath,
+      reportPath,
+      htmlPath: htmlAvailable ? htmlPath : undefined,
+      builtCommit,
+      currentCommit,
+      nodeCount: graph.nodes?.length,
+      edgeCount: graph.edges?.length ?? graph.links?.length,
+      communityCount: Array.isArray(graph.communities) ? graph.communities.length : typeof graph.communities === "object" && graph.communities ? Object.keys(graph.communities).length : undefined,
+      communities: extractGraphifyCommunities(reportPreview),
+      reportPreview,
+    };
+  } catch (error) {
+    return {
+      workspaceId,
+      workspacePath,
+      available: false,
+      stale: false,
+      graphPath,
+      reportPath,
+      htmlPath,
+      communities: [],
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+function extractBuiltCommit(report?: string): string | undefined {
+  return report?.match(/Built from commit:\s*`?([a-f0-9]{7,40})`?/i)?.[1];
+}
+
+function extractGraphifyCommunities(report?: string): readonly GraphifyCommunitySummary[] {
+  if (!report) return [];
+  const communities: GraphifyCommunitySummary[] = [];
+  const lines = report.split(/\r?\n/);
+  for (const line of lines) {
+    const match = line.match(/^- \[\[_COMMUNITY_([^\]|]+)(?:\|([^\]]+))?\]\]/);
+    if (match?.[1]) {
+      communities.push({ name: (match[2] || match[1]).trim() });
+    }
+    if (communities.length >= GRAPHIFY_COMMUNITY_LIMIT) break;
+  }
+  return communities;
+}
+
+async function readGitCommit(workspacePath: string): Promise<string | undefined> {
+  return execFileText("git", ["rev-parse", "HEAD"], workspacePath)
+    .then((output) => output.trim() || undefined)
+    .catch(() => undefined);
+}
+
+async function runGraphify(workspaceId: string, workspacePath: string, args: readonly string[]): Promise<GraphifyRunResult> {
+  if (!workspacePath) return { success: false, message: "Unknown workspace" };
+  try {
+    const output = await execFileText("graphify", [...args], workspacePath, 10 * 60 * 1000);
+    return {
+      success: true,
+      message: output.trim() || `graphify ${args.join(" ")} completed`,
+      status: await getGraphifyProjectMapStatusForWorkspace(workspaceId, workspacePath),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : String(error),
+      status: await getGraphifyProjectMapStatusForWorkspace(workspaceId, workspacePath),
+    };
+  }
+}
+
+async function buildGraphify(workspaceId: string, workspacePath: string): Promise<GraphifyRunResult> {
+  if (!workspacePath) return { success: false, message: "Unknown workspace" };
+  const outputs: string[] = [];
+  try {
+    outputs.push(await execFileText("graphify", ["extract", "."], workspacePath, 10 * 60 * 1000));
+    outputs.push(await execFileText("graphify", ["cluster-only", "."], workspacePath, 10 * 60 * 1000));
+    return {
+      success: true,
+      message: outputs.join("\n").trim() || "Graphify build completed",
+      status: await getGraphifyProjectMapStatusForWorkspace(workspaceId, workspacePath),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: `${outputs.join("\n")}\n${error instanceof Error ? error.message : String(error)}`.trim(),
+      status: await getGraphifyProjectMapStatusForWorkspace(workspaceId, workspacePath),
+    };
+  }
+}
+
+function execFileText(command: string, args: readonly string[], cwd: string, timeout = 30_000): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile(command, [...args], { cwd, timeout, maxBuffer: 1024 * 1024 * 8 }, (error, stdout, stderr) => {
+      const output = `${stdout || ""}${stderr || ""}`;
+      if (error) {
+        reject(new Error(output.trim() || error.message));
+        return;
+      }
+      resolve(output);
+    });
+  });
+}
 
 const SUPPORTED_IMAGE_TYPES = SUPPORTED_COMPOSER_IMAGE_TYPES;
 const SUPPORTED_IMAGE_MIME_TYPES = new Set<string>(SUPPORTED_IMAGE_TYPES.map((type) => type.mimeType));
@@ -499,7 +636,7 @@ process.on("exit", (code) => {
   process.stderr.write(msg + "\n");
 });
 
-const hasSingleInstanceLock = app.requestSingleInstanceLock();
+const hasSingleInstanceLock = isDev || app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) {
   app.quit();
 }
@@ -543,6 +680,27 @@ app.whenReady().then(async () => {
     generateThreadTitleOverride: async (workspace, options) => generateThreadTitleOverride?.(workspace, options),
   });
   await store.initialize();
+
+  // Automation store + scheduler
+  const automationStore = new AutomationStore(configuredUserDataDir);
+  await automationStore.load();
+  store.automationStoreRef = automationStore;
+  const automationScheduler = new AutomationScheduler({
+    store: automationStore,
+    sessionDriver: store.driver,
+    getWorkspaceRef: (workspaceId) => {
+      const state = store.state;
+      const ws = state.workspaces.find((w) => w.id === workspaceId);
+      if (!ws) return undefined;
+      return { workspaceId: ws.id, path: ws.path, displayName: ws.name };
+    },
+    onAutomationFired: (_automation, _sessionId) => {
+      // Session is already created by the scheduler; store refresh happens via onStateChanged.
+    },
+    onStateChanged: () => void store.refreshState(),
+  });
+  automationScheduler.start();
+
   const initialState = await store.getState();
   integratedTerminalShell = initialState.integratedTerminalShell;
   themeManager.setMode(initialState.themeMode);
@@ -943,6 +1101,9 @@ app.whenReady().then(async () => {
       getSessionTranscript: async (_event: unknown, workspaceId: string, sessionId: string) => {
         return store.getSessionTranscript({ workspaceId, sessionId });
       },
+      searchTranscriptText: async (_event: unknown, sessionKeys: readonly string[], query: string) => {
+        return store.searchTranscripts(sessionKeys, query);
+      },
 
       // -- Context snapshot --
       getContextSnapshot: async (_event: unknown, workspaceId: string, sessionId?: string) => {
@@ -969,6 +1130,179 @@ app.whenReady().then(async () => {
           sessionModelId: session?.config?.modelId,
           sessionThinkingLevel: session?.config?.thinkingLevel,
         });
+      },
+      getGraphifyProjectMapStatus: async (_event: unknown, workspaceId: string) => {
+        return getGraphifyProjectMapStatusForWorkspace(workspaceId, store.getWorkspacePath(workspaceId) ?? "");
+      },
+      updateGraphifyProjectMap: async (_event: unknown, workspaceId: string) => {
+        return runGraphify(workspaceId, store.getWorkspacePath(workspaceId) ?? "", ["update", "."]);
+      },
+      buildGraphifyProjectMap: async (_event: unknown, workspaceId: string) => {
+        return buildGraphify(workspaceId, store.getWorkspacePath(workspaceId) ?? "");
+      },
+      getGraphifyHealthCheck: async (_event: unknown, workspaceId: string) => {
+        const workspacePath = store.getWorkspacePath(workspaceId) ?? "";
+        const issues: Array<{ severity: "error" | "warning"; code: string; message: string; fixHint?: string }> = [];
+
+        // Check 1: graphify binary
+        const binOk = await new Promise<boolean>((resolve) => {
+          execFile("graphify", ["--version"], { timeout: 10_000 }, (err) => resolve(!err));
+        });
+        if (!binOk) {
+          issues.push({
+            severity: "error",
+            code: "missing-binary",
+            message: "`graphify` CLI not found or not runnable.",
+            fixHint: "Install with: uv tool install graphifyy (or: pip install graphifyy)",
+          });
+        }
+
+        // Check 2: graph.json exists and is valid
+        const graphPath = path.resolve(workspacePath, "graphify-out", "graph.json");
+        let graphValid = false;
+        let nodeCount = 0;
+        try {
+          const raw = await readFile(graphPath, "utf8");
+          const parsed = JSON.parse(raw);
+          nodeCount = Array.isArray(parsed.nodes) ? parsed.nodes.length : 0;
+          graphValid = nodeCount > 0;
+        } catch {
+          // missing or corrupt
+        }
+        if (!graphValid) {
+          issues.push({
+            severity: "error",
+            code: "missing-graph",
+            message: "graphify-out/graph.json is missing, empty, or corrupt.",
+            fixHint: "Build with: graphify extract . (or click Build in the Project map popover)",
+          });
+        }
+
+        // Check 3: freshness
+        const reportPath = path.resolve(workspacePath, "graphify-out", "GRAPH_REPORT.md");
+        let builtCommit: string | undefined;
+        try {
+          const report = await readFile(reportPath, "utf8");
+          builtCommit = report.match(/Built from commit:\s*`?([a-f0-9]{7,40})`?/i)?.[1];
+        } catch {
+          // no report
+        }
+
+        let currentCommit: string | undefined;
+        try {
+          currentCommit = await new Promise<string | undefined>((resolve) => {
+            execFile("git", ["rev-parse", "--short", "HEAD"], { cwd: workspacePath, timeout: 5_000 }, (err, stdout) => {
+              resolve(err ? undefined : stdout.trim());
+            });
+          });
+        } catch {
+          // not a git repo
+        }
+
+        if (graphValid && builtCommit && currentCommit && builtCommit !== currentCommit) {
+          issues.push({
+            severity: "warning",
+            code: "stale-graph",
+            message: `Graph was built from commit ${builtCommit}, but current HEAD is ${currentCommit}. Results may be outdated.`,
+            fixHint: "Update with: graphify update . (or click Update in the Project map popover)",
+          });
+        }
+
+        // Build debug prompt
+        const debugPrompt = issues.length > 0
+          ? [
+              "I'm having issues with Graphify in this workspace:",
+              "",
+              ...issues.map((i) => `- [${i.severity.toUpperCase()}] ${i.message}${i.fixHint ? ` Fix: ${i.fixHint}` : ""}`),
+              "",
+              "Please diagnose and fix these issues. The workspace is at: " + workspacePath,
+            ].join("\n")
+          : undefined;
+
+        return { healthy: issues.length === 0, issues, debugPrompt };
+      },
+      getGraphifyHookStatus: async (_event: unknown, workspaceId: string) => {
+        const workspacePath = store.getWorkspacePath(workspaceId) ?? "";
+        return new Promise((resolve) => {
+          execFile("graphify", ["hook", "status"], { cwd: workspacePath, timeout: 10_000 }, (_err, stdout) => {
+            const text = stdout ?? "";
+            resolve({
+              postCommit: text.includes("post-commit: installed"),
+              postCheckout: text.includes("post-checkout: installed"),
+            });
+          });
+        });
+      },
+      setGraphifyHook: async (_event: unknown, workspaceId: string, enable: boolean) => {
+        const workspacePath = store.getWorkspacePath(workspaceId) ?? "";
+        return new Promise((resolve) => {
+          execFile("graphify", ["hook", enable ? "install" : "uninstall"], { cwd: workspacePath, timeout: 15_000 }, (err, stdout, stderr) => {
+            resolve({ success: !err, message: err ? (stderr || stdout || String(err)) : (stdout || "Done") });
+          });
+        });
+      },
+      getGraphifyWatchStatus: async (_event: unknown, workspaceId: string) => {
+        const pid = graphifyWatchProcesses.get(workspaceId);
+        if (!pid) return { running: false };
+        // Check if process is still alive
+        const alive = await new Promise<boolean>((resolve) => {
+          try {
+            process.kill(pid, 0);
+            resolve(true);
+          } catch {
+            resolve(false);
+          }
+        });
+        if (!alive) {
+          graphifyWatchProcesses.delete(workspaceId);
+          return { running: false };
+        }
+        return { running: true, pid };
+      },
+      setGraphifyWatch: async (_event: unknown, workspaceId: string, enable: boolean) => {
+        const workspacePath = store.getWorkspacePath(workspaceId) ?? "";
+        // Stop existing watcher if running
+        const existingPid = graphifyWatchProcesses.get(workspaceId);
+        if (existingPid) {
+          try { process.kill(existingPid, "SIGTERM"); } catch { /* already dead */ }
+          graphifyWatchProcesses.delete(workspaceId);
+        }
+        if (!enable) return { success: true, message: "Watcher stopped." };
+        // Start new watcher
+        const child = spawn("graphify", ["watch", "."], { cwd: workspacePath, stdio: "ignore", detached: true });
+        child.unref();
+        if (child.pid) {
+          graphifyWatchProcesses.set(workspaceId, child.pid);
+          child.on("exit", () => graphifyWatchProcesses.delete(workspaceId));
+          return { success: true, message: `Watcher started (PID ${child.pid}).` };
+        }
+        return { success: false, message: "Failed to start watcher." };
+      },
+
+      // -- Automation --
+      automationCreate: async (_event: unknown, input: { name: string; prompt: string; schedule: import("../src/desktop-state.ts").AutomationSchedule; workspaceId: string; model?: { provider: string; modelId: string }; thinkingLevel?: string; enabled?: boolean }) => {
+        await automationStore.create(input);
+        const state = await store.getState();
+        return { ...state, automations: automationStore.getAll() };
+      },
+      automationUpdate: async (_event: unknown, id: string, patch: Record<string, unknown>) => {
+        await automationStore.update(id, patch as never);
+        const state = await store.getState();
+        return { ...state, automations: automationStore.getAll() };
+      },
+      automationDelete: async (_event: unknown, id: string) => {
+        await automationStore.delete(id);
+        const state = await store.getState();
+        return { ...state, automations: automationStore.getAll() };
+      },
+      automationList: async () => {
+        const state = await store.getState();
+        return { ...state, automations: automationStore.getAll() };
+      },
+      automationFireNow: async (_event: unknown, id: string) => {
+        await automationScheduler.fireNow(id);
+        const state = await store.getState();
+        return { ...state, automations: automationStore.getAll() };
       },
     },
   };
@@ -1014,6 +1348,11 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", (event) => {
+  // Kill all graphify watch processes
+  for (const [wsId, pid] of graphifyWatchProcesses) {
+    try { process.kill(pid, "SIGTERM"); } catch { /* already dead */ }
+    graphifyWatchProcesses.delete(wsId);
+  }
   stopNotifications?.();
   stopNotifications = undefined;
   notificationManager = undefined;

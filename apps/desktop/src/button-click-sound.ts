@@ -59,11 +59,28 @@ export function getButtonSoundSettings(): ButtonSoundSettings {
 type ClickKind = "down" | "up";
 type KeyPhase = "press" | "release";
 
-const CLICK_URL = "/sounds/click.mp3";
-const KEY_URLS = ["/sounds/key-on.mp3", "/sounds/key-off.mp3"];
-const ROTARY_URLS = [
-  "/sounds/click_01.mp3",
-];
+/** Resolve a public asset relative to the app base (works in dev and packaged file://). */
+function soundUrl(name: string): string {
+  // import.meta is only valid in ESM renderer builds; guard for main-process type-checking.
+  // @ts-ignore import.meta is valid in ESM renderer builds, flagged in CJS main-process type-check
+  const meta = typeof import.meta !== "undefined" ? import.meta : undefined;
+  const base = meta?.env?.BASE_URL ?? "/";
+  return new URL(`sounds/${name}`, new URL(base, document.baseURI)).toString();
+}
+
+let _urls:
+  | { click: string; keys: string[]; rotary: string[] }
+  | undefined;
+function getUrls() {
+  if (!_urls) {
+    _urls = {
+      click: soundUrl("click.mp3"),
+      keys: [soundUrl("key-on.mp3"), soundUrl("key-off.mp3")],
+      rotary: [soundUrl("click_01.mp3")],
+    };
+  }
+  return _urls;
+}
 
 const CLICK_RATE: Record<ClickKind, number> = { down: 0.78, up: 1 };
 
@@ -271,10 +288,11 @@ function loadAll(): Promise<void> {
     return loadPromise;
   }
 
+  const urls = getUrls();
   loadPromise = (async () => {
     const [rawClick, ...rawKeys] = await Promise.all([
-      fetchBuffer(ctx, CLICK_URL),
-      ...KEY_URLS.map((url) => fetchBuffer(ctx, url)),
+      fetchBuffer(ctx, urls.click),
+      ...urls.keys.map((url) => fetchBuffer(ctx, url)),
     ]);
     if (rawClick) clickBuffer = trimSilence(ctx, rawClick);
     keyBuffers = rawKeys
@@ -282,7 +300,7 @@ function loadAll(): Promise<void> {
       .map((b) => splitKeySample(ctx, b));
     
     const rawRotary = await Promise.all(
-      ROTARY_URLS.map((url) => fetchBuffer(ctx, url))
+      urls.rotary.map((url) => fetchBuffer(ctx, url))
     );
     rotaryBuffers = rawRotary
       .filter((b): b is AudioBuffer => Boolean(b))
@@ -311,6 +329,11 @@ async function fire(buffer: AudioBuffer, rate = 1): Promise<void> {
   source.playbackRate.value = rate;
   source.connect(masterGain);
   source.start();
+}
+
+/** Preload all audio buffers. Call early (e.g. app mount) to avoid latency on first button press. */
+export function preloadSounds(): void {
+  void loadAll();
 }
 
 /** Play a click sound (down = lower pitch, up = normal pitch) */

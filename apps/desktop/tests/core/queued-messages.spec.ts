@@ -147,6 +147,41 @@ test("shows queued messages while running and preserves attachments through inli
   }
 });
 
+test("sends immediately when visible running state is stale after completion", async () => {
+  test.setTimeout(60_000);
+  const userDataDir = await makeUserDataDir();
+  const workspacePath = await makeWorkspace("queued-messages-stale-running");
+  const harness = await launchDesktop(userDataDir, {
+    initialWorkspaces: [workspacePath],
+    testMode: "background",
+  });
+
+  try {
+    const window = await harness.firstWindow();
+    await createNamedThread(window, "Stale running state");
+
+    await emitRunningSnapshot(harness, window, []);
+    await expect
+      .poll(async () => {
+        const state = await getDesktopState(window);
+        return state.workspaces
+          .find((workspace) => workspace.id === state.selectedWorkspaceId)
+          ?.sessions.find((session) => session.id === state.selectedSessionId)?.status;
+      })
+      .toBe("running");
+
+    const composer = window.getByTestId("composer");
+    await composer.fill("Send after completion race");
+    await composer.press("Enter");
+
+    await expect(window.getByTestId("queued-composer-messages")).toHaveCount(0);
+    await expect(window.getByTestId("transcript")).toContainText("Send after completion race");
+    await expect.poll(async () => (await getDesktopState(window)).queuedComposerMessages).toEqual([]);
+  } finally {
+    await harness.close();
+  }
+});
+
 test("delineates queued follow-ups and submitted steers in the timeline", async () => {
   test.setTimeout(60_000);
   const userDataDir = await makeUserDataDir();

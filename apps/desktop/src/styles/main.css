@@ -235,6 +235,17 @@
   transform: translateX(-50%);
 }
 
+.topbar__actions .topbar__tooltip-wrap:last-child .topbar__tooltip {
+  left: auto;
+  right: 0;
+  transform: translateY(-2px);
+}
+
+.topbar__actions .topbar__tooltip-wrap:last-child:hover .topbar__tooltip,
+.topbar__actions .topbar__tooltip-wrap:last-child:focus-within .topbar__tooltip {
+  transform: none;
+}
+
 .sidebar-toggle {
   -webkit-app-region: no-drag;
   position: absolute;
@@ -2182,7 +2193,7 @@ body.pi-thread-handoff .timeline-item--just-sent .timeline-item__bubble {
 }
 
 .composer {
-  padding: 0 16px 24px;
+  padding: 0 16px 16px;
   position: relative;
   z-index: 2;
   /* Overlap the conversation by the surface corner radius so conversation
@@ -2193,101 +2204,9 @@ body.pi-thread-handoff .timeline-item--just-sent .timeline-item__bubble {
   margin-top: -12px;
 }
 
-/* In-app "thread finished" toast — slides up out of the top of the composer. */
-.composer-completion-toast {
-  position: absolute;
-  left: 16px;
-  right: 16px;
-  bottom: calc(100% - 6px);
-  z-index: 5;
-  display: flex;
-  align-items: stretch;
-  gap: 8px;
-  padding: 8px 8px 8px 10px;
-  border-radius: 12px;
-  border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
-  background: var(--surface);
-  box-shadow: var(--shadow-lg);
-  animation: composer-completion-toast-rise 0.22s ease-out;
-}
+/* In-app composer toast — slides up out of the top of the composer. */
 
-.composer-completion-toast--failure {
-  border-color: color-mix(in srgb, var(--error-ink) 55%, transparent);
-  border-left-color: var(--error-ink);
-}
-
-.composer-completion-toast__open {
-  flex: 1 1 auto;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  border: 0;
-  background: transparent;
-  padding: 0;
-  text-align: left;
-  cursor: pointer;
-  color: inherit;
-}
-
-.composer-completion-toast__icon {
-  flex: 0 0 auto;
-  display: grid;
-  place-items: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 999px;
-  font-size: 13px;
-  color: #fff;
-  background: var(--accent);
-}
-
-.composer-completion-toast--failure .composer-completion-toast__icon {
-  background: var(--error-ink);
-}
-
-.composer-completion-toast__body {
-  display: grid;
-  gap: 1px;
-  min-width: 0;
-}
-
-.composer-completion-toast__label {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--muted-soft, var(--muted));
-}
-
-.composer-completion-toast__title {
-  font-size: 13px;
-  color: var(--text-strong, var(--ink));
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.composer-completion-toast__close {
-  flex: 0 0 auto;
-  align-self: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
-  border: 0;
-  background: transparent;
-  color: var(--muted-soft, var(--ink));
-  cursor: pointer;
-  font-size: 16px;
-  line-height: 1;
-  padding: 0;
-}
-
-.composer-completion-toast__close:hover {
-  background: color-mix(in srgb, var(--ink) 8%, transparent);
-}
-
-@keyframes composer-completion-toast-rise {
+@keyframes toast-rise {
   from {
     opacity: 0;
     transform: translateY(100%);
@@ -3246,31 +3165,49 @@ body.pi-thread-handoff .timeline-item--just-sent .timeline-item__bubble {
   z-index: 60;
 }
 
-/* ── Toast (singleton, app-root) ───────────────────── */
+/* ── Toast (singleton, composer-attached) ───────────────────── */
 
 .toast {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 9999;
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: calc(100% - 6px);
+  z-index: 5;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 14px;
+  padding: 8px 8px 8px 10px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
   font-size: 13px;
   line-height: 1.4;
-  animation: toast-slide-in 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: toast-rise 0.22s ease-out;
 }
 
 .toast--success {
-  background: color-mix(in srgb, var(--accent) 8%, white);
   color: var(--ink);
 }
 
 .toast--error {
-  background: color-mix(in srgb, var(--error-ink) 10%, white);
+  border-color: color-mix(in srgb, var(--error-ink) 55%, transparent);
+  border-left-color: var(--error-ink);
   color: var(--error-ink);
+}
+
+.toast__action {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
 .toast__icon {
@@ -6548,7 +6485,7 @@ mark.thread-find-active {
 .composer-device--modular .composer__screen {
   contain: layout paint;
   display: flex;
-  min-height: 90px;
+  min-height: 76px;
   flex-direction: column;
 }
 
@@ -6566,7 +6503,7 @@ mark.thread-find-active {
 
 /* The bar wraps context bar + footer-row. Give it a small top gap. */
 .composer-device--modular .composer__bar {
-  margin-top: 2px;
+  margin-top: 1px;
 }
 
 /* The base device surface reserves a 16px bottom bezel (padding-bottom)
@@ -6575,7 +6512,7 @@ mark.thread-find-active {
    dead grey below the keys and makes them read as sitting high. Trim it
    to ~2px so the strip's own height defines the box the keys center in. */
 :root.composer-device--modular .composer__surface {
-  padding: 8px 8px 2px;
+  padding: 4px 8px 0;
 }
 
 /* Context/compaction readout lives inside the same recessed screen as typing. */
@@ -6591,15 +6528,15 @@ mark.thread-find-active {
 
 /* Footer-row = controls strip. */
 .composer-device--modular .composer__footer-row {
-  --crt-modular-controls-h: 56px;
+  --crt-modular-controls-h: 40px;
   position: relative;
   display: grid;
   grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: 14px;
-  min-height: 52px;
+  min-height: 38px;
   margin: 0;
-  padding: 4px 0;
+  padding: 0;
   background: transparent;
   box-shadow: none;
   border-radius: 0;
@@ -6628,7 +6565,7 @@ mark.thread-find-active {
 .composer-device--modular .composer__controls {
   grid-column: 1;
   align-self: center;
-  padding-top: 14px;
+  padding-top: 3px;
   display: inline-flex;
   align-items: center;
   gap: 10px;
@@ -6694,7 +6631,7 @@ mark.thread-find-active {
 .composer-device--modular .caveman-selector::before {
   content: attr(data-section-label);
   position: absolute;
-  top: -13px;
+  top: -11px;
   left: 50%;
   transform: translateX(-50%);
   font-family: ui-monospace, "SF Mono", Menlo, "Roboto Mono", monospace;
@@ -6719,7 +6656,7 @@ mark.thread-find-active {
 .composer-device--modular .composer__actions {
   grid-column: 3;
   align-self: center;
-  padding-top: 14px;
+  padding-top: 3px;
   display: flex;
   align-items: center;
   justify-self: end;
@@ -6727,9 +6664,9 @@ mark.thread-find-active {
 
 /* Slightly larger send button in modular mode */
 .composer-device--modular .composer__send {
-  width: 52px;
-  min-width: 52px;
-  height: 52px;
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
 }
 
 /* ---------------------------------------------------------------- */
@@ -6748,9 +6685,9 @@ mark.thread-find-active {
   justify-content: center;
   gap: 6px;
   border: 0;
-  border-radius: 8px;
+  border-radius: 7px;
   box-sizing: border-box;
-  height: 40px;
+  height: 30px;
   padding: 0 16px;
   align-self: center;
   font-family: ui-monospace, "SF Mono", Menlo, "Roboto Mono", monospace;
@@ -8326,6 +8263,291 @@ mark.thread-find-active {
   grid-template-columns: none !important;
   flex-direction: row;
   align-items: center;
+}
+
+/* ── Project map popover ──────────────────────────────── */
+
+.project-map-popover {
+  position: relative;
+}
+
+.topbar__icon--warning::after {
+  content: "";
+  position: absolute;
+  right: 5px;
+  top: 5px;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #f59e0b;
+  box-shadow: 0 0 0 2px var(--surface);
+}
+
+.project-map-popover__menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 50;
+  width: min(360px, calc(100vw - 32px));
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.18);
+  padding: 14px;
+}
+
+.project-map-popover__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.project-map-popover__status {
+  border-radius: 999px;
+  padding: 3px 8px;
+  background: var(--surface-muted);
+  color: var(--muted-strong);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.project-map-popover__status--fresh {
+  background: rgba(34, 197, 94, 0.12);
+  color: #15803d;
+}
+
+.project-map-popover__status--stale {
+  background: rgba(245, 158, 11, 0.14);
+  color: #b45309;
+}
+
+.project-map-popover__stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.project-map-popover__stats span {
+  display: grid;
+  gap: 2px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 9px;
+  color: var(--ink-strong);
+  font-weight: 700;
+}
+
+.project-map-popover__stats small {
+  color: var(--muted-strong);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.project-map-popover__note {
+  margin: 10px 0 0;
+  color: var(--muted-strong);
+  font-size: 12px;
+}
+
+.project-map-popover__note--warning {
+  color: #b45309;
+}
+
+.project-map-popover__actions {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.project-map-popover__actions button,
+.project-map-popover__communities button {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-muted);
+  color: var(--ink-strong);
+  padding: 8px 10px;
+  text-align: left;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.project-map-popover__actions button:hover,
+.project-map-popover__communities button:hover {
+  background: var(--surface-hover);
+}
+
+.project-map-popover__actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.project-map-popover__communities {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.project-map-popover__communities > span {
+  color: var(--muted-strong);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.project-map-popover__message {
+  max-height: 120px;
+  overflow: auto;
+  margin: 12px 0 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-muted);
+  padding: 8px;
+  color: var(--muted-strong);
+  font-size: 11px;
+  white-space: pre-wrap;
+}
+
+.project-map-popover__health {
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid #b45309;
+  border-radius: 10px;
+  background: #fef3c7;
+}
+
+:root.dark .project-map-popover__health {
+  background: #451a03;
+  border-color: #92400e;
+}
+
+.project-map-popover__health-title {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #92400e;
+  margin-bottom: 6px;
+}
+
+:root.dark .project-map-popover__health-title {
+  color: #fbbf24;
+}
+
+.project-map-popover__issue {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-strong);
+  line-height: 1.4;
+}
+
+.project-map-popover__issue + .project-map-popover__issue {
+  margin-top: 6px;
+}
+
+.project-map-popover__issue small {
+  display: block;
+  color: var(--muted-strong);
+  font-size: 11px;
+}
+
+.project-map-popover__issue--error {
+  color: #b91c1c;
+}
+
+:root.dark .project-map-popover__issue--error {
+  color: #fca5a5;
+}
+
+.project-map-popover__debug-btn {
+  margin-top: 8px;
+  width: 100%;
+  border: 1px solid #b45309 !important;
+  background: #fbbf24 !important;
+  color: #451a03 !important;
+  font-weight: 600 !important;
+}
+
+:root.dark .project-map-popover__debug-btn {
+  border-color: #d97706 !important;
+  background: #92400e !important;
+  color: #fef3c7 !important;
+}
+
+.project-map-popover__debug-btn:hover {
+  background: #f59e0b !important;
+}
+
+:root.dark .project-map-popover__debug-btn:hover {
+  background: #a16207 !important;
+}
+
+.project-map-popover__auto {
+  margin-top: 12px;
+  padding: 10px 0 0;
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 8px;
+}
+
+.project-map-popover__auto-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+}
+
+.project-map-popover__auto-item span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.project-map-popover__auto-item strong {
+  font-size: 12px;
+  color: var(--ink-strong);
+}
+
+.project-map-popover__auto-item small {
+  font-size: 11px;
+  color: var(--muted-strong);
+}
+
+.project-map-popover__auto-item input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.topbar__watch-dot {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #22c55e;
+  border: 1.5px solid var(--surface);
+  pointer-events: none;
+  animation: watch-pulse 2s ease-in-out infinite;
+}
+
+@keyframes watch-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.topbar__icon--watching {
+  position: relative;
 }
 
 /* ── Context view ─────────────────────────────────────── */
@@ -10659,4 +10881,452 @@ mark.thread-find-active {
 .kanban-card__action svg {
   width: 14px;
   height: 14px;
+}
+
+.search-palette {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: start center;
+  padding-top: 12vh;
+}
+
+.search-palette__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 18, 28, 0.28);
+  backdrop-filter: blur(3px);
+}
+
+.search-palette__panel {
+  position: relative;
+  width: min(720px, calc(100vw - 40px));
+  max-height: min(680px, calc(100vh - 96px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: 18px;
+  background: var(--surface);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.22);
+}
+
+.search-palette__input {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  padding: 18px 20px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 18px;
+  outline: none;
+}
+
+.search-palette__controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-muted);
+}
+
+.search-palette__segmented {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+}
+
+.search-palette__segmented-button {
+  border: 0;
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: transparent;
+  color: var(--muted-strong);
+  font: inherit;
+  font-size: 12px;
+}
+
+.search-palette__segmented-button--active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.search-palette__results {
+  overflow: auto;
+  padding: 8px;
+}
+
+.search-palette__empty {
+  padding: 32px 16px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.search-palette__result {
+  width: 100%;
+  display: grid;
+  gap: 4px;
+  border: 0;
+  border-radius: 12px;
+  padding: 11px 12px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+
+.search-palette__result--active,
+.search-palette__result:hover {
+  background: var(--surface-muted);
+}
+
+.search-palette__result-title {
+  font-weight: 650;
+}
+
+.search-palette__result-meta,
+.search-palette__result-preview {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-palette__result-preview--transcript {
+  color: var(--accent, #6b7280);
+  font-style: italic;
+}
+
+/* ── Automations view ──────────────────────────────────── */
+
+.automations-view {
+  padding: 24px 32px;
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.automations-view__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.automations-view__title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.automations-view__title-row h1 {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.automations-view__title-row svg {
+  width: 20px;
+  height: 20px;
+  color: var(--muted);
+}
+
+.automations-view__filter-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.automations-view__filter-clear {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+.automations-view__filter-clear:hover {
+  color: var(--foreground);
+}
+
+.automations-view__empty {
+  text-align: center;
+  padding: 64px 24px;
+  color: var(--muted);
+}
+
+.automations-view__empty svg {
+  width: 40px;
+  height: 40px;
+  margin-bottom: 12px;
+  opacity: 0.4;
+}
+
+.automations-view__empty h2 {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 8px;
+  color: var(--foreground);
+}
+
+.automations-view__empty p {
+  font-size: 13px;
+  max-width: 360px;
+  margin: 0 auto;
+  line-height: 1.5;
+}
+
+.automations-view__list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ── Automation card ─────────────────────────────────── */
+
+.automation-card {
+  padding: 14px 16px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  transition: border-color 120ms ease;
+}
+
+.automation-card:hover {
+  border-color: var(--border-strong, var(--border));
+}
+
+.automation-card--disabled {
+  opacity: 0.55;
+}
+
+.automation-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.automation-card__title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.automation-card__title-row svg {
+  width: 14px;
+  height: 14px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.automation-card__name {
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.automation-card__workspace {
+  font-size: 11px;
+  color: var(--muted);
+  padding: 1px 6px;
+  background: var(--surface-2);
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.automation-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.automation-card__toggle {
+  width: 28px;
+  height: 18px;
+  border-radius: 9px;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  position: relative;
+  cursor: pointer;
+  padding: 0;
+}
+
+.automation-card__toggle--on {
+  background: var(--accent, #3b82f6);
+  border-color: var(--accent, #3b82f6);
+}
+
+.automation-card__toggle-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--foreground);
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  transition: transform 150ms ease;
+}
+
+.automation-card__toggle--on .automation-card__toggle-dot {
+  transform: translateX(10px);
+  background: white;
+}
+
+.automation-card__meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.automation-card__schedule {
+  font-weight: 500;
+}
+
+.automation-card__last-run--never {
+  font-style: italic;
+}
+
+.automation-card__prompt {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+/* ── Automation form ────────────────────────────────── */
+
+.automation-form {
+  padding: 20px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 20px;
+}
+
+.automation-form h2 {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 16px;
+}
+
+.automation-form__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 14px;
+}
+
+.automation-form__field > span,
+.automation-form__field > legend {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.automation-form__field input[type="text"],
+.automation-form__field textarea,
+.automation-form__field select {
+  padding: 8px 10px;
+  background: var(--surface-0);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--foreground);
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.automation-form__field input[type="text"]:focus,
+.automation-form__field textarea:focus,
+.automation-form__field select:focus {
+  outline: none;
+  border-color: var(--accent, #3b82f6);
+}
+
+.automation-form__schedule-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.automation-form__radio {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.automation-form__radio input[type="radio"] {
+  accent-color: var(--accent, #3b82f6);
+}
+
+.automation-form__cron-input {
+  margin-top: 8px;
+}
+
+.automation-form__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+/* ── Sidebar automation icon on workspace row ──────── */
+
+.workspace-row__automation-button {
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.workspace-row:hover .workspace-row__automation-button,
+.workspace-row__automation-button:focus-visible {
+  opacity: 1;
+}
+
+.workspace-row__automation-button svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* ── Sidebar automation nav item indicator ─────────── */
+
+.session-row__automation-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.session-row__automation-indicator svg {
+  width: 10px;
+  height: 10px;
+  color: var(--foreground);
 }

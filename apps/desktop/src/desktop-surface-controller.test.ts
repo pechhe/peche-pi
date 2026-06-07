@@ -88,6 +88,10 @@ describe("canToggleSidebar", () => {
     expect(canToggleSidebar("new-thread")).toBe(true);
   });
 
+  it("returns true for kanban view", () => {
+    expect(canToggleSidebar("kanban")).toBe(true);
+  });
+
   it("returns false for settings view", () => {
     expect(canToggleSidebar("settings")).toBe(false);
   });

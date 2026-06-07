@@ -302,9 +302,13 @@ export async function submitComposer(
   }
 
   const key = sessionKey(sessionRef);
-  const selectedSession = store.sessionFromState(sessionRef);
-  const isRunning = selectedSession?.status === "running";
+  let isRunning = store.sessionFromState(sessionRef)?.status === "running";
   const editingState = store.getQueuedComposerEditState(sessionRef);
+  if (isRunning && store.getQueuedComposerMessages(sessionRef).length === 0 && !editingState) {
+    const latestSnapshot = await store.driver.openSession(sessionRef);
+    store.updateQueuedComposerMessages(sessionRef, latestSnapshot.queuedMessages);
+    isRunning = latestSnapshot.status === "running";
+  }
   let optimisticSteerMessage: SessionQueuedMessage | undefined;
   try {
     if (resolvedRuntimeSlashCommand) {

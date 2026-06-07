@@ -28,6 +28,11 @@ jobs:
 
   desktop-core:
     runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+        shard_total: [4]
 
     steps:
       - uses: actions/checkout@v4
@@ -42,8 +47,13 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
-      - name: Desktop Core
-        run: pnpm --filter @pi-gui/desktop run test:e2e:ci:mac
+      - name: Desktop Core (${{ matrix.shard }}/${{ matrix.shard_total }})
+        run: |
+          pnpm --dir apps/desktop run build
+          PI_APP_TEST_MODE=background pnpm exec playwright test \
+            -c apps/desktop/playwright.config.ts \
+            apps/desktop/tests/core \
+            --shard=${{ matrix.shard }}/${{ matrix.shard_total }}
 
   desktop-package-linux:
     runs-on: ubuntu-latest

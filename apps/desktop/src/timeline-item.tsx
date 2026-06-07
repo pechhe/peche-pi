@@ -12,6 +12,7 @@ import { openImageLightbox } from "./image-lightbox";
 import { extensionToLanguage } from "./syntax-highlight";
 import { PLAN_MODE_PROMPT_SEPARATOR } from "./composer-mode";
 import { SubagentToolCard, isSubagentTool } from "./subagent-card";
+import { WorkingSpinner } from "./working-label";
 
 // Tracks user-message ids whose entrance animation has already played. The
 // createdAt gate suppresses animation when an existing transcript is loaded for
@@ -783,11 +784,53 @@ function UserTimelineMessage({ item }: { readonly item: SessionTranscriptMessage
 }
 
 function TimelineActivityItem({ item }: { readonly item: TimelineActivity }) {
+  if (item.retry) {
+    return <TimelineRetryItem label={item.label} retry={item.retry} />;
+  }
   return (
     <div className={`timeline-activity timeline-activity--${item.tone ?? "neutral"}`}>
       <span className="timeline-activity__label">{item.label}</span>
       {item.detail ? <span className="timeline-activity__detail">{item.detail}</span> : null}
       {item.metadata ? <span className="timeline-activity__meta">{item.metadata}</span> : null}
+    </div>
+  );
+}
+
+function secondsUntil(deadline: string): number {
+  return Math.max(0, Math.ceil((new Date(deadline).getTime() - Date.now()) / 1000));
+}
+
+/**
+ * A single transient line shown while a transient connection failure is being
+ * auto-retried: braille spinner, attempt counter, and a live countdown to the
+ * next attempt. The countdown ticks locally so it stays smooth without any
+ * per-second traffic from the main process.
+ */
+function TimelineRetryItem({
+  label,
+  retry,
+}: {
+  readonly label: string;
+  readonly retry: NonNullable<TimelineActivity["retry"]>;
+}) {
+  const [remaining, setRemaining] = useState(() => secondsUntil(retry.deadline));
+  useEffect(() => {
+    setRemaining(secondsUntil(retry.deadline));
+    const id = window.setInterval(() => {
+      setRemaining(secondsUntil(retry.deadline));
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [retry.deadline]);
+
+  const countdown =
+    remaining > 0 ? `retrying in ${remaining}s` : "retrying…";
+  return (
+    <div className="timeline-activity timeline-activity--error timeline-activity--retry">
+      <WorkingSpinner className="timeline-activity__spinner" />
+      <span className="timeline-activity__label">{label}</span>
+      <span className="timeline-activity__meta">
+        attempt {retry.attempt}/{retry.maxAttempts} · {countdown}
+      </span>
     </div>
   );
 }

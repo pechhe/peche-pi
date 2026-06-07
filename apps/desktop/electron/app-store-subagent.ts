@@ -48,7 +48,7 @@ function parseSubagentAgentFile(filePath: string, raw: string, scope: "project" 
   if (frontmatter) {
     for (const line of frontmatter[1]?.split(/\r?\n/) ?? []) {
       const match = line.match(/^([a-zA-Z0-9_-]+):\s*(.*)$/);
-      if (match?.[1]) fields.set(match[1], (match[2] ?? "").trim().replace(/^['\"]|['\"]$/g, ""));
+      if (match?.[1]) fields.set(match[1], (match[2] ?? "").trim().replace(/^['"]|['"]$/g, ""));
     }
   }
   const mode = fields.get("mode");

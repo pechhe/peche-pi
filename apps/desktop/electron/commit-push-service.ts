@@ -194,10 +194,12 @@ export async function executeCommitPush(
   }
 
   // 4. Get the diff for LLM
+  // git diff returns exit code 1 when differences are found — that's normal,
+  // not an error. Only treat 128+ (actual git errors) as failures.
   const { stdout: diff, code: diffCode, stderr: diffErr } = await execGit(["diff", "--staged"], workspacePath);
-  if (diffCode !== 0) {
-    log("diff_failed", { workspacePath, diffErr });
-    return { success: false, message: `[diff] git diff --staged failed: ${diffErr}` };
+  if (diffCode !== 0 && diffCode !== 1) {
+    log("diff_failed", { workspacePath, diffCode, diffErr });
+    return { success: false, message: `[diff] git diff --staged failed (exit ${diffCode}): ${diffErr}` };
   }
 
   if (!diff.trim()) {

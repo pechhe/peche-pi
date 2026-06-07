@@ -6,6 +6,7 @@ import {
   type ComposerModelOption,
 } from "./composer-commands";
 import { ReasoningMeter } from "./reasoning-meter";
+import { ShortcutHint } from "./shortcut-hint";
 import { useButtonSound } from "./use-button-sound";
 
 export interface ModelSelectorHandle {
@@ -284,6 +285,7 @@ export const ModelSelector = forwardRef<ModelSelectorHandle, ModelSelectorProps>
         {shouldRenderModelControl ? (
           <span className="model-selector__anchor" data-section-label="Model">
             <span className="composer__key-mount">
+              <ShortcutHint keys="⌘1–4" />
               <span
                 className="model-selector__badge model-selector__badge--slider"
                 data-physical-key="model"
@@ -443,6 +445,7 @@ export const ModelSelector = forwardRef<ModelSelectorHandle, ModelSelectorProps>
         {thinkingLevel ? (
           <span className="model-selector__anchor" data-section-label="Reasoning">
             <span className="composer__key-mount composer__key-mount--reasoning">
+              <ShortcutHint keys="⌘↑↓" />
               <button
                 className="model-selector__badge model-selector__badge--reasoning"
                 type="button"

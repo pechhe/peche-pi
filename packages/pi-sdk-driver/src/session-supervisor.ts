@@ -1,6 +1,8 @@
 import { access, readFile, realpath } from "node:fs/promises";
 import { resolve } from "node:path";
 import {
+  DefaultResourceLoader,
+  getAgentDir,
   ModelRegistry,
   SessionManager,
   type AgentSessionRuntime,
@@ -27,7 +29,6 @@ import type {
   HostUiRequest,
   HostUiResponse,
   HostUiQuestionnaireQuestion,
-  SessionConfig,
   SessionDriverEvent,
   SessionEventListener,
   SessionModelSelection,
@@ -41,8 +42,6 @@ import type { RuntimeCommandRecord } from "@pi-gui/session-driver/runtime-types"
 import { JsonCatalogStore, type SessionFileCatalogStorage } from "./json-catalog-store.js";
 import {
   applyHostUiRequestToExtensionUiState,
-  createEmptyExtensionUiState,
-  type ExtensionUiState,
 } from "./extension-ui-state.js";
 import {
   createUnsupportedHostUiError,
@@ -92,6 +91,49 @@ export interface PiSdkDriverOptions {
     workspace: WorkspaceRef,
     options: import("./thread-title-generator.js").GenerateThreadTitleOptions,
   ) => Promise<string | null | undefined>;
+}
+
+async function buildGraphifyAppendSystemPrompt(workspacePath: string): Promise<string | undefined> {
+  const graphPath = resolve(workspacePath, "graphify-out", "graph.json");
+  const reportPath = resolve(workspacePath, "graphify-out", "GRAPH_REPORT.md");
+  try {
+    await access(graphPath);
+  } catch {
+    return undefined;
+  }
+
+  const report = await readFile(reportPath, "utf8").catch(() => "");
+  const builtCommit = report.match(/Built from commit:\s*`?([a-f0-9]{7,40})`?/i)?.[1];
+  const communities = extractGraphifyCommunityNames(report).slice(0, 8);
+  return [
+    "# Graphify Project Map",
+    "",
+    "This workspace has `graphify-out/graph.json`. For natural-language questions about architecture, ownership, file relationships, codebase concepts, or where something fits, use Graphify before grep/search.",
+    "",
+    "Preferred routing:",
+    "- Use `graphify_query` for broad architecture/codebase questions.",
+    "- Use `graphify_explain` for a named concept or community.",
+    "- Use `graphify_path` to trace connections between two concepts.",
+    "- Use Cymbal for exact symbols, refs, impact, implementations, and targeted source reads.",
+    "- Use grep/rg for exact strings, config values, logs, or non-code text.",
+    "",
+    "Fast path: if the user asks how the codebase works and does not explicitly ask to rebuild/update, query the existing graph first. Do not redetect or rebuild before answering.",
+    "",
+    builtCommit ? `Graph built from commit: ${builtCommit}` : undefined,
+    communities.length ? `Top graph communities: ${communities.join(", ")}` : undefined,
+    "If current source changes matter, check graph freshness and run `graphify_update` before relying on the graph.",
+  ].filter(Boolean).join("\n");
+}
+
+function extractGraphifyCommunityNames(report: string): string[] {
+  const names: string[] = [];
+  for (const line of report.split(/\r?\n/)) {
+    const match = line.match(/^- \[\[_COMMUNITY_([^\]|]+)(?:\|([^\]]+))?\]\]/);
+    if (match?.[1]) {
+      names.push((match[2] || match[1]).trim());
+    }
+  }
+  return names;
 }
 
 export interface SyncWorkspaceResult {
@@ -316,10 +358,22 @@ export class SessionSupervisor {
     const initialModel = options?.initialModel
       ? this.resolveModel(options.initialModel.provider, options.initialModel.modelId)
       : undefined;
+    const graphifyPrompt = await buildGraphifyAppendSystemPrompt(workspace.path);
+    const resourceLoader = graphifyPrompt
+      ? new DefaultResourceLoader({
+          cwd: workspace.path,
+          agentDir: getAgentDir(),
+          appendSystemPrompt: [graphifyPrompt],
+        })
+      : undefined;
+    if (resourceLoader) {
+      await resourceLoader.reload();
+    }
     const createOptions: CreateAgentSessionOptions = {
       cwd: workspace.path,
       sessionManager: SessionManager.create(workspace.path),
       customTools: [createQuestionnaireTool()],
+      ...(resourceLoader ? { resourceLoader } : {}),
       ...(this.modelRegistry ? { modelRegistry: this.modelRegistry } : {}),
     };
     if (initialModel) {
@@ -422,7 +476,7 @@ export class SessionSupervisor {
         }
       }
 
-      if (isExtensionCommand) {
+      if (!isQueuedMessage) {
         await this.syncRecordAfterSessionMutation(record, { emitUpdate: true });
       }
     } catch (error) {
@@ -549,7 +603,15 @@ export class SessionSupervisor {
     const session = this.requireSession(record);
 
     this.resetExtensionUi(record);
-    await session.reload();
+    // reload() re-emits `session_start`; suppress blocking host-UI dialogs for
+    // its duration so lifecycle prompts (e.g. computer-use permissions) cannot
+    // wedge startup. Mirrors the guard around bindExtensions().
+    record.bindingExtensions = true;
+    try {
+      await session.reload();
+    } finally {
+      record.bindingExtensions = false;
+    }
     await this.syncRecordAfterSessionMutation(record, { emitUpdate: true });
   }
 
@@ -716,7 +778,13 @@ export class SessionSupervisor {
       },
       reload: async () => {
         this.resetExtensionUi(record);
-        await this.requireSession(record).reload();
+        // See reloadSession(): guard the session_start re-emit from reload().
+        record.bindingExtensions = true;
+        try {
+          await this.requireSession(record).reload();
+        } finally {
+          record.bindingExtensions = false;
+        }
         await this.syncRecordAfterSessionMutation(record, { emitUpdate: true });
       },
     };
@@ -1328,6 +1396,36 @@ export class SessionSupervisor {
           this.registry,
         );
       }
+      case "auto_retry_start":
+        record.status = "running";
+        return toDriverEvents({
+          type: "runRetrying" as const,
+          sessionRef: record.ref,
+          timestamp,
+          attempt: event.attempt,
+          maxAttempts: event.maxAttempts,
+          delayMs: event.delayMs,
+          message: event.errorMessage,
+        }, record, undefined, this.registry);
+      case "auto_retry_end":
+        if (event.success) {
+          // The retried attempt is now streaming; just refresh state. The
+          // transient retry line clears when the next transcript event lands.
+          record.status = "running";
+          return [sessionUpdatedEvent(record, this.registry)];
+        }
+        record.status = "failed";
+        record.runningRunId = undefined;
+        record.updatedAt = timestamp;
+        if (event.finalError) {
+          record.preview = event.finalError;
+        }
+        return toDriverEvents({
+          type: "runFailed" as const,
+          sessionRef: record.ref,
+          timestamp,
+          error: { message: event.finalError ?? "Connection failed after retries", code: "RETRY_EXHAUSTED" },
+        }, record, undefined, this.registry);
       default:
         return [];
     }

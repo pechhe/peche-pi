@@ -1,13 +1,15 @@
-import { useEffect, type RefObject } from "react";
+import { useEffect, useRef, type RefObject } from "react";
 import {
   desktopCommands,
   getDesktopCommandFromShortcut,
   type PiDesktopCommand,
 } from "../ipc";
 import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
-import type { DesktopAppState, SessionRecord, WorkspaceRecord } from "../desktop-state";
+import type { DesktopAppState, SessionRecord, WorkspaceRecord, ChatRecord } from "../desktop-state";
 import type { useThreadSearch } from "./use-thread-search";
 import type { useNavigationHistory } from "./use-navigation-history";
+import type { ThreadGroup } from "../thread-groups";
+import { buildSidebarNavList, type SidebarNavEntry } from "./build-sidebar-nav-list";
 import { installPhysicalKeyFeedback } from "../physical-key-feedback";
 import { installShortcutHints } from "../shortcut-hints";
 import type { PiDesktopApi } from "../ipc";
@@ -31,6 +33,8 @@ export interface KeyboardShortcutDeps {
   readonly snapshot: DesktopAppState;
   readonly selectedWorkspace: WorkspaceRecord | undefined;
   readonly selectedSession: SessionRecord | undefined;
+  readonly threadGroups: readonly ThreadGroup[];
+  readonly chats: readonly ChatRecord[];
   readonly threadSearch: ReturnType<typeof useThreadSearch>;
   readonly navigationHistory: ReturnType<typeof useNavigationHistory>;
   readonly modelSelectorRef: RefObject<{ openModelDropdown: () => void; selectSliderSlot: (index: number) => void; cycleThinkingLevel: (direction: -1 | 1) => void } | null>;
@@ -42,12 +46,16 @@ export interface KeyboardShortcutDeps {
   readonly toggleTerminal: () => void;
   readonly handleTogglePrimarySidebar: () => boolean;
   readonly openShortcutsSheet: () => void;
+  readonly openSearchPalette: () => void;
   readonly openSettings: (workspaceId?: string, section?: import("../settings-view").SettingsSection) => void;
   readonly openNewThreadSurface: (workspaceId?: string) => void;
   readonly navigateToEntry: (entry: { activeView: import("../desktop-state").AppView; selectedWorkspaceId: string; selectedSessionId: string }) => void;
   readonly handlePastedClipboardImage: (image: import("../desktop-state").ComposerImageAttachment) => void;
   readonly setPendingNewThreadWorkspaceId: (id: string) => void;
   readonly resetNewThreadSurface: (workspaceId?: string) => void;
+  readonly onSelectSession: (target: { workspaceId: string; sessionId: string }) => void;
+  readonly onSelectChat: (chatId: string) => void;
+  readonly onPendingSidebarSelection: (entry: SidebarNavEntry | null) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -59,6 +67,8 @@ export function useKeyboardShortcuts({
   snapshot,
   selectedWorkspace,
   selectedSession,
+  threadGroups,
+  chats,
   threadSearch,
   navigationHistory,
   modelSelectorRef,
@@ -70,13 +80,20 @@ export function useKeyboardShortcuts({
   toggleTerminal,
   handleTogglePrimarySidebar,
   openShortcutsSheet,
+  openSearchPalette,
   openSettings,
   openNewThreadSurface,
   navigateToEntry,
   handlePastedClipboardImage,
   setPendingNewThreadWorkspaceId,
   resetNewThreadSurface,
+  onSelectSession,
+  onSelectChat,
+  onPendingSidebarSelection,
 }: KeyboardShortcutDeps): void {
+  // Sidebar keyboard navigation state (Cmd+Shift+Arrow)
+  const pendingNavIndexRef = useRef<number>(-1);
+  const pendingMetaReleaseRef = useRef(false);
   // Install physical key click feedback + hold-⌘ shortcut hints once.
   useEffect(() => installPhysicalKeyFeedback(), []);
   useEffect(() => installShortcutHints(), []);
@@ -167,6 +184,13 @@ export function useKeyboardShortcuts({
         } else {
           threadSearch.open();
         }
+        return;
+      }
+
+      // Cmd+K opens scoped thread/chat search
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k" && !event.shiftKey) {
+        event.preventDefault();
+        openSearchPalette();
         return;
       }
 
@@ -294,11 +318,84 @@ export function useKeyboardShortcuts({
       }
     };
 
+    // Sidebar keyboard navigation: Cmd+Shift+ArrowDown/Up moves a pending
+    // highlight through the flattened thread+chat list. The actual selection
+    // is deferred until the Meta key is released.
+    const handleSidebarNavKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || !event.shiftKey) return;
+      if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+
+      const navList = buildSidebarNavList(threadGroups, chats);
+      if (navList.length === 0) return;
+
+      event.preventDefault();
+      playRotary();
+
+      const direction = event.key === "ArrowDown" ? 1 : -1;
+      let nextIndex: number;
+
+      if (pendingNavIndexRef.current === -1) {
+        // First press: start from the currently selected session/chat.
+        const currentSessionId = selectedSession?.id;
+        const currentWorkspaceId = selectedWorkspace?.id;
+        const currentIndex = navList.findIndex(
+          (entry) => entry.sessionId === currentSessionId && entry.workspaceId === currentWorkspaceId,
+        );
+        nextIndex = currentIndex >= 0 ? currentIndex + direction : (direction === 1 ? 0 : navList.length - 1);
+      } else {
+        nextIndex = pendingNavIndexRef.current + direction;
+      }
+
+      // Wrap around.
+      nextIndex = ((nextIndex % navList.length) + navList.length) % navList.length;
+
+      pendingNavIndexRef.current = nextIndex;
+      pendingMetaReleaseRef.current = true;
+      onPendingSidebarSelection(navList[nextIndex] ?? null);
+    };
+
+    // Commit pending sidebar selection when Meta key is released.
+    const handleSidebarNavKeyUp = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Meta" && event.key !== "Control") return;
+      if (!pendingMetaReleaseRef.current) return;
+
+      const index = pendingNavIndexRef.current;
+      pendingNavIndexRef.current = -1;
+      pendingMetaReleaseRef.current = false;
+
+      const navList = buildSidebarNavList(threadGroups, chats);
+      const entry = index >= 0 && index < navList.length ? navList[index] : null;
+      onPendingSidebarSelection(null);
+
+      if (entry) {
+        if (entry.kind === "chat") {
+          onSelectChat(entry.sessionId);
+        } else {
+          onSelectSession({ workspaceId: entry.workspaceId, sessionId: entry.sessionId });
+        }
+      }
+    };
+
+    // Cancel pending nav on Escape.
+    const handleSidebarNavEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape" && pendingMetaReleaseRef.current) {
+        pendingNavIndexRef.current = -1;
+        pendingMetaReleaseRef.current = false;
+        onPendingSidebarSelection(null);
+      }
+    };
+
+    window.addEventListener("keydown", handleSidebarNavKeyDown);
+    window.addEventListener("keyup", handleSidebarNavKeyUp);
+    window.addEventListener("keydown", handleSidebarNavEscape);
     window.addEventListener("keydown", handleKeyDown);
     return () => {
       removeCommandListener?.();
       removeWorkspacePickedListener?.();
       removeClipboardImageListener?.();
+      window.removeEventListener("keydown", handleSidebarNavKeyDown);
+      window.removeEventListener("keyup", handleSidebarNavKeyUp);
+      window.removeEventListener("keydown", handleSidebarNavEscape);
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [
@@ -306,6 +403,8 @@ export function useKeyboardShortcuts({
     selectedWorkspace?.id,
     selectedWorkspace?.rootWorkspaceId,
     snapshot,
+    threadGroups,
+    chats,
     threadSearch,
     api,
     composerMode,
@@ -319,11 +418,15 @@ export function useKeyboardShortcuts({
     navigationHistory,
     navigateToEntry,
     openSettings,
+    openSearchPalette,
     openNewThreadSurface,
     modelSelectorRef,
     handlePastedClipboardImage,
     setPendingNewThreadWorkspaceId,
     resetNewThreadSurface,
     selectedSession,
+    onSelectSession,
+    onSelectChat,
+    onPendingSidebarSelection,
   ]);
 }

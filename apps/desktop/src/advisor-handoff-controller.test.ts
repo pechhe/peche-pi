@@ -5,7 +5,6 @@ import {
   reduceAdvisorState,
   getAdvisorSideEffect,
   createEmptyAdvisorState,
-  type AdvisorIntent,
   type AdvisorPanelState,
 } from "./advisor-handoff-controller.ts";
 

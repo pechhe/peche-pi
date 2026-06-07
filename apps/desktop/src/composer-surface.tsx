@@ -12,7 +12,6 @@ import { openImageLightbox } from "./image-lightbox";
 import { playButtonClick } from "./button-click-sound";
 
 interface ComposerSurfaceProps {
-  readonly lastError?: string;
   readonly activeSlashCommand?: ComposerSlashCommand;
   readonly activeSlashCommandMeta?: string;
   readonly topNotice?: ReactNode;
@@ -114,7 +113,6 @@ export function ComposerAttachments({
 }
 
 export function ComposerSurface({
-  lastError,
   activeSlashCommand,
   activeSlashCommandMeta,
   topNotice,
@@ -243,15 +241,6 @@ export function ComposerSurface({
           >
             ×
           </button>
-        </div>
-      ) : null}
-      {lastError ? (
-        <div className="composer__error error-banner" data-testid="composer-error-banner">
-          <svg className="toast__icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <circle cx="8" cy="8" r="8" fill="var(--error-ink)" />
-            <path d="M5.5 5.5L10.5 10.5M10.5 5.5L5.5 10.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
-          </svg>
-          <span>{lastError}</span>
         </div>
       ) : null}
       {showSlashMenu || (showSlashOptionMenu && selectedSlashCommand) ? (

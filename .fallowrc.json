@@ -1,0 +1,68 @@
+{
+  "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
+  "entry": [
+    "src/index.{js,jsx,mjs}",
+    "src/main.{js,jsx,mjs}"
+  ],
+  "workspaces": {
+    "packages": [
+      "apps/*",
+      "packages/*",
+      "video"
+    ]
+  },
+  "duplicates": {
+    // Hide pair-only clones; focus on widespread copy-paste
+    // worth refactoring. Lower to 2 to report every duplicate pair.
+    "minOccurrences": 3
+    // Common additions (uncomment to enable):
+    // "ignore": [
+    //   "**/lib/**",          // for repos that publish transpiled output to lib/
+    //   "**/legacy/**",       // for repos with legacy-build artifacts
+    //   "**/__generated__/**", // Relay, GraphQL Code Generator
+    //   "**/generated/**"     // OpenAPI, Protobuf codegen
+    // ]
+  },
+  "ignoreDependencies": [
+    "@pi-gui/pi-sdk-driver",
+    "@pi-gui/session-driver",
+    "@pi-gui/catalogs"
+  ],
+  "rules": {
+    "unused-dependencies": "warn"
+  },
+  "ignoreExports": [
+    {
+      "file": "apps/desktop/electron/handoff-core.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "apps/desktop/src/ipc.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "apps/desktop/electron/pr-service.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "apps/desktop/src/advisor-handoff-controller.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "apps/desktop/src/live-update.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "apps/desktop/electron/automation-store.ts",
+      "exports": ["resolveCron", "computeLastScheduledFire"]
+    },
+    {
+      "file": "apps/desktop/electron/dev-reload-preload-probe.ts",
+      "exports": ["PRELOAD_DEV_RELOAD_MARKER"]
+    },
+    {
+      "file": "apps/desktop/src/desktop-state.ts",
+      "exports": ["AUTOMATION_PRESET_CRON"]
+    }
+  ]
+}

@@ -11,7 +11,7 @@ import type {
   ComposerSlashOptionEmptyState,
 } from "./composer-commands";
 import { ComposerAttachments, ComposerSurface } from "./composer-surface";
-import { ComposerCompletionToastHost } from "./composer-completion-toast";
+import { ToastHost } from "./toast";
 import { QueuedComposerMessages } from "./queued-composer-messages";
 import { ModelOnboardingNoticeBanner } from "./model-onboarding-notice";
 import type { ModelOnboardingState, ModelOnboardingSettingsSection } from "./model-onboarding";
@@ -46,7 +46,6 @@ interface ComposerPanelProps {
    * "Begin Ralph loop" banner appears above the composer to launch it.
    */
   readonly beginRalphLoop?: BeginRalphLoopProps;
-  readonly lastError?: string;
   readonly runtime?: RuntimeSnapshot;
   readonly activeSlashCommand?: ComposerSlashCommand;
   readonly activeSlashCommandMeta?: string;
@@ -86,6 +85,10 @@ interface ComposerPanelProps {
   readonly onSetThinking: (level: string) => void;
   readonly onSetCavemanLevel: (level: CavemanLevel) => void;
   readonly onSetComposerMode: (mode: ComposerMode) => void;
+  /** True once a plan-mode run has produced a plan and is idle, ready to execute. */
+  readonly planReady?: boolean;
+  /** Approve the written plan: sends an execute message and flips to build mode. */
+  readonly onExecutePlan?: () => void;
   readonly modelOnboarding: ModelOnboardingState;
   readonly onOpenModelSettings: (section: ModelOnboardingSettingsSection) => void;
   readonly onSubmit: () => void;
@@ -123,7 +126,6 @@ function formatTokenCount(tokens: number): string {
 
 export function ComposerPanel({
   selectedSession,
-  lastError,
   runtime,
   activeSlashCommand,
   activeSlashCommandMeta,
@@ -163,6 +165,8 @@ export function ComposerPanel({
   onSetThinking,
   onSetCavemanLevel,
   onSetComposerMode,
+  planReady,
+  onExecutePlan,
   modelOnboarding,
   onOpenModelSettings,
   onSubmit,
@@ -204,7 +208,7 @@ export function ComposerPanel({
 
   return (
     <footer className="composer">
-      <ComposerCompletionToastHost />
+      <ToastHost />
       {beginRalphLoop ? (
         <div className="composer__begin-loop">
           <button
@@ -236,7 +240,6 @@ export function ComposerPanel({
       ) : null}
       <div className="conversation conversation--composer">
         <ComposerSurface
-          lastError={lastError}
           activeSlashCommand={activeSlashCommand}
           activeSlashCommandMeta={activeSlashCommandMeta}
           topNotice={(
@@ -331,6 +334,17 @@ export function ComposerPanel({
                   />
                 </div>
                 <div className="composer__actions">
+                  {composerMode === "plan" && planReady ? (
+                    <button
+                      type="button"
+                      className="button button--primary composer__execute-plan"
+                      title="Execute the plan and switch to Build mode"
+                      onPointerDown={() => { playClick("down"); }}
+                      onClick={() => onExecutePlan?.()}
+                    >
+                      Execute plan
+                    </button>
+                  ) : null}
                   <span className="composer__key-mount composer__key-mount--send">
                     <button
                       aria-label={primaryActionIsStop ? "Stop run" : "Send message"}

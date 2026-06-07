@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   SessionRuntimeRegistry,
-  type ManagedSessionRecord,
 } from "../src/session-runtime-registry.ts";
 import type {
   AgentSessionRuntime,
@@ -10,7 +9,7 @@ import type {
   CreateAgentSessionOptions,
   SessionManager as RealSessionManager,
 } from "@earendil-works/pi-coding-agent";
-import type { SessionRef, SessionEventListener, WorkspaceRef } from "@pi-gui/session-driver";
+import type { SessionEventListener, WorkspaceRef } from "@pi-gui/session-driver";
 
 // ---------------------------------------------------------------------------
 // Fake helpers — lightweight stubs that satisfy the registry interface
@@ -86,19 +85,19 @@ function makeCatalogs(overrides: Record<string, unknown> = {}) {
       listSessions: async () => ({ sessions: [] }),
       upsertSession: async () => {},
       deleteSession: async () => {},
-      ...((overrides.sessions as Record<string, unknown>) ?? {}),
+      ...(overrides.sessions as Record<string, unknown>),
     },
     workspaces: {
       getWorkspace: async () => null,
       listWorkspaces: async () => ({ workspaces: [] }),
       upsertWorkspace: async () => {},
       deleteWorkspace: async () => {},
-      ...((overrides.workspaces as Record<string, unknown>) ?? {}),
+      ...(overrides.workspaces as Record<string, unknown>),
     },
     getSessionFile: async () => undefined,
     setSessionFile: async () => {},
     replaceWorkspaceSessions: async () => {},
-    ...((overrides as Record<string, unknown>) ?? {}),
+    ...(overrides as Record<string, unknown>),
   } as any;
 }
 

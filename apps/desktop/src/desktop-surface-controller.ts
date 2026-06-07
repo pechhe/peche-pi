@@ -86,7 +86,7 @@ export type SurfaceIntent =
  * Extracted from canTogglePrimarySidebar in App.tsx for reuse.
  */
 export function canToggleSidebar(activeView: AppView): boolean {
-  return activeView === "threads" || activeView === "new-thread";
+  return activeView === "threads" || activeView === "new-thread" || activeView === "kanban";
 }
 
 // ---------------------------------------------------------------------------

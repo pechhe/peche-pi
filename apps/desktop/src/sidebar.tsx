@@ -13,8 +13,8 @@ import {
 } from "@dnd-kit/core";
 import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { AppView, ChatRecord, SessionRecord, WorkspaceRecord, WorktreeRecord } from "./desktop-state";
-import { ArchiveIcon, ChatIcon, ChevronDownIcon, ComposeIcon, ContextIcon, DoneIcon, ExtensionIcon, FolderIcon, ProjectIcon, RestoreIcon, SettingsIcon, SkillIcon, WorktreeIcon } from "./icons";
+import type { AppView, Automation, ChatRecord, SessionRecord, WorkspaceRecord, WorktreeRecord } from "./desktop-state";
+import { ChatIcon, ChevronDownIcon, ComposeIcon, ContextIcon, DoneIcon, ExtensionIcon, AutomationIcon, AutomationRunIcon, FolderIcon, ProjectIcon, RestoreIcon, SettingsIcon, SkillIcon, WorktreeIcon } from "./icons";
 import { WorkingSpinner } from "./working-label";
 import type { PiDesktopApi } from "./ipc";
 import { formatRelativeTime } from "./string-utils";
@@ -26,6 +26,7 @@ import { PENDING_THREAD_SESSION_ID, type ThreadGroup, type ThreadListEntry } fro
 import type { Dispatch, SetStateAction } from "react";
 import type { DesktopAppState } from "./desktop-state";
 import type { SidebarResize } from "./hooks/use-sidebar-width";
+import type { SidebarNavEntry } from "./hooks/build-sidebar-nav-list";
 
 interface MovingHighlightState {
   readonly left: number;
@@ -66,6 +67,7 @@ function MovingSidebarHighlight({
   const hoveredItem = useRef<HTMLElement | null>(null);
   const [hoverIndicator, setHoverIndicator] = useState<MovingHighlightState>(hiddenMovingHighlight);
   const [activeIndicator, setActiveIndicator] = useState<MovingHighlightState>(hiddenMovingHighlight);
+  const [pendingIndicator, setPendingIndicator] = useState<MovingHighlightState>(hiddenMovingHighlight);
   const [shouldAnimate, setShouldAnimate] = useState(false);
 
   function setTarget(
@@ -88,6 +90,8 @@ function MovingSidebarHighlight({
       hoveredItem.current = null;
       setTarget(null, setHoverIndicator);
     }
+    const pending = ref.current?.querySelector<HTMLElement>(".session-row--pending") ?? null;
+    setTarget(pending, setPendingIndicator);
   }
 
   function itemFromTarget(target: EventTarget | null): HTMLElement | null {
@@ -101,7 +105,7 @@ function MovingSidebarHighlight({
   }
 
   useEffect(() => {
-    if (shouldAnimate || (!hoverIndicator.ready && !activeIndicator.ready)) return;
+    if (shouldAnimate || (!hoverIndicator.ready && !activeIndicator.ready && !pendingIndicator.ready)) return;
     let firstFrame = 0;
     let secondFrame = 0;
     firstFrame = requestAnimationFrame(() => {
@@ -111,7 +115,7 @@ function MovingSidebarHighlight({
       cancelAnimationFrame(firstFrame);
       cancelAnimationFrame(secondFrame);
     };
-  }, [activeIndicator.ready, hoverIndicator.ready, shouldAnimate]);
+  }, [activeIndicator.ready, hoverIndicator.ready, pendingIndicator.ready, shouldAnimate]);
 
   useEffect(() => {
     const container = ref.current;
@@ -137,6 +141,7 @@ function MovingSidebarHighlight({
       mutationObserver = new MutationObserver(() => updateActiveTarget());
       mutationObserver.observe(container, {
         subtree: true,
+        childList: true,
         attributes: true,
         attributeFilter: ["class"],
       });
@@ -147,6 +152,13 @@ function MovingSidebarHighlight({
       mutationObserver?.disconnect();
     };
   }, [itemSelector]);
+
+  // Scroll the pending row into view when it changes.
+  useEffect(() => {
+    if (!pendingIndicator.ready || !pendingIndicator.visible) return;
+    const pendingEl = ref.current?.querySelector<HTMLElement>(".session-row--pending");
+    pendingEl?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [pendingIndicator.ready, pendingIndicator.visible, pendingIndicator.top]);
 
   return (
     <div
@@ -200,6 +212,19 @@ function MovingSidebarHighlight({
             : "opacity 150ms ease",
         }}
       />
+      <div
+        aria-hidden="true"
+        className="sidebar-moving-highlight__indicator sidebar-moving-highlight__indicator--pending"
+        style={{
+          transform: `translate3d(${pendingIndicator.left + 2}px, ${pendingIndicator.top + 2}px, 0)`,
+          width: Math.max(0, pendingIndicator.width - 4),
+          height: Math.max(0, pendingIndicator.height - 4),
+          opacity: pendingIndicator.visible ? 1 : 0,
+          transition: shouldAnimate
+            ? "transform 350ms cubic-bezier(0.32, 1.15, 0.60, 1.00), width 250ms cubic-bezier(0.22, 1, 0.36, 1), height 250ms cubic-bezier(0.22, 1, 0.36, 1), opacity 150ms ease"
+            : "opacity 150ms ease",
+        }}
+      />
       {children}
     </div>
   );
@@ -228,6 +253,7 @@ interface SidebarProps {
   readonly onOpenExtensions: (workspaceId?: string) => void;
   readonly onOpenContext: (workspaceId?: string) => void;
   readonly onOpenSettings: (workspaceId?: string) => void;
+  readonly onOpenKanban: () => void;
   readonly queueMode: boolean;
   readonly onSetQueueMode: (enabled: boolean) => void;
   readonly onArchiveSession: (target: { workspaceId: string; sessionId: string }) => void;
@@ -239,6 +265,9 @@ interface SidebarProps {
   readonly onArchiveChat: (chatId: string) => void;
   readonly onUnarchiveChat: (chatId: string) => void;
   readonly onRemoveChat: (chatId: string) => void;
+  readonly pendingSidebarSelection: SidebarNavEntry | null;
+  readonly automations: readonly Automation[];
+  readonly onOpenAutomations: (workspaceId?: string) => void;
 }
 
 export function Sidebar(props: SidebarProps) {
@@ -261,6 +290,7 @@ export function Sidebar(props: SidebarProps) {
     onOpenExtensions,
     onOpenContext,
     onOpenSettings,
+    onOpenKanban,
     queueMode,
     onSetQueueMode,
     onArchiveSession,
@@ -272,6 +302,9 @@ export function Sidebar(props: SidebarProps) {
     onArchiveChat,
     onUnarchiveChat,
     onRemoveChat,
+    pendingSidebarSelection,
+    automations,
+    onOpenAutomations,
   } = props;
 
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -350,6 +383,14 @@ export function Sidebar(props: SidebarProps) {
             <span>Extensions</span>
           </button>
           <button
+            className={`sidebar__nav-item ${activeView === "automations" ? "sidebar__nav-item--active" : ""}`}
+            type="button"
+            onClick={() => { playButtonClick(); onOpenAutomations(selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id); }}
+          >
+            <AutomationIcon />
+            <span>Automations</span>
+          </button>
+          <button
             className={`sidebar__nav-item ${activeView === "context" ? "sidebar__nav-item--active" : ""}`}
             type="button"
             onClick={() => { playButtonClick(); onOpenContext(selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id); }}
@@ -371,17 +412,33 @@ export function Sidebar(props: SidebarProps) {
       <div className="sidebar__section">
         <div className="section__head">
           <div className="section__title-row">
-            <ProjectIcon /><span className="section__title">{queueMode ? "Queue" : "Projects"}</span>
-            <button
-              className={`queue-toggle ${queueMode ? "queue-toggle--on" : ""}`}
-              type="button"
-              onClick={() => { playButtonClick(); onSetQueueMode(!queueMode); }}
-              aria-label={queueMode ? "Switch to projects view" : "Switch to queue mode"}
-            >
-              <span className="queue-toggle__track">
-                <span className="queue-toggle__thumb" />
-              </span>
-            </button>
+            <ProjectIcon /><span className="section__title">{queueMode ? "Queue" : activeView === "kanban" ? "Kanban" : "Projects"}</span>
+            <div className="project-view-toggle" role="group" aria-label="Project view mode">
+              <button
+                className={`project-view-toggle__button ${activeView === "threads" && !queueMode ? "project-view-toggle__button--active" : ""}`}
+                type="button"
+                onClick={() => { playButtonClick(); onSetQueueMode(false); _onSetActiveView("threads"); }}
+                aria-label="Threads view"
+              >
+                Threads
+              </button>
+              <button
+                className={`project-view-toggle__button ${queueMode ? "project-view-toggle__button--active" : ""}`}
+                type="button"
+                onClick={() => { playButtonClick(); onSetQueueMode(true); _onSetActiveView("threads"); }}
+                aria-label="Queue view"
+              >
+                Queue
+              </button>
+              <button
+                className={`project-view-toggle__button ${activeView === "kanban" ? "project-view-toggle__button--active" : ""}`}
+                type="button"
+                onClick={() => { playButtonClick(); onSetQueueMode(false); onOpenKanban(); }}
+                aria-label="Kanban view"
+              >
+                Kanban
+              </button>
+            </div>
           </div>
           <div className="section__tools">
             <button
@@ -431,6 +488,8 @@ export function Sidebar(props: SidebarProps) {
                     onSelectSession={onSelectSession}
                     onUnarchiveSession={onUnarchiveSession}
                     onNewThreadForWorkspace={onNewThreadForWorkspace}
+                    pendingSidebarSelection={pendingSidebarSelection}
+                    onOpenAutomations={onOpenAutomations}
                   />
                 ))}
                 {orphanGroups.map((group) => (
@@ -449,6 +508,8 @@ export function Sidebar(props: SidebarProps) {
                     onSelectSession={onSelectSession}
                     onUnarchiveSession={onUnarchiveSession}
                     onNewThreadForWorkspace={onNewThreadForWorkspace}
+                    pendingSidebarSelection={pendingSidebarSelection}
+                    onOpenAutomations={onOpenAutomations}
                   />
                 ))}
               </div>
@@ -470,6 +531,8 @@ export function Sidebar(props: SidebarProps) {
                     onSelectSession={onSelectSession}
                     onUnarchiveSession={onUnarchiveSession}
                     onNewThreadForWorkspace={onNewThreadForWorkspace}
+                    pendingSidebarSelection={pendingSidebarSelection}
+                    onOpenAutomations={onOpenAutomations}
                   />
                 </div>
               ) : null}
@@ -513,6 +576,7 @@ export function Sidebar(props: SidebarProps) {
             onArchiveChat={onArchiveChat}
             onUnarchiveChat={onUnarchiveChat}
             onRemoveChat={onRemoveChat}
+            pendingSidebarSelection={pendingSidebarSelection}
           />
         )}
       </div>
@@ -536,6 +600,8 @@ interface WorkspaceGroupProps {
   readonly onSelectSession: (target: { workspaceId: string; sessionId: string }) => void;
   readonly onUnarchiveSession: (target: { workspaceId: string; sessionId: string }) => void;
   readonly onNewThreadForWorkspace: (rootWorkspaceId: string) => void;
+  readonly pendingSidebarSelection: SidebarNavEntry | null;
+  readonly onOpenAutomations: (workspaceId?: string) => void;
 }
 
 function SortableWorkspaceGroup(props: WorkspaceGroupProps) {
@@ -590,6 +656,8 @@ function WorkspaceGroupContent(
     onUnarchiveSession,
     onNewThreadForWorkspace,
     dragHandleProps,
+    pendingSidebarSelection,
+    onOpenAutomations,
   } = props;
 
   const workspaceActive =
@@ -626,6 +694,18 @@ function WorkspaceGroupContent(
           data-menu-open={wsMenu.workspaceMenuId === rootWorkspace.id || undefined}
           ref={wsMenu.workspaceMenuId === rootWorkspace.id ? wsMenu.workspaceMenuWrapRef : undefined}
         >
+          <button
+            aria-label={`Automations for ${rootWorkspace.name}`}
+            className="icon-button workspace-row__automation-button workspace-row__compose-button"
+            type="button"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onOpenAutomations(rootWorkspace.id);
+            }}
+          >
+            <AutomationIcon />
+          </button>
           <button
             aria-label={`New project in ${rootWorkspace.name}`}
             className="icon-button workspace-row__compose-button"
@@ -761,10 +841,15 @@ function WorkspaceGroupContent(
                 (activeView === "threads" &&
                   thread.workspaceId === selectedWorkspace?.id &&
                   thread.session.id === selectedSession?.id);
+              const pending =
+                pendingSidebarSelection?.kind === "thread" &&
+                pendingSidebarSelection.workspaceId === thread.workspaceId &&
+                pendingSidebarSelection.sessionId === thread.session.id;
               return (
                 <ThreadSessionRow
                   key={`${thread.workspaceId}:${thread.session.id}`}
                   active={active}
+                  pending={pending}
                   thread={thread}
                   onAction={() =>
                     onArchiveSession({
@@ -791,7 +876,7 @@ function WorkspaceGroupContent(
                 >
                   <ChevronDownIcon />
                 </span>
-                <span>Done</span>
+                <span>Past</span>
                 <span className="archived-thread-group__count">{archivedThreads.length}</span>
               </button>
               {archivedSectionOpen ? (
@@ -801,10 +886,15 @@ function WorkspaceGroupContent(
                       activeView === "threads" &&
                       thread.workspaceId === selectedWorkspace?.id &&
                       thread.session.id === selectedSession?.id;
+                    const pending =
+                      pendingSidebarSelection?.kind === "thread" &&
+                      pendingSidebarSelection.workspaceId === thread.workspaceId &&
+                      pendingSidebarSelection.sessionId === thread.session.id;
                     return (
                       <ThreadSessionRow
                         key={`${thread.workspaceId}:${thread.session.id}`}
                         active={active}
+                        pending={pending}
                         archived
                         thread={thread}
                         onAction={() =>
@@ -851,6 +941,7 @@ const DONE_ANIMATION_MS = 500;
 
 interface ThreadSessionRowProps {
   readonly active: boolean;
+  readonly pending?: boolean;
   readonly archived?: boolean;
   readonly thread: ThreadListEntry;
   readonly onAction: () => void;
@@ -859,6 +950,7 @@ interface ThreadSessionRowProps {
 
 const ThreadSessionRow = memo(function ThreadSessionRow({
   active,
+  pending = false,
   archived = false,
   thread,
   onAction,
@@ -887,7 +979,7 @@ const ThreadSessionRow = memo(function ThreadSessionRow({
 
   return (
     <div
-      className={`session-row ${active ? "session-row--active" : ""} ${completing ? "session-row--completing" : ""}`}
+      className={`session-row ${active ? "session-row--active" : ""} ${pending ? "session-row--pending" : ""} ${completing ? "session-row--completing" : ""}`}
       data-sidebar-indicator={indicatorVariant}
       data-session-id={thread.session.id}
       onClick={onSelect}
@@ -898,6 +990,11 @@ const ThreadSessionRow = memo(function ThreadSessionRow({
             <WorkingSpinner className="session-row__status session-row__status--running" title="Thinking…" />
           ) : null}
           {indicatorVariant === "unseen" ? <span className="session-row__status session-row__status--unseen" /> : null}
+          {thread.session.automationId || thread.session.title.startsWith("⚡ ") ? (
+            <span className="session-row__automation-indicator" aria-label="Automation" title="Created by automation">
+              <AutomationRunIcon />
+            </span>
+          ) : null}
         </span>
         <span className="session-row__body">
           <span className="session-row__title-line">
@@ -928,6 +1025,7 @@ const ThreadSessionRow = memo(function ThreadSessionRow({
 function sameThreadSessionRowProps(previous: ThreadSessionRowProps, next: ThreadSessionRowProps): boolean {
   return (
     previous.active === next.active &&
+    previous.pending === next.pending &&
     previous.archived === next.archived &&
     previous.thread.workspaceId === next.thread.workspaceId &&
     previous.thread.environment.kind === next.thread.environment.kind &&
@@ -948,6 +1046,7 @@ function SidebarChatsList({
   onArchiveChat,
   onUnarchiveChat,
   onRemoveChat,
+  pendingSidebarSelection,
 }: {
   readonly chats: readonly ChatRecord[];
   readonly selectedWorkspaceId: string;
@@ -955,6 +1054,7 @@ function SidebarChatsList({
   readonly onArchiveChat: (chatId: string) => void;
   readonly onUnarchiveChat: (chatId: string) => void;
   readonly onRemoveChat: (chatId: string) => void;
+  readonly pendingSidebarSelection: SidebarNavEntry | null;
 }) {
   const activeChats = chats.filter((c) => !c.archivedAt);
   const archivedChats = chats.filter((c) => c.archivedAt);
@@ -965,11 +1065,13 @@ function SidebarChatsList({
       <MovingSidebarHighlight className="session-list" itemSelector=".session-row">
         {activeChats.map((chat) => {
           const isActive = Boolean(chat.chatWorkspaceId) && chat.chatWorkspaceId === selectedWorkspaceId;
+          const pending = pendingSidebarSelection?.kind === "chat" && pendingSidebarSelection.sessionId === chat.id;
           return (
             <ChatRow
               key={chat.id}
               chat={chat}
               isActive={isActive}
+              pending={pending}
               onSelect={() => onSelectChat(chat.id)}
               onArchive={() => onArchiveChat(chat.id)}
             />
@@ -990,18 +1092,20 @@ function SidebarChatsList({
             >
               <ChevronDownIcon />
             </span>
-            <span>Archived</span>
+            <span>Past</span>
             <span className="archived-thread-group__count">{archivedChats.length}</span>
           </button>
           {showArchived ? (
             <MovingSidebarHighlight className="session-list session-list--archived" itemSelector=".session-row">
               {archivedChats.map((chat) => {
                 const isActive = Boolean(chat.chatWorkspaceId) && chat.chatWorkspaceId === selectedWorkspaceId;
+                const pending = pendingSidebarSelection?.kind === "chat" && pendingSidebarSelection.sessionId === chat.id;
                 return (
                   <ChatRow
                     key={chat.id}
                     chat={chat}
                     isActive={isActive}
+                    pending={pending}
                     archived
                     onSelect={() => onSelectChat(chat.id)}
                     onUnarchive={() => onUnarchiveChat(chat.id)}
@@ -1020,6 +1124,7 @@ function SidebarChatsList({
 interface ChatRowProps {
   readonly chat: ChatRecord;
   readonly isActive: boolean;
+  readonly pending?: boolean;
   readonly archived?: boolean;
   readonly onSelect: () => void;
   readonly onArchive?: () => void;
@@ -1030,6 +1135,7 @@ interface ChatRowProps {
 const ChatRow = memo(function ChatRow({
   chat,
   isActive,
+  pending = false,
   archived = false,
   onSelect,
   onArchive,
@@ -1038,10 +1144,24 @@ const ChatRow = memo(function ChatRow({
 }: ChatRowProps) {
   const indicatorVariant: "running" | "unseen" | "none" =
     chat.status === "running" ? "running" : chat.hasUnseenUpdate ? "unseen" : "none";
+  const [completing, setCompleting] = useState(false);
+
+  const handleDone = (event: ReactMouseEvent) => {
+    event.stopPropagation();
+    if (completing) {
+      return;
+    }
+    const rect = event.currentTarget.getBoundingClientRect();
+    fireDoneCelebration(rect.left + rect.width / 2, rect.top + rect.height / 2);
+    setCompleting(true);
+    playDoneSound();
+    // Let the "done" animation play before the row leaves the active list.
+    window.setTimeout(() => onArchive?.(), DONE_ANIMATION_MS);
+  };
 
   return (
     <div
-      className={`session-row ${isActive ? "session-row--active" : ""}`}
+      className={`session-row ${isActive ? "session-row--active" : ""} ${pending ? "session-row--pending" : ""} ${completing ? "session-row--completing" : ""}`}
       data-sidebar-indicator={indicatorVariant}
       data-session-id={chat.id}
       onClick={onSelect}
@@ -1089,15 +1209,12 @@ const ChatRow = memo(function ChatRow({
           </>
         ) : (
           <button
-            aria-label={`Archive ${chat.title}`}
-            className="icon-button session-row__action"
+            aria-label={`Mark done ${chat.title}`}
+            className="icon-button session-row__action session-row__action--done"
             type="button"
-            onClick={(event) => {
-              event.stopPropagation();
-              onArchive?.();
-            }}
+            onClick={handleDone}
           >
-            <ArchiveIcon />
+            <DoneIcon />
           </button>
         )}
       </span>
@@ -1108,6 +1225,7 @@ const ChatRow = memo(function ChatRow({
 function sameChatRowProps(previous: ChatRowProps, next: ChatRowProps): boolean {
   return (
     previous.isActive === next.isActive &&
+    previous.pending === next.pending &&
     previous.archived === next.archived &&
     previous.chat.id === next.chat.id &&
     previous.chat.title === next.chat.title &&

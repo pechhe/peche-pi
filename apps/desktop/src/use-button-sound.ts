@@ -1,6 +1,7 @@
 import { useCallback, useRef, type PointerEvent } from "react";
 import {
   type ButtonCategory,
+  getButtonSoundSettings,
   playClick,
   playKey,
   playRotary,
@@ -46,14 +47,11 @@ export function useButtonSound(options: UseButtonSoundOptions = {}): UseButtonSo
         else if (variant === "key") playKey("press");
         else if (variant === "rotary") playRotary();
       } else if (category) {
-        // Import settings dynamically to avoid circular deps
-        import("./button-click-sound.js").then(({ getButtonSoundSettings }) => {
-          const settings = getButtonSoundSettings();
-          const v = settings[category];
-          if (v === "click") playClick("down");
-          else if (v === "key") playKey("press");
-          else if (v === "rotary") playRotary();
-        });
+        const settings = getButtonSoundSettings();
+        const v = settings[category];
+        if (v === "click") playClick("down");
+        else if (v === "key") playKey("press");
+        else if (v === "rotary") playRotary();
       }
     },
     [category, variant, disabled]
@@ -70,13 +68,11 @@ export function useButtonSound(options: UseButtonSoundOptions = {}): UseButtonSo
         else if (variant === "key") playKey("release");
         else if (variant === "rotary") playRotary();
       } else if (category) {
-        import("./button-click-sound.js").then(({ getButtonSoundSettings }) => {
-          const settings = getButtonSoundSettings();
-          const v = settings[category];
-          if (v === "click") playClick("up");
-          else if (v === "key") playKey("release");
-          else if (v === "rotary") playRotary();
-        });
+        const settings = getButtonSoundSettings();
+        const v = settings[category];
+        if (v === "click") playClick("up");
+        else if (v === "key") playKey("release");
+        else if (v === "rotary") playRotary();
       }
     },
     [category, variant, disabled]

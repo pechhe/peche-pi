@@ -40,7 +40,7 @@ const SCOPE_LABELS: Record<HandoffScope, string> = {
 export function AdvisorPanel({
   visible,
   advisorSessionId,
-  sourceSessionId,
+  sourceSessionId: _sourceSessionId,
   sourceWorkspaceId,
   status,
   scope,
@@ -56,7 +56,7 @@ export function AdvisorPanel({
   const [transcript, setTranscript] = useState<readonly TranscriptMessage[]>([]);
   const [inputText, setInputText] = useState("");
   const transcriptRef = useRef<HTMLDivElement | null>(null);
-  const [isRunning, setIsRunning] = useState(false);
+  const [isRunning, _setIsRunning] = useState(false);
 
   // Subscribe to the advisor session's transcript
   useEffect(() => {

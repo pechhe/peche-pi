@@ -65,7 +65,6 @@ import {
   type WorkspaceSessionTarget,
 } from "../src/desktop-state";
 import type { ComposerMode } from "../src/composer-mode";
-import { clearActiveAssistantMessage } from "./app-store-timeline";
 import { DesktopSessionState, updateSessionRecord } from "./app-store-session-state";
 import { reduce } from "./app-state-reducer";
 import type { AppStoreInternals, RefreshStateOptions } from "./app-store-internals";
@@ -94,7 +93,6 @@ import {
   mergeQueuedComposerMessages,
   mapToRecord,
   previewFromTranscript,
-  toSessionQueuedMessages,
   toSessionRef,
 } from "./app-store-utils";
 import { resolveRepoWorkspaceId } from "../src/workspace-roots";
@@ -193,6 +191,9 @@ export class DesktopAppStore implements AppStoreInternals {
   private selectionEpoch = 0;
   private refreshStateDepth = 0;
 
+  /** Set externally after construction. Used by refreshState to include automations. */
+  automationStoreRef: { getAll(): readonly import("../src/desktop-state.ts").Automation[] } | null = null;
+
   constructor(options: DesktopAppStoreOptions) {
     const catalogFilePath = join(options.userDataDir, "catalogs.json");
     const driverOptions: PiSdkDriverConfig = {
@@ -248,6 +249,44 @@ export class DesktopAppStore implements AppStoreInternals {
     await this.initialize();
     await this.ensureTranscriptLoaded(sessionRef);
     return this.sessionState.transcriptCache.get(sessionKey(sessionRef)) ?? [];
+  }
+
+  /**
+   * Search transcript text across multiple sessions by reading persisted files.
+   * Returns matching session keys with context snippets. Does NOT load into cache.
+   */
+  async searchTranscripts(
+    sessionKeysToSearch: readonly string[],
+    query: string,
+  ): Promise<readonly { sessionKey: string; snippet: string }[]> {
+    const q = query.trim().toLowerCase();
+    if (!q || sessionKeysToSearch.length === 0) return [];
+
+    const results: { sessionKey: string; snippet: string }[] = [];
+    const MAX_RESULTS = 20;
+
+    for (const key of sessionKeysToSearch) {
+      if (results.length >= MAX_RESULTS) break;
+      const persisted = await this.readPersistedTranscript(key);
+      if (!persisted) continue;
+
+      for (const msg of persisted.transcript) {
+        const text = extractSearchableText(msg);
+        if (!text) continue;
+        const lower = text.toLowerCase();
+        const idx = lower.indexOf(q);
+        if (idx === -1) continue;
+
+        // Extract a context snippet around the match
+        const start = Math.max(0, idx - 60);
+        const end = Math.min(text.length, idx + q.length + 60);
+        const snippet = (start > 0 ? "…" : "") + text.slice(start, end).replace(/\s+/g, " ").trim() + (end < text.length ? "…" : "");
+        results.push({ sessionKey: key, snippet });
+        break; // one match per session is enough
+      }
+    }
+
+    return results;
   }
 
   async flushPersistence(): Promise<void> {
@@ -793,7 +832,7 @@ export class DesktopAppStore implements AppStoreInternals {
     let sourceCode = "";
     try {
       sourceCode = await readFile(extensionPath, "utf8");
-    } catch (err) {
+    } catch {
       throw new Error(`Cannot read extension file: ${extensionPath}`);
     }
 
@@ -1018,7 +1057,7 @@ Return ONLY a JSON array of configuration fields, no explanation.`;
 
   async checkExtensionUpdates(): Promise<{ source: string; current: string; latest: string }[]> {
     try {
-      const { stdout } = await execAsync("pi list --updates");
+      const _stdout = await execAsync("pi list --updates");
       // Parse the output - this is a simplified parser
       // In reality, you'd want to parse the actual format of pi list --updates
       const updates: { source: string; current: string; latest: string }[] = [];
@@ -1618,6 +1657,7 @@ Return ONLY a JSON array of configuration fields, no explanation.`;
         queuedComposerMessages: this.resolveQueuedComposerMessages(selectedWorkspaceId, selectedSessionId),
         editingQueuedMessageId: this.resolveEditingQueuedMessageId(selectedWorkspaceId, selectedSessionId),
         lastError: this.resolveSelectedSessionError(selectedWorkspaceId, selectedSessionId, options.clearLastError),
+        automations: this.automationStoreRef ? this.automationStoreRef.getAll() : this.state.automations,
         revision: this.state.revision + 1,
       };
 
@@ -3304,6 +3344,23 @@ function shouldReplaceLegacyTranscript(
 
 function isTranscriptMessageRow(item: TranscriptMessage): item is TranscriptMessageRow {
   return item.kind === "message";
+}
+
+function extractSearchableText(msg: TranscriptMessage): string {
+  switch (msg.kind) {
+    case "message":
+      return msg.text ?? "";
+    case "activity":
+      return [msg.label, msg.detail].filter(Boolean).join(" ");
+    case "tool":
+      return [msg.label, msg.detail].filter(Boolean).join(" ");
+    case "summary":
+      return msg.label ?? "";
+    case "reasoning":
+      return msg.text ?? "";
+    default:
+      return "";
+  }
 }
 
 function sameTranscriptMessage(

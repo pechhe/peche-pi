@@ -19,7 +19,7 @@ const review = createWorkspaceReviewModule(defaultGitAdapter);
 // Re-export functions with the same signatures as before.
 // Path validation is now centralized inside the Workspace Review Module.
 
-function validateFilePath(workspacePath: string, filePath: string): string {
+function _validateFilePath(workspacePath: string, filePath: string): string {
   // Delegate to module-level validation (kept as named export for any
   // external callers that used it directly).
   const { validateFilePath: validate } = require("./workspace-review") as typeof import("./workspace-review");

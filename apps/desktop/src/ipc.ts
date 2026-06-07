@@ -149,6 +149,8 @@ export const desktopIpc = {
   getExtensionConfig: "pi-gui:get-extension-config",
   setExtensionConfig: "pi-gui:set-extension-config",
   installExtension: "pi-gui:install-extension",
+  uninstallExtension: "pi-gui:uninstall-extension",
+  checkExtensionUpdates: "pi-gui:check-extension-updates",
   getWorkspacePrInfo: "pi-gui:get-workspace-pr-info",
   startChat: "pi-gui:start-chat",
   selectChat: "pi-gui:select-chat",
@@ -161,15 +163,29 @@ export const desktopIpc = {
   generatePrDraft: "pi-gui:generate-pr-draft",
   prCreate: "pi-gui:pr-create",
   getContextSnapshot: "pi-gui:get-context-snapshot",
+  getGraphifyProjectMapStatus: "pi-gui:get-graphify-project-map-status",
+  updateGraphifyProjectMap: "pi-gui:update-graphify-project-map",
+  buildGraphifyProjectMap: "pi-gui:build-graphify-project-map",
+  getGraphifyHealthCheck: "pi-gui:get-graphify-health-check",
+  getGraphifyHookStatus: "pi-gui:get-graphify-hook-status",
+  setGraphifyHook: "pi-gui:set-graphify-hook",
+  getGraphifyWatchStatus: "pi-gui:get-graphify-watch-status",
+  setGraphifyWatch: "pi-gui:set-graphify-watch",
   buildHandoffPayload: "pi-gui:build-handoff-payload",
   createSeededSession: "pi-gui:create-seeded-session",
   getSessionTranscript: "pi-gui:get-session-transcript",
+  searchTranscriptText: "pi-gui:search-transcript-text",
   getThemeMode: "pi-gui:get-theme-mode",
   getResolvedTheme: "pi-gui:get-resolved-theme",
   setThemeMode: "pi-gui:set-theme-mode",
   themeChanged: "pi-gui:theme-changed",
   ping: "app:ping",
   openExternal: "app:open-external",
+  automationCreate: "pi-gui:automation-create",
+  automationUpdate: "pi-gui:automation-update",
+  automationDelete: "pi-gui:automation-delete",
+  automationList: "pi-gui:automation-list",
+  automationFireNow: "pi-gui:automation-fire-now",
 } as const;
 
 export const desktopCommands = {
@@ -297,14 +313,30 @@ export const piDesktopApiIpcBridge = {
   getExtensionConfig: { kind: "invoke", channel: desktopIpc.getExtensionConfig },
   setExtensionConfig: { kind: "invoke", channel: desktopIpc.setExtensionConfig },
   installExtension: { kind: "invoke", channel: desktopIpc.installExtension },
+  uninstallExtension: { kind: "invoke", channel: desktopIpc.uninstallExtension },
+  checkExtensionUpdates: { kind: "invoke", channel: desktopIpc.checkExtensionUpdates },
   getWorkspacePrInfo: { kind: "invoke", channel: desktopIpc.getWorkspacePrInfo },
   generatePrDraft: { kind: "invoke", channel: desktopIpc.generatePrDraft },
   prCreate: { kind: "invoke", channel: desktopIpc.prCreate },
   getContextSnapshot: { kind: "invoke", channel: desktopIpc.getContextSnapshot },
+  getGraphifyProjectMapStatus: { kind: "invoke", channel: desktopIpc.getGraphifyProjectMapStatus },
+  updateGraphifyProjectMap: { kind: "invoke", channel: desktopIpc.updateGraphifyProjectMap },
+  buildGraphifyProjectMap: { kind: "invoke", channel: desktopIpc.buildGraphifyProjectMap },
+  getGraphifyHealthCheck: { kind: "invoke", channel: desktopIpc.getGraphifyHealthCheck },
+  getGraphifyHookStatus: { kind: "invoke", channel: desktopIpc.getGraphifyHookStatus },
+  setGraphifyHook: { kind: "invoke", channel: desktopIpc.setGraphifyHook },
+  getGraphifyWatchStatus: { kind: "invoke", channel: desktopIpc.getGraphifyWatchStatus },
+  setGraphifyWatch: { kind: "invoke", channel: desktopIpc.setGraphifyWatch },
   buildHandoffPayload: { kind: "invoke", channel: desktopIpc.buildHandoffPayload },
   createSeededSession: { kind: "invoke", channel: desktopIpc.createSeededSession },
   getSessionTranscript: { kind: "invoke", channel: desktopIpc.getSessionTranscript },
+  searchTranscriptText: { kind: "invoke", channel: desktopIpc.searchTranscriptText },
   toggleWindowMaximize: { kind: "invoke", channel: desktopIpc.toggleWindowMaximize },
+  automationCreate: { kind: "invoke", channel: desktopIpc.automationCreate },
+  automationUpdate: { kind: "invoke", channel: desktopIpc.automationUpdate },
+  automationDelete: { kind: "invoke", channel: desktopIpc.automationDelete },
+  automationList: { kind: "invoke", channel: desktopIpc.automationList },
+  automationFireNow: { kind: "invoke", channel: desktopIpc.automationFireNow },
   startChat: { kind: "invoke", channel: desktopIpc.startChat },
   selectChat: { kind: "invoke", channel: desktopIpc.selectChat },
   archiveChat: { kind: "invoke", channel: desktopIpc.archiveChat },
@@ -480,6 +512,11 @@ export interface DesktopLivePatch {
   readonly session: SessionRecord | null;
 }
 
+export interface TranscriptSearchMatch {
+  readonly sessionKey: string;
+  readonly snippet: string;
+}
+
 export interface TranscriptDelta {
   readonly sessionId: string;
   readonly workspaceId: string;
@@ -546,6 +583,59 @@ export interface SmartCompactSettings {
   readonly minContextPercent?: number;
   readonly minTokenThreshold?: number;
   readonly autoTrigger?: boolean;
+}
+
+export interface GraphifyCommunitySummary {
+  readonly name: string;
+  readonly nodeCount?: number;
+  readonly edgeCount?: number;
+}
+
+export interface GraphifyProjectMapStatus {
+  readonly workspaceId: string;
+  readonly workspacePath: string;
+  readonly available: boolean;
+  readonly stale: boolean;
+  readonly graphPath?: string;
+  readonly reportPath?: string;
+  readonly htmlPath?: string;
+  readonly builtCommit?: string;
+  readonly currentCommit?: string;
+  readonly nodeCount?: number;
+  readonly edgeCount?: number;
+  readonly communityCount?: number;
+  readonly communities: readonly GraphifyCommunitySummary[];
+  readonly reportPreview?: string;
+  readonly error?: string;
+}
+
+export interface GraphifyRunResult {
+  readonly success: boolean;
+  readonly message: string;
+  readonly status?: GraphifyProjectMapStatus;
+}
+
+export interface GraphifyHealthIssue {
+  readonly severity: "error" | "warning";
+  readonly code: string;
+  readonly message: string;
+  readonly fixHint?: string;
+}
+
+export interface GraphifyHealthCheckResult {
+  readonly healthy: boolean;
+  readonly issues: readonly GraphifyHealthIssue[];
+  readonly debugPrompt?: string;
+}
+
+export interface GraphifyHookStatus {
+  readonly postCommit: boolean;
+  readonly postCheckout: boolean;
+}
+
+export interface GraphifyWatchStatus {
+  readonly running: boolean;
+  readonly pid?: number;
 }
 
 export interface PiDesktopApi {
@@ -713,9 +803,23 @@ export interface PiDesktopApi {
   generatePrDraft(workspaceId: string, baseBranch?: string): Promise<PrDraftResult>;
   prCreate(workspaceId: string, input: CreatePrInput): Promise<CreatePrResult>;
   getContextSnapshot(workspaceId: string, sessionId?: string): Promise<ContextSnapshot>;
+  getGraphifyProjectMapStatus(workspaceId: string): Promise<GraphifyProjectMapStatus>;
+  updateGraphifyProjectMap(workspaceId: string): Promise<GraphifyRunResult>;
+  buildGraphifyProjectMap(workspaceId: string): Promise<GraphifyRunResult>;
+  getGraphifyHealthCheck(workspaceId: string): Promise<GraphifyHealthCheckResult>;
+  getGraphifyHookStatus(workspaceId: string): Promise<GraphifyHookStatus>;
+  setGraphifyHook(workspaceId: string, enable: boolean): Promise<{ success: boolean; message: string }>;
+  getGraphifyWatchStatus(workspaceId: string): Promise<GraphifyWatchStatus>;
+  setGraphifyWatch(workspaceId: string, enable: boolean): Promise<{ success: boolean; message: string }>;
   buildHandoffPayload(input: BuildHandoffPayloadInput): Promise<HandoffPayload>;
   createSeededSession(input: CreateSeededSessionInput): Promise<CreateSeededSessionResult>;
   getSessionTranscript(workspaceId: string, sessionId: string): Promise<readonly TranscriptMessage[]>;
+  searchTranscriptText(sessionKeys: readonly string[], query: string): Promise<readonly TranscriptSearchMatch[]>;
+  automationCreate(input: { name: string; prompt: string; schedule: import("./desktop-state").AutomationSchedule; workspaceId: string; model?: { provider: string; modelId: string }; thinkingLevel?: string; enabled?: boolean }): Promise<DesktopAppState>;
+  automationUpdate(id: string, patch: Partial<Pick<import("./desktop-state").Automation, "name" | "prompt" | "schedule" | "model" | "thinkingLevel" | "enabled">>): Promise<DesktopAppState>;
+  automationDelete(id: string): Promise<DesktopAppState>;
+  automationList(): Promise<DesktopAppState>;
+  automationFireNow(id: string): Promise<DesktopAppState>;
   toggleWindowMaximize(): Promise<void>;
   openExternal(url: string): Promise<void>;
   getThemeMode(): Promise<"system" | "light" | "dark" | "dracula">;

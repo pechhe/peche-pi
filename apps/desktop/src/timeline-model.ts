@@ -43,7 +43,7 @@ export interface TimelineItemFactory {
   ) => TranscriptMessage;
   readonly activity: (
     label: string,
-    options?: Pick<Extract<TranscriptMessage, { kind: "activity" }>, "detail" | "metadata" | "tone" | "noise">,
+    options?: Pick<Extract<TranscriptMessage, { kind: "activity" }>, "detail" | "metadata" | "tone" | "noise" | "retry">,
   ) => TranscriptMessage;
   readonly summary: (
     label: string,
@@ -97,13 +97,26 @@ export function appendQueuedUserMessageToTimeline(
   return next;
 }
 
+/**
+ * Drop a trailing transient auto-retry activity row, if present. Retry rows are
+ * never persisted and only exist between an `auto_retry_start` and the next
+ * transcript event, so any subsequent mutation removes them.
+ */
+function stripTrailingRetry(transcript: readonly TranscriptMessage[]): TranscriptMessage[] {
+  const last = transcript[transcript.length - 1];
+  if (last && last.kind === "activity" && last.retry) {
+    return transcript.slice(0, -1);
+  }
+  return [...transcript];
+}
+
 export function appendAssistantDeltaToTimeline(
   transcript: readonly TranscriptMessage[],
   runtime: SessionTimelineRuntimeState,
   text: string,
   factory: TimelineItemFactory,
 ): TranscriptMessage[] {
-  const next = [...transcript];
+  const next = stripTrailingRetry(transcript);
   // Any assistant text closes out a streaming reasoning block; the next
   // reasoning chunk should open a fresh row.
   clearActiveReasoningMessage(runtime);
@@ -144,7 +157,7 @@ export function appendReasoningDeltaToTimeline(
   // reasoning means the model paused any prior text reply.
   clearActiveAssistantMessage(runtime);
 
-  const next = [...transcript];
+  const next = stripTrailingRetry(transcript);
   const activeId = runtime.activeReasoningMessageId;
   if (activeId) {
     const index = next.findIndex((item) => item.id === activeId);
@@ -177,12 +190,35 @@ export function applySessionEventToTimeline(
     return transcript.slice();
   }
 
-  const next = [...transcript];
+  // Any non-retry event supersedes a transient auto-retry line: the run has
+  // either resumed (tool/message/run events) or finished. Strip it first so a
+  // stale "Connection error · retrying" row never lingers.
+  const next = stripTrailingRetry(transcript);
 
   switch (event.type) {
     case "sessionOpened":
       next.push(factory.activity("Resumed session", { metadata: relativeDetail(event.timestamp) }));
       break;
+    case "runRetrying": {
+      // The failed attempt that triggered this retry was just pushed as an error
+      // activity row (runtimes emit the run failure before the retry signal).
+      // Absorb it so the user sees a single updating retry line instead of a
+      // growing wall of per-attempt errors.
+      const tail = next[next.length - 1];
+      if (tail && tail.kind === "activity" && tail.tone === "error") {
+        next.pop();
+      }
+      // Replace any prior retry row (handled by stripTrailingRetry above) with a
+      // fresh one so the renderer remounts and restarts the live countdown.
+      const deadline = new Date(new Date(event.timestamp).getTime() + event.delayMs).toISOString();
+      next.push(
+        factory.activity("Connection error", {
+          tone: "error",
+          retry: { attempt: event.attempt, maxAttempts: event.maxAttempts, deadline },
+        }),
+      );
+      break;
+    }
     case "sessionUpdated":
       if (event.snapshot.status === "running" && event.snapshot.runningRunId && !runtime.runningSince) {
         runtime.runningSince = event.timestamp;
@@ -500,7 +536,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-export function isQuietTool(toolName: string): boolean {
+function isQuietTool(toolName: string): boolean {
   return QUIET_TOOL_PATTERNS.some((pattern) => pattern.test(toolName));
 }
 

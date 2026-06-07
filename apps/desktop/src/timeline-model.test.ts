@@ -218,6 +218,45 @@ test("timeline model collapses consecutive identical run failures into one error
   assert.equal(errors.length, 1);
 });
 
+test("timeline model collapses auto-retries into a single live retry line", () => {
+  const runtime: SessionTimelineRuntimeState = {};
+
+  const fail = (ts: string) =>
+    event({ type: "runFailed", error: { message: "Connection error", code: "ECONNRESET" }, timestamp: ts });
+  const retry = (attempt: number, ts: string) =>
+    event({
+      type: "runRetrying",
+      attempt,
+      maxAttempts: 5,
+      delayMs: 4000,
+      message: "Connection error",
+      timestamp: ts,
+    });
+
+  // Attempt 1 fails then schedules a retry.
+  let transcript = applySessionEventToTimeline([], fail("2026-01-01T00:01:00.000Z"), runtime, factory);
+  transcript = applySessionEventToTimeline(transcript, retry(1, "2026-01-01T00:01:00.000Z"), runtime, factory);
+  // Attempt 2 fails then schedules another retry.
+  transcript = applySessionEventToTimeline(transcript, fail("2026-01-01T00:01:04.000Z"), runtime, factory);
+  transcript = applySessionEventToTimeline(transcript, retry(2, "2026-01-01T00:01:04.000Z"), runtime, factory);
+
+  // Exactly one row total, and it is the live retry line for the latest attempt.
+  assert.equal(transcript.length, 1);
+  const row = transcript[0]!;
+  assert.equal(row.kind, "activity");
+  if (row.kind !== "activity") return;
+  assert.equal(row.tone, "error");
+  assert.equal(row.label, "Connection error");
+  assert.equal(row.retry?.attempt, 2);
+  assert.equal(row.retry?.maxAttempts, 5);
+  assert.equal(row.retry?.deadline, "2026-01-01T00:01:08.000Z");
+
+  // When the run resumes (assistant text), the transient retry line is cleared.
+  const resumed = appendAssistantDeltaToTimeline(transcript, runtime, "Hello", factory);
+  assert.equal(resumed.some((item) => item.kind === "activity" && Boolean(item.retry)), false);
+  assert.equal(resumed.some((item) => item.kind === "message"), true);
+});
+
 test("timeline model extracts reopened transcript meta activity and groups non-trailing tool bursts", () => {
   const transcript: TranscriptMessage[] = [
     { kind: "message", id: "user-1", role: "user", text: "Hi", createdAt: "2026-01-01T00:00:00.000Z" },

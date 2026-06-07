@@ -16,7 +16,6 @@ import {
   validateUrl,
   validateNonEmptyString,
   validateTerminalId,
-  type IpcContractEntry,
 } from "./desktop-ipc-seam.ts";
 
 type BridgeKind = "invoke" | "send" | "sendSync" | "event";
@@ -50,7 +49,7 @@ function extractPreloadBody(source: string): string {
   return source.slice(start + startMarker.length, end);
 }
 
-function extractPreloadApiEntries(source: string): readonly string[] {
+function _extractPreloadApiEntries(source: string): readonly string[] {
   return extractRegex(extractPreloadBody(source), /^  ([A-Za-z_][A-Za-z0-9_]*):/gm);
 }
 
@@ -62,7 +61,7 @@ function extractPiDesktopApiEntries(source: string): readonly string[] {
   return extractRegex(body, /^  ([A-Za-z_][A-Za-z0-9_]*)[(:]/gm);
 }
 
-function extractPreloadBridgeEntries(source: string): Map<string, { kind: BridgeKind; channelKey: string }> {
+function _extractPreloadBridgeEntries(source: string): Map<string, { kind: BridgeKind; channelKey: string }> {
   const body = extractPreloadBody(source);
   const entries = new Map<string, { kind: BridgeKind; channelKey: string }>();
   const entryStarts = [...body.matchAll(/^  ([A-Za-z_][A-Za-z0-9_]*):/gm)];

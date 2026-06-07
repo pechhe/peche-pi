@@ -34,7 +34,7 @@ export function ExtensionsView({
   onGetExtensionConfig,
   onSetExtensionConfig,
   onInstallExtension,
-  onUninstallExtension,
+  onUninstallExtension: _onUninstallExtension,
   availableModels = [],
   defaultAnalysisModel = "deepseek:deepseek-chat",
 }: ExtensionsViewProps) {

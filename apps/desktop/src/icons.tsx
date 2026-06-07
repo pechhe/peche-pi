@@ -141,7 +141,7 @@ export function FileIcon() {
   );
 }
 
-export function ArchiveIcon() {
+function ArchiveIcon() {
   return (
     <Icon>
       <rect x="2" y="3" width="20" height="5" rx="1" />
@@ -207,7 +207,7 @@ export function SparkIcon() {
   );
 }
 
-export function PiGlyphIcon() {
+function PiGlyphIcon() {
   return (
     <Icon>
       <path d="M5 7h14" />
@@ -309,7 +309,7 @@ export function WorktreeIcon() {
   );
 }
 
-export function GripIcon() {
+function GripIcon() {
   return (
     <Icon>
       <circle cx="9" cy="5" r="1" fill="currentColor" />
@@ -366,7 +366,7 @@ export function ComposeIcon() {
   );
 }
 
-export function QueueIcon() {
+function QueueIcon() {
   return (
     <Icon>
       <path d="M11 5h10" />
@@ -386,6 +386,28 @@ export function ProjectIcon() {
       <path d="M8 10v4" />
       <path d="M12 10v2" />
       <path d="M16 10v6" />
+    </Icon>
+  );
+}
+
+export function AutomationIcon() {
+  // Clock-with-zap — scheduled automation.
+  return (
+    <Icon>
+      <circle cx="12" cy="13" r="8" />
+      <path d="M12 9v4l2 2" />
+      <path d="M5 3L2 6" />
+      <path d="M22 6l-3-3" />
+      <path d="M12 2v3" />
+    </Icon>
+  );
+}
+
+export function AutomationRunIcon() {
+  // Small lightning bolt — marks threads created by automations.
+  return (
+    <Icon>
+      <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
     </Icon>
   );
 }

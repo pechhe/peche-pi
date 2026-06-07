@@ -3,11 +3,10 @@ import {
   type AgentSession,
   type CreateAgentSessionOptions,
 } from "@earendil-works/pi-coding-agent";
-import type { SessionCatalogSnapshot } from "@pi-gui/catalogs";
+
 import type {
   SessionConfig,
   SessionContextUsage,
-  SessionDriverEvent,
   SessionEventListener,
   SessionRef,
   SessionSnapshot,
@@ -19,12 +18,8 @@ import type { SessionQueuedMessage } from "@pi-gui/session-driver/types";
 import {
   buildSnapshot,
   deriveSessionConfig,
-  deriveWorkspaceTitle,
-  extractPreview,
   nowIso,
   sessionKey,
-  toSessionErrorInfo,
-  type SnapshotSource,
 } from "./session-supervisor-utils.js";
 import {
   createEmptyExtensionUiState,

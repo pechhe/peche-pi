@@ -107,6 +107,9 @@ export function useTimelineScroll({
       if (remainingChecks <= 0) return;
 
       window.requestAnimationFrame(() => {
+        if (!pinnedToBottomRef.current && !preserveBottomOnNextPaneResizeRef.current) {
+          return;
+        }
         const remaining = pane.scrollHeight - pane.scrollTop - pane.clientHeight;
         if (remaining > 1 || remainingChecks > 1) {
           align(remainingChecks - 1);
@@ -268,7 +271,10 @@ export function useTimelineScroll({
     if (!pane) return;
 
     const pinned = isNearBottom(pane);
-    if (preserveBottomOnNextPaneResizeRef.current && !pinned) return;
+    if (!pinned) {
+      preserveBottomOnNextPaneResizeRef.current = false;
+      resetExactBottomRestoreState();
+    }
 
     pinnedToBottomRef.current = pinned;
     lastTimelineScrollTopBySessionRef.current.set(selectedSessionKey, pane.scrollTop);
@@ -276,7 +282,7 @@ export function useTimelineScroll({
     if (pinned) {
       setShowJumpToLatest(false);
     }
-  }, [selectedSessionKey]);
+  }, [selectedSessionKey, resetExactBottomRestoreState]);
 
   const jumpToLatest = useCallback(() => {
     requestPinnedBottomAlignment("smooth", { preferExactRestore: true });

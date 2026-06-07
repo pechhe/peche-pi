@@ -9,6 +9,8 @@ export interface ToastPayload {
   readonly autoDismissMs?: number;
   /** Optional secondary text shown after a dot separator. */
   readonly secondary?: string;
+  /** Optional click action for navigation-style toasts. */
+  readonly onClick?: () => void;
 }
 
 /**
@@ -78,13 +80,30 @@ export function ToastHost() {
       </svg>
     );
 
-  return (
-    <div className={`toast toast--${toast.variant}`} role={toast.variant === "error" ? "alert" : "status"}>
+  const body = (
+    <>
       {icon}
       <span className="toast__message">
         {toast.message}
         {toast.secondary ? <span className="toast__secondary"> · {toast.secondary}</span> : null}
       </span>
+    </>
+  );
+
+  return (
+    <div className={`toast toast--${toast.variant}`} role={toast.variant === "error" ? "alert" : "status"}>
+      {toast.onClick ? (
+        <button
+          className="toast__action"
+          type="button"
+          onClick={() => {
+            toast.onClick?.();
+            setToast(null);
+          }}
+        >
+          {body}
+        </button>
+      ) : body}
       <button aria-label="Dismiss" className="toast__close" type="button" onClick={() => setToast(null)}>
         <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
           <path d="M3 3L9 9M9 3L3 9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />

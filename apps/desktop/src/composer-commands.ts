@@ -206,7 +206,7 @@ const HOST_ACTION_SLASH_COMMANDS: readonly ComposerSlashCommand[] = [
   },
 ] as const;
 
-export const THINKING_OPTIONS: readonly ComposerSlashOption[] = [
+const THINKING_OPTIONS: readonly ComposerSlashOption[] = [
   {
     value: "low",
     label: "Low",

@@ -6,7 +6,6 @@ import {
   isFullyStaged,
   validateFilePath,
   type GitAdapter,
-  type ChangedFileEntry,
 } from "./workspace-review.ts";
 import type { UndoEditOp } from "../src/ipc.ts";
 import { writeFile, mkdir, rm } from "node:fs/promises";
@@ -252,7 +251,7 @@ test("getChangedFiles: handles rename arrow", async () => {
 });
 
 test("getChangedFiles: returns empty on git failure", async () => {
-  const git = createFakeGit({ status: "" });
+  const _git = createFakeGit({ status: "" });
   // Override to return error code
   const errorGit: GitAdapter = {
     async execGit() {

@@ -25,6 +25,12 @@ These rules apply for the full session.
 - Keep the desktop renderer/main/preload boundary tight; avoid broad Node exposure to the renderer.
 - Keep `pi-sdk-driver` thin over `pi-mono`; don’t fork or reimplement `pi` runtime behavior unless necessary.
 
+## Graphify Project Map
+- This repo has `graphify-out/` built. Prefer Graphify for architecture, ownership, cross-file, community, and “where does X fit?” questions.
+- Use `graphify_query` first for broad architectural questions, `graphify_explain` for a named concept/community, and `graphify_path` for connections between concepts.
+- Use Cymbal for symbol lookup, refs, impact, and targeted source reads. Use grep/rg for exact strings, configs, logs, and non-code text.
+- Treat Graphify as stale if built commit differs from current commit; update with `graphify_update` before relying on it for recent changes.
+
 ## Dev Workflow
 
 ### Launching the dev app

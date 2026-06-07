@@ -13,7 +13,6 @@ import {
 } from "../helpers/electron-app";
 
 test("clears attachment chips on submit after paste", async () => {
-  test.setTimeout(30_000);
   const userDataDir = await makeUserDataDir();
   const workspacePath = await makeWorkspace("paste-workspace");
   const harness = await launchDesktop(userDataDir, {

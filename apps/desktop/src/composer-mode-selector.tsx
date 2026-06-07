@@ -1,4 +1,5 @@
 import type { ComposerMode } from "./composer-mode";
+import { ShortcutHint } from "./shortcut-hint";
 import { useButtonSound } from "./use-button-sound";
 
 interface ComposerModeSelectorProps {
@@ -12,6 +13,7 @@ export function ComposerModeSelector({ mode, disabled = false, onSetMode }: Comp
   const buttonSound = useButtonSound({ variant: "rotary", disabled });
   return (
     <span className="composer__key-mount composer__key-mount--mode">
+      <ShortcutHint keys="⌘B / ⌘P" />
       <button
         aria-label={`Composer mode: ${isPlan ? "Plan" : "Build"}`}
         aria-pressed={isPlan}

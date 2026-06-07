@@ -1,11 +1,63 @@
 import type { HostUiRequest, SessionConfig } from "@pi-gui/session-driver";
 import type { ModelSettingsSnapshot, RuntimeCommandRecord, RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
-import { DEFAULT_BUTTON_SOUND_SETTINGS, type ButtonSoundSettings } from "./button-click-sound";
+import type { ButtonSoundSettings } from "./button-click-sound";
 export type SessionStatus = "idle" | "running" | "failed";
+
+// ── Automation types ─────────────────────────────────────
+
+export type AutomationSchedulePreset = "every-morning" | "every-evening" | "weekdays-morning" | "hourly";
+
+export type AutomationSchedule =
+  | { readonly kind: "preset"; readonly preset: AutomationSchedulePreset }
+  | { readonly kind: "cron"; readonly expression: string };
+
+export interface Automation {
+  readonly id: string;
+  readonly name: string;
+  readonly prompt: string;
+  readonly schedule: AutomationSchedule;
+  readonly workspaceId: string;
+  readonly model?: { readonly provider: string; readonly modelId: string };
+  readonly thinkingLevel?: string;
+  readonly enabled: boolean;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly lastRunAt?: string;
+}
+
+export interface AutomationRun {
+  readonly id: string;
+  readonly automationId: string;
+  readonly sessionId: string;
+  readonly status: "running" | "completed" | "failed";
+  readonly startedAt: string;
+  readonly completedAt?: string;
+}
+
+export const AUTOMATION_PRESET_CRON: Record<AutomationSchedulePreset, string> = {
+  "every-morning": "0 9 * * *",
+  "every-evening": "0 18 * * *",
+  "weekdays-morning": "0 9 * * 1-5",
+  "hourly": "0 * * * *",
+};
+
+export function automationScheduleLabel(schedule: AutomationSchedule): string {
+  switch (schedule.kind) {
+    case "preset":
+      switch (schedule.preset) {
+        case "every-morning": return "Every morning";
+        case "every-evening": return "Every evening";
+        case "weekdays-morning": return "Weekday mornings";
+        case "hourly": return "Hourly";
+      }
+    case "cron":
+      return schedule.expression;
+  }
+}
 export type { TranscriptMessage } from "./timeline-types";
 import type { TranscriptMessage } from "./timeline-types";
 
-export type AppView = "threads" | "new-thread" | "skills" | "extensions" | "settings" | "context" | "queue";
+export type AppView = "threads" | "new-thread" | "skills" | "extensions" | "settings" | "context" | "queue" | "kanban" | "automations";
 export type WorkspaceKind = "primary" | "worktree";
 export type WorktreeStatus = "ready" | "missing" | "error";
 export type NewThreadEnvironment = "local" | "worktree";
@@ -174,6 +226,7 @@ export interface SessionRecord {
   readonly isAwaitingAssistantText: boolean;
   readonly config?: SessionConfig;
   readonly contextUsage?: SessionContextUsage;
+  readonly automationId?: string;
 }
 
 export interface SelectedTranscriptRecord {
@@ -311,6 +364,8 @@ export interface DesktopAppState {
   readonly commitPushModel?: string;
   readonly chats: readonly ChatRecord[];
   readonly selectedChatId: string;
+  readonly automations: readonly Automation[];
+  readonly automationFilterWorkspaceId?: string;
   readonly selectedLoopStatus?: RalphLoopStatus;
   // True when the selected chat is the one that wrote the workspace's Ralph
   // plan; scopes the "Begin Ralph loop" banner to the creating chat.
@@ -403,10 +458,12 @@ export function createEmptyDesktopAppState(): DesktopAppState {
     planModeIdeology: "default",
     threadTransition: { motion: "curve", heroExit: false, bubbleHandoff: false },
     themeMode: "system",
-    buttonSoundSettings: { ...DEFAULT_BUTTON_SOUND_SETTINGS },
+    buttonSoundSettings: { primary: "click", navigation: "none", toggle: "key", secondary: "none", destructive: "click" },
     commitPushModel: undefined,
     chats: [],
     selectedChatId: "",
+    automations: [],
+    automationFilterWorkspaceId: undefined,
     revision: 0,
   };
 }
