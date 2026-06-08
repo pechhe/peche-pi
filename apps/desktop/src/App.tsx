@@ -64,6 +64,7 @@ import type { SidebarNavEntry } from "./hooks/build-sidebar-nav-list";
 import { useSettingsHandlers } from "./hooks/use-settings-handlers";
 import { useSkillsExtensionsHandlers } from "./hooks/use-skills-extensions";
 import { useNavigationHistory } from "./hooks/use-navigation-history";
+import { useNewThreadState } from "./hooks/use-new-thread-state";
 
 import { useRalphLoop, type RalphLaunch } from "./hooks/use-ralph-loop";
 import { useSelfHealTranscript } from "./hooks/use-self-heal-transcript";
@@ -82,7 +83,6 @@ import { resolveRepoWorkspaceId } from "./workspace-roots";
 import {
   extractImageFilesFromClipboardData,
   extractFilesFromDataTransfer,
-  readComposerAttachmentsFromFiles,
 } from "./composer-attachments";
 import { applyDesktopLiveUpdate, applySelectedTranscriptLiveUpdate, applyTranscriptDelta } from "./live-update";
 
@@ -409,7 +409,6 @@ function formatRunningLabel(startedAt: string | undefined): string {
 
 export default function App() {
   const [snapshot, setSnapshot, selectedTranscript, setSelectedTranscript] = useDesktopAppState();
-  const [newThreadComposerMode, setNewThreadComposerMode] = useState<ComposerMode>("build");
   // Per-session plan/build mode, owned here so it survives composer submits and
   // session switches. `planAwaitingBySession` marks a session whose plan-mode
   // run is pending a written plan; once that session is idle the composer shows
@@ -436,51 +435,8 @@ export default function App() {
   // auto-generated one. Pruned once the real title lands.
   const [newThreadTitleFallback, setNewThreadTitleFallback] = useState<Readonly<Record<string, string>>>({});
   const [extensionsWorkspaceId, setExtensionsWorkspaceId] = useState("");
-  const [pendingNewThreadWorkspaceId, setPendingNewThreadWorkspaceId] = useState("");
-  const [newThreadRootWorkspaceId, setNewThreadRootWorkspaceId] = useState("");
-  const [newThreadIsChat, setNewThreadIsChat] = useState(false);
-  const [newThreadEnvironment, setNewThreadEnvironment] = useState<NewThreadEnvironment>("local");
   const [ralphLaunch, setRalphLaunch] = useState<RalphLaunch | null>(null);
-  // Per-project draft text + attachments. Keyed by rootWorkspaceId so each
-  // project remembers what the user typed while navigating elsewhere.
-  const [newThreadPromptByWorkspace, setNewThreadPromptByWorkspace] = useState<Record<string, string>>({});
-  const [newThreadAttachmentsByWorkspace, setNewThreadAttachmentsByWorkspace] = useState<
-    Record<string, readonly ComposerAttachment[]>
-  >({});
-  const newThreadPrompt = newThreadPromptByWorkspace[newThreadRootWorkspaceId] ?? "";
-  const newThreadAttachments = newThreadAttachmentsByWorkspace[newThreadRootWorkspaceId] ?? [];
-  const setNewThreadPrompt = useCallback(
-    (value: SetStateAction<string>) => {
-      setNewThreadPromptByWorkspace((prev) => {
-        const key = newThreadRootWorkspaceId;
-        if (!key) return prev;
-        const current = prev[key] ?? "";
-        const next = typeof value === "function" ? (value as (p: string) => string)(current) : value;
-        if (next === current) return prev;
-        return { ...prev, [key]: next };
-      });
-    },
-    [newThreadRootWorkspaceId],
-  );
-  const setNewThreadAttachments = useCallback(
-    (value: SetStateAction<readonly ComposerAttachment[]>) => {
-      setNewThreadAttachmentsByWorkspace((prev) => {
-        const key = newThreadRootWorkspaceId;
-        if (!key) return prev;
-        const current = prev[key] ?? [];
-        const next =
-          typeof value === "function"
-            ? (value as (p: readonly ComposerAttachment[]) => readonly ComposerAttachment[])(current)
-            : value;
-        if (next === current) return prev;
-        return { ...prev, [key]: next };
-      });
-    },
-    [newThreadRootWorkspaceId],
-  );
-  const [newThreadProvider, setNewThreadProvider] = useState<string | undefined>();
-  const [newThreadModelId, setNewThreadModelId] = useState<string | undefined>();
-  const [newThreadThinkingLevel, setNewThreadThinkingLevel] = useState<string | undefined>();
+
   const [themeMode, setThemeMode] = useState<"system" | "light" | "dark" | "dracula">("system");
   const [buttonSoundSettings, setButtonSoundSettings] = useState<ButtonSoundSettings>(
     () => ({ ...DEFAULT_BUTTON_SOUND_SETTINGS })
@@ -705,6 +661,37 @@ export default function App() {
     ? rootWorkspaceOptions.find((workspace) => workspace.id === (selectedWorkspace.rootWorkspaceId ?? selectedWorkspace.id)) ?? selectedWorkspace
     : undefined;
   const contextRuntime = contextWorkspace ? snapshot?.runtimeByWorkspace[contextWorkspace.id] : undefined;
+  // ── New-thread state (extracted hook) ───────────────────────────────────────
+  const nt = useNewThreadState({
+    snapshot,
+    rootWorkspaceOptions,
+    rootWorkspace,
+    visibleWorkspaces,
+    api: api!,
+    setActiveView: (view) => void updateSnapshot(api!, setSnapshot, async () => ({ ...snapshot!, activeView: view })),
+    focusNewThreadComposer: () => { setTimeout(() => newThreadComposerRef.current?.focus(), 0); },
+  });
+  const newThreadRootWorkspaceId = nt.rootWorkspaceId;
+  const setNewThreadRootWorkspaceId = nt.setRootWorkspaceId;
+  const newThreadIsChat = nt.isChat;
+  const setNewThreadIsChat = nt.setIsChat;
+  const newThreadEnvironment = nt.environment;
+  const setNewThreadEnvironment = nt.setEnvironment;
+  const newThreadPrompt = nt.prompt;
+  const setNewThreadPrompt = nt.setPrompt;
+  const newThreadAttachments = nt.attachments;
+  const setNewThreadAttachments = nt.setAttachments;
+  const newThreadProvider = nt.provider;
+  const setNewThreadProvider = nt.setProvider;
+  const newThreadModelId = nt.modelId;
+  const setNewThreadModelId = nt.setModelId;
+  const newThreadThinkingLevel = nt.thinkingLevel;
+  const setNewThreadThinkingLevel = nt.setThinkingLevel;
+  const pendingNewThreadWorkspaceId = nt.pendingWorkspaceId;
+  const setPendingNewThreadWorkspaceId = nt.setPendingWorkspaceId;
+  const newThreadComposerMode = nt.composerMode;
+  const setNewThreadComposerMode = nt.setComposerMode;
+
   const [contextSnapshot, setContextSnapshot] = useState<ContextSnapshot | null>(null);
   const [contextLoading, setContextLoading] = useState(false);
   const loadContextSnapshot = useCallback(() => {
@@ -1459,8 +1446,7 @@ export default function App() {
       setNewThreadRootWorkspaceId("");
       setNewThreadEnvironment("local");
       // No workspaces left — wipe all per-workspace drafts.
-      setNewThreadPromptByWorkspace({});
-      setNewThreadAttachmentsByWorkspace({});
+      nt.clearAllDrafts();
       return;
     }
     setSettingsWorkspaceId((current) =>
@@ -1489,28 +1475,7 @@ export default function App() {
     setPendingNewThreadWorkspaceId("");
   }, [pendingNewThreadWorkspaceId, rootWorkspaceOptions, snapshot]);
 
-  const resetNewThreadSurface = (workspaceId?: string) => {
-    const nextWorkspaceId =
-      (workspaceId && (
-        rootWorkspaceOptions.find((workspace) => workspace.id === workspaceId)?.id ||
-        (snapshot ? resolveRepoWorkspaceId(snapshot.workspaces, workspaceId) : undefined)
-      )) ||
-      rootWorkspace?.id ||
-      visibleWorkspaces[0]?.id ||
-      "";
-    if (nextWorkspaceId) {
-      setNewThreadRootWorkspaceId(nextWorkspaceId);
-    }
-    setNewThreadEnvironment("local");
-    // Draft text + attachments are per-project (see
-    // newThreadPromptByWorkspace) and intentionally preserved here so that
-    // navigating away and back to the new-thread surface keeps what the
-    // user typed. They are cleared only on successful submit.
-    setNewThreadProvider(undefined);
-    setNewThreadModelId(undefined);
-    setNewThreadThinkingLevel(undefined);
-    setNewThreadComposerMode("build");
-  };
+  const resetNewThreadSurface = nt.reset;
 
   const primarySidebarToggleVisible = canTogglePrimarySidebar(snapshot?.activeView);
   const handleTogglePrimarySidebar = useCallback(() => {
@@ -1633,12 +1598,7 @@ export default function App() {
     if (!api) return;
     void updateSnapshot(api, setSnapshot, () => api.setActiveView(view));
   };
-  const openNewThreadSurface = (workspaceId?: string) => {
-    setPendingNewThreadWorkspaceId("");
-    setNewThreadIsChat(false);
-    resetNewThreadSurface(workspaceId);
-    if (api) setActiveView("new-thread");
-  };
+  const openNewThreadSurface = nt.open;
   function handlePastedClipboardImage(clipboardImage: ComposerImageAttachment) {
     const activeElement = document.activeElement;
     if (activeElement === composerRef.current) {
@@ -1789,30 +1749,9 @@ export default function App() {
     setActiveView("kanban");
   };
 
-  const openNewChatSurface = () => {
-    setPendingNewThreadWorkspaceId("");
-    setNewThreadIsChat(true);
-    setNewThreadEnvironment("local");
-    setNewThreadProvider(undefined);
-    setNewThreadModelId(undefined);
-    setNewThreadThinkingLevel(undefined);
-    setNewThreadComposerMode("build");
-    setActiveView("new-thread");
-    focusNewThreadComposer();
-  };
-
-  const handleNewThreadAddAttachments = (files: File[]) => {
-    void readComposerAttachmentsFromFiles(files).then((attachments) => {
-      if (attachments.length === 0) {
-        return;
-      }
-      setNewThreadAttachments((current) => [...current, ...attachments]);
-    });
-  };
-
-  const handleNewThreadRemoveAttachment = (attachmentId: string) => {
-    setNewThreadAttachments((current) => current.filter((attachment) => attachment.id !== attachmentId));
-  };
+  const openNewChatSurface = nt.openChat;
+  const handleNewThreadAddAttachments = nt.addAttachments;
+  const handleNewThreadRemoveAttachment = nt.removeAttachment;
 
   const handleImagePaste = (event: ClipboardEvent<HTMLDivElement>, onFiles: (files: File[]) => void) => {
     const files = extractImageFilesFromClipboardData(event.clipboardData);
