@@ -337,13 +337,44 @@ export function applySessionEventToTimeline(
   return next;
 }
 
+// A run can complete because the main agent *yielded* to await an async
+// subagent (the `subagent` tool returns `status: "started"` immediately and the
+// row is never updated), not because the turn is actually done. Detect that
+// case so the "Worked for" divider isn't shown prematurely.
+//
+// We scan from the tail rather than the whole transcript: an async launch's
+// result row persists as "started" forever, so a plain `.some()` would suppress
+// the divider on every *later* run too. By only treating a subagent as pending
+// when it's the trailing work (no assistant reply or other tool after it), the
+// next run — which appends content after the launch row — gets its divider.
 function transcriptHasRunningSubagent(transcript: readonly TranscriptMessage[]): boolean {
-  return transcript.some(
-    (item) =>
-      item.kind === "tool" &&
-      isSubagentToolName(item.toolName) &&
-      item.status === "running",
-  );
+  for (let i = transcript.length - 1; i >= 0; i -= 1) {
+    const item = transcript[i]!;
+    if (item.kind === "reasoning" || item.kind === "activity" || item.kind === "summary") {
+      continue;
+    }
+    if (item.kind === "tool" && isSubagentToolName(item.toolName)) {
+      return isPendingSubagentLaunch(item);
+    }
+    // Any other significant row (assistant message, non-subagent tool) means the
+    // run progressed past the launch, so it's no longer a yield-to-subagent.
+    return false;
+  }
+  return false;
+}
+
+function isPendingSubagentLaunch(item: Extract<TranscriptMessage, { kind: "tool" }>): boolean {
+  if (item.status === "running") {
+    return true;
+  }
+  const details =
+    typeof item.output === "object" && item.output !== null
+      ? (item.output as { details?: { status?: unknown } }).details
+      : undefined;
+  const status = details?.status;
+  // Async launches report "started" (or "batch"); blocking launches report a
+  // terminal status ("completed"/"failed"/"cancelled") and are not pending.
+  return status === "started" || status === "batch" || status === "running";
 }
 
 function clearActiveReasoningMessage(runtime: SessionTimelineRuntimeState): void {
@@ -401,7 +432,7 @@ function upsertToolRow(
   transcript.push(next);
 }
 
-function runningToolLabel(toolName: string, input: unknown): string {
+export function runningToolLabel(toolName: string, input: unknown): string {
   const detail = inputLabel(input);
   if (looksLikeSearch(toolName, input)) {
     return detail ? `Searching ${detail}` : `Searching with ${toolName}`;
@@ -415,7 +446,7 @@ function runningToolLabel(toolName: string, input: unknown): string {
   return detail ? `Running ${toolName}: ${detail}` : `Running ${toolName}`;
 }
 
-function completedToolLabel(toolName: string, input: unknown, status: "success" | "error"): string {
+export function completedToolLabel(toolName: string, input: unknown, status: "success" | "error"): string {
   const detail = inputLabel(input);
   if (status === "error") {
     if (looksLikeSearch(toolName, input)) {

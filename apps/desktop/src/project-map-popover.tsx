@@ -3,7 +3,6 @@ import type {
   GraphifyProjectMapStatus,
   GraphifyHealthCheckResult,
   GraphifyHookStatus,
-  GraphifyWatchStatus,
   PiDesktopApi,
 } from "./ipc";
 import { ContextIcon, RefreshIcon, GraphIcon } from "./icons";
@@ -12,9 +11,10 @@ import { playButtonClick } from "./button-click-sound";
 interface ProjectMapPopoverProps {
   readonly rootWorkspace: { readonly id: string } | undefined;
   readonly api: PiDesktopApi;
+  readonly onOpenGraph?: () => void;
 }
 
-export function ProjectMapPopover({ rootWorkspace, api }: ProjectMapPopoverProps) {
+export function ProjectMapPopover({ rootWorkspace, api, onOpenGraph }: ProjectMapPopoverProps) {
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<GraphifyProjectMapStatus | null>(null);
   const [loading, setLoading] = useState(false);
@@ -22,7 +22,6 @@ export function ProjectMapPopover({ rootWorkspace, api }: ProjectMapPopoverProps
   const [message, setMessage] = useState("");
   const [healthCheck, setHealthCheck] = useState<GraphifyHealthCheckResult | null>(null);
   const [hookStatus, setHookStatus] = useState<GraphifyHookStatus | null>(null);
-  const [watchStatus, setWatchStatus] = useState<GraphifyWatchStatus | null>(null);
   const ref = useRef<HTMLDivElement | null>(null);
 
   const loadStatus = async () => {
@@ -30,16 +29,14 @@ export function ProjectMapPopover({ rootWorkspace, api }: ProjectMapPopoverProps
     setLoading(true);
     setMessage("");
     try {
-      const [s, health, hooks, watch] = await Promise.all([
+      const [s, health, hooks] = await Promise.all([
         api.getGraphifyProjectMapStatus(rootWorkspace.id),
         api.getGraphifyHealthCheck(rootWorkspace.id),
         api.getGraphifyHookStatus(rootWorkspace.id),
-        api.getGraphifyWatchStatus(rootWorkspace.id),
       ]);
       setStatus(s);
       setHealthCheck(health);
       setHookStatus(hooks);
-      setWatchStatus(watch);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
     } finally {
@@ -72,9 +69,9 @@ export function ProjectMapPopover({ rootWorkspace, api }: ProjectMapPopoverProps
     }
   };
 
-  const openGraphHtml = () => {
-    if (status?.htmlPath) {
-      void api.openExternal(`file://${status.htmlPath}`);
+  const openGraphView = () => {
+    if (status?.available) {
+      onOpenGraph?.();
     }
   };
 
@@ -94,15 +91,6 @@ export function ProjectMapPopover({ rootWorkspace, api }: ProjectMapPopoverProps
     }
   };
 
-  const toggleWatch = async (enable: boolean) => {
-    if (!rootWorkspace) return;
-    const result = await api.setGraphifyWatch(rootWorkspace.id, enable);
-    setMessage(result.message);
-    if (result.success) {
-      setWatchStatus(await api.getGraphifyWatchStatus(rootWorkspace.id));
-    }
-  };
-
   const statusLabel = loading
     ? "Loading"
     : status?.available
@@ -117,13 +105,12 @@ export function ProjectMapPopover({ rootWorkspace, api }: ProjectMapPopoverProps
       <div className="shortcut-tooltip-wrap topbar__tooltip-wrap">
         <button
           aria-label="Project map"
-          className={`icon-button topbar__icon ${open ? "icon-button--active" : ""} ${status?.stale || (healthCheck && !healthCheck.healthy) ? "topbar__icon--warning" : ""} ${watchStatus?.running ? "topbar__icon--watching" : ""}`}
+          className={`icon-button topbar__icon ${open ? "icon-button--active" : ""} ${status?.stale || (healthCheck && !healthCheck.healthy) ? "topbar__icon--warning" : ""}`}
           type="button"
           disabled={!rootWorkspace}
           onClick={() => { playButtonClick(); toggle(); }}
         >
           <ContextIcon />
-          {watchStatus?.running ? <span className="topbar__watch-dot" title="File watcher running" /> : null}
         </button>
         <span className="shortcut-tooltip topbar__tooltip" role="tooltip">
           <span>Project map</span>
@@ -138,7 +125,7 @@ export function ProjectMapPopover({ rootWorkspace, api }: ProjectMapPopoverProps
                 <button
                   type="button"
                   className="project-map-popover__graph-btn"
-                  onClick={() => { playButtonClick(); openGraphHtml(); }}
+                  onClick={() => { playButtonClick(); openGraphView(); }}
                   title="Open visual graph"
                 >
                   <GraphIcon />
@@ -196,17 +183,6 @@ export function ProjectMapPopover({ rootWorkspace, api }: ProjectMapPopoverProps
                 type="checkbox"
                 checked={hookStatus?.postCommit ?? false}
                 onChange={(e) => { playButtonClick(); void toggleHook(e.currentTarget.checked); }}
-              />
-            </label>
-            <label className="project-map-popover__auto-item">
-              <span>
-                <strong>File watcher</strong>
-                <small>{watchStatus?.running ? `Running (PID ${watchStatus.pid})` : "Rebuild on save."}</small>
-              </span>
-              <input
-                type="checkbox"
-                checked={watchStatus?.running ?? false}
-                onChange={(e) => { playButtonClick(); void toggleWatch(e.currentTarget.checked); }}
               />
             </label>
           </div>

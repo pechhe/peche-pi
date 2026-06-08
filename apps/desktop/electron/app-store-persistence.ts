@@ -32,6 +32,7 @@ export interface PersistedUiState {
   readonly modelSettingsScopeMode?: ModelSettingsScopeMode;
   readonly appGlobalModelSettings?: ModelSettingsSnapshot;
   readonly sidebarCollapsed?: boolean;
+  readonly zoomFactor?: number;
   readonly allowMultiple?: boolean;
   readonly enableTransparency?: boolean;
   readonly transcriptVerbose?: boolean;
@@ -93,6 +94,8 @@ export async function readPersistedUiState(uiStateFilePath: string): Promise<Leg
       modelSettingsScopeMode: normalizeModelSettingsScopeMode(parsed.modelSettingsScopeMode),
       appGlobalModelSettings: toPersistedModelSettingsSnapshot(parsed.appGlobalModelSettings),
       sidebarCollapsed: typeof parsed.sidebarCollapsed === "boolean" ? parsed.sidebarCollapsed : undefined,
+      zoomFactor:
+        typeof parsed.zoomFactor === "number" && Number.isFinite(parsed.zoomFactor) ? parsed.zoomFactor : undefined,
       allowMultiple: typeof parsed.allowMultiple === "boolean" ? parsed.allowMultiple : undefined,
       enableTransparency: typeof parsed.enableTransparency === "boolean" ? parsed.enableTransparency : undefined,
       transcriptVerbose: typeof parsed.transcriptVerbose === "boolean" ? parsed.transcriptVerbose : undefined,

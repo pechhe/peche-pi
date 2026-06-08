@@ -233,6 +233,7 @@ const desktopIpc = {
   setGraphifyHook: "pi-gui:set-graphify-hook",
   getGraphifyWatchStatus: "pi-gui:get-graphify-watch-status",
   setGraphifyWatch: "pi-gui:set-graphify-watch",
+  readGraphifyGraph: "pi-gui:read-graphify-graph",
   getThemeMode: "pi-gui:get-theme-mode",
   getResolvedTheme: "pi-gui:get-resolved-theme",
   setThemeMode: "pi-gui:set-theme-mode",
@@ -250,6 +251,7 @@ const desktopIpc = {
   buildHandoffPayload: "pi-gui:build-handoff-payload",
   createSeededSession: "pi-gui:create-seeded-session",
   getSessionTranscript: "pi-gui:get-session-transcript",
+  getSubagentSessionEntries: "pi-gui:get-subagent-session-entries",
   searchTranscriptText: "pi-gui:search-transcript-text",
   automationCreate: "pi-gui:automation-create",
   automationUpdate: "pi-gui:automation-update",
@@ -442,6 +444,7 @@ export const desktopIpcContracts: readonly IpcContractEntry[] = [
   { methodName: "setGraphifyHook", channel: desktopIpc.setGraphifyHook, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
   { methodName: "getGraphifyWatchStatus", channel: desktopIpc.getGraphifyWatchStatus, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
   { methodName: "setGraphifyWatch", channel: desktopIpc.setGraphifyWatch, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
+  { methodName: "readGraphifyGraph", channel: desktopIpc.readGraphifyGraph, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
 
   // -- Chat --
   { methodName: "startChat", channel: desktopIpc.startChat, direction: "renderer-to-main", kind: "invoke", adapter: "chat" },
@@ -457,6 +460,7 @@ export const desktopIpcContracts: readonly IpcContractEntry[] = [
   { methodName: "buildHandoffPayload", channel: desktopIpc.buildHandoffPayload, direction: "renderer-to-main", kind: "invoke", adapter: "session" },
   { methodName: "createSeededSession", channel: desktopIpc.createSeededSession, direction: "renderer-to-main", kind: "invoke", adapter: "session" },
   { methodName: "getSessionTranscript", channel: desktopIpc.getSessionTranscript, direction: "renderer-to-main", kind: "invoke", adapter: "session" },
+  { methodName: "getSubagentSessionEntries", channel: desktopIpc.getSubagentSessionEntries, direction: "renderer-to-main", kind: "invoke", adapter: "session" },
   { methodName: "searchTranscriptText", channel: desktopIpc.searchTranscriptText, direction: "renderer-to-main", kind: "invoke", adapter: "session" },
 
   // -- Automation --

@@ -57,7 +57,7 @@ export function automationScheduleLabel(schedule: AutomationSchedule): string {
 export type { TranscriptMessage } from "./timeline-types";
 import type { TranscriptMessage } from "./timeline-types";
 
-export type AppView = "threads" | "new-thread" | "skills" | "extensions" | "settings" | "context" | "queue" | "kanban" | "automations" | "agents";
+export type AppView = "threads" | "new-thread" | "skills" | "extensions" | "settings" | "context" | "queue" | "kanban" | "automations" | "agents" | "graph";
 export type WorkspaceKind = "primary" | "worktree";
 export type WorktreeStatus = "ready" | "missing" | "error";
 export type NewThreadEnvironment = "local" | "worktree";
@@ -352,6 +352,8 @@ export interface DesktopAppState {
   readonly modelSettingsScopeMode: ModelSettingsScopeMode;
   readonly globalModelSettings: ModelSettingsSnapshot;
   readonly sidebarCollapsed: boolean;
+  /** Chromium zoom factor applied to the window. 0.9 == the labelled "100%". */
+  readonly zoomFactor: number;
   readonly queueMode: boolean;
   readonly enableTransparency: boolean;
   readonly transcriptVerbose: boolean;
@@ -410,6 +412,20 @@ export interface ContextSnapshot {
   readonly sections: readonly ContextSection[];
 }
 
+/**
+ * Zoom factor we present to the user as "100%". The raw Chromium default (1.0)
+ * renders too tight, so the comfortable baseline is 0.9.
+ */
+export const ZOOM_BASELINE = 0.9;
+
+/** Discrete zoom ladder (raw Chromium factors). Keeps layout predictable. */
+export const ZOOM_FACTOR_LADDER: readonly number[] = [0.72, 0.81, 0.9, 0.99, 1.125, 1.35, 1.575, 1.8];
+
+/** Map a raw zoom factor to the user-facing percent, rebased so 0.9 == 100%. */
+export function zoomFactorToPercent(factor: number): number {
+  return Math.round((factor / ZOOM_BASELINE) * 100);
+}
+
 export function createEmptyDesktopAppState(): DesktopAppState {
   return {
     workspaces: [],
@@ -450,6 +466,7 @@ export function createEmptyDesktopAppState(): DesktopAppState {
       enabledModelPatterns: [],
     },
     sidebarCollapsed: false,
+    zoomFactor: ZOOM_BASELINE,
     queueMode: false,
     enableTransparency: false,
     transcriptVerbose: false,

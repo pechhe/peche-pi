@@ -1,7 +1,16 @@
+import type { ComponentType } from "react";
 import { useState } from "react";
 import type { TimelineToolCall } from "./timeline-types";
-import { ChevronRightIcon } from "./icons";
+import {
+  CompassIcon,
+  EyeIcon,
+  FileIcon,
+  ShieldCheckIcon,
+  SparkIcon,
+  WrenchIcon,
+} from "./icons";
 import { useSubagentLive } from "./subagent-live";
+import { useOpenSubagentSession } from "./subagent-session-panel";
 import { WorkingSpinner } from "./working-label";
 
 // Inline rendering for the pi-subagents `subagent` / `subagent_resume` tool
@@ -47,6 +56,7 @@ interface SubagentRow {
   readonly summary?: string;
   readonly status: SubagentStatus;
   readonly elapsed?: number;
+  readonly sessionFile?: string;
 }
 
 export function isSubagentTool(toolName: string): boolean {
@@ -90,6 +100,7 @@ function rowFromDetails(
     summary: details?.summary ?? details?.errorMessage,
     status: normaliseStatus(details?.status, details?.exitCode, details?.errorMessage),
     elapsed: details?.elapsed,
+    sessionFile: details?.sessionFile,
   };
 }
 
@@ -133,43 +144,72 @@ const STATUS_LABEL: Record<SubagentStatus, string> = {
   batch: "batch",
 };
 
-function SubagentRowView({ row }: { readonly row: SubagentRow }) {
-  const [expanded, setExpanded] = useState(false);
+// Per-agent-type visual identity. The `kind` keys a CSS theme (colour ramp)
+// applied via `data-agent-kind`; the icon and label give each card a
+// glanceable identity when several agents run at once.
+interface AgentKind {
+  readonly kind: string;
+  readonly label: string;
+  readonly Icon: ComponentType;
+}
+
+const AGENT_KINDS: Record<string, AgentKind> = {
+  scout: { kind: "scout", label: "Scout", Icon: CompassIcon },
+  verifier: { kind: "verifier", label: "Verifier", Icon: ShieldCheckIcon },
+  implementer: { kind: "implementer", label: "Implementer", Icon: WrenchIcon },
+};
+
+function agentKind(agent: string | undefined): AgentKind {
+  const key = agent?.trim().toLowerCase();
+  if (key && AGENT_KINDS[key]) {
+    return AGENT_KINDS[key];
+  }
+  const label = key ? key.charAt(0).toUpperCase() + key.slice(1) : "Agent";
+  return { kind: "default", label, Icon: SparkIcon };
+}
+
+function SubagentRowView({ row, verb }: { readonly row: SubagentRow; readonly verb: string }) {
+  const [showInstructions, setShowInstructions] = useState(false);
   // While the launch is still running, this row becomes the live agent view:
-  // overlay the spinner, current activity and live stats from the widget feed.
+  // surface the spinner, current activity and live stats from the widget feed.
   const live = useSubagentLive(row.name);
+  const openSession = useOpenSubagentSession();
   const isLive = (row.status === "running" || row.status === "started") && live !== undefined;
   const elapsed = formatElapsed(row.elapsed);
-  const hasBody = Boolean(row.task || row.summary);
+
+  const { kind, label, Icon } = agentKind(row.agent);
+  // Second line = what the agent is doing now, not its name. Prefer the live
+  // activity, then the launch summary (when done), then the task brief.
+  const objective = (isLive ? live?.activity : undefined) ?? row.summary ?? row.task ?? row.title;
+  const canViewSession = Boolean(row.sessionFile && openSession);
 
   return (
-    <div className={`subagent-card__row${isLive ? " subagent-card__row--live" : ""}`}>
-      <button
-        className="subagent-card__row-head"
-        type="button"
-        aria-expanded={expanded}
-        disabled={!hasBody}
-        onClick={() => setExpanded((value) => !value)}
-      >
-        {hasBody ? (
-          <span className={`subagent-card__chevron ${expanded ? "subagent-card__chevron--expanded" : ""}`}>
-            <ChevronRightIcon />
-          </span>
-        ) : (
-          <span className="subagent-card__chevron-spacer" />
-        )}
-        {isLive ? <WorkingSpinner className="subagent-card__spinner" /> : null}
-        <span className="subagent-card__name">{row.name}</span>
-        {row.agent ? <span className="subagent-card__agent">{row.agent}</span> : null}
-        {row.title ? <span className="subagent-card__title">{row.title}</span> : null}
-        <span className={`subagent-card__status subagent-card__status--${row.status}`}>
-          {STATUS_LABEL[row.status]}
+    <article className="subagent-card" data-agent-kind={kind} data-testid="subagent-card">
+      <div className="subagent-card__top">
+        <span className="subagent-card__badge" aria-hidden="true">
+          <Icon />
         </span>
-        {elapsed ? <span className="subagent-card__elapsed">{elapsed}</span> : null}
-      </button>
-      {isLive ? (
+        <div className="subagent-card__head">
+          <div className="subagent-card__title-line">
+            <span className="subagent-card__verb">{verb}</span>{" "}
+            <span className="subagent-card__type">{label}</span>
+            <span className="subagent-card__dot" aria-hidden="true">
+              •
+            </span>
+            <span className="subagent-card__name">{row.name}</span>
+          </div>
+          {objective ? <p className="subagent-card__objective">{objective}</p> : null}
+        </div>
+        <div className="subagent-card__meta">
+          {isLive ? <WorkingSpinner className="subagent-card__spinner" /> : null}
+          <span className={`subagent-card__status subagent-card__status--${row.status}`}>
+            {STATUS_LABEL[row.status]}
+          </span>
+          {elapsed ? <span className="subagent-card__elapsed">{elapsed}</span> : null}
+        </div>
+      </div>
+      {isLive && (live?.stats?.length ?? 0) > 0 ? (
         <div className="subagent-card__live">
-          {live?.activity ? <span className="subagent-card__activity">{live.activity}</span> : null}
           {(live?.stats ?? []).map((stat, index) => (
             <span className="subagent-card__stat" key={index}>
               {stat}
@@ -177,45 +217,53 @@ function SubagentRowView({ row }: { readonly row: SubagentRow }) {
           ))}
         </div>
       ) : null}
-      {expanded && hasBody ? (
-        <div className="subagent-card__body">
-          {row.task ? (
-            <div className="subagent-card__section">
-              <div className="subagent-card__section-label">Task</div>
-              <pre className="subagent-card__pre">{row.task}</pre>
-            </div>
-          ) : null}
-          {row.summary ? (
-            <div className="subagent-card__section">
-              <div className="subagent-card__section-label">Result</div>
-              <pre className="subagent-card__pre">{row.summary}</pre>
-            </div>
-          ) : null}
+      {showInstructions && row.task ? (
+        <div className="subagent-card__instructions">
+          <div className="subagent-card__section-label">Instructions</div>
+          <pre className="subagent-card__pre">{row.task}</pre>
         </div>
       ) : null}
-    </div>
+      <div className="subagent-card__actions">
+        {row.task ? (
+          <button
+            className="subagent-card__action"
+            type="button"
+            aria-expanded={showInstructions}
+            onClick={() => setShowInstructions((value) => !value)}
+          >
+            <span className="subagent-card__action-icon" aria-hidden="true">
+              <FileIcon />
+            </span>
+            View instructions
+          </button>
+        ) : (
+          <span />
+        )}
+        {canViewSession ? (
+          <button
+            className="subagent-card__icon-action"
+            type="button"
+            onClick={() => openSession!(row.sessionFile!, row.name)}
+            title="Open this subagent's session in a read-only side panel"
+            aria-label="View session"
+          >
+            <EyeIcon />
+          </button>
+        ) : null}
+      </div>
+    </article>
   );
 }
 
 export function SubagentToolCard({ item }: { readonly item: TimelineToolCall }) {
   const rows = buildRows(item);
-  const isBatch = rows.length > 1;
   const verb = item.toolName === "subagent_resume" ? "Resume" : "Spawn";
-  const heading = isBatch ? `${verb} ${rows.length} agents` : verb;
 
   return (
-    <article className="subagent-card" data-testid="subagent-card">
-      <div className="subagent-card__heading">
-        <span className="subagent-card__heading-icon" aria-hidden="true">
-          ▸
-        </span>
-        <span className="subagent-card__heading-text">{heading}</span>
-      </div>
-      <div className="subagent-card__rows">
-        {rows.map((row, index) => (
-          <SubagentRowView key={`${row.name}-${index}`} row={row} />
-        ))}
-      </div>
-    </article>
+    <div className="subagent-card-group">
+      {rows.map((row, index) => (
+        <SubagentRowView key={`${row.name}-${index}`} row={row} verb={verb} />
+      ))}
+    </div>
   );
 }

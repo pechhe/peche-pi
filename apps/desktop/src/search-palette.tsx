@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GlobalSearchArchiveFilter, GlobalSearchResult, GlobalSearchScope } from "./hooks/use-global-search";
 import { formatRelativeTime } from "./string-utils";
 
@@ -57,16 +57,34 @@ export function SearchPalette({
   onClose,
 }: SearchPaletteProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const [closing, setClosing] = useState(false);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
 
+  useEffect(() => () => {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+  }, []);
+
+  // Play exit animation, then unmount via onClose. Idempotent for repeated triggers.
+  const requestClose = useCallback(() => {
+    if (closeTimer.current) return;
+    setClosing(true);
+    closeTimer.current = setTimeout(onClose, 160);
+  }, [onClose]);
+
   const activeResult = results[activeIndex];
 
   return (
-    <div className="search-palette" role="dialog" aria-modal="true" aria-label="Search threads">
-      <div className="search-palette__backdrop" onClick={onClose} />
+    <div
+      className={`search-palette${closing ? " search-palette--closing" : ""}`}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Search threads"
+    >
+      <div className="search-palette__backdrop" onClick={requestClose} />
       <div className="search-palette__panel">
         <input
           ref={inputRef}
@@ -77,7 +95,7 @@ export function SearchPalette({
           onKeyDown={(event) => {
             if (event.key === "Escape") {
               event.preventDefault();
-              onClose();
+              requestClose();
               return;
             }
             if (event.key === "ArrowDown") {

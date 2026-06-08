@@ -14,6 +14,9 @@
   background: var(--main);
   display: grid;
   grid-template-rows: auto 1fr auto;
+  /* Sidebar is position:absolute (out of grid flow); pin main to column 2
+     so it never auto-places into the sidebar's reserved column. */
+  grid-column: 2;
   min-width: 0;
   overflow: hidden;
   position: relative;
@@ -107,6 +110,15 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.topbar__session--clickable {
+  -webkit-app-region: no-drag;
+  cursor: pointer;
+}
+
+.topbar__session--clickable:hover {
+  opacity: 0.8;
 }
 
 .topbar__separator {
@@ -249,8 +261,11 @@
 .sidebar-toggle {
   -webkit-app-region: no-drag;
   position: absolute;
-  top: 11px;
-  left: var(--titlebar-toggle-left);
+  /* Divide by the zoom factor so the toggle keeps a constant *physical* offset
+     from the native traffic lights (which are OS chrome and never scale with
+     zoom). Without this the toggle drifts right as you zoom in. */
+  top: calc(11px / var(--zoom-factor));
+  left: calc(var(--titlebar-toggle-left) / var(--zoom-factor));
   z-index: 80;
 }
 
@@ -260,7 +275,7 @@
   border-radius: 10px;
   background: transparent;
   border-color: transparent;
-  color: color-mix(in srgb, var(--accent) 45%, transparent);
+  color: var(--muted-strong);
   transition: color 140ms ease;
 }
 
@@ -279,7 +294,36 @@
 }
 
 .shell--sidebar-collapsed .topbar {
-  padding-left: var(--titlebar-collapsed-main-padding-left);
+  /* Match the zoom-compensated toggle offset so collapsed topbar content keeps
+     a constant physical gap from the toggle at any zoom. */
+  padding-left: calc(var(--titlebar-collapsed-main-padding-left) / var(--zoom-factor));
+}
+
+.zoom-hud {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 200;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  background: var(--surface-raised, rgba(20, 20, 28, 0.82));
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.12));
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+  pointer-events: none;
+  -webkit-app-region: no-drag;
+  animation: zoom-hud-fade 1200ms ease forwards;
+}
+
+@keyframes zoom-hud-fade {
+  0% { opacity: 0; transform: translateX(-50%) translateY(-4px); }
+  12% { opacity: 1; transform: translateX(-50%) translateY(0); }
+  80% { opacity: 1; transform: translateX(-50%) translateY(0); }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-2px); }
 }
 
 .canvas {
@@ -1822,6 +1866,81 @@ body.pi-thread-handoff .timeline-item--just-sent .timeline-item__bubble {
   grid-template-columns: 1fr 420px;
 }
 
+/* ------------------------------------------------------------------ */
+/* Subagent Session Panel (read-only)                                  */
+/* ------------------------------------------------------------------ */
+
+.main--with-subagent {
+  grid-template-columns: 1fr 480px;
+}
+
+.main--with-subagent > .topbar {
+  grid-column: 1 / -1;
+}
+
+.main--with-subagent > .composer,
+.main--with-subagent > .terminal-panel {
+  grid-column: 1;
+}
+
+.subagent-session-panel {
+  width: 480px;
+  min-width: 380px;
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  overflow: hidden;
+  grid-column: 2;
+  grid-row: 2 / -1;
+}
+
+.main--with-subagent.main--with-terminal > .subagent-session-panel {
+  grid-row: 2 / span 3;
+}
+
+.subagent-session-panel__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.subagent-session-panel__title {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--ink-strong);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.subagent-session-panel__badge {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 6px;
+  flex-shrink: 0;
+}
+
+.subagent-session-panel__header .icon-button {
+  margin-left: auto;
+}
+
+.subagent-session-panel__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 .main--with-advisor > .topbar {
   grid-column: 1 / -1;
 }
@@ -3198,7 +3317,7 @@ body.pi-thread-handoff .timeline-item--just-sent .timeline-item__bubble {
   right: 0;
   margin-inline: auto;
   width: min(920px, calc(100% - 32px));
-  bottom: calc(100% - 6px);
+  bottom: calc(100% + 12px);
   z-index: 5;
   display: flex;
   align-items: center;
@@ -4000,74 +4119,92 @@ body.pi-thread-handoff .timeline-item--just-sent .timeline-item__bubble {
   width: 100%;
 }
 
-/* Special new-thread-only controls, in their own row below the composer so the
-   composer itself is identical to the in-thread one (and unmounts cleanly on
-   send without resizing the composer). Centered to the same 920px column as
-   the composer surface. */
+/* New-thread setup row: project + environment selectors sit above the composer
+   in a centered row with a divider beneath, matching the page header rhythm.
+   Centered to the same 920px column as the composer surface. */
 .new-thread__options {
   width: min(920px, 100%);
   margin: 0 auto;
   display: flex;
   align-items: center;
-  gap: 24px;
+  justify-content: center;
+  gap: 40px;
   flex-wrap: wrap;
-  padding: 0 16px;
+  padding: 0 16px 24px;
+  border-bottom: 1px solid var(--line);
 }
 
 .new-thread__option {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 14px;
 }
 
 .new-thread__option-label {
   color: var(--muted-soft);
   font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 
-.new-thread__project-name {
-  padding: 8px 12px;
+.new-thread__project-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 14px;
   border-radius: 999px;
   border: 1px solid var(--line);
   background: var(--surface);
   color: var(--text-strong);
-  font-size: 13px;
-  font-weight: 560;
+  font-size: 14px;
+  font-weight: 620;
 }
 
-.new-thread__project-select {
-  padding: 8px 12px;
+.new-thread__project-pill svg {
+  width: 16px;
+  height: 16px;
+  color: var(--muted-soft);
+}
+
+.new-thread__project-dot {
+  width: 10px;
+  height: 10px;
   border-radius: 999px;
+  background: oklch(0.7 0.18 350);
+}
+
+.new-thread__env-group {
+  display: inline-flex;
+  gap: 10px;
+}
+
+.new-thread__env {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 16px;
+  border-radius: 12px;
   border: 1px solid var(--line);
   background: var(--surface);
-  color: var(--text-strong);
+  color: var(--muted-strong);
   font-size: 13px;
-  font-weight: 560;
+  font-weight: 680;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   cursor: pointer;
 }
 
-.new-thread__environment-group {
-  display: inline-flex;
-  gap: 8px;
+.new-thread__env svg {
+  width: 16px;
+  height: 16px;
 }
 
-.new-thread__environment {
-  padding: 8px 12px;
-  border-radius: 999px;
-  border: 1px solid #dfe4ee;
-  background: #f8f9fc;
-  color: var(--muted-strong);
-  font-size: 13px;
-  font-weight: 560;
-}
-
-.new-thread__environment--active {
-  border-color: #cfd7ea;
-  background: #eef2ff;
+.new-thread__env--active {
+  border-color: transparent;
+  background: var(--surface-muted);
   color: var(--text-strong);
+  box-shadow: inset 0 0 0 1px var(--line), 0 1px 2px rgba(0, 0, 0, 0.06);
 }
 
 .settings-disclosure {
@@ -5745,12 +5882,12 @@ mark.thread-find-active {
   background: transparent;
 }
 
-:root.dark .new-thread__environment {
+:root.dark .new-thread__env {
   border-color: var(--line);
   background: var(--surface-muted);
 }
 
-:root.dark .new-thread__environment--active {
+:root.dark .new-thread__env--active {
   border-color: rgba(124, 107, 245, 0.3);
   background: rgba(124, 107, 245, 0.12);
 }
@@ -8105,108 +8242,128 @@ mark.thread-find-active {
 }
 
 /* ── pi-subagents: inline tool cards (B) ───────────────────────────── */
-.subagent-card {
+/* Per-agent-type identity. `--sa-accent` keys the colour ramp; the default
+   falls back to the app accent. `data-agent-kind` themes the whole card so
+   border, badge, type label and status chips read as one identity. */
+.subagent-card-group {
+  display: grid;
+  gap: 10px;
   max-width: 760px;
-  display: grid;
-  gap: 6px;
-  padding: 8px 10px;
-  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--accent) 6%, var(--surface));
 }
 
-.subagent-card__heading {
+.subagent-card {
+  --sa-accent: var(--accent);
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--sa-accent) 28%, var(--line));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--sa-accent) 5%, var(--surface));
+}
+
+.subagent-card[data-agent-kind="scout"] {
+  --sa-accent: #7c5cff;
+}
+
+.subagent-card[data-agent-kind="verifier"] {
+  --sa-accent: #18a058;
+}
+
+.subagent-card[data-agent-kind="implementer"] {
+  --sa-accent: #f08c2e;
+}
+
+.subagent-card__top {
   display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--accent);
+  align-items: flex-start;
+  gap: 12px;
 }
 
-.subagent-card__heading-icon {
-  font-size: 11px;
-}
-
-.subagent-card__rows {
-  display: grid;
-  gap: 4px;
-}
-
-.subagent-card__row {
-  display: grid;
-  gap: 4px;
-}
-
-.subagent-card__row-head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  padding: 2px 0;
-  background: none;
-  border: none;
-  font: inherit;
-  text-align: left;
-  color: inherit;
-  cursor: pointer;
-  min-width: 0;
-}
-
-.subagent-card__row-head:disabled {
-  cursor: default;
-}
-
-.subagent-card__chevron,
-.subagent-card__chevron-spacer {
+.subagent-card__badge {
   display: inline-flex;
-  width: 12px;
-  flex: 0 0 12px;
-  color: var(--muted);
-  transition: transform 0.12s ease;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  color: var(--sa-accent);
+  background: color-mix(in srgb, var(--sa-accent) 16%, transparent);
 }
 
-.subagent-card__chevron--expanded {
-  transform: rotate(90deg);
+.subagent-card__badge svg {
+  width: 20px;
+  height: 20px;
+}
+
+.subagent-card__head {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.subagent-card__title-line {
+  font-size: 14px;
+  line-height: 1.3;
+  color: var(--ink-strong);
+}
+
+.subagent-card__verb {
+  font-weight: 600;
+  color: var(--ink-strong);
+}
+
+.subagent-card__type {
+  font-weight: 700;
+  color: var(--sa-accent);
+}
+
+.subagent-card__dot {
+  margin: 0 6px;
+  color: var(--muted);
 }
 
 .subagent-card__name {
-  font-weight: 600;
+  font-weight: 700;
   color: var(--ink-strong);
-  white-space: nowrap;
 }
 
-.subagent-card__agent {
-  font-size: 11px;
-  padding: 1px 6px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--accent) 16%, transparent);
-  color: var(--accent);
-  white-space: nowrap;
-}
-
-.subagent-card__title {
+.subagent-card__objective {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
   color: var(--muted-strong);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
+}
+
+.subagent-card__meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
 }
 
 .subagent-card__status {
-  margin-left: auto;
-  font-size: 11px;
-  padding: 1px 7px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 10px;
   border-radius: 999px;
   white-space: nowrap;
-  text-transform: lowercase;
+  text-transform: capitalize;
 }
 
 .subagent-card__status--started,
 .subagent-card__status--running,
 .subagent-card__status--batch {
-  background: color-mix(in srgb, var(--accent) 16%, transparent);
-  color: var(--accent);
+  background: color-mix(in srgb, var(--sa-accent) 16%, transparent);
+  color: var(--sa-accent);
 }
 
 .subagent-card__status--completed {
@@ -8221,31 +8378,9 @@ mark.thread-find-active {
 }
 
 .subagent-card__elapsed {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
   white-space: nowrap;
-}
-
-.subagent-card__body {
-  display: grid;
-  gap: 6px;
-  padding-left: 18px;
-}
-
-.subagent-card__section-label {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--muted);
-  margin-bottom: 2px;
-}
-
-/* ── pi-subagents: live state inside the card ──────────────────────── */
-.subagent-card__row--live {
-  background: color-mix(in srgb, var(--accent) 7%, transparent);
-  border-radius: 6px;
-  padding: 2px 4px;
-  margin: -2px -4px;
 }
 
 .subagent-card__spinner {
@@ -8255,7 +8390,7 @@ mark.thread-find-active {
   font-size: 11px;
   line-height: 12px;
   text-align: center;
-  color: var(--accent);
+  color: var(--sa-accent);
 }
 
 @keyframes subagent-card-spin {
@@ -8267,21 +8402,97 @@ mark.thread-find-active {
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
-  padding-left: 18px;
+  padding-left: 52px;
   font-size: 12px;
-}
-
-.subagent-card__activity {
-  color: var(--muted-strong);
-  font-style: italic;
-}
-
-.subagent-card__stat {
   color: var(--muted);
 }
 
-.subagent-card__stat::before {
+.subagent-card__stat:not(:first-child)::before {
   content: "· ";
+}
+
+.subagent-card__instructions {
+  margin-top: 2px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--sa-accent) 6%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--sa-accent) 16%, var(--line));
+}
+
+.subagent-card__section-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.subagent-card__pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.subagent-card__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--sa-accent) 14%, var(--line));
+}
+
+.subagent-card__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--sa-accent);
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--sa-accent) 32%, transparent);
+  border-radius: 7px;
+  padding: 5px 12px;
+  cursor: pointer;
+}
+
+.subagent-card__action:hover {
+  background: color-mix(in srgb, var(--sa-accent) 12%, transparent);
+}
+
+.subagent-card__action-icon {
+  display: inline-flex;
+}
+
+.subagent-card__action-icon svg {
+  width: 15px;
+  height: 15px;
+}
+
+.subagent-card__icon-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  color: var(--sa-accent);
+  background: transparent;
+  border: none;
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.subagent-card__icon-action:hover {
+  background: color-mix(in srgb, var(--sa-accent) 12%, transparent);
+}
+
+.subagent-card__icon-action svg {
+  width: 18px;
+  height: 18px;
 }
 
 /* ── Settings: subagents ───────────────────────────────────────────── */
@@ -11056,6 +11267,40 @@ mark.thread-find-active {
   inset: 0;
   background: rgba(15, 18, 28, 0.28);
   backdrop-filter: blur(3px);
+  animation: search-palette-backdrop-in 160ms ease-out;
+}
+
+.search-palette--closing .search-palette__backdrop {
+  animation: search-palette-backdrop-out 160ms ease-in forwards;
+}
+
+@keyframes search-palette-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes search-palette-backdrop-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes search-palette-panel-in {
+  from { opacity: 0; transform: translateY(-10px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes search-palette-panel-out {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(-8px) scale(0.98); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .search-palette__backdrop,
+  .search-palette--closing .search-palette__backdrop,
+  .search-palette__panel,
+  .search-palette--closing .search-palette__panel {
+    animation: none;
+  }
 }
 
 .search-palette__panel {
@@ -11069,6 +11314,12 @@ mark.thread-find-active {
   border-radius: 18px;
   background: var(--surface);
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.22);
+  transform-origin: top center;
+  animation: search-palette-panel-in 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.search-palette--closing .search-palette__panel {
+  animation: search-palette-panel-out 150ms ease-in forwards;
 }
 
 .search-palette__input {
@@ -11746,4 +11997,124 @@ mark.thread-find-active {
     inset 0 1px 0 0 oklch(1 0.002 250 / 0.16),
     0 0 0 1px oklch(0 0 0 / 0.55),
     0 1px 2px oklch(0 0 0 / 0.3);
+}
+
+/* ── Graph Surface (Sigma.js) ─────────────────────────────────────────────── */
+
+.graph-surface {
+  display: flex;
+  flex-direction: column;
+  position: absolute;
+  inset: 0;
+  background: var(--bg-primary, #1a1a1a);
+}
+
+.graph-surface--loading,
+.graph-surface--error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--text-secondary, #999);
+}
+
+.graph-surface__spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--border-subtle, #333);
+  border-top-color: var(--accent, #4363d8);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.graph-surface__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border-subtle, #333);
+}
+
+.graph-surface__header h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary, #eee);
+}
+
+.graph-surface__stats {
+  font-size: 12px;
+  color: var(--text-secondary, #999);
+}
+
+.graph-surface__canvas {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+.graph-surface__canvas .sigma-container {
+  width: 100%;
+  height: 100%;
+}
+
+.graph-surface__search {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 10;
+}
+
+.graph-surface__search-input {
+  padding: 6px 10px;
+  font-size: 12px;
+  border: 1px solid var(--border-subtle, #444);
+  border-radius: 6px;
+  background: var(--bg-secondary, #222);
+  color: var(--text-primary, #eee);
+  outline: none;
+  width: 200px;
+}
+
+.graph-surface__search-input:focus {
+  border-color: var(--accent, #4363d8);
+}
+
+.graph-surface__info {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 14px;
+  background: var(--bg-secondary, #222);
+  border: 1px solid var(--border-subtle, #444);
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--text-primary, #eee);
+  max-width: 320px;
+}
+
+.graph-surface__info strong {
+  font-size: 13px;
+}
+
+.graph-surface__info-file {
+  color: var(--text-secondary, #999);
+  word-break: break-all;
+}
+
+.graph-surface__info-close {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  background: none;
+  border: none;
+  color: var(--text-secondary, #999);
+  cursor: pointer;
+  font-size: 16px;
+  padding: 2px;
 }

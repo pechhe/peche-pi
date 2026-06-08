@@ -39,8 +39,11 @@ export function installShortcutHints(): () => void {
 
   const onKeyDown = (event: KeyboardEvent): void => {
     if (isModifierKey(event.key)) {
-      // Holding the modifier alone arms the reveal. Ignore OS auto-repeat.
-      if (!armed) {
+      // Holding the modifier alone arms the reveal. Ignore OS auto-repeat —
+      // without the `event.repeat` guard, a repeated Meta keydown after a
+      // shortcut (which sets armed=false) would re-arm the timer and the
+      // hints would flash back on / get stuck if keyup is lost.
+      if (!armed && !event.repeat) {
         armed = true;
         timer = window.setTimeout(() => {
           document.documentElement.classList.add(ROOT_CLASS);
@@ -61,10 +64,18 @@ export function installShortcutHints(): () => void {
   window.addEventListener("keydown", onKeyDown, true);
   window.addEventListener("keyup", onKeyUp, true);
   window.addEventListener("blur", hide);
+  // Shortcut combos like ⌘S are consumed by the main process
+  // (before-input-event preventDefault), so the renderer never sees the
+  // non-modifier keydown that would normally cancel the pending reveal —
+  // it only sees the bare ⌘ keydown that armed the timer. The command IPC
+  // fires when such a shortcut runs, so use it to hide/cancel reliably
+  // without depending on a keyup that can be lost on focus changes.
+  const removeCommandListener = window.piApp?.onCommand?.(hide);
   return () => {
     window.removeEventListener("keydown", onKeyDown, true);
     window.removeEventListener("keyup", onKeyUp, true);
     window.removeEventListener("blur", hide);
+    removeCommandListener?.();
     hide();
   };
 }

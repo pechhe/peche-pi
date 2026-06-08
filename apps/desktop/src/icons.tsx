@@ -31,6 +31,15 @@ export function PlusIcon() {
   );
 }
 
+export function SearchIcon() {
+  return (
+    <Icon>
+      <circle cx="11" cy="11" r="8" />
+      <path d="m21 21-4.3-4.3" />
+    </Icon>
+  );
+}
+
 export function TerminalIcon() {
   return (
     <Icon>
@@ -301,6 +310,16 @@ export function WorktreeIcon() {
   );
 }
 
+export function MonitorIcon() {
+  return (
+    <Icon>
+      <rect x="2" y="3" width="20" height="14" rx="2" />
+      <path d="M8 21h8" />
+      <path d="M12 17v4" />
+    </Icon>
+  );
+}
+
 export function EditedFilesIcon() {
   // File with +/- rows — Codex-style "edited files" summary affordance.
   return (
@@ -382,6 +401,44 @@ export function ChatIcon() {
   return (
     <Icon>
       <path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z" />
+    </Icon>
+  );
+}
+
+export function CompassIcon() {
+  // Scout — exploration/navigation.
+  return (
+    <Icon>
+      <circle cx="12" cy="12" r="10" />
+      <path d="m16.24 7.76-2.12 6.36-6.36 2.12 2.12-6.36 6.36-2.12z" />
+    </Icon>
+  );
+}
+
+export function ShieldCheckIcon() {
+  // Verifier — validation/assurance.
+  return (
+    <Icon>
+      <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
+      <path d="m9 12 2 2 4-4" />
+    </Icon>
+  );
+}
+
+export function WrenchIcon() {
+  // Implementer — build/fix.
+  return (
+    <Icon>
+      <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+    </Icon>
+  );
+}
+
+export function EyeIcon() {
+  return (
+    <Icon>
+      <path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0z" />
+      <circle cx="12" cy="12" r="3" />
     </Icon>
   );
 }

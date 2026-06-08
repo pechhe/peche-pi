@@ -8,6 +8,7 @@ import type { WorkspaceMenuState } from "./hooks/use-workspace-menu";
 import { CommitPushButton } from "./commit-push-button";
 import { UpdatePill } from "./update-pill";
 import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
+import { showToast } from "./toast";
 
 interface TopbarProps {
   readonly activeView: AppView;
@@ -33,6 +34,7 @@ interface TopbarProps {
   readonly commitPushModel?: string;
   readonly transcriptVerbose: boolean;
   readonly onSetTranscriptVerbose: (enabled: boolean) => void;
+  readonly onOpenGraph?: () => void;
 }
 
 export function Topbar(props: TopbarProps) {
@@ -153,7 +155,14 @@ export function Topbar(props: TopbarProps) {
         {selectedWorkspace && activeView === "threads" && selectedSession ? (
           <>
             <span className="topbar__separator">/</span>
-            <span className="topbar__session">{selectedSessionTitle ?? selectedSession.title}</span>
+            <span
+              className="topbar__session topbar__session--clickable"
+              title="Click to copy session ID"
+              onClick={() => {
+                void navigator.clipboard.writeText(selectedSession.id);
+                showToast({ variant: "success", message: "Session ID copied", autoDismissMs: 2000 });
+              }}
+            >{selectedSessionTitle ?? selectedSession.title}</span>
           </>
         ) : activeView === "new-thread" && rootWorkspace ? (
           <>
@@ -173,7 +182,7 @@ export function Topbar(props: TopbarProps) {
           sessionStatus={selectedSession?.status}
           shortcutLabel={commitShortcut}
         />
-        <ProjectMapPopover rootWorkspace={rootWorkspace} api={api} />
+        <ProjectMapPopover rootWorkspace={rootWorkspace} api={api} onOpenGraph={props.onOpenGraph} />
         <div className="view-settings" ref={viewSettingsRef}>
           <button
             aria-label="View settings"

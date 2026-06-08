@@ -45,6 +45,7 @@ import {
   type ExtensionCommandCompatibilityRecord,
   type ModelSettingsScopeMode,
   createEmptyDesktopAppState,
+  ZOOM_BASELINE,
   type CreateSessionInput,
   type CreateWorktreeInput,
   type DesktopAppState,
@@ -171,6 +172,7 @@ export class DesktopAppStore implements AppStoreInternals {
   private readonly pendingTranscriptDeltaBySession = new Map<string, TranscriptDeltaPayload>();
   private transcriptDeltaFlushTimer: NodeJS.Timeout | undefined;
   private readonly sessionEventListeners = new Set<SessionEventListener>();
+  private readonly autoCompactInFlight = new Set<string>();
   readonly driver: PiSdkDriver;
   readonly catalogStore: JsonCatalogStore;
   readonly worktreeManager: GitWorktreeManager;
@@ -257,6 +259,20 @@ export class DesktopAppStore implements AppStoreInternals {
     await this.initialize();
     await this.ensureTranscriptLoaded(sessionRef);
     return this.sessionState.transcriptCache.get(sessionKey(sessionRef)) ?? [];
+  }
+
+  /**
+   * Read raw session entries from a subagent's `.jsonl` file on disk. The
+   * renderer converts these into a read-only timeline. Returns [] on any error
+   * (e.g. file not yet created for a freshly-launched subagent).
+   */
+  async getSubagentSessionEntries(sessionFilePath: string): Promise<readonly unknown[]> {
+    await this.initialize();
+    try {
+      return this.driver.readSessionFileEntries(sessionFilePath);
+    } catch {
+      return [];
+    }
   }
 
   /**
@@ -659,6 +675,17 @@ export class DesktopAppStore implements AppStoreInternals {
   async setSidebarCollapsed(sidebarCollapsed: boolean): Promise<DesktopAppState> {
     await this.initialize();
     const next = reduce(this.state, { type: "settings/setSidebarCollapsed", sidebarCollapsed });
+    if (next === this.state) {
+      return structuredClone(this.state);
+    }
+    this.state = next;
+    await this.persistUiState();
+    return this.emit();
+  }
+
+  async setZoomFactor(zoomFactor: number): Promise<DesktopAppState> {
+    await this.initialize();
+    const next = reduce(this.state, { type: "settings/setZoomFactor", zoomFactor });
     if (next === this.state) {
       return structuredClone(this.state);
     }
@@ -1419,6 +1446,7 @@ Return ONLY a JSON array of configuration fields, no explanation.`;
       lastViewedAtBySession: persisted.lastViewedAtBySession ?? {},
       workspaceOrder: persisted.workspaceOrder ?? [],
       sidebarCollapsed: persisted.sidebarCollapsed ?? this.state.sidebarCollapsed,
+      zoomFactor: persisted.zoomFactor ?? this.state.zoomFactor,
       enableTransparency: persisted.enableTransparency ?? this.state.enableTransparency,
       transcriptVerbose: persisted.transcriptVerbose ?? this.state.transcriptVerbose,
       composerDeviceMode: persisted.composerDeviceMode ?? this.state.composerDeviceMode,
@@ -1458,6 +1486,7 @@ Return ONLY a JSON array of configuration fields, no explanation.`;
   private buildInitFallbackState(persisted: PersistedUiState, error: unknown): DesktopAppState {
     return {
       ...createEmptyDesktopAppState(),
+      zoomFactor: persisted.zoomFactor ?? ZOOM_BASELINE,
       enableTransparency: persisted.enableTransparency ?? false,
       transcriptVerbose: persisted.transcriptVerbose ?? false,
       composerDeviceMode: persisted.composerDeviceMode ?? "off",
@@ -2085,6 +2114,44 @@ Return ONLY a JSON array of configuration fields, no explanation.`;
     }
     if (event.type === "runCompleted") {
       this.sessionState.sessionErrorsBySession.delete(key);
+      await this.maybeAutoCompact(event.sessionRef, event.snapshot);
+    }
+  }
+
+  /**
+   * Auto-trigger smart compaction after a run completes when context usage
+   * crosses the configured threshold. Reads settings from ~/.pi/agent/settings.json
+   * (smartCompact). Percent OR token threshold — whichever is hit first.
+   */
+  private async maybeAutoCompact(sessionRef: SessionRef, snapshot: SessionSnapshot): Promise<void> {
+    const usage = snapshot.contextUsage;
+    if (!usage || usage.contextWindow <= 0) {
+      return;
+    }
+    const settings = await this.getSmartCompactSettings();
+    // Default on; only disabled when explicitly set to false.
+    if (settings.autoTrigger === false) {
+      return;
+    }
+    const minContextPercent = typeof settings.minContextPercent === "number" ? settings.minContextPercent : 60;
+    const minTokenThreshold = typeof settings.minTokenThreshold === "number" ? settings.minTokenThreshold : 0;
+    const percent = (usage.usedTokens / usage.contextWindow) * 100;
+    const hitPercent = percent >= minContextPercent;
+    const hitTokens = minTokenThreshold > 0 && usage.usedTokens >= minTokenThreshold;
+    if (!hitPercent && !hitTokens) {
+      return;
+    }
+    const key = sessionKey(sessionRef);
+    if (this.autoCompactInFlight.has(key)) {
+      return;
+    }
+    this.autoCompactInFlight.add(key);
+    try {
+      await this.driver.compactSession(sessionRef);
+    } catch (error) {
+      console.error(`[smart-compact] auto-compact failed for ${key}:`, error);
+    } finally {
+      this.autoCompactInFlight.delete(key);
     }
   }
 
@@ -2591,6 +2658,7 @@ Return ONLY a JSON array of configuration fields, no explanation.`;
       modelSettingsScopeMode: this.state.modelSettingsScopeMode,
       appGlobalModelSettings: hasStoredModelSettings(this.state.globalModelSettings) ? this.state.globalModelSettings : undefined,
       sidebarCollapsed: this.state.sidebarCollapsed || undefined,
+      zoomFactor: this.state.zoomFactor,
       enableTransparency: this.state.enableTransparency,
       transcriptVerbose: this.state.transcriptVerbose,
       composerDeviceMode: this.state.composerDeviceMode,

@@ -22,8 +22,13 @@ interface SettingsGeneralSectionProps {
   readonly planModeIdeology: PlanModeIdeologySetting;
   readonly smartCompactSettings: SmartCompactSettings;
   readonly cavemanOnLevel: CavemanLevel;
+  readonly activeView: string;
+  readonly queueMode: boolean;
   readonly onSetCavemanOnLevel: (level: CavemanLevel) => void;
   readonly onSetPlanModeIdeology: (ideology: PlanModeIdeologySetting) => void;
+  readonly onSetActiveView: (view: import("./desktop-state").AppView) => void;
+  readonly onSetQueueMode: (enabled: boolean) => void;
+  readonly onOpenKanban: () => void;
   readonly onSetCommitPushModel: (model: string) => void;
   readonly onSetModelSettingsScopeMode: (mode: ModelSettingsScopeMode) => void;
   readonly onSetIntegratedTerminalShell: (shellPath: string) => void;
@@ -72,7 +77,12 @@ export function SettingsGeneralSection({
   smartCompactSettings,
   onSetSmartCompactSettings,
   cavemanOnLevel,
+  activeView,
+  queueMode,
   onSetCavemanOnLevel,
+  onSetActiveView,
+  onSetQueueMode,
+  onOpenKanban,
 }: SettingsGeneralSectionProps) {
   const modelOptions = useMemo(() => buildModelOptions(runtime), [runtime]);
 
@@ -106,6 +116,37 @@ export function SettingsGeneralSection({
 
   return (
     <>
+      <SettingsGroup title="Project view" description="Choose how projects are displayed in the sidebar.">
+        <SettingsRow title="View mode" description="Threads shows the conversation list. Queue auto-advances to finished sessions. Kanban organises by status.">
+          <div className="settings-pill-row">
+            <button
+              className={`settings-pill${activeView === "threads" && !queueMode ? " settings-pill--active" : ""}`}
+              type="button"
+              aria-pressed={activeView === "threads" && !queueMode}
+              onClick={() => { onSetQueueMode(false); onSetActiveView("threads"); }}
+            >
+              Threads
+            </button>
+            <button
+              className={`settings-pill${queueMode ? " settings-pill--active" : ""}`}
+              type="button"
+              aria-pressed={queueMode}
+              onClick={() => onSetQueueMode(true)}
+            >
+              Queue
+            </button>
+            <button
+              className={`settings-pill${activeView === "kanban" ? " settings-pill--active" : ""}`}
+              type="button"
+              aria-pressed={activeView === "kanban"}
+              onClick={() => { onSetQueueMode(false); onOpenKanban(); }}
+            >
+              Kanban
+            </button>
+          </div>
+        </SettingsRow>
+      </SettingsGroup>
+
       <SettingsGroup title="General">
         <SettingsInfoRow
           label="Connected providers"

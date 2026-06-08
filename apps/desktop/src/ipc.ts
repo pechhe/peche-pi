@@ -173,9 +173,11 @@ export const desktopIpc = {
   setGraphifyHook: "pi-gui:set-graphify-hook",
   getGraphifyWatchStatus: "pi-gui:get-graphify-watch-status",
   setGraphifyWatch: "pi-gui:set-graphify-watch",
+  readGraphifyGraph: "pi-gui:read-graphify-graph",
   buildHandoffPayload: "pi-gui:build-handoff-payload",
   createSeededSession: "pi-gui:create-seeded-session",
   getSessionTranscript: "pi-gui:get-session-transcript",
+  getSubagentSessionEntries: "pi-gui:get-subagent-session-entries",
   searchTranscriptText: "pi-gui:search-transcript-text",
   getThemeMode: "pi-gui:get-theme-mode",
   getResolvedTheme: "pi-gui:get-resolved-theme",
@@ -341,9 +343,11 @@ export const piDesktopApiIpcBridge = {
   setGraphifyHook: { kind: "invoke", channel: desktopIpc.setGraphifyHook },
   getGraphifyWatchStatus: { kind: "invoke", channel: desktopIpc.getGraphifyWatchStatus },
   setGraphifyWatch: { kind: "invoke", channel: desktopIpc.setGraphifyWatch },
+  readGraphifyGraph: { kind: "invoke", channel: desktopIpc.readGraphifyGraph },
   buildHandoffPayload: { kind: "invoke", channel: desktopIpc.buildHandoffPayload },
   createSeededSession: { kind: "invoke", channel: desktopIpc.createSeededSession },
   getSessionTranscript: { kind: "invoke", channel: desktopIpc.getSessionTranscript },
+  getSubagentSessionEntries: { kind: "invoke", channel: desktopIpc.getSubagentSessionEntries },
   searchTranscriptText: { kind: "invoke", channel: desktopIpc.searchTranscriptText },
   toggleWindowMaximize: { kind: "invoke", channel: desktopIpc.toggleWindowMaximize },
   automationCreate: { kind: "invoke", channel: desktopIpc.automationCreate },
@@ -625,7 +629,6 @@ export interface CreateSeededSessionResult {
 
 export interface SmartCompactSettings {
   readonly summaryModel?: string;
-  readonly segmentationModel?: string;
   readonly minContextPercent?: number;
   readonly minTokenThreshold?: number;
   readonly autoTrigger?: boolean;
@@ -858,9 +861,11 @@ export interface PiDesktopApi {
   setGraphifyHook(workspaceId: string, enable: boolean): Promise<{ success: boolean; message: string }>;
   getGraphifyWatchStatus(workspaceId: string): Promise<GraphifyWatchStatus>;
   setGraphifyWatch(workspaceId: string, enable: boolean): Promise<{ success: boolean; message: string }>;
+  readGraphifyGraph(workspaceId: string): Promise<Record<string, unknown>>;
   buildHandoffPayload(input: BuildHandoffPayloadInput): Promise<HandoffPayload>;
   createSeededSession(input: CreateSeededSessionInput): Promise<CreateSeededSessionResult>;
   getSessionTranscript(workspaceId: string, sessionId: string): Promise<readonly TranscriptMessage[]>;
+  getSubagentSessionEntries(sessionFilePath: string): Promise<readonly unknown[]>;
   searchTranscriptText(sessionKeys: readonly string[], query: string): Promise<readonly TranscriptSearchMatch[]>;
   automationCreate(input: { name: string; prompt: string; schedule: import("./desktop-state").AutomationSchedule; workspaceId: string; model?: { provider: string; modelId: string }; thinkingLevel?: string; enabled?: boolean }): Promise<DesktopAppState>;
   automationUpdate(id: string, patch: Partial<Pick<import("./desktop-state").Automation, "name" | "prompt" | "schedule" | "model" | "thinkingLevel" | "enabled">>): Promise<DesktopAppState>;

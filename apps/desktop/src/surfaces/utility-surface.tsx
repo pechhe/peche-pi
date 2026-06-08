@@ -176,8 +176,9 @@ export function UtilitySurface(props: UtilitySurfaceProps) {
           onToggle={onTogglePrimarySidebar}
         />
       ) : null}
-      {!snapshot.sidebarCollapsed ? (
+      {(
         <Sidebar
+          collapsed={snapshot.sidebarCollapsed}
           resize={sidebarResize}
           activeView={snapshot.activeView}
           selectedWorkspace={selectedWorkspace}
@@ -196,9 +197,7 @@ export function UtilitySurface(props: UtilitySurfaceProps) {
           onOpenExtensions={onOpenExtensions}
           onOpenSettings={onOpenSettings}
           onOpenContext={onOpenContext}
-          onOpenKanban={onOpenKanban}
           queueMode={queueMode}
-          onSetQueueMode={onSetQueueMode}
           onArchiveSession={onArchiveSession}
           onArchiveAllNonRunningSessions={onArchiveAllNonRunningSessions}
           onSelectSession={onSelectSession}
@@ -212,8 +211,9 @@ export function UtilitySurface(props: UtilitySurfaceProps) {
           automations={automations}
           onOpenAutomations={onOpenAutomations}
           onOpenAgents={onOpenAgents}
+          onOpenSearch={globalSearch.open}
         />
-      ) : null}
+      )}
       <main className="main main--skills">{content}</main>
       {import.meta.env.DEV && <Agentation />}
     </div>
@@ -248,6 +248,11 @@ export interface SettingsSurfaceProps {
   readonly setActiveView: (view: AppView) => void;
   readonly setButtonSoundSettings: Dispatch<SetStateAction<import("../button-click-sound").ButtonSoundSettings>>;
   readonly setSmartCompactSettings: Dispatch<SetStateAction<SmartCompactSettings>>;
+  readonly activeView: AppView;
+  readonly queueMode: boolean;
+  readonly onSetActiveView: (view: AppView) => void;
+  readonly onSetQueueMode: (enabled: boolean) => void;
+  readonly onOpenKanban: () => void;
 }
 
 export function SettingsSurface(props: SettingsSurfaceProps) {
@@ -277,6 +282,11 @@ export function SettingsSurface(props: SettingsSurfaceProps) {
     setActiveView,
     setButtonSoundSettings,
     setSmartCompactSettings,
+    activeView,
+    queueMode: settingsQueueMode,
+    onSetActiveView,
+    onSetQueueMode,
+    onOpenKanban,
   } = props;
 
   return (
@@ -355,7 +365,12 @@ export function SettingsSurface(props: SettingsSurfaceProps) {
         }}
         smartCompactSettings={smartCompactSettings}
         cavemanOnLevel={cavemanOnLevel}
+        activeView={activeView}
+        queueMode={settingsQueueMode}
         onSetCavemanOnLevel={onSetCavemanOnLevel}
+        onSetActiveView={onSetActiveView}
+        onSetQueueMode={onSetQueueMode}
+        onOpenKanban={onOpenKanban}
         onSetSmartCompactSettings={(settings) => {
           const appApi = window.piApp;
           if (!appApi) return;

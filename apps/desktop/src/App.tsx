@@ -15,11 +15,14 @@ import {
   type TranscriptMessage,
   type WorktreeRecord,
   type WorkspaceRecord,
+  ZOOM_BASELINE,
+  zoomFactorToPercent,
 } from "./desktop-state";
 import { SessionComposer, type SessionComposerHandle } from "./session-composer";
 import { buildPlanModePrompt, type ComposerMode } from "./composer-mode";
 import { DiffPanel, type DiffPanelFileRequest } from "./diff-panel";
 import { AdvisorPanel } from "./advisor-panel";
+import { SubagentSessionPanel, SubagentSessionOpenProvider } from "./subagent-session-panel";
 import {
   reduceAdvisorState,
   getAdvisorSideEffect,
@@ -36,6 +39,7 @@ import {
 import { deriveModelOnboardingState } from "./model-onboarding";
 import { type ModelSelectorHandle } from "./model-selector";
 import { UtilitySurface, SettingsSurface, SkillsSurface, ExtensionsSurface, AutomationsSurface, ContextSurface, AgentsSurface } from "./surfaces/utility-surface";
+import { GraphSurface } from "./surfaces/graph-surface";
 import { type SettingsSection } from "./settings-view";
 import { NewThreadView } from "./new-thread-view";
 import { KanbanView } from "./kanban-view";
@@ -387,8 +391,8 @@ function forceSessionsArchived(state: DesktopAppState, doneKeys: ReadonlySet<str
   return changed ? { ...state, workspaces } : state;
 }
 
-function canTogglePrimarySidebar(view: AppView | undefined): boolean {
-  return view === "threads" || view === "new-thread" || view === "kanban";
+function canTogglePrimarySidebar(_view: AppView | undefined): boolean {
+  return true;
 }
 
 function useRunningLabel(startedAt: string | undefined) {
@@ -466,9 +470,37 @@ export default function App() {
   );
   const [smartCompactSettings, setSmartCompactSettings] = useState<import("./ipc").SmartCompactSettings>({});
 
+  // Zoom % HUD. Zoom is owned by the main process (webContents.setZoomFactor)
+  // and flows back via snapshot.zoomFactor; we mirror it to a CSS var so chrome
+  // can compensate, and flash a transient % toast on change.
+  const [zoomHudPercent, setZoomHudPercent] = useState<number | null>(null);
+  const prevZoomFactorRef = useRef<number | null>(null);
+  const zoomHudTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Fetch smart compact settings on mount
   // Preload button click audio buffers so first Enter press has no latency
   useEffect(() => { preloadSounds(); }, []);
+
+  useEffect(() => {
+    const factor = snapshot?.zoomFactor ?? ZOOM_BASELINE;
+    document.documentElement.style.setProperty("--zoom-factor", String(factor));
+    const previous = prevZoomFactorRef.current;
+    prevZoomFactorRef.current = factor;
+    if (previous === null || previous === factor) {
+      return;
+    }
+    setZoomHudPercent(zoomFactorToPercent(factor));
+    if (zoomHudTimerRef.current) {
+      clearTimeout(zoomHudTimerRef.current);
+    }
+    zoomHudTimerRef.current = setTimeout(() => setZoomHudPercent(null), 1200);
+  }, [snapshot?.zoomFactor]);
+
+  useEffect(() => () => {
+    if (zoomHudTimerRef.current) {
+      clearTimeout(zoomHudTimerRef.current);
+    }
+  }, []);
 
   useEffect(() => {
     const api = window.piApp;
@@ -498,6 +530,7 @@ export default function App() {
   const sessionComposerRef = useRef<SessionComposerHandle>(null);
   const prevSessionStatusRef = useRef<Map<string, SessionStatus>>(new Map());
   const lastErrorToastKeyRef = useRef("");
+  const [subagentPanel, setSubagentPanel] = useState<{ readonly sessionFile: string; readonly name: string } | null>(null);
   const [showDiffPanel, setShowDiffPanel] = useState(false);
   const [pendingScrollToMessageId, setPendingScrollToMessageId] = useState<string | null>(null);
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
@@ -695,7 +728,7 @@ export default function App() {
     rootWorkspace,
     visibleWorkspaces,
     api: api!,
-    setActiveView: (view) => void updateSnapshot(api!, setSnapshot, async () => ({ ...snapshot!, activeView: view })),
+    setActiveView: (view: AppView) => { if (api) void updateSnapshot(api, setSnapshot, () => api.setActiveView(view)); },
     focusNewThreadComposer: () => { setTimeout(() => newThreadComposerRef.current?.focus(), 0); },
   });
   const newThreadRootWorkspaceId = nt.rootWorkspaceId;
@@ -718,6 +751,8 @@ export default function App() {
   const setPendingNewThreadWorkspaceId = nt.setPendingWorkspaceId;
   const newThreadComposerMode = nt.composerMode;
   const setNewThreadComposerMode = nt.setComposerMode;
+  const newThreadOrchestratorMode = nt.orchestratorMode;
+  const setNewThreadOrchestratorMode = nt.setOrchestratorMode;
   const clearAllDrafts = nt.clearAllDrafts;
 
   const [contextSnapshot, setContextSnapshot] = useState<ContextSnapshot | null>(null);
@@ -891,7 +926,6 @@ export default function App() {
   );
   useSelfHealTranscript(isTranscriptLoading, selectedWorkspace?.id, selectedSession?.id, setSelectedTranscript);
   const selectedSessionCommands = selectedSession ? snapshot?.sessionCommandsBySession[selectedSessionKey] ?? [] : [];
-  const blackholeAvailable = selectedSessionCommands.some((command) => command.name === "blackhole");
   const selectedExtensionUi = selectedSession ? snapshot?.sessionExtensionUiBySession[selectedSessionKey] : undefined;
   const selectedWorkspaceCommandCompatibility = selectedWorkspace
     ? snapshot?.extensionCommandCompatibilityByWorkspace[selectedWorkspace.id] ?? []
@@ -1534,7 +1568,7 @@ export default function App() {
     return true;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- refs pattern: reads sidebarToggleStateRef.current
   }, []);
-  const sidebarToggleShortcutLabel = api ? getDesktopShortcutLabel(api.platform, "B") : "";
+  const sidebarToggleShortcutLabel = api ? getDesktopShortcutLabel(api.platform, "S") : "";
   const modelSelectorRef = useRef<ModelSelectorHandle | null>(null);
   const selectedSessionRef = useRef(selectedSession);
   const selectedWorkspaceRef = useRef(selectedWorkspace);
@@ -1727,6 +1761,7 @@ export default function App() {
     "main",
     showDiffPanel ? "main--with-diff" : "",
     advisorState.visible ? "main--with-advisor" : "",
+    subagentPanel ? "main--with-subagent" : "",
     isTerminalVisibleForSelectedThread ? "main--with-terminal" : "",
     showTerminalTakeover ? "main--terminal-takeover" : "",
   ].filter(Boolean).join(" ");
@@ -1981,10 +2016,15 @@ export default function App() {
     setNewThreadModelId(undefined);
     setNewThreadThinkingLevel(undefined);
     setNewThreadComposerMode("build");
+    setNewThreadOrchestratorMode(false);
     setNewThreadIsChat(false);
     const startedInPlanMode = newThreadComposerMode === "plan";
+    const startWithOrchestrator = newThreadOrchestratorMode;
     void updateSnapshot(api, setSnapshot, () => api.startChat(input))
       .then((state) => {
+        if (startWithOrchestrator) {
+          void updateSnapshot(api, setSnapshot, () => api.setSubagentSettings({ orchestratorMode: true }));
+        }
         if (startedInPlanMode) {
           const newKey = `${state.selectedWorkspaceId}:${state.selectedSessionId}`;
           setComposerModeBySession((prev) => ({ ...prev, [newKey]: "plan" }));
@@ -2073,11 +2113,16 @@ export default function App() {
     setNewThreadModelId(undefined);
     setNewThreadThinkingLevel(undefined);
     setNewThreadComposerMode("build");
+    setNewThreadOrchestratorMode(false);
     setNewThreadEnvironment("local");
     const startedInPlanMode = newThreadComposerMode === "plan";
+    const startWithOrchestrator = newThreadOrchestratorMode;
     void updateSnapshot(api, setSnapshot, () =>
       api.startThread(input),
     ).then((state) => {
+      if (startWithOrchestrator) {
+        void updateSnapshot(api, setSnapshot, () => api.setSubagentSettings({ orchestratorMode: true }));
+      }
       if (startedInPlanMode) {
         const newKey = `${state.selectedWorkspaceId}:${state.selectedSessionId}`;
         setComposerModeBySession((prev) => ({ ...prev, [newKey]: "plan" }));
@@ -2143,6 +2188,10 @@ export default function App() {
     if (result.workspaceId && result.sessionId) {
       if (result.transcriptMessageId) {
         scrollHandledRef.current = null;
+        // Suppress the load-time pin-to-bottom so the new session doesn't
+        // flash to the bottom before our jump can position it on the match.
+        timelineScroll.pinnedToBottomRef.current = false;
+        timelineScroll.preserveBottomOnNextPaneResizeRef.current = false;
         setPendingScrollToMessageId(result.transcriptMessageId);
         setHighlightQuery(queryAtSelect);
       }
@@ -2229,6 +2278,11 @@ export default function App() {
           setActiveView={setActiveView}
           setButtonSoundSettings={setButtonSoundSettings}
           setSmartCompactSettings={setSmartCompactSettings}
+          activeView={snapshot.activeView}
+          queueMode={snapshot.queueMode}
+          onSetActiveView={setActiveView}
+          onSetQueueMode={setQueueMode}
+          onOpenKanban={openKanbanView}
         />
       } />
     );
@@ -2320,6 +2374,17 @@ export default function App() {
     );
   }
 
+  if (snapshot.activeView === "graph") {
+    return (
+      <UtilitySurface {...utilityShellProps} content={
+        <GraphSurface
+          api={api!}
+          rootWorkspaceId={rootWorkspace?.id}
+        />
+      } />
+    );
+  }
+
   const shellClassName = `shell${snapshot.sidebarCollapsed ? " shell--sidebar-collapsed" : ""}${sidebarResize.isResizing ? " shell--sidebar-resizing" : ""}`;
   const shellStyle = snapshot.sidebarCollapsed
     ? undefined
@@ -2345,15 +2410,9 @@ export default function App() {
       {shortcutsSheetOpen ? (
         <ShortcutsSheet platform={api.platform} onClose={() => setShortcutsSheetOpen(false)} />
       ) : null}
-      {primarySidebarToggleVisible ? (
-        <SidebarToggleButton
-          collapsed={snapshot.sidebarCollapsed}
-          shortcutLabel={sidebarToggleShortcutLabel}
-          onToggle={handleTogglePrimarySidebar}
-        />
-      ) : null}
-      {!snapshot.sidebarCollapsed ? (
+      {(
         <Sidebar
+          collapsed={snapshot.sidebarCollapsed}
           resize={sidebarResize}
           activeView={snapshot.activeView}
           selectedWorkspace={selectedWorkspace}
@@ -2372,9 +2431,7 @@ export default function App() {
           onOpenExtensions={openExtensions}
           onOpenSettings={openSettings}
           onOpenContext={openContext}
-          onOpenKanban={openKanbanView}
-            queueMode={snapshot.queueMode}
-            onSetQueueMode={setQueueMode}
+          queueMode={snapshot.queueMode}
           onArchiveSession={handleArchiveSession}
             onArchiveAllNonRunningSessions={handleArchiveAllNonRunningSessions}
           onSelectSession={handleSelectSession}
@@ -2388,8 +2445,9 @@ export default function App() {
           automations={snapshot.automations ?? []}
           onOpenAutomations={openAutomations}
           onOpenAgents={openAgents}
+          onOpenSearch={globalSearch.open}
         />
-      ) : null}
+      )}
 
       <main className={mainClassName}>
         <Topbar
@@ -2418,6 +2476,7 @@ export default function App() {
           onSetTranscriptVerbose={(enabled) => {
             void updateSnapshot(api, setSnapshot, () => api.setTranscriptVerbose(enabled));
           }}
+          onOpenGraph={() => setActiveView("graph")}
         />
 
         {showTerminalTakeover ? (
@@ -2460,6 +2519,8 @@ export default function App() {
               onSetThinking={setNewThreadThinkingLevel}
               onSetCavemanLevel={settingsHandlers.handleSetDefaultCavemanLevel}
               onSetComposerMode={setNewThreadComposerMode}
+              orchestratorMode={newThreadOrchestratorMode}
+              onToggleOrchestrator={() => setNewThreadOrchestratorMode((prev) => !prev)}
               onOpenModelSettings={(section) => openSettings(newThreadWorkspace?.id, section)}
               onComposerKeyDown={handleNewThreadComposerKeyDown}
               onComposerPaste={handleNewThreadComposerPaste}
@@ -2499,6 +2560,7 @@ export default function App() {
               <LoadingBar loading={pendingThreadStart ? false : isTranscriptLoading} />
               <div className="conversation conversation--thread">
                 <SubagentLiveProvider widgets={selectedExtensionUi?.widgets ?? []}>
+                <SubagentSessionOpenProvider value={(sessionFile, name) => setSubagentPanel({ sessionFile, name })}>
                 <ConversationTimeline
                   transcript={threadViewTranscript}
                   isTranscriptLoading={pendingThreadStart ? false : isTranscriptLoading}
@@ -2520,6 +2582,7 @@ export default function App() {
                   highlightQuery={highlightedMessageId ? highlightQuery : undefined}
                   liveEditStats={liveEditStats}
                 />
+                </SubagentSessionOpenProvider>
                 </SubagentLiveProvider>
               </div>
             </section>
@@ -2540,7 +2603,7 @@ export default function App() {
               modelOnboarding={selectedSessionModelOnboarding}
               selectedSessionCommands={selectedSessionCommands}
               selectedWorkspaceCommandCompatibility={selectedWorkspaceCommandCompatibility}
-              blackholeAvailable={blackholeAvailable}
+              smartCompactSettings={smartCompactSettings}
               snapshotComposerAttachments={snapshotComposerAttachments}
               queuedMessages={queuedComposerMessages}
               editingQueuedMessageId={editingQueuedMessageId}
@@ -2665,6 +2728,14 @@ export default function App() {
             refreshNonce={diffRefreshNonce}
           />
         ) : null}
+        {subagentPanel ? (
+          <SubagentSessionPanel
+            sessionFile={subagentPanel.sessionFile}
+            name={subagentPanel.name}
+            api={api}
+            onClose={() => setSubagentPanel(null)}
+          />
+        ) : null}
         {advisorState.visible ? (
           <AdvisorPanel
             visible={advisorState.visible}
@@ -2695,6 +2766,20 @@ export default function App() {
           />
         ) : null}
       </main>
+      {/* Rendered last so its -webkit-app-region:no-drag wins over the topbar's
+          drag region when the sidebar is collapsed. Electron computes draggable
+          regions in DOM order, not z-index, so an earlier no-drag toggle gets
+          re-covered by the later topbar drag region and swallows the click. */}
+      {primarySidebarToggleVisible ? (
+        <SidebarToggleButton
+          collapsed={snapshot.sidebarCollapsed}
+          shortcutLabel={sidebarToggleShortcutLabel}
+          onToggle={handleTogglePrimarySidebar}
+        />
+      ) : null}
+      {zoomHudPercent !== null ? (
+        <div className="zoom-hud" role="status" aria-live="polite">{zoomHudPercent}%</div>
+      ) : null}
       <ImageLightbox />
       {import.meta.env.DEV && <Agentation />}
     </div>

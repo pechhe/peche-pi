@@ -290,6 +290,15 @@ export class SessionSupervisor {
   }
 
   /**
+   * Read raw session entries from an arbitrary `.jsonl` file on disk. Used by
+   * the desktop subagent panel to render a read-only timeline for a child
+   * subagent session that this supervisor does not manage as a runtime.
+   */
+  readSessionFileEntries(sessionFilePath: string): unknown[] {
+    return SessionManager.open(sessionFilePath).getEntries() as unknown[];
+  }
+
+  /**
    * Reconstruct a loop's iterations from the active session's `parentSession`
    * ancestry chain. Returns `null` when the active session is not a loop
    * iteration (no `ralph_loop` marker), so callers can fall back to a plain

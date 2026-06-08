@@ -58,7 +58,12 @@ interface SettingsViewProps {
   readonly smartCompactSettings: import("./ipc").SmartCompactSettings;
   readonly onSetSmartCompactSettings: (settings: Partial<import("./ipc").SmartCompactSettings>) => void;
   readonly cavemanOnLevel: CavemanLevel;
+  readonly activeView: string;
+  readonly queueMode: boolean;
   readonly onSetCavemanOnLevel: (level: CavemanLevel) => void;
+  readonly onSetActiveView: (view: import("./desktop-state").AppView) => void;
+  readonly onSetQueueMode: (enabled: boolean) => void;
+  readonly onOpenKanban: () => void;
 }
 
 export function SettingsView({
@@ -107,7 +112,12 @@ export function SettingsView({
   smartCompactSettings,
   onSetSmartCompactSettings,
   cavemanOnLevel,
+  activeView,
+  queueMode,
   onSetCavemanOnLevel,
+  onSetActiveView,
+  onSetQueueMode,
+  onOpenKanban,
 }: SettingsViewProps) {
   if (!workspace && section !== "general" && section !== "notifications" && section !== "appearance" && section !== "sounds") {
     return (
@@ -170,7 +180,12 @@ export function SettingsView({
               smartCompactSettings={smartCompactSettings}
               onSetSmartCompactSettings={onSetSmartCompactSettings}
               cavemanOnLevel={cavemanOnLevel}
+              activeView={activeView}
+              queueMode={queueMode}
               onSetCavemanOnLevel={onSetCavemanOnLevel}
+              onSetActiveView={onSetActiveView}
+              onSetQueueMode={onSetQueueMode}
+              onOpenKanban={onOpenKanban}
             />
           ) : null}
 

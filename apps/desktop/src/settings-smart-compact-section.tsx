@@ -28,11 +28,10 @@ export function SettingsSmartCompactSection({
   }, [settings]);
 
   const summaryModelLabel = settings.summaryModel ?? "Session default";
-  const _segmentationModelLabel = settings.segmentationModel ?? "Same as summary";
 
   return (
     <SettingsGroup title="Smart compact" description="Configure automatic conversation compaction to manage context window usage.">
-      <SettingsRow title="Summary model" description="Model used for generating compaction summaries.">
+      <SettingsRow title="Summary model" description="Model used for handoff and analysis summaries. (Conversation compaction itself uses the session's own model.)">
         {modelOptions.length === 0 ? (
           <span className="settings-info-row__value">{summaryModelLabel}</span>
         ) : (
@@ -53,7 +52,7 @@ export function SettingsSmartCompactSection({
                   key={modelString}
                   type="button"
                   aria-pressed={isActive}
-                  onClick={() => onSetSettings({ summaryModel: modelString, segmentationModel: modelString })}
+                  onClick={() => onSetSettings({ summaryModel: modelString })}
                 >
                   {option.label}
                 </button>

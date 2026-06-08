@@ -33,7 +33,7 @@ import type {
 import type { ModelSelectorHandle } from "./model-selector";
 import type { ModelOnboardingState, ModelOnboardingSettingsSection } from "./model-onboarding";
 import type { SettingsSection } from "./settings-view";
-import type { CavemanLevel, PiDesktopApi } from "./ipc";
+import type { CavemanLevel, PiDesktopApi, SmartCompactSettings } from "./ipc";
 import { useSlashMenu } from "./hooks/use-slash-menu";
 import { useMentionMenu } from "./hooks/use-mention-menu";
 import { playClick } from "./button-click-sound";
@@ -72,7 +72,7 @@ interface SessionComposerProps {
 
   readonly selectedSessionCommands: readonly RuntimeCommandRecord[];
   readonly selectedWorkspaceCommandCompatibility: readonly ExtensionCommandCompatibilityRecord[];
-  readonly blackholeAvailable: boolean;
+  readonly smartCompactSettings: SmartCompactSettings;
 
   readonly snapshotComposerAttachments: readonly ComposerAttachment[];
   readonly queuedMessages: readonly QueuedComposerMessage[];
@@ -148,7 +148,7 @@ const SessionComposerInner = forwardRef<SessionComposerHandle, SessionComposerPr
     modelOnboarding,
     selectedSessionCommands,
     selectedWorkspaceCommandCompatibility,
-    blackholeAvailable,
+    smartCompactSettings,
     snapshotComposerAttachments,
     queuedMessages,
     editingQueuedMessageId,
@@ -559,7 +559,7 @@ const SessionComposerInner = forwardRef<SessionComposerHandle, SessionComposerPr
       composerMode={composerMode}
       orchestratorMode={orchestratorMode}
       onToggleOrchestrator={onToggleOrchestrator}
-      blackholeAvailable={blackholeAvailable}
+      smartCompactSettings={smartCompactSettings}
       onClearSlashCommand={slashMenu.resetSlashUi}
       onComposerKeyDown={handleComposerKeyDown}
       onComposerPaste={handleComposerPaste}
@@ -656,7 +656,7 @@ function sameSessionComposerProps(
     previous.modelOnboarding === next.modelOnboarding &&
     previous.selectedSessionCommands === next.selectedSessionCommands &&
     previous.selectedWorkspaceCommandCompatibility === next.selectedWorkspaceCommandCompatibility &&
-    previous.blackholeAvailable === next.blackholeAvailable &&
+    previous.smartCompactSettings === next.smartCompactSettings &&
     sameAttachments(previous.snapshotComposerAttachments, next.snapshotComposerAttachments) &&
     sameQueuedMessages(previous.queuedMessages, next.queuedMessages) &&
     previous.editingQueuedMessageId === next.editingQueuedMessageId &&

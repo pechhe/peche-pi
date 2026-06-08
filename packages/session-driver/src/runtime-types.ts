@@ -132,11 +132,31 @@ export interface RuntimeLoginPrompt {
   readonly allowEmpty?: boolean;
 }
 
+export interface RuntimeLoginDeviceCodeInfo {
+  readonly userCode: string;
+  readonly verificationUri: string;
+  readonly intervalSeconds?: number;
+  readonly expiresInSeconds?: number;
+}
+
+export interface RuntimeLoginSelectOption {
+  readonly id: string;
+  readonly label: string;
+}
+
+export interface RuntimeLoginSelectPrompt {
+  readonly message: string;
+  readonly options: readonly RuntimeLoginSelectOption[];
+}
+
 export interface RuntimeLoginCallbacks {
   readonly onAuth: (info: RuntimeLoginAuthInfo) => void | Promise<void>;
+  readonly onDeviceCode: (info: RuntimeLoginDeviceCodeInfo) => void;
   readonly onPrompt: (prompt: RuntimeLoginPrompt) => Promise<string>;
   readonly onProgress?: (message: string) => void | Promise<void>;
   readonly onManualCodeInput?: () => Promise<string>;
+  /** Show an interactive selector and return the selected option id, or undefined on cancel. */
+  readonly onSelect: (prompt: RuntimeLoginSelectPrompt) => Promise<string | undefined>;
   readonly signal?: AbortSignal;
 }
 

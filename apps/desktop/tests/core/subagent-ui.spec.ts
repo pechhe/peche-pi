@@ -87,13 +87,17 @@ test("subagent tool call renders a first-class card, not a generic tool row", as
     await expect(card).toBeVisible();
     // It must NOT fall back to the generic tool row.
     await expect(window.locator(".timeline-tool")).toHaveCount(0);
+    // Agent identity: type label + agent name + kind theme.
+    await expect(card).toHaveAttribute("data-agent-kind", "scout");
+    await expect(card.locator(".subagent-card__type")).toHaveText("Scout");
     await expect(card.locator(".subagent-card__name")).toHaveText("auth-scout");
-    await expect(card.locator(".subagent-card__agent")).toHaveText("scout");
     await expect(card.locator(".subagent-card__status")).toHaveText("done");
+    // Second line describes what the agent did, not its name.
+    await expect(card.locator(".subagent-card__objective")).toHaveText("Found 3 auth files.");
 
-    // Expanding reveals the result summary.
-    await card.locator(".subagent-card__row-head").click();
-    await expect(card.locator(".subagent-card__pre", { hasText: "Found 3 auth files." })).toBeVisible();
+    // View instructions reveals the prompt sent to the agent.
+    await card.locator(".subagent-card__action", { hasText: "View instructions" }).click();
+    await expect(card.locator(".subagent-card__pre", { hasText: "Find the auth files" })).toBeVisible();
   } finally {
     await harness.close();
   }
@@ -153,11 +157,10 @@ test("a batch subagent launch renders one row per child", async () => {
       },
     });
 
-    const card = window.getByTestId("subagent-card");
-    await expect(card).toBeVisible();
-    await expect(card.locator(".subagent-card__heading-text")).toHaveText("Spawn 2 agents");
-    await expect(card.locator(".subagent-card__name")).toHaveText(["auth-scout", "diff-reviewer"]);
-    await expect(card.locator(".subagent-card__status")).toHaveText(["done", "failed"]);
+    const cards = window.getByTestId("subagent-card");
+    await expect(cards).toHaveCount(2);
+    await expect(cards.locator(".subagent-card__name")).toHaveText(["auth-scout", "diff-reviewer"]);
+    await expect(cards.locator(".subagent-card__status")).toHaveText(["done", "failed"]);
   } finally {
     await harness.close();
   }
@@ -219,8 +222,9 @@ test("a running subagent card shows live activity from the widget feed", async (
     await expect(card).toBeVisible();
     await expect(card.locator(".subagent-card__status")).toHaveText("running");
     // The card itself becomes the live agent view: spinner + activity + stats.
-    await expect(card.locator(".subagent-card__row--live")).toBeVisible();
-    await expect(card.locator(".subagent-card__activity")).toHaveText("reading…");
+    await expect(card.locator(".subagent-card__spinner")).toBeVisible();
+    // Live activity drives the objective line, not the static name.
+    await expect(card.locator(".subagent-card__objective")).toHaveText("reading…");
     await expect(card.locator(".subagent-card__stat").first()).toHaveText("3 tool uses");
   } finally {
     await harness.close();

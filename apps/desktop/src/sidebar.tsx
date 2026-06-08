@@ -14,9 +14,9 @@ import {
 import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { AppView, Automation, ChatRecord, SessionRecord, WorkspaceRecord, WorktreeRecord } from "./desktop-state";
-import { ChatIcon, ChevronDownIcon, ComposeIcon, ContextIcon, DoneIcon, ExtensionIcon, AutomationIcon, AutomationRunIcon, FolderIcon, ProjectIcon, RestoreIcon, SettingsIcon, SkillIcon, SparkIcon, WorktreeIcon } from "./icons";
+import { ChatIcon, ChevronDownIcon, ComposeIcon, ContextIcon, DoneIcon, ExtensionIcon, AutomationIcon, AutomationRunIcon, FolderIcon, ProjectIcon, RestoreIcon, SearchIcon, SettingsIcon, SkillIcon, SparkIcon, WorktreeIcon } from "./icons";
 import { WorkingSpinner } from "./working-label";
-import type { PiDesktopApi } from "./ipc";
+import { getDesktopShortcutLabel, type PiDesktopApi } from "./ipc";
 import { formatRelativeTime } from "./string-utils";
 import { playDoneSound } from "./done-sound";
 import { fireDoneCelebration } from "./done-celebration";
@@ -231,6 +231,7 @@ function MovingSidebarHighlight({
 }
 
 interface SidebarProps {
+  readonly collapsed: boolean;
   readonly resize: SidebarResize;
   readonly activeView: AppView;
   readonly selectedWorkspace: WorkspaceRecord | undefined;
@@ -253,9 +254,7 @@ interface SidebarProps {
   readonly onOpenExtensions: (workspaceId?: string) => void;
   readonly onOpenContext: (workspaceId?: string) => void;
   readonly onOpenSettings: (workspaceId?: string) => void;
-  readonly onOpenKanban: () => void;
   readonly queueMode: boolean;
-  readonly onSetQueueMode: (enabled: boolean) => void;
   readonly onArchiveSession: (target: { workspaceId: string; sessionId: string }) => void;
   readonly onArchiveAllNonRunningSessions: (workspaceId: string, olderThanMs?: number) => void;
   readonly onSelectSession: (target: { workspaceId: string; sessionId: string }) => void;
@@ -269,10 +268,12 @@ interface SidebarProps {
   readonly automations: readonly Automation[];
   readonly onOpenAutomations: (workspaceId?: string) => void;
   readonly onOpenAgents: () => void;
+  readonly onOpenSearch: () => void;
 }
 
 export function Sidebar(props: SidebarProps) {
   const {
+    collapsed,
     resize,
     activeView,
     selectedWorkspace,
@@ -291,9 +292,7 @@ export function Sidebar(props: SidebarProps) {
     onOpenExtensions,
     onOpenContext,
     onOpenSettings,
-    onOpenKanban,
     queueMode,
-    onSetQueueMode,
     onArchiveSession,
     onArchiveAllNonRunningSessions,
     onSelectSession,
@@ -306,6 +305,7 @@ export function Sidebar(props: SidebarProps) {
     pendingSidebarSelection,
     onOpenAutomations,
     onOpenAgents,
+    onOpenSearch,
   } = props;
 
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -357,7 +357,7 @@ export function Sidebar(props: SidebarProps) {
   const activeGroup = activeId ? rootGroups.find((g) => g.rootWorkspace.id === activeId) : undefined;
 
   return (
-    <aside className="sidebar">
+    <aside className="sidebar" aria-hidden={collapsed} inert={collapsed || undefined}>
       <div
         className={`sidebar__resize-handle ${resize.isResizing ? "sidebar__resize-handle--active" : ""}`}
         onPointerDown={resize.onPointerDown}
@@ -366,6 +366,15 @@ export function Sidebar(props: SidebarProps) {
         aria-orientation="vertical"
       />
       <div className="sidebar__top">
+        <button
+          className="sidebar__search"
+          type="button"
+          onClick={() => { playButtonClick(); onOpenSearch(); }}
+        >
+          <SearchIcon />
+          <span className="sidebar__search-label">Search</span>
+          <kbd className="sidebar__search-shortcut">{getDesktopShortcutLabel(api.platform, "K")}</kbd>
+        </button>
         <MovingSidebarHighlight className="sidebar__nav" itemSelector=".sidebar__nav-item">
           <button
             className={`sidebar__nav-item ${activeView === "agents" ? "sidebar__nav-item--active" : ""}`}
@@ -422,32 +431,6 @@ export function Sidebar(props: SidebarProps) {
         <div className="section__head">
           <div className="section__title-row">
             <ProjectIcon /><span className="section__title">{queueMode ? "Queue" : activeView === "kanban" ? "Kanban" : "Projects"}</span>
-            <div className="project-view-toggle" role="group" aria-label="Project view mode">
-              <button
-                className={`project-view-toggle__button ${activeView === "threads" && !queueMode ? "project-view-toggle__button--active" : ""}`}
-                type="button"
-                onClick={() => { playButtonClick(); onSetQueueMode(false); _onSetActiveView("threads"); }}
-                aria-label="Threads view"
-              >
-                Threads
-              </button>
-              <button
-                className={`project-view-toggle__button ${queueMode ? "project-view-toggle__button--active" : ""}`}
-                type="button"
-                onClick={() => { playButtonClick(); onSetQueueMode(true); _onSetActiveView("threads"); }}
-                aria-label="Queue view"
-              >
-                Queue
-              </button>
-              <button
-                className={`project-view-toggle__button ${activeView === "kanban" ? "project-view-toggle__button--active" : ""}`}
-                type="button"
-                onClick={() => { playButtonClick(); onSetQueueMode(false); onOpenKanban(); }}
-                aria-label="Kanban view"
-              >
-                Kanban
-              </button>
-            </div>
           </div>
           <div className="section__tools">
             <button

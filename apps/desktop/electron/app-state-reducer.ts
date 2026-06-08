@@ -36,6 +36,7 @@ import type {
 
 export type DesktopAction =
   | { readonly type: "settings/setSidebarCollapsed"; readonly sidebarCollapsed: boolean }
+  | { readonly type: "settings/setZoomFactor"; readonly zoomFactor: number }
   | { readonly type: "settings/setQueueMode"; readonly queueMode: boolean }
   | { readonly type: "settings/setEnableTransparency"; readonly enableTransparency: boolean }
   | { readonly type: "settings/setTranscriptVerbose"; readonly transcriptVerbose: boolean }
@@ -77,6 +78,12 @@ export function reduce(state: DesktopAppState, action: DesktopAction): DesktopAp
         return state;
       }
       return bump({ ...state, sidebarCollapsed: action.sidebarCollapsed });
+    }
+    case "settings/setZoomFactor": {
+      if (state.zoomFactor === action.zoomFactor) {
+        return state;
+      }
+      return bump({ ...state, zoomFactor: action.zoomFactor });
     }
     case "settings/setQueueMode": {
       if (state.queueMode === action.queueMode) {

@@ -3,7 +3,7 @@ import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
 import type { ComposerAttachment, NewThreadEnvironment, WorkspaceRecord } from "./desktop-state";
 import type { ComposerMode } from "./composer-mode";
 import { ComposerControlRow } from "./composer-control-row";
-import { ArrowUpIcon, PiLogoMark } from "./icons";
+import { ArrowUpIcon, ChevronDownIcon, MonitorIcon, PiLogoMark, WorktreeIcon } from "./icons";
 import { useButtonSound } from "./use-button-sound";
 import { playClick } from "./button-click-sound";
 import {
@@ -53,6 +53,8 @@ interface NewThreadViewProps {
   readonly onSetThinking: (level: string) => void;
   readonly onSetCavemanLevel: (level: CavemanLevel) => void;
   readonly onSetComposerMode: (mode: ComposerMode) => void;
+  readonly orchestratorMode?: boolean;
+  readonly onToggleOrchestrator?: () => void;
   readonly onOpenModelSettings: (section: ModelOnboardingSettingsSection) => void;
   readonly onComposerKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
   readonly onComposerPaste: (event: ClipboardEvent<HTMLDivElement>) => void;
@@ -99,6 +101,8 @@ export function NewThreadView({
   onSetThinking,
   onSetCavemanLevel,
   onSetComposerMode,
+  orchestratorMode,
+  onToggleOrchestrator,
   onOpenModelSettings,
   onComposerKeyDown,
   onComposerPaste,
@@ -210,6 +214,40 @@ export function NewThreadView({
           <h1 className="new-thread__title">{isChat ? "What\u2019s up?" : "Let\u2019s build"}</h1>
         </div>
 
+        {!isChat ? (
+          <div className="new-thread__options">
+            <div className="new-thread__option">
+              <span className="new-thread__option-label">Project</span>
+              <span className="new-thread__project-pill">
+                <span className="new-thread__project-dot" aria-hidden="true" />
+                <span className="new-thread__project-name">{workspace?.name ?? "\u2014"}</span>
+                <ChevronDownIcon />
+              </span>
+            </div>
+            <div className="new-thread__option">
+              <span className="new-thread__option-label">Environment</span>
+              <span className="new-thread__env-group">
+                <button
+                  className={`new-thread__env ${environment === "local" ? "new-thread__env--active" : ""}`}
+                  type="button"
+                  onClick={() => onSelectEnvironment("local")}
+                >
+                  <MonitorIcon />
+                  <span>Local</span>
+                </button>
+                <button
+                  className={`new-thread__env ${environment === "worktree" ? "new-thread__env--active" : ""}`}
+                  type="button"
+                  onClick={() => onSelectEnvironment("worktree")}
+                >
+                  <WorktreeIcon />
+                  <span>Worktree</span>
+                </button>
+              </span>
+            </div>
+          </div>
+        ) : null}
+
         <div className="new-thread__composer composer">
           {attachments.length > 0 ? (
             <div className="composer__attachment-shelf">
@@ -271,39 +309,14 @@ export function NewThreadView({
                   onSetThinking={onSetThinking}
                   onSetCavemanLevel={onSetCavemanLevel}
                   onSetComposerMode={onSetComposerMode}
+                  orchestratorMode={orchestratorMode}
+                  onToggleOrchestrator={onToggleOrchestrator}
                   onSubmit={submitDraft}
                 />
               )}
             />
           </div>
         </div>
-        {!isChat ? (
-          <div className="new-thread__options">
-            <div className="new-thread__option">
-              <span className="new-thread__option-label">Project</span>
-              <span className="new-thread__project-name">{workspace?.name ?? "—"}</span>
-            </div>
-            <div className="new-thread__option">
-              <span className="new-thread__option-label">Environment</span>
-              <span className="new-thread__environment-group">
-                <button
-                  className={`new-thread__environment ${environment === "local" ? "new-thread__environment--active" : ""}`}
-                  type="button"
-                  onClick={() => onSelectEnvironment("local")}
-                >
-                  <span>Local</span>
-                </button>
-                <button
-                  className={`new-thread__environment ${environment === "worktree" ? "new-thread__environment--active" : ""}`}
-                  type="button"
-                  onClick={() => onSelectEnvironment("worktree")}
-                >
-                  <span>Worktree</span>
-                </button>
-              </span>
-            </div>
-          </div>
-        ) : null}
       </div>
     </section>
   );
@@ -323,6 +336,8 @@ interface NewThreadComposerFooterProps {
   readonly onSetThinking: (level: string) => void;
   readonly onSetCavemanLevel: (level: CavemanLevel) => void;
   readonly onSetComposerMode: (mode: ComposerMode) => void;
+  readonly orchestratorMode?: boolean;
+  readonly onToggleOrchestrator?: () => void;
   readonly onSubmit: () => void;
 }
 
@@ -340,6 +355,8 @@ function NewThreadComposerFooter({
   onSetThinking,
   onSetCavemanLevel,
   onSetComposerMode,
+  orchestratorMode,
+  onToggleOrchestrator,
   onSubmit,
 }: NewThreadComposerFooterProps) {
   const submitButtonSound = useButtonSound({ variant: "click", disabled: !hasContent || modelOnboarding.requiresModelSelection });
@@ -366,6 +383,8 @@ function NewThreadComposerFooter({
               onSetModel={onSetModel}
               onSetThinking={onSetThinking}
               onSetCavemanLevel={onSetCavemanLevel}
+              orchestratorMode={orchestratorMode}
+              onToggleOrchestrator={onToggleOrchestrator}
             />
           </div>
 

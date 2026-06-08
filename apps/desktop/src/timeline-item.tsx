@@ -59,7 +59,9 @@ function HighlightQuery({ query, children }: { readonly query: string; readonly 
     }
   }, [query]);
 
-  return <span ref={containerRef}>{children}</span>;
+  // display:contents keeps this wrapper layout-neutral so it can wrap block-level
+  // rows (tool cards, activity lines) without disturbing their flow.
+  return <span ref={containerRef} style={{ display: "contents" }}>{children}</span>;
 }
 
 // Tracks user-message ids whose entrance animation has already played. The
@@ -127,6 +129,7 @@ export const TimelineItem = memo(function TimelineItem({
   readonly highlightQuery?: string;
   readonly liveEditStats?: ReadonlyMap<string, LiveEditStats>;
 }) {
+  const content = (() => {
   switch (item.kind) {
     case "message":
       return <TimelineMessage item={item} streamingAssistantId={streamingAssistantId} onStreamingCaughtUp={onStreamingCaughtUp} highlightQuery={highlightQuery} />;
@@ -187,6 +190,13 @@ export const TimelineItem = memo(function TimelineItem({
     default:
       return null;
   }
+  })();
+  // message kind highlights internally (it must skip the streaming case); wrap
+  // every other searchable row here so its label/detail/text get marked too.
+  if (highlightQuery && item.kind !== "message") {
+    return <HighlightQuery query={highlightQuery}>{content}</HighlightQuery>;
+  }
+  return content;
 }, (prev, next) => {
   // The main process re-clones every transcript message before pushing to
   // the renderer, so identity comparison is useless. Compare the fields that
@@ -198,6 +208,7 @@ export const TimelineItem = memo(function TimelineItem({
   if (prev.onUndoEdits !== next.onUndoEdits) return false;
   if (prev.onRedoEdits !== next.onRedoEdits) return false;
   if (prev.onStreamingCaughtUp !== next.onStreamingCaughtUp) return false;
+  if (prev.highlightQuery !== next.highlightQuery) return false;
   if (prev.item.kind === "reasoning" && next.item.kind === "reasoning") {
     const prevExpanded = prev.expandedReasoningIds?.has(prev.item.id) ?? false;
     const nextExpanded = next.expandedReasoningIds?.has(next.item.id) ?? false;
@@ -751,7 +762,7 @@ function TimelineMessage({
   readonly highlightQuery?: string;
 }) {
   if (item.role === "user") {
-    return <UserTimelineMessage item={item} />;
+    return <UserTimelineMessage item={item} highlightQuery={highlightQuery} />;
   }
 
   if (item.role === "branchSummary" || item.role === "compactionSummary") {
@@ -782,7 +793,7 @@ function splitPlanModePrompt(text: string): { instructions: string; prompt: stri
   return { instructions, prompt };
 }
 
-function UserTimelineMessage({ item }: { readonly item: SessionTranscriptMessage }) {
+function UserTimelineMessage({ item, highlightQuery }: { readonly item: SessionTranscriptMessage; readonly highlightQuery?: string }) {
   const [justSent, setJustSent] = useState(() => isFreshUserBubble(item));
   const [planInstructionsExpanded, setPlanInstructionsExpanded] = useState(false);
   const planPrompt = splitPlanModePrompt(item.text);
@@ -860,8 +871,10 @@ function UserTimelineMessage({ item }: { readonly item: SessionTranscriptMessage
                 </div>
               ) : null}
             </div>
-            <MessageMarkdown text={planPrompt.prompt} />
+            {highlightQuery ? <HighlightQuery query={highlightQuery}><MessageMarkdown text={planPrompt.prompt} /></HighlightQuery> : <MessageMarkdown text={planPrompt.prompt} />}
           </>
+        ) : highlightQuery ? (
+          <HighlightQuery query={highlightQuery}><MessageMarkdown text={item.text} /></HighlightQuery>
         ) : (
           <MessageMarkdown text={item.text} />
         )}

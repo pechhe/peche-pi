@@ -16,7 +16,7 @@ import { QueuedComposerMessages } from "./queued-composer-messages";
 import { ModelOnboardingNoticeBanner } from "./model-onboarding-notice";
 import type { ModelOnboardingState, ModelOnboardingSettingsSection } from "./model-onboarding";
 import type { ModelSelectorHandle } from "./model-selector";
-import type { CavemanLevel } from "./ipc";
+import type { CavemanLevel, SmartCompactSettings } from "./ipc";
 import { QuestionnaireComposer } from "./questionnaire-composer";
 import { playClick } from "./button-click-sound";
 
@@ -64,7 +64,7 @@ interface ComposerPanelProps {
   readonly composerMode: ComposerMode;
   readonly orchestratorMode?: boolean;
   readonly onToggleOrchestrator?: () => void;
-  readonly blackholeAvailable: boolean;
+  readonly smartCompactSettings: SmartCompactSettings;
   readonly slashSections: readonly ComposerSlashCommandSection[];
   readonly slashOptions: readonly ComposerSlashOption[];
   readonly selectedSlashCommand?: ComposerSlashCommand;
@@ -146,7 +146,7 @@ export function ComposerPanel({
   composerMode,
   orchestratorMode,
   onToggleOrchestrator,
-  blackholeAvailable,
+  smartCompactSettings,
   slashSections,
   slashOptions,
   selectedSlashCommand,
@@ -202,7 +202,17 @@ export function ComposerPanel({
   const contextPercent = contextUsage
     ? Math.min(100, Math.max(0, (contextUsage.usedTokens / contextUsage.contextWindow) * 100))
     : 0;
-  const compactThresholdTokens = contextUsage ? 81000 : undefined;
+  // Auto-compact indicator must mirror the real trigger in app-store's
+  // maybeAutoCompact: fire at minContextPercent of the window OR at
+  // minTokenThreshold tokens (whichever is lower), unless auto-trigger is off.
+  const autoCompactEnabled = smartCompactSettings.autoTrigger !== false;
+  const minContextPercent = typeof smartCompactSettings.minContextPercent === "number" ? smartCompactSettings.minContextPercent : 60;
+  const minTokenThreshold = typeof smartCompactSettings.minTokenThreshold === "number" ? smartCompactSettings.minTokenThreshold : 0;
+  const compactThresholdTokens = autoCompactEnabled && contextUsage
+    ? (minTokenThreshold > 0
+        ? Math.min(minTokenThreshold, (minContextPercent / 100) * contextUsage.contextWindow)
+        : (minContextPercent / 100) * contextUsage.contextWindow)
+    : undefined;
   const compactThresholdPercent = compactThresholdTokens && contextUsage
     ? Math.min(100, Math.max(0, (compactThresholdTokens / contextUsage.contextWindow) * 100))
     : 0;
@@ -285,7 +295,7 @@ export function ComposerPanel({
               }
             >
               <div className="composer__context-track">
-                {blackholeAvailable && contextUsage && compactThresholdTokens ? (
+                {contextUsage && compactThresholdTokens ? (
                   <div
                     className="composer__context-compact-tick"
                     style={{ left: `${compactThresholdPercent}%` }}
@@ -300,7 +310,7 @@ export function ComposerPanel({
                 {contextUsage
                   ? `${formatTokenCount(contextUsage.usedTokens)} / ${formatTokenCount(contextUsage.contextWindow)}`
                   : "Context —"}
-                {blackholeAvailable && contextUsage && compactTokensRemaining !== undefined ? (
+                {contextUsage && compactTokensRemaining !== undefined ? (
                   <span className="composer__context-compact-label">
                     {compactTokensRemaining > 0
                       ? `Auto-compact in ${formatTokenCount(compactTokensRemaining)}`

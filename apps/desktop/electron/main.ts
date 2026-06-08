@@ -56,6 +56,7 @@ import type {
   StartThreadInput,
   WorkspaceSessionTarget,
 } from "../src/desktop-state";
+import { ZOOM_BASELINE, ZOOM_FACTOR_LADDER } from "../src/desktop-state";
 import type { SessionDriverEvent } from "@pi-gui/session-driver";
 import type { GenerateThreadTitleOptions } from "@pi-gui/pi-sdk-driver";
 import type { WorkspaceRef } from "@pi-gui/session-driver";
@@ -310,6 +311,11 @@ function createWindow(): BrowserWindow {
       window.show();
     }
   });
+  // Re-apply the persisted zoom after every content load (initial + dev HMR
+  // reloads, which otherwise reset Chromium zoom to 1.0).
+  window.webContents.on("did-finish-load", () => {
+    window.webContents.setZoomFactor(store?.state.zoomFactor ?? ZOOM_BASELINE);
+  });
   window.webContents.on("before-input-event", (event, input) => {
     if (input.type !== "keyDown") {
       return;
@@ -544,6 +550,43 @@ async function runManualUpdateCheck(): Promise<void> {
   // "downloading" or "downloaded" — the auto-updater handles UI for these.
 }
 
+/**
+ * Step the window zoom along the discrete ladder (or reset to baseline) and
+ * persist it. Zoom must be applied in the main process because the renderer is
+ * sandboxed and cannot reach webFrame. The new factor flows back to the
+ * renderer via the normal state snapshot, which drives the % HUD and the
+ * zoom-compensated chrome offsets.
+ */
+function stepZoom(direction: "in" | "out" | "reset"): void {
+  const window = mainWindow && !mainWindow.isDestroyed() ? mainWindow : BrowserWindow.getFocusedWindow();
+  if (!window || window.isDestroyed()) {
+    return;
+  }
+  const current = store?.state.zoomFactor ?? ZOOM_BASELINE;
+  let next: number;
+  if (direction === "reset") {
+    next = ZOOM_BASELINE;
+  } else {
+    let nearestIndex = 0;
+    let bestDistance = Infinity;
+    ZOOM_FACTOR_LADDER.forEach((factor, index) => {
+      const distance = Math.abs(factor - current);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        nearestIndex = index;
+      }
+    });
+    const target = direction === "in" ? nearestIndex + 1 : nearestIndex - 1;
+    const clamped = Math.max(0, Math.min(ZOOM_FACTOR_LADDER.length - 1, target));
+    next = ZOOM_FACTOR_LADDER[clamped] ?? ZOOM_BASELINE;
+    if (next === current) {
+      return;
+    }
+  }
+  window.webContents.setZoomFactor(next);
+  void store?.setZoomFactor(next);
+}
+
 function installApplicationMenu(): void {
   if (process.platform !== "darwin") {
     return;
@@ -588,7 +631,20 @@ function installApplicationMenu(): void {
       ],
     },
     { role: "editMenu" },
-    { role: "viewMenu" },
+    {
+      label: "View",
+      submenu: [
+        { role: "reload" },
+        { role: "forceReload" },
+        { role: "toggleDevTools" },
+        { type: "separator" },
+        { label: "Actual Size", accelerator: "CommandOrControl+0", click: () => stepZoom("reset") },
+        { label: "Zoom In", accelerator: "CommandOrControl+Plus", click: () => stepZoom("in") },
+        { label: "Zoom Out", accelerator: "CommandOrControl+-", click: () => stepZoom("out") },
+        { type: "separator" },
+        { role: "togglefullscreen" },
+      ],
+    },
     { role: "windowMenu" },
   ];
 
@@ -1125,6 +1181,9 @@ app.whenReady().then(async () => {
       getSessionTranscript: async (_event: unknown, workspaceId: string, sessionId: string) => {
         return store.getSessionTranscript({ workspaceId, sessionId });
       },
+      getSubagentSessionEntries: async (_event: unknown, sessionFilePath: string) => {
+        return store.getSubagentSessionEntries(sessionFilePath);
+      },
       searchTranscriptText: async (_event: unknown, sessionKeys: readonly string[], query: string) => {
         return store.searchTranscripts(sessionKeys, query);
       },
@@ -1324,6 +1383,18 @@ app.whenReady().then(async () => {
         graphifyWatchProcesses.set(workspaceId, child.pid);
         child.on("exit", () => graphifyWatchProcesses.delete(workspaceId));
         return { success: true, message: `Watcher started (PID ${child.pid}).` };
+      },
+
+      readGraphifyGraph: async (_event: unknown, workspaceId: string) => {
+        const workspacePath = store.getWorkspacePath(workspaceId) ?? "";
+        if (!workspacePath) return { error: "Unknown workspace" };
+        const graphPath = path.join(workspacePath, "graphify-out", "graph.json");
+        try {
+          const raw = await readFile(graphPath, "utf8");
+          return JSON.parse(raw);
+        } catch {
+          return { error: "graph.json not found or invalid" };
+        }
       },
 
       // -- Automation --
@@ -1536,8 +1607,17 @@ function createRuntimeLoginCallbacks() {
     onAuth: async ({ url, instructions: _instructions }: { readonly url: string; readonly instructions?: string }) => {
       await shell.openExternal(url);
     },
+    onDeviceCode: ({ userCode, verificationUri }: { readonly userCode: string; readonly verificationUri: string }) => {
+      void shell.openExternal(verificationUri);
+      console.log(`[auth] Device code: ${userCode} — visit ${verificationUri}`);
+    },
     onPrompt: async ({ message, placeholder }: { readonly message: string; readonly placeholder?: string }) =>
       promptForText(message, placeholder),
+    onSelect: async ({ message, options }: { readonly message: string; readonly options: readonly { readonly id: string; readonly label: string }[] }) => {
+      console.log(`[auth] ${message}`);
+      for (const opt of options) console.log(`  - ${opt.id}: ${opt.label}`);
+      return options[0]?.id;
+    },
   };
 }
 

@@ -154,6 +154,10 @@ export class PiSdkDriver implements SessionDriver {
     return this.supervisor.getTranscript(sessionRef);
   }
 
+  readSessionFileEntries(sessionFilePath: string) {
+    return this.supervisor.readSessionFileEntries(sessionFilePath);
+  }
+
   getLoopIterations(sessionRef: SessionRef) {
     return this.supervisor.getLoopIterations(sessionRef);
   }

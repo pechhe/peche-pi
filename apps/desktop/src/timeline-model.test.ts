@@ -182,6 +182,58 @@ test("timeline model creates tool lifecycle rows and run summaries", () => {
   assert.equal(runtime.runningSince, undefined);
 });
 
+test("timeline model suppresses the Worked-for divider while an async subagent launch is pending", () => {
+  const runtime: SessionTimelineRuntimeState = {};
+  let transcript: readonly TranscriptMessage[] = [];
+
+  transcript = applySessionEventToTimeline(
+    transcript,
+    event({ type: "sessionUpdated", snapshot: snapshot({ status: "running", runningRunId: "run-1" }) }),
+    runtime,
+    factory,
+  );
+  transcript = applySessionEventToTimeline(
+    transcript,
+    event({ type: "toolStarted", callId: "sub-1", toolName: "subagent", input: { name: "fix-sync" } }),
+    runtime,
+    factory,
+  );
+  // Async launch resolves immediately with status "started" — the main run then
+  // completes because it yielded to await the subagent, not because it's done.
+  transcript = applySessionEventToTimeline(
+    transcript,
+    event({ type: "toolFinished", callId: "sub-1", success: true, output: { details: { status: "started", name: "fix-sync" } } }),
+    runtime,
+    factory,
+  );
+  transcript = applySessionEventToTimeline(
+    transcript,
+    event({ type: "runCompleted", snapshot: snapshot({ status: "idle" }), timestamp: "2026-01-01T00:00:08.000Z" }),
+    runtime,
+    factory,
+  );
+
+  assert.deepEqual(
+    transcript.filter((item) => item.kind === "summary").map((item) => item.label),
+    [],
+  );
+
+  // When the subagent later reports back, a new run produces an assistant reply,
+  // so the launch row is no longer trailing and the divider appears.
+  transcript = appendAssistantDeltaToTimeline(transcript, runtime, "All done.", factory);
+  transcript = applySessionEventToTimeline(
+    transcript,
+    event({ type: "runCompleted", snapshot: snapshot({ status: "idle" }), timestamp: "2026-01-01T00:00:12.000Z" }),
+    runtime,
+    factory,
+  );
+
+  assert.deepEqual(
+    transcript.filter((item) => item.kind === "summary").map((item) => item.label),
+    ["Completed"],
+  );
+});
+
 test("timeline model surfaces run failures as error activity", () => {
   const runtime: SessionTimelineRuntimeState = {
     runMetrics: { startedAt: "2026-01-01T00:00:00.000Z", toolCount: 0, searchCount: 0, fileCount: 0 },

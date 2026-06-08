@@ -22,6 +22,7 @@ export interface NewThreadState {
   readonly thinkingLevel: string | undefined;
   readonly pendingWorkspaceId: string;
   readonly composerMode: ComposerMode;
+  readonly orchestratorMode: boolean;
 
   readonly setRootWorkspaceId: Dispatch<SetStateAction<string>>;
   readonly setIsChat: Dispatch<SetStateAction<boolean>>;
@@ -33,6 +34,7 @@ export interface NewThreadState {
   readonly setThinkingLevel: Dispatch<SetStateAction<string | undefined>>;
   readonly setPendingWorkspaceId: Dispatch<SetStateAction<string>>;
   readonly setComposerMode: Dispatch<SetStateAction<ComposerMode>>;
+  readonly setOrchestratorMode: Dispatch<SetStateAction<boolean>>;
 
   readonly reset: (workspaceId?: string) => void;
   readonly open: (workspaceId?: string) => void;
@@ -59,6 +61,7 @@ export function useNewThreadState(params: {
   const [environment, setEnvironment] = useState<NewThreadEnvironment>("local");
   const [pendingWorkspaceId, setPendingWorkspaceId] = useState("");
   const [composerMode, setComposerMode] = useState<ComposerMode>("build");
+  const [orchestratorMode, setOrchestratorMode] = useState(snapshot?.subagentSettings.orchestratorMode ?? false);
 
   // Per-project draft text + attachments. Keyed by rootWorkspaceId so each
   // project remembers what the user typed while navigating elsewhere.
@@ -126,6 +129,7 @@ export function useNewThreadState(params: {
     setModelId(undefined);
     setThinkingLevel(undefined);
     setComposerMode("build");
+    setOrchestratorMode(snapshot?.subagentSettings.orchestratorMode ?? false);
   }, [rootWorkspaceOptions, snapshot, rootWorkspace, visibleWorkspaces]);
 
   const open = useCallback((workspaceId?: string) => {
@@ -143,9 +147,10 @@ export function useNewThreadState(params: {
     setModelId(undefined);
     setThinkingLevel(undefined);
     setComposerMode("build");
+    setOrchestratorMode(snapshot?.subagentSettings.orchestratorMode ?? false);
     setActiveView("new-thread");
     focusNewThreadComposer();
-  }, [setActiveView, focusNewThreadComposer]);
+  }, [setActiveView, focusNewThreadComposer, snapshot]);
 
   const addAttachments = useCallback((files: File[]) => {
     void readComposerAttachmentsFromFiles(files).then((newAttachments) => {
@@ -174,6 +179,7 @@ export function useNewThreadState(params: {
     thinkingLevel,
     pendingWorkspaceId,
     composerMode,
+    orchestratorMode,
     setRootWorkspaceId,
     setIsChat,
     setEnvironment,
@@ -184,6 +190,7 @@ export function useNewThreadState(params: {
     setThinkingLevel,
     setPendingWorkspaceId,
     setComposerMode,
+    setOrchestratorMode,
     reset,
     open,
     openChat,
