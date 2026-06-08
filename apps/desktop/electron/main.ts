@@ -679,12 +679,12 @@ app.whenReady().then(async () => {
     getWindow: () => mainWindow,
     generateThreadTitleOverride: async (workspace, options) => generateThreadTitleOverride?.(workspace, options),
   });
-  await store.initialize();
-
-  // Automation store + scheduler
   const automationStore = new AutomationStore(configuredUserDataDir);
   await automationStore.load();
   store.automationStoreRef = automationStore;
+  await store.initialize();
+  // Inject automations into the initial state (initializeInternal doesn't call refreshState)
+  store.state = { ...store.state, automations: automationStore.getAll() };
   const automationScheduler = new AutomationScheduler({
     store: automationStore,
     sessionDriver: store.driver,
