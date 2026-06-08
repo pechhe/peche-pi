@@ -55,6 +55,27 @@ These rules apply for the full session.
 - For automated proofs: `cd apps/desktop && pnpm test:e2e:core` (background UI), `pnpm test:e2e:live` (runtime-dependent), `pnpm test:e2e:native` (macOS OS-surface).
 - See `apps/desktop/AGENTS.md` and `apps/desktop/tests/AGENTS.md` for lane details.
 
+## Managing Complexity (fallow)
+
+`fallow health` flags hotspots by CRAP score. **CRAP = CC² + CC** (with no test coverage), so cyclomatic complexity dominates — a long function isn't the problem, a high-*branching* one is. Squaring means breaking a fat method into a thin coordinator + small helpers collapses the score fast.
+
+### Before refactoring a hotspot: is it real or mechanical?
+Read both metrics fallow reports, not just CC:
+- **High CC + low cognitive (≈1)** → *mechanical*. A big equality check (`sameSessionComposerProps`), a flat state-merge literal with 20 `??`, or an enum cascade. Splitting adds indirection for **zero readability gain — skip it** (or extract only the validators, not the shape).
+- **High CC + high cognitive** → *real branching*. This is what to extract.
+
+### Extraction patterns that worked here (highest leverage first)
+- **if-block dispatcher → `Map` lookup.** A handler with N `if (key === …) { … return }` blocks is N×~4 CC. A `Map<string, () => void>` + one lookup is ~1 CC. (`handleKeyDown` 68→26.)
+- **ternary/version cascade → validator helper or `Set`.** (`readPersistedUiState` 34→14.)
+- **large JSX popover/panel → child component.** Move its state + callbacks with it. (`Topbar` 73→27.)
+- **fat method → thin coordinator + private sub-methods.** Prefer in-class private methods over expanding shared interfaces on untested critical-path code. (`initializeInternal`/`refreshState`/`handleSessionEvent`.)
+- **free functions** in already-decomposed modules: follow the existing `store: AppStoreInternals` param pattern rather than inventing a new seam.
+
+### Preventing buildup
+- Complexity accretes one `if`/`case` at a time on existing dispatchers. When adding a branch to a handler already near the threshold, **convert it to a lookup/table instead of appending**.
+- Critical-path methods (`app-store.ts`, `session-supervisor.ts`) have ~zero unit coverage, so CRAP stays high and refactors are risky. Adding tests drops CRAP *without* touching code (the `(1 - cov)³` term) and de-risks future edits — prefer tests over restructuring when the logic is already clear.
+- After non-trivial handler/component work, glance at `./node_modules/.bin/fallow health --top 20` for new CRITICAL flags before committing.
+
 ## Diagnosing Dev Build Crashes
 
 When `pnpm dev` (or Pi Dev.app) crashes, check these sources in order:
