@@ -161,6 +161,23 @@ export function useKeyboardShortcuts({
     });
     const removeClipboardImageListener = window.piApp?.onClipboardImagePasted?.(handlePastedClipboardImage);
 
+    // Keymap: normalized "mod+key" or "mod+shift+key" → handler.
+    // Built once per hook render (closures capture latest callback refs).
+    type ShortcutHandler = () => void;
+    const modKeyMap = new Map<string, ShortcutHandler>([
+      ["f", () => { threadSearch.isOpen ? threadSearch.close() : threadSearch.open(); }],
+      ["k", openSearchPalette],
+      ["/", openShortcutsSheet],
+      ["d", toggleDiffPanel],
+      ["t", () => { modelSelectorRef.current?.openModelDropdown(); }],
+      ["l", () => { playRotary(); focusComposer(); }],
+      ["p", () => { playRotary(); onSetComposerMode("plan"); }],
+      ["b", () => { playRotary(); onSetComposerMode("build"); }],
+    ]);
+    const modShiftKeyMap = new Map<string, ShortcutHandler>([
+      ["a", () => { toggleAdvisorPanel?.(); }],
+    ]);
+
     const handleKeyDown = (event: globalThis.KeyboardEvent) => {
       if (isEventInsideTerminal(event)) {
         const command = getDesktopCommandFromShortcut({
@@ -176,134 +193,77 @@ export function useKeyboardShortcuts({
         return;
       }
 
-      // Cmd+F toggles thread search
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "f" && !event.shiftKey) {
-        event.preventDefault();
-        if (threadSearch.isOpen) {
-          threadSearch.close();
-        } else {
-          threadSearch.open();
-        }
-        return;
-      }
+      const isMod = event.metaKey || event.ctrlKey;
 
-      // Cmd+K opens scoped thread/chat search
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k" && !event.shiftKey) {
-        event.preventDefault();
-        openSearchPalette();
-        return;
-      }
-
-      // Cmd+/ toggles the shortcuts reference sheet
-      if ((event.metaKey || event.ctrlKey) && event.key === "/" && !event.shiftKey) {
-        event.preventDefault();
-        openShortcutsSheet();
-        return;
-      }
-
-      // Cmd+D toggles diff panel
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "d" && !event.shiftKey) {
-        event.preventDefault();
-        toggleDiffPanel();
-        return;
-      }
-
-      // Cmd+Shift+A toggles advisor panel
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "a" && event.shiftKey) {
-        event.preventDefault();
-        toggleAdvisorPanel?.();
-        return;
-      }
-
-      // Cmd+T opens model picker (outside terminal)
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "t" && !event.shiftKey) {
-        event.preventDefault();
-        modelSelectorRef.current?.openModelDropdown();
-        return;
-      }
-
-      // Cmd+L focuses composer
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "l" && !event.shiftKey) {
-        event.preventDefault();
-        playRotary();
-        focusComposer();
-        return;
-      }
-
-      // Cmd+1/2/3 selects model slot, Cmd+4 opens model dropdown
-      if ((event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey) {
-        const digit = parseInt(event.key);
-        if (digit >= 1 && digit <= 3) {
-          event.preventDefault();
-          playRotary();
-          modelSelectorRef.current?.selectSliderSlot(digit - 1);
-          return;
-        }
-        if (digit === 4) {
-          event.preventDefault();
-          playRotary();
-          modelSelectorRef.current?.openModelDropdown();
-          return;
-        }
-      }
-
-      // Cmd+P toggles plan mode, Cmd+B toggles build mode
-      if ((event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey) {
-        if (event.key.toLowerCase() === "p") {
-          event.preventDefault();
-          playRotary();
-          onSetComposerMode("plan");
-          return;
-        }
-        if (event.key.toLowerCase() === "b") {
-          event.preventDefault();
-          playRotary();
-          onSetComposerMode("build");
-          return;
-        }
-      }
-
-      // Cmd+ArrowUp/Down adjusts thinking level. (Cmd+Left/Right are left to the
-      // textarea for native line-start/line-end navigation.)
-      if ((event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey) {
-        if (event.key === "ArrowUp") {
-          event.preventDefault();
-          playRotary();
-          modelSelectorRef.current?.cycleThinkingLevel(1);
-          return;
-        }
-        if (event.key === "ArrowDown") {
-          event.preventDefault();
-          playRotary();
-          modelSelectorRef.current?.cycleThinkingLevel(-1);
-          return;
-        }
-      }
-
-      // Shift+Tab cycles thinking level
-      if (event.key === "Tab" && event.shiftKey && !(event.metaKey || event.ctrlKey)) {
+      // Shift+Tab cycles thinking level (no modifier conflict)
+      if (event.key === "Tab" && event.shiftKey && !isMod) {
         event.preventDefault();
         cycleThinking();
         return;
       }
 
-      // Cmd+[ / Cmd+] navigates back/forward through location history.
-      if ((event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey) {
-        if (event.key === "[") {
-          const target = navigationHistory.goBack();
-          if (target) {
+      if (isMod && !event.altKey) {
+        const key = event.key.toLowerCase();
+
+        // Mod+Shift+<key> shortcuts
+        if (event.shiftKey) {
+          const handler = modShiftKeyMap.get(key);
+          if (handler) {
             event.preventDefault();
-            navigateToEntry(target);
+            handler();
+            return;
           }
-          return;
         }
-        if (event.key === "]") {
-          const target = navigationHistory.goForward();
-          if (target) {
+
+        // Mod+<key> shortcuts (no shift)
+        if (!event.shiftKey) {
+          const handler = modKeyMap.get(key);
+          if (handler) {
             event.preventDefault();
-            navigateToEntry(target);
+            handler();
+            return;
           }
-          return;
+
+          // Mod+1/2/3 → model slot, Mod+4 → model dropdown
+          const digit = parseInt(event.key);
+          if (digit >= 1 && digit <= 3) {
+            event.preventDefault();
+            playRotary();
+            modelSelectorRef.current?.selectSliderSlot(digit - 1);
+            return;
+          }
+          if (digit === 4) {
+            event.preventDefault();
+            playRotary();
+            modelSelectorRef.current?.openModelDropdown();
+            return;
+          }
+
+          // Mod+ArrowUp/Down → thinking level
+          if (event.key === "ArrowUp") {
+            event.preventDefault();
+            playRotary();
+            modelSelectorRef.current?.cycleThinkingLevel(1);
+            return;
+          }
+          if (event.key === "ArrowDown") {
+            event.preventDefault();
+            playRotary();
+            modelSelectorRef.current?.cycleThinkingLevel(-1);
+            return;
+          }
+
+          // Mod+[ / Mod+] → navigation history
+          if (event.key === "[" || event.key === "]") {
+            const target = event.key === "["
+              ? navigationHistory.goBack()
+              : navigationHistory.goForward();
+            if (target) {
+              event.preventDefault();
+              navigateToEntry(target);
+            }
+            return;
+          }
         }
       }
 
