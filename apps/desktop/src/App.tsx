@@ -37,11 +37,8 @@ import {
 } from "./ipc";
 import { deriveModelOnboardingState } from "./model-onboarding";
 import { type ModelSelectorHandle } from "./model-selector";
-import { SkillsView } from "./skills-view";
-import { ExtensionsView } from "./extensions-view";
-import { AutomationsView } from "./automations-view";
-import { ContextView } from "./context-view";
-import { SettingsView, type SettingsSection } from "./settings-view";
+import { UtilitySurface, SettingsSurface, SkillsSurface, ExtensionsSurface, AutomationsSurface, ContextSurface } from "./surfaces/utility-surface";
+import { type SettingsSection } from "./settings-view";
 import { NewThreadView } from "./new-thread-view";
 import { KanbanView } from "./kanban-view";
 import { PendingComposer } from "./pending-thread-view";
@@ -523,6 +520,8 @@ export default function App() {
   const prevSessionStatusRef = useRef<Map<string, SessionStatus>>(new Map());
   const lastErrorToastKeyRef = useRef("");
   const [showDiffPanel, setShowDiffPanel] = useState(false);
+  const [pendingScrollToMessageId, setPendingScrollToMessageId] = useState<string | null>(null);
+  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const [advisorState, setAdvisorState] = useState(createEmptyAdvisorState());
   const [openTerminalSessionKey, setOpenTerminalSessionKey] = useState("");
   const [takeoverTerminalSessionKey, setTakeoverTerminalSessionKey] = useState("");
@@ -890,6 +889,22 @@ export default function App() {
     activeTranscript,
     setShowDiffPanel,
   });
+
+  // Scroll to a transcript message when navigating from a search result.
+  useEffect(() => {
+    if (!pendingScrollToMessageId || activeTranscript.length === 0 || isTranscriptLoading) return;
+    const targetId = pendingScrollToMessageId;
+    setPendingScrollToMessageId(null);
+
+    // Small delay to let the timeline render after session switch.
+    const timer = setTimeout(() => {
+      timelineScroll.scrollToMessageId(targetId, activeTranscript);
+      setHighlightedMessageId(targetId);
+      // Clear highlight after a brief flash.
+      setTimeout(() => setHighlightedMessageId(null), 2000);
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [pendingScrollToMessageId, activeTranscript, isTranscriptLoading, timelineScroll]);
 
   useEffect(() => {
     if (snapshot && snapshot.workspaces.length === 0) {
@@ -2135,310 +2150,161 @@ export default function App() {
       return;
     }
     if (result.workspaceId && result.sessionId) {
+      if (result.transcriptMessageId) {
+        setPendingScrollToMessageId(result.transcriptMessageId);
+      }
       handleSelectSession({ workspaceId: result.workspaceId, sessionId: result.sessionId });
     }
   };
 
-  const renderGlobalSearchPalette = () => globalSearch.isOpen ? (
-    <SearchPalette
-      query={globalSearch.query}
-      scope={globalSearch.scope}
-      archiveFilter={globalSearch.archiveFilter}
-      results={globalSearch.results}
-      activeIndex={globalSearch.activeIndex}
-      onQueryChange={globalSearch.setQuery}
-      onScopeChange={globalSearch.setScope}
-      onArchiveFilterChange={globalSearch.setArchiveFilter}
-      onActiveIndexChange={globalSearch.setActiveIndex}
-      onSelect={handleGlobalSearchSelect}
-      onClose={globalSearch.close}
-    />
-  ) : null;
-
-  const utilityShellClass = `shell shell--skills${snapshot.sidebarCollapsed ? " shell--sidebar-collapsed" : ""}${sidebarResize.isResizing ? " shell--sidebar-resizing" : ""}`;
-  const utilityShellStyle = snapshot.sidebarCollapsed
-    ? undefined
-    : ({ ["--sidebar-width" as string]: `${sidebarResize.width}px` } as React.CSSProperties);
-  const renderUtilitySurface = (testId: string, children: React.ReactNode) => (
-    <div className={utilityShellClass} style={utilityShellStyle} data-testid={testId}>
-      {renderGlobalSearchPalette()}
-      {shortcutsSheetOpen ? (
-        <ShortcutsSheet platform={api.platform} onClose={() => setShortcutsSheetOpen(false)} />
-      ) : null}
-      {primarySidebarToggleVisible ? (
-        <SidebarToggleButton
-          collapsed={snapshot.sidebarCollapsed}
-          shortcutLabel={sidebarToggleShortcutLabel}
-          onToggle={handleTogglePrimarySidebar}
-        />
-      ) : null}
-      {!snapshot.sidebarCollapsed ? (
-        <Sidebar
-          resize={sidebarResize}
-          activeView={snapshot.activeView}
-          selectedWorkspace={selectedWorkspace}
-          selectedSession={selectedSession}
-          chats={chats}
-          visibleWorkspaces={visibleWorkspaces}
-          threadGroups={threadGroups}
-          linkedWorktreeByWorkspaceId={linkedWorktreeByWorkspaceId}
-          wsMenu={wsMenu}
-          api={api}
-          setSnapshot={setSnapshot}
-          updateSnapshot={updateSnapshot}
-          onNewThreadForWorkspace={(rootWorkspaceId) => openNewThreadSurface(rootWorkspaceId)}
-          onSetActiveView={setActiveView}
-          onOpenSkills={openSkills}
-          onOpenExtensions={openExtensions}
-          onOpenSettings={openSettings}
-          onOpenContext={openContext}
-          onOpenKanban={openKanbanView}
-          queueMode={snapshot.queueMode}
-          onSetQueueMode={setQueueMode}
-          onArchiveSession={handleArchiveSession}
-          onArchiveAllNonRunningSessions={handleArchiveAllNonRunningSessions}
-          onSelectSession={handleSelectSession}
-          onUnarchiveSession={handleUnarchiveSession}
-          onCreateChat={handleCreateChat}
-          onSelectChat={handleSelectChat}
-          onArchiveChat={handleArchiveChat}
-          onUnarchiveChat={handleUnarchiveChat}
-          onRemoveChat={handleRemoveChat}
-          pendingSidebarSelection={pendingSidebarSelection}
-          automations={snapshot.automations ?? []}
-          onOpenAutomations={openAutomations}
-        />
-      ) : null}
-      <main className="main main--skills">{children}</main>
-      {import.meta.env.DEV && <Agentation />}
-    </div>
-  );
+  // ── Utility view dispatch ────────────────────────────────────────────────────
+  const utilityShellProps = {
+    activeView: snapshot.activeView,
+    snapshot,
+    api: api!,
+    setSnapshot,
+    updateSnapshot,
+    sidebarResize,
+    sidebarCollapsed: snapshot.sidebarCollapsed ?? false,
+    selectedWorkspace,
+    selectedSession,
+    chats,
+    visibleWorkspaces,
+    threadGroups,
+    linkedWorktreeByWorkspaceId,
+    wsMenu,
+    queueMode: snapshot.queueMode,
+    pendingSidebarSelection,
+    automations: snapshot.automations ?? [],
+    onNewThreadForWorkspace: openNewThreadSurface,
+    onSetActiveView: setActiveView,
+    onOpenSkills: openSkills,
+    onOpenExtensions: openExtensions,
+    onOpenSettings: openSettings,
+    onOpenContext: openContext,
+    onOpenKanban: openKanbanView,
+    onOpenAutomations: openAutomations,
+    onSetQueueMode: setQueueMode,
+    onArchiveSession: handleArchiveSession,
+    onArchiveAllNonRunningSessions: handleArchiveAllNonRunningSessions,
+    onSelectSession: handleSelectSession,
+    onUnarchiveSession: handleUnarchiveSession,
+    onCreateChat: handleCreateChat,
+    onSelectChat: handleSelectChat,
+    onArchiveChat: handleArchiveChat,
+    onUnarchiveChat: handleUnarchiveChat,
+    onRemoveChat: handleRemoveChat,
+    primarySidebarToggleVisible,
+    sidebarToggleShortcutLabel,
+    onTogglePrimarySidebar: handleTogglePrimarySidebar,
+    shortcutsSheetOpen,
+    onCloseShortcutsSheet: () => setShortcutsSheetOpen(false),
+    globalSearch,
+    onGlobalSearchSelect: handleGlobalSearchSelect,
+  } as const;
 
   if (snapshot.activeView === "settings") {
-    return renderUtilitySurface("settings-surface", <>
-          {settingsSection === "providers" || (settingsSection === "models" && snapshot.modelSettingsScopeMode === "per-repo") ? (
-            <div className="surface-toolbar">
-
-              <label className="surface-toolbar__field">
-                <span>Workspace</span>
-                <select
-                  value={settingsWorkspace?.id ?? ""}
-                  onChange={(event) => setSettingsWorkspaceId(event.target.value)}
-                >
-                  {rootWorkspaceOptions.map((workspace) => (
-                    <option key={workspace.id} value={workspace.id}>
-                      {workspace.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-          ) : null}
-          <SettingsView
-            workspace={settingsWorkspace}
-            runtime={settingsSection === "models" ? settingsModelRuntime : settingsRuntime}
-            section={settingsSection}
-            onSelectSection={setSettingsSection}
-            onBack={() => setActiveView("threads")}
-            notificationPreferences={snapshot.notificationPreferences}
-            notificationPermissionStatus={notificationPermissionStatus}
-            notificationPermissionPending={notificationPermissionPending}
-            modelSettingsScopeMode={snapshot.modelSettingsScopeMode}
-            integratedTerminalShell={snapshot.integratedTerminalShell}
-            externalTerminalApp={snapshot.externalTerminalApp}
-            themeMode={themeMode}
-            enableTransparency={snapshot.enableTransparency}
-            composerDeviceMode={snapshot.composerDeviceMode}
-            threadTransition={snapshot.threadTransition}
-            buttonSoundSettings={buttonSoundSettings}
-            subagentSettings={snapshot.subagentSettings}
-            retrySettings={snapshot.retrySettings}
-            planModeIdeology={snapshot.planModeIdeology}
-            onSetPlanModeIdeology={(ideology) => {
-              void updateSnapshot(api, setSnapshot, () => api.setPlanModeIdeology(ideology));
-            }}
-            onSetRetrySettings={(settings) => {
-              void updateSnapshot(api, setSnapshot, () => api.setRetrySettings(settings));
-            }}
-            subagentAgents={settingsWorkspace ? snapshot.subagentAgentsByWorkspace[settingsWorkspace.id] ?? [] : []}
-            onLoginProvider={settingsHandlers.handleLoginProvider}
-            onLogoutProvider={settingsHandlers.handleLogoutProvider}
-            onSetProviderApiKey={settingsHandlers.handleSetProviderApiKey}
-            onRemoveProviderApiKey={settingsHandlers.handleRemoveProviderApiKey}
-            onSetModelSettingsScopeMode={settingsHandlers.handleSetModelSettingsScopeMode}
-            onSetDefaultModel={settingsHandlers.handleSetDefaultModel}
-            onSetNotificationPreferences={settingsHandlers.handleSetNotificationPreferences}
-            onSetIntegratedTerminalShell={settingsHandlers.handleSetIntegratedTerminalShell}
-            onSetSubagentSettings={settingsHandlers.handleSetSubagentSettings}
-            onRefreshSubagentAgents={settingsHandlers.handleRefreshSubagentAgents}
-            onSaveSubagentAgent={settingsHandlers.handleSaveSubagentAgent}
-            onDeleteSubagentAgent={settingsHandlers.handleDeleteSubagentAgent}
-            onChooseExternalTerminalApp={settingsHandlers.handleChooseExternalTerminalApp}
-            onClearExternalTerminalApp={settingsHandlers.handleClearExternalTerminalApp}
-            onRequestNotificationPermission={handleRequestNotificationPermission}
-            onOpenSystemNotificationSettings={handleOpenSystemNotificationSettings}
-            onSetScopedModelPatterns={settingsHandlers.handleSetScopedModelPatterns}
-            onSetThemeMode={settingsHandlers.handleSetThemeMode}
-            onSetThinkingLevel={settingsHandlers.handleSetThinkingLevel}
-            onToggleSkillCommands={settingsHandlers.handleToggleSkillCommands}
-            onSetEnableTransparency={(enabled) => {
-              void updateSnapshot(api, setSnapshot, () => api.setEnableTransparency(enabled));
-            }}
-            onSetComposerDeviceMode={(enabled) => {
-              void updateSnapshot(api, setSnapshot, () => api.setComposerDeviceMode(enabled));
-            }}
-            onSetThreadTransition={(settings) => {
-              void updateSnapshot(api, setSnapshot, () => api.setThreadTransition(settings));
-            }}
-            onSetButtonSoundSettings={setButtonSoundSettings}
-            commitPushModel={snapshot.commitPushModel}
-            onSetCommitPushModel={(model) => {
-              void updateSnapshot(api, setSnapshot, () => api.setCommitPushModel(rootWorkspace?.id ?? "", model));
-            }}
-            smartCompactSettings={smartCompactSettings}
-            onSetSmartCompactSettings={(settings) => {
-              const api = window.piApp;
-              if (!api) return;
-              api.setSmartCompactSettings(settings).then((next) => {
-                setSmartCompactSettings(next);
-              }).catch(() => {});
-            }}
-          />
-        </>
+    return (
+      <UtilitySurface {...utilityShellProps} content={
+        <SettingsSurface
+          snapshot={snapshot}
+          rootWorkspaceOptions={rootWorkspaceOptions}
+          settingsWorkspace={settingsWorkspace}
+          settingsSection={settingsSection}
+          settingsRuntime={settingsRuntime}
+          settingsModelRuntime={settingsModelRuntime}
+          themeMode={themeMode}
+          notificationPermissionStatus={notificationPermissionStatus}
+          notificationPermissionPending={notificationPermissionPending}
+          buttonSoundSettings={buttonSoundSettings}
+          smartCompactSettings={smartCompactSettings}
+          rootWorkspace={rootWorkspace}
+          api={api!}
+          setSnapshot={setSnapshot}
+          updateSnapshot={updateSnapshot}
+          settingsHandlers={settingsHandlers}
+          handleRequestNotificationPermission={handleRequestNotificationPermission}
+          handleOpenSystemNotificationSettings={handleOpenSystemNotificationSettings}
+          setSettingsWorkspaceId={setSettingsWorkspaceId}
+          setSettingsSection={setSettingsSection}
+          setActiveView={setActiveView}
+          setButtonSoundSettings={setButtonSoundSettings}
+          setSmartCompactSettings={setSmartCompactSettings}
+        />
+      } />
     );
   }
 
   if (snapshot.activeView === "skills") {
-    const handleToggleSkillGroup = (key: string) => {
-      setSkillsCollapsedGroups((current) => {
-        const next = new Set(current);
-        if (next.has(key)) {
-          next.delete(key);
-        } else {
-          next.add(key);
-        }
-        return next;
-      });
-    };
-    return renderUtilitySurface("skills-surface", <>
-          {rootWorkspaceOptions.length > 1 ? (
-            <div className="surface-toolbar">
-              <label className="surface-toolbar__field">
-                <span>Workspace</span>
-                <select
-                  value={skillsWorkspace?.id ?? ""}
-                  onChange={(event) => setSkillsWorkspaceId(event.target.value)}
-                >
-                  {rootWorkspaceOptions.map((workspace) => (
-                    <option key={workspace.id} value={workspace.id}>
-                      {workspace.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-          ) : null}
-          <SkillsView
-            workspace={skillsWorkspace}
-            runtime={skillsRuntime}
-            query={skillsQuery}
-            onQueryChange={setSkillsQuery}
-            showDisabled={skillsShowDisabled}
-            onShowDisabledChange={setSkillsShowDisabled}
-            collapsedGroups={skillsCollapsedGroups}
-            onToggleGroup={handleToggleSkillGroup}
-            selectedSkillPath={skillsSelectedPath}
-            onSelectSkill={setSkillsSelectedPath}
-            onOpenSkillFolder={skillsExtensionsHandlers.handleOpenSkillFolder}
-            onRefresh={() => {
-              if (!skillsWorkspace) {
-                return;
-              }
-              void updateSnapshot(api, setSnapshot, () => api.refreshRuntime(skillsWorkspace.id));
-            }}
-            onToggleSkill={skillsExtensionsHandlers.handleToggleSkill}
-            onTrySkill={(skill) =>
-              handleTrySkill(
-                skill.filePath
-                  ? `${skill.slashCommand} `
-                  : "Create a new skill for this workspace and explain which files you will add.",
-              )
-            }
-          />
-        </>
+    return (
+      <UtilitySurface {...utilityShellProps} content={
+        <SkillsSurface
+          skillsWorkspace={skillsWorkspace}
+          rootWorkspaceOptions={rootWorkspaceOptions}
+          skillsRuntime={skillsRuntime}
+          skillsQuery={skillsQuery}
+          skillsShowDisabled={skillsShowDisabled}
+          skillsCollapsedGroups={skillsCollapsedGroups}
+          skillsSelectedPath={skillsSelectedPath}
+          skillsExtensionsHandlers={skillsExtensionsHandlers}
+          handleTrySkill={handleTrySkill}
+          api={api!}
+          setSnapshot={setSnapshot}
+          updateSnapshot={updateSnapshot}
+          setSkillsWorkspaceId={setSkillsWorkspaceId}
+          setSkillsQuery={setSkillsQuery}
+          setSkillsShowDisabled={setSkillsShowDisabled}
+          setSkillsCollapsedGroups={setSkillsCollapsedGroups}
+          setSkillsSelectedPath={setSkillsSelectedPath}
+        />
+      } />
     );
   }
 
   if (snapshot.activeView === "extensions") {
-    return renderUtilitySurface("extensions-surface", <>
-          <ExtensionsView
-            workspace={extensionsWorkspace}
-            runtime={extensionsRuntime}
-            commandCompatibility={extensionsCommandCompatibility}
-            onOpenExtensionFolder={skillsExtensionsHandlers.handleOpenExtensionFolder}
-            onRefresh={() => {
-              if (!extensionsWorkspace) {
-                return;
-              }
-              void updateSnapshot(api, setSnapshot, () => api.refreshRuntime(extensionsWorkspace.id));
-            }}
-            onToggleExtension={skillsExtensionsHandlers.handleToggleExtension}
-            onDeleteExtension={skillsExtensionsHandlers.handleDeleteExtension}
-            onAnalyzeExtensionConfig={(extensionPath, model) => window.piApp!.analyzeExtensionConfig(extensionPath, model)}
-            onGetExtensionConfig={(extensionPath) => window.piApp!.getExtensionConfig(extensionPath)}
-            onSetExtensionConfig={(extensionPath, values) => window.piApp!.setExtensionConfig(extensionPath, values)}
-            onInstallExtension={(source, local) => window.piApp!.installExtension(source, local)}
-            onUninstallExtension={(source, local) => window.piApp!.uninstallExtension(source, local)}
-            availableModels={extensionsRuntime?.models?.map((m) => `${m.providerId}:${m.modelId}`) ?? []}
-            defaultAnalysisModel={typeof smartCompactSettings?.summaryModel === "string" ? smartCompactSettings.summaryModel : "deepseek:deepseek-chat"}
-          />
-        </>
+    return (
+      <UtilitySurface {...utilityShellProps} content={
+        <ExtensionsSurface
+          extensionsWorkspace={extensionsWorkspace}
+          extensionsRuntime={extensionsRuntime}
+          extensionsCommandCompatibility={extensionsCommandCompatibility}
+          smartCompactSettings={smartCompactSettings}
+          skillsExtensionsHandlers={skillsExtensionsHandlers}
+          api={api!}
+          setSnapshot={setSnapshot}
+          updateSnapshot={updateSnapshot}
+        />
+      } />
     );
   }
 
   if (snapshot.activeView === "automations") {
-    return renderUtilitySurface("automations-surface", <>
-          <AutomationsView
-            automations={snapshot.automations ?? []}
-            workspaces={rootWorkspaceOptions}
-            filterWorkspaceId={snapshot.automationFilterWorkspaceId}
-            onCreateAutomation={(input) => {
-              void updateSnapshot(api, setSnapshot, () => api.automationCreate(input));
-            }}
-            onUpdateAutomation={(id, patch) => {
-              void updateSnapshot(api, setSnapshot, () => api.automationUpdate(id, patch));
-            }}
-            onDeleteAutomation={(id) => {
-              void updateSnapshot(api, setSnapshot, () => api.automationDelete(id));
-            }}
-            onFireNow={(id) => {
-              void updateSnapshot(api, setSnapshot, () => api.automationFireNow(id));
-            }}
-            onClearFilter={() => {
-              void updateSnapshot(api, setSnapshot, async () => {
-                const state = await api.getState();
-                return { ...state, automationFilterWorkspaceId: undefined };
-              });
-            }}
-            onSelectSession={(workspaceId, sessionId) => {
-              void updateSnapshot(api, setSnapshot, () => api.selectSession({ workspaceId, sessionId }));
-            }}
-          />
-        </>
+    return (
+      <UtilitySurface {...utilityShellProps} content={
+        <AutomationsSurface
+          snapshot={snapshot}
+          selectedWorkspace={selectedWorkspace}
+          rootWorkspaceOptions={rootWorkspaceOptions}
+          api={api!}
+          setSnapshot={setSnapshot}
+          updateSnapshot={updateSnapshot}
+        />
+      } />
     );
   }
 
   if (snapshot.activeView === "context") {
-    return renderUtilitySurface("context-surface", <>
-          <ContextView
-            workspace={contextWorkspace}
-            runtime={contextRuntime}
-            snapshot={contextSnapshot}
-            loading={contextLoading}
-            onRefresh={loadContextSnapshot}
-            api={api}
-          />
-        </>
+    return (
+      <UtilitySurface {...utilityShellProps} content={
+        <ContextSurface
+          contextWorkspace={contextWorkspace}
+          contextRuntime={contextRuntime}
+          contextSnapshot={contextSnapshot}
+          contextLoading={contextLoading}
+          loadContextSnapshot={loadContextSnapshot}
+          api={api!}
+        />
+      } />
     );
   }
 
@@ -2449,7 +2315,21 @@ export default function App() {
 
   return (
     <div className={shellClassName} style={shellStyle}>
-      {renderGlobalSearchPalette()}
+      {globalSearch.isOpen ? (
+        <SearchPalette
+          query={globalSearch.query}
+          scope={globalSearch.scope}
+          archiveFilter={globalSearch.archiveFilter}
+          results={globalSearch.results}
+          activeIndex={globalSearch.activeIndex}
+          onQueryChange={globalSearch.setQuery}
+          onScopeChange={globalSearch.setScope}
+          onArchiveFilterChange={globalSearch.setArchiveFilter}
+          onActiveIndexChange={globalSearch.setActiveIndex}
+          onSelect={handleGlobalSearchSelect}
+          onClose={globalSearch.close}
+        />
+      ) : null}
       {shortcutsSheetOpen ? (
         <ShortcutsSheet platform={api.platform} onClose={() => setShortcutsSheetOpen(false)} />
       ) : null}
