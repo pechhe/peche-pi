@@ -10,7 +10,7 @@
 
 import type { SessionRef } from "@pi-gui/session-driver";
 import type { TranscriptMessage } from "../src/desktop-state";
-import { parseProviderAndModel, resolveProviderConfig } from "./llm-helpers";
+import { parseProviderAndModel, resolveProviderConfig } from "./llm-helpers.ts";
 
 // ---------------------------------------------------------------------------
 // Types
