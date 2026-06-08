@@ -90,8 +90,8 @@
     "semantic_hash": "c2b59f770f404fba9ecc1f8afb0b27a7"
   },
   "apps/desktop/electron/app-store.ts": {
-    "mtime": 1780925610.264354,
-    "ast_hash": "80249ea9f18a8013a7cee191dd4247e0",
+    "mtime": 1780930727.9463909,
+    "ast_hash": "1a1b10f95d52aea1bc4a8fd7b0607e3f",
     "semantic_hash": ""
   },
   "apps/desktop/electron/commit-push-service.ts": {
@@ -115,8 +115,8 @@
     "semantic_hash": "4edaee449f6b0adfbe584b1c53d7d002"
   },
   "apps/desktop/electron/desktop-ipc-seam.ts": {
-    "mtime": 1780920475.3812878,
-    "ast_hash": "27c702d31efacd321abc0f2823ef9591",
+    "mtime": 1780931477.8545153,
+    "ast_hash": "8ffd66c280ca9c7ab769872868be6af5",
     "semantic_hash": ""
   },
   "apps/desktop/electron/dev-reload-main-probe.ts": {
@@ -185,8 +185,8 @@
     "semantic_hash": "fa1a895f10da0461dd23b500537150a3"
   },
   "apps/desktop/electron/main.ts": {
-    "mtime": 1780928463.2502694,
-    "ast_hash": "716f146eb10d255d7d2cc72320dc0dc7",
+    "mtime": 1780931488.9087117,
+    "ast_hash": "9ff25d136e86656c50e85b6faae32daa",
     "semantic_hash": ""
   },
   "apps/desktop/electron/notification-manager.ts": {
@@ -280,8 +280,8 @@
     "semantic_hash": "e630481a3ae556e00f0c3de457928f48"
   },
   "apps/desktop/package.json": {
-    "mtime": 1780906697.8702533,
-    "ast_hash": "f15cfa5062211cc34ba6f852f7fb8802",
+    "mtime": 1780930985.7992618,
+    "ast_hash": "efbf352794393aaab69e21ebba2267cf",
     "semantic_hash": ""
   },
   "apps/desktop/playwright.config.ts": {
@@ -335,8 +335,8 @@
     "semantic_hash": "5f7bf1cb13e598db6b14520c59bbd404"
   },
   "apps/desktop/src/App.tsx": {
-    "mtime": 1780925751.1232016,
-    "ast_hash": "99c39625daf0283671fede4d4059dbc0",
+    "mtime": 1780931637.639935,
+    "ast_hash": "3886aad7d141c46ae2445838fb4aea7b",
     "semantic_hash": ""
   },
   "apps/desktop/src/advisor-handoff-controller.test.ts": {
@@ -425,8 +425,8 @@
     "semantic_hash": ""
   },
   "apps/desktop/src/desktop-state.ts": {
-    "mtime": 1780925581.3601694,
-    "ast_hash": "930cc3b53c0bf0cf1cb40a1bff6c80ea",
+    "mtime": 1780930992.2333539,
+    "ast_hash": "8471cc2a2f4c8f37f79aec815e78a6d9",
     "semantic_hash": ""
   },
   "apps/desktop/src/desktop-surface-controller.test.ts": {
@@ -560,8 +560,8 @@
     "semantic_hash": "bc5a644d28a4687067f9e065553243e2"
   },
   "apps/desktop/src/icons.tsx": {
-    "mtime": 1780926404.7614415,
-    "ast_hash": "993e5911fb4eaaae68864658c9b72855",
+    "mtime": 1780932639.2232044,
+    "ast_hash": "76e76fccc7ee13cef587bd7fbd5ec7f0",
     "semantic_hash": ""
   },
   "apps/desktop/src/image-lightbox.tsx": {
@@ -570,8 +570,8 @@
     "semantic_hash": "2758c19249dcd0a6748a3dfc641911eb"
   },
   "apps/desktop/src/ipc.ts": {
-    "mtime": 1780924230.0615041,
-    "ast_hash": "d6f3849d2748bbc20a8b435aed785654",
+    "mtime": 1780931517.3390455,
+    "ast_hash": "2955de2b482a0c94dba2dacc1e2355de",
     "semantic_hash": ""
   },
   "apps/desktop/src/kanban-board.test.ts": {
@@ -785,9 +785,9 @@
     "semantic_hash": "2d02f8e2477586aa22780ea848ed225b"
   },
   "apps/desktop/src/subagent-card.tsx": {
-    "mtime": 1780595387.9627266,
-    "ast_hash": "220d2a95ac6074a7faf6007d4d603601",
-    "semantic_hash": "220d2a95ac6074a7faf6007d4d603601"
+    "mtime": 1780932790.7835715,
+    "ast_hash": "e3e2b942f6c650f88cb3bec98ed2e1a8",
+    "semantic_hash": ""
   },
   "apps/desktop/src/subagent-fleet.test.ts": {
     "mtime": 1780504218.3167489,
@@ -845,8 +845,8 @@
     "semantic_hash": ""
   },
   "apps/desktop/src/timeline-model.ts": {
-    "mtime": 1780927300.898301,
-    "ast_hash": "7ee4bd697d8da5c19954085522ae45d6",
+    "mtime": 1780930534.8355892,
+    "ast_hash": "be4161d17a817fa19fc9a5a908e5ef08",
     "semantic_hash": ""
   },
   "apps/desktop/src/timeline-types.ts": {
@@ -860,8 +860,8 @@
     "semantic_hash": ""
   },
   "apps/desktop/src/topbar.tsx": {
-    "mtime": 1780924252.4624383,
-    "ast_hash": "721aa6278b28686c0c5502540e83ab74",
+    "mtime": 1780931623.4243245,
+    "ast_hash": "4c22c4b8f03610b75d43bf4015deed89",
     "semantic_hash": ""
   },
   "apps/desktop/src/tree-modal.tsx": {
@@ -1030,9 +1030,9 @@
     "semantic_hash": "af495003de3ed817e5284d7f560d20e5"
   },
   "apps/desktop/tests/core/subagent-ui.spec.ts": {
-    "mtime": 1780505517.7642071,
-    "ast_hash": "b4cf313eef7c11f387ebca452d47413b",
-    "semantic_hash": "b4cf313eef7c11f387ebca452d47413b"
+    "mtime": 1780932827.2433715,
+    "ast_hash": "3c35eaf148cb9a3f61a5991e75276c20",
+    "semantic_hash": ""
   },
   "apps/desktop/tests/core/terminal-diff-layout.spec.ts": {
     "mtime": 1780308074.590392,
@@ -1375,9 +1375,9 @@
     "semantic_hash": ""
   },
   "packages/pi-sdk-driver/src/pi-sdk-driver.ts": {
-    "mtime": 1780511044.071551,
-    "ast_hash": "d281c302fc4be88bb41dfb3860e280be",
-    "semantic_hash": "d281c302fc4be88bb41dfb3860e280be"
+    "mtime": 1780930438.944135,
+    "ast_hash": "937dba602c0841053ae520670c287002",
+    "semantic_hash": ""
   },
   "packages/pi-sdk-driver/src/questionnaire-tool.ts": {
     "mtime": 1780861656.4177094,
@@ -1415,8 +1415,8 @@
     "semantic_hash": ""
   },
   "packages/pi-sdk-driver/src/session-supervisor.ts": {
-    "mtime": 1780913431.7822895,
-    "ast_hash": "c3a5b3b16d35fd7a0f4843778aafde89",
+    "mtime": 1780930444.7074604,
+    "ast_hash": "e2c404fcaed99098758d5659d04f56ac",
     "semantic_hash": ""
   },
   "packages/pi-sdk-driver/src/thread-title-generator.ts": {
@@ -1835,8 +1835,8 @@
     "semantic_hash": ""
   },
   "apps/desktop/src/project-map-popover.tsx": {
-    "mtime": 1780924230.06243,
-    "ast_hash": "fe13b158fa39f073720973d65f878a45",
+    "mtime": 1780931603.2743158,
+    "ast_hash": "c1a2e7b63e1049f8dfbe095980062b76",
     "semantic_hash": ""
   },
   "apps/desktop/electron/app-store-persistence.test.ts": {
@@ -1857,6 +1857,21 @@
   ".pi/artifacts/scout/oxlint-fixes-20260608-100200.md": {
     "mtime": 1780913335.8903801,
     "ast_hash": "dadfcb44addedd6030a1925dcd453e60",
+    "semantic_hash": ""
+  },
+  "apps/desktop/src/subagent-session-converter.ts": {
+    "mtime": 1780933430.0680323,
+    "ast_hash": "f66283bfba0316948a77c6117ca571c6",
+    "semantic_hash": ""
+  },
+  "apps/desktop/src/subagent-session-panel.tsx": {
+    "mtime": 1780930620.2914927,
+    "ast_hash": "11c4b2b46ce82c9d66c1c25286665a5c",
+    "semantic_hash": ""
+  },
+  "apps/desktop/src/surfaces/graph-surface.tsx": {
+    "mtime": 1780933112.5998034,
+    "ast_hash": "b259ce81a90990e897653d22fb5931f2",
     "semantic_hash": ""
   }
 }

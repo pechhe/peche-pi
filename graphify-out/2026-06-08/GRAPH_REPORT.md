@@ -1,16 +1,16 @@
 # Graph Report - peche-pi  (2026-06-08)
 
 ## Corpus Check
-- 345 files · ~294,070 words
+- 345 files · ~296,114 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 3243 nodes · 8299 edges · 160 communities (140 shown, 20 thin omitted)
+- 3243 nodes · 8299 edges · 159 communities (138 shown, 21 thin omitted)
 - Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 47 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `e3ee54a5`
+- Built from commit: `ab1f1cbe`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -116,6 +116,7 @@
 - [[_COMMUNITY_Extension Resource Manager|Extension Resource Manager]]
 - [[_COMMUNITY_Package Metadata|Package Metadata]]
 - [[_COMMUNITY_Extension Command Compatibility|Extension Command Compatibility]]
+- [[_COMMUNITY_Swift Notification Helper|Swift Notification Helper]]
 - [[_COMMUNITY_Inline Diff Component|Inline Diff Component]]
 - [[_COMMUNITY_Image Lightbox|Image Lightbox]]
 - [[_COMMUNITY_Timeline Type Definitions|Timeline Type Definitions]]
@@ -191,15 +192,15 @@
 ## Import Cycles
 - None detected.
 
-## Communities (160 total, 20 thin omitted)
+## Communities (159 total, 21 thin omitted)
 
 ### Community 0 - "Tree Tool Internals"
 Cohesion: 0.07
 Nodes (45): normalizeRuntimeCommandName(), skillCommandName(), skillSlashCommand(), buildGraphifyAppendSystemPrompt(), canonicalizePath(), clampThinkingLevel(), createCanonicalWorkspaceRef(), extendTreeToolCalls() (+37 more)
 
 ### Community 1 - "Desktop App Store"
-Cohesion: 0.07
-Nodes (7): reduce(), DesktopAppStore, findNextQueuedSession(), toSessionRef(), DesktopAppState, WorkspaceSessionTarget, NavigateSessionTreeResult
+Cohesion: 0.06
+Nodes (8): DesktopAppStore, execAsync, findNextQueuedSession(), toSessionRef(), LiveEditStatsListener, DesktopAppState, WorkspaceSessionTarget, NavigateSessionTreeResult
 
 ### Community 2 - "Session Package Core"
 Cohesion: 0.06
@@ -207,7 +208,7 @@ Nodes (93): default, description, default, types, exports, ./dev-reload-probe, .
 
 ### Community 3 - "Desktop Test Harness"
 Cohesion: 0.06
-Nodes (53): buildDesktopLaunchEnv(), copyAgentFile(), copyAppBundle(), createDesktopHarness(), desktopDir, DesktopHarness, DesktopTestMode, dispatchComposerDragEvent() (+45 more)
+Nodes (52): buildDesktopLaunchEnv(), copyAgentFile(), copyAppBundle(), createDesktopHarness(), desktopDir, DesktopHarness, DesktopTestMode, dispatchComposerDragEvent() (+44 more)
 
 ### Community 4 - "Git Workspace Review"
 Cohesion: 0.06
@@ -222,8 +223,8 @@ Cohesion: 0.04
 Nodes (54): useGlobalSearch(), MentionMenuState, useMentionMenu(), UseMentionMenuParams, useNewThreadState(), RalphLaunch, useRalphLoop(), useSelfHealTranscript() (+46 more)
 
 ### Community 7 - "Transcript Persistence Store"
-Cohesion: 0.05
-Nodes (37): PersistedTranscript, execAsync, extractSearchableText(), AppStoreInternals, isPersistedTranscriptRecord(), mergeEnabledModelPatterns(), PersistedTranscriptRecord, PersistedTranscriptStoreValue (+29 more)
+Cohesion: 0.06
+Nodes (35): PersistedTranscript, extractSearchableText(), AppStoreInternals, isPersistedTranscriptRecord(), mergeEnabledModelPatterns(), PersistedTranscriptRecord, PersistedTranscriptStoreValue, loadLoopTranscript() (+27 more)
 
 ### Community 8 - "Session Supervisor"
 Cohesion: 0.14
@@ -238,7 +239,7 @@ Cohesion: 0.19
 Nodes (3): replaceResourcePattern(), RuntimeSupervisor, titleForResourceKind()
 
 ### Community 11 - "Desktop Session State"
-Cohesion: 0.10
+Cohesion: 0.09
 Nodes (6): extractFilePathFromInput(), isStreamingSessionEvent(), LegacyPersistedUiState, DesktopSessionStatePatch, serializeCompatibilityByWorkspace(), Listener
 
 ### Community 12 - "App State Reducer"
@@ -274,8 +275,8 @@ Cohesion: 0.07
 Nodes (13): applyModelSettingsSnapshot(), hasStoredModelSettings(), RefreshStateOptions, mergeModelSettingsSnapshot(), modelSettingsEqual(), resolveSelectedSessionIdFromCatalog(), resolveSelectedWorkspaceIdFromCatalog(), buildWorktreeRecords() (+5 more)
 
 ### Community 20 - "Pi SDK Driver"
-Cohesion: 0.10
-Nodes (9): pi, pi-mono, DesktopAppStoreOptions, PiSdkDriver, PiSdkDriverConfig, RuntimeSupervisorOptions, PiSdkDriverOptions, SyncWorkspaceResult (+1 more)
+Cohesion: 0.09
+Nodes (13): pi, pi-mono, DesktopAppStoreOptions, addWorkspace(), selectWorkspace(), syncCurrentWorkspace(), syncWorkspace(), PiSdkDriver (+5 more)
 
 ### Community 21 - "Button Sound Settings"
 Cohesion: 0.13
@@ -295,23 +296,23 @@ Nodes (18): SessionFileCatalogStorage, createQuestionnaireTool(), QuestionnaireA
 
 ### Community 25 - "Sidebar & Timeline Tests"
 Cohesion: 0.12
-Nodes (24): emitQueuedMessageStarted(), emitRunningSnapshot(), selectedSessionContext(), expectSidebarCollapsed(), restoreSidebarIfNeeded(), selectedSessionRef(), selectedSessionRef(), selectedSessionRef() (+16 more)
+Nodes (21): emitQueuedMessageStarted(), emitRunningSnapshot(), selectedSessionContext(), transcriptMessages(), expectSidebarCollapsed(), restoreSidebarIfNeeded(), selectedSessionRef(), selectedSessionRef() (+13 more)
 
 ### Community 26 - "Composer Store Actions"
 Cohesion: 0.13
 Nodes (33): addComposerAttachments(), appendLocalActivity(), buildQueuedComposerMessage(), cancelQueuedComposerEdit(), editQueuedComposerMessage(), finishComposerCommand(), recoverFromSubmitError(), removeComposerAttachment() (+25 more)
 
 ### Community 27 - "Workspace Store Actions"
-Cohesion: 0.11
-Nodes (18): sendMessageToSession(), appendUserMessage(), clearActiveAssistantMessage(), timelineItemFactory, TimelineRuntimeState, buildWorkspaceRecords(), cloneTranscriptMessage(), makeReasoningItem() (+10 more)
+Cohesion: 0.14
+Nodes (12): sendMessageToSession(), buildWorkspaceRecords(), cloneTranscriptMessage(), pickPreferredWorkspaceId(), resolveWorkspaceRoots(), toSessionAttachments(), toTranscriptAttachments(), listRalphPlans() (+4 more)
 
 ### Community 28 - "Session State Store"
 Cohesion: 0.14
 Nodes (13): StateListener, currentState, downloadUpdate(), getMainWindow(), initAutoUpdater(), onUpdateStateChange(), promptForDownload(), quitAndInstall() (+5 more)
 
 ### Community 29 - "Mention & Slash Menus"
-Cohesion: 0.08
-Nodes (39): createCompatibilityKey(), createCompatibilityKeyForCommand(), getLearnedCommandCompatibility(), recordLearnedCommandCompatibility(), restoreCompatibilityByWorkspace(), ActiveSlashFlow, ActiveSlashQuery, extractActiveSlashQuery() (+31 more)
+Cohesion: 0.09
+Nodes (35): createCompatibilityKey(), createCompatibilityKeyForCommand(), getLearnedCommandCompatibility(), recordLearnedCommandCompatibility(), restoreCompatibilityByWorkspace(), ActiveSlashFlow, ActiveSlashQuery, extractActiveSlashQuery() (+27 more)
 
 ### Community 30 - "Git & PR Service"
 Cohesion: 0.16
@@ -337,17 +338,13 @@ Nodes (12): CatalogFileState, compareSessionEntries(), createEmptyState(), defau
 Cohesion: 0.09
 Nodes (26): useDesktopAppState(), AutomationRun, ChatConfig, ChatContextUsage, ChatStatus, ComposerFileAttachment, ContextSectionKind, ExtensionCommandCompatibilityStatus (+18 more)
 
-### Community 36 - "App Store Core"
-Cohesion: 0.24
-Nodes (10): commitFiles(), execFileAsync, launchSeeded(), seedThreeFileWorkspace(), selectedSessionRef(), commitAllInGitRepo(), initGitRepo(), makeGitWorkspace() (+2 more)
-
 ### Community 37 - "Model Settings Tests"
-Cohesion: 0.21
-Nodes (10): ensureEnabledModelsDisclosureOpen(), expectComposerModelOptions(), expectComposerModelState(), expectModelOptions(), expectNewThreadModelState(), setEnabledModel(), setEnabledModels(), openNewThread() (+2 more)
+Cohesion: 0.17
+Nodes (13): ensureEnabledModelsDisclosureOpen(), expectComposerModelOptions(), expectComposerModelState(), expectModelOptions(), expectNewThreadModelState(), openSettings(), setEnabledModel(), setEnabledModels() (+5 more)
 
 ### Community 38 - "Notification Manager"
 Cohesion: 0.07
-Nodes (20): updateComposerDraft(), formatCapabilityLabel(), applySessionEventState(), updateRecordValue(), previewFromTranscript(), hostUiBody(), NotificationManager, requiresAttention() (+12 more)
+Nodes (18): updateComposerDraft(), formatCapabilityLabel(), updateRecordValue(), hostUiBody(), NotificationManager, requiresAttention(), sameSessionRef(), serializeExtensionUiState() (+10 more)
 
 ### Community 39 - "Desktop IPC Infrastructure"
 Cohesion: 0.10
@@ -366,12 +363,12 @@ Cohesion: 0.13
 Nodes (18): buildFilteredTree(), buildTreePrefix(), buildTreeRowLine(), buildVisibleRows(), collectActivePathIds(), DEFAULT_HIDDEN_KINDS, flattenTreeRows(), formatTreeNodeDisplayText() (+10 more)
 
 ### Community 43 - "Context View UI"
-Cohesion: 0.13
-Nodes (37): NewThreadState, PendingThreadStart, SlashMenuState, ComposerSlashCommand, ComposerSlashCommandSection, ComposerSlashOption, ComposerSlashOptionEmptyState, ComposerControlRow (+29 more)
+Cohesion: 0.17
+Nodes (26): NewThreadState, PendingThreadStart, SlashMenuState, ComposerSlashCommand, ComposerSlashCommandSection, ComposerSlashOption, ComposerSlashOptionEmptyState, ComposerControlRow (+18 more)
 
 ### Community 44 - "App Store Utilities"
-Cohesion: 0.52
-Nodes (5): listRalphPlans(), readItems(), readPlanTitle(), INCOMPLETE_ITEMS, withBundle()
+Cohesion: 0.27
+Nodes (11): emitAttentionRequest(), emitCompletedEvent(), emitFailedEvent(), emitRunningEvent(), readOptionalLog(), createThread(), DesktopTestApi, requireSessionContext() (+3 more)
 
 ### Community 45 - "Desktop Surface Navigation"
 Cohesion: 0.27
@@ -398,8 +395,8 @@ Cohesion: 0.12
 Nodes (13): AutomationScheduler, AutomationSchedulerDeps, AutomationStore, computeLastScheduledFire(), matchesCronField(), matchesCronPart(), parseRange(), PRESET_CRON (+5 more)
 
 ### Community 52 - "Review UX Tests"
-Cohesion: 0.13
-Nodes (23): readComposerAttachment(), ComposerImageMimeType, dedupeFiles(), extractFilesFromDataTransfer(), extractImageFilesFromClipboardData(), fileNameFromPath(), fileSignature(), FileWithPath (+15 more)
+Cohesion: 0.19
+Nodes (17): readComposerAttachment(), ComposerImageMimeType, dedupeFiles(), extractFilesFromDataTransfer(), extractImageFilesFromClipboardData(), fileNameFromPath(), fileSignature(), FileWithPath (+9 more)
 
 ### Community 53 - "Desktop App State Hooks"
 Cohesion: 0.14
@@ -434,12 +431,12 @@ Cohesion: 0.18
 Nodes (10): Answer, Changes made:, Context for: Fix oxlint warnings in apps/desktop/src, Dependencies, Existing Patterns, Gotchas, Key Findings, Next Steps (+2 more)
 
 ### Community 62 - "Session Subscription Events"
-Cohesion: 0.08
-Nodes (28): contrastRatio(), parseRgb(), relativeLuminance(), openSettings(), openSettings(), PersistedTranscriptItem, PersistedUiState, clickSession() (+20 more)
+Cohesion: 0.12
+Nodes (12): launchSeeded(), createNamedThread(), createSessionViaIpc(), getRealAuthConfig(), launchDesktop(), makeUserDataDir(), makeWorkspace(), selectSession() (+4 more)
 
 ### Community 63 - "Timeline Store Actions"
 Cohesion: 0.09
-Nodes (26): launchSessionInDefaultTerminal(), resolvePiBinary(), shellQuote(), AutomationCard(), AutomationCardProps, AutomationFormProps, AutomationsViewProps, SCHEDULE_PRESETS (+18 more)
+Nodes (25): launchSessionInDefaultTerminal(), resolvePiBinary(), shellQuote(), AutomationCard(), AutomationCardProps, AutomationFormProps, AutomationsViewProps, SCHEDULE_PRESETS (+17 more)
 
 ### Community 64 - "Extension Package Inference"
 Cohesion: 0.09
@@ -474,8 +471,8 @@ Cohesion: 0.13
 Nodes (14): dependencies, next, react, react-dom, devDependencies, @types/react, @types/react-dom, name (+6 more)
 
 ### Community 72 - "Timeline Pinning Tests"
-Cohesion: 0.14
-Nodes (15): createTimelineSession(), expectNoTimelineCollapseWindow(), expectStableTimelineWindow(), multilineDraft, sampleTimelineCollapseWindow(), sampleTimelineStability(), TimelineStabilitySample, waitForStableVirtualizedBottom() (+7 more)
+Cohesion: 0.11
+Nodes (20): commitFiles(), execFileAsync, seedThreeFileWorkspace(), selectedSessionRef(), createTimelineSession(), expectNoTimelineCollapseWindow(), expectStableTimelineWindow(), multilineDraft (+12 more)
 
 ### Community 73 - "Extensions View UI"
 Cohesion: 0.20
@@ -486,8 +483,8 @@ Cohesion: 0.11
 Nodes (18): devDependencies, agentation, cross-env, @dnd-kit/core, @dnd-kit/sortable, @dnd-kit/utilities, @earendil-works/pi-coding-agent, electron (+10 more)
 
 ### Community 75 - "Commit Push Service"
-Cohesion: 0.20
-Nodes (13): SettingsModelsSection(), SettingsModelsSectionProps, SettingsProvidersSection(), SettingsProvidersSectionProps, describeProviderStatus(), filterModels(), filterProviders(), labelForThinking() (+5 more)
+Cohesion: 0.14
+Nodes (17): SettingsModelsSection(), SettingsModelsSectionProps, SettingsProvidersSection(), SettingsProvidersSectionProps, AgentEditor(), FALLBACK_TOOLS, SettingsSubagentsSection(), describeProviderStatus() (+9 more)
 
 ### Community 76 - "Subagent Store Actions"
 Cohesion: 0.32
@@ -510,8 +507,8 @@ Cohesion: 0.19
 Nodes (8): DoneSoundVariant, getAudioContext(), playBell(), playCoin(), playDoneSound(), tone(), ToneOptions, VARIANTS
 
 ### Community 81 - "Queued Message Delivery"
-Cohesion: 0.15
-Nodes (10): transcriptMessages(), createSessionViaIpc(), getSelectedTranscript(), waitForSessionByTitle(), customFallbackExtensionSource, extensionSource, installPackageBackedExtension(), newSessionExtensionSource (+2 more)
+Cohesion: 0.13
+Nodes (15): clickSession(), seedAgentDir(), seedBranchedTreeSessionFixture(), seedToolResultTreeSessionFixture(), withAgentDirEnv(), writeProjectExtension(), computerUseLikeExtensionSource, extensionSource (+7 more)
 
 ### Community 82 - "Subagent Card UI"
 Cohesion: 0.12
@@ -589,6 +586,10 @@ Nodes (7): author, description, license, main, name, private, version
 Cohesion: 0.40
 Nodes (4): Flagged ambiguities, History, Language, pi GUI Desktop
 
+### Community 101 - "Swift Notification Helper"
+Cohesion: 0.21
+Nodes (11): appendUserMessage(), clearActiveAssistantMessage(), timelineItemFactory, TimelineRuntimeState, makeReasoningItem(), makeSummaryItem(), makeToolItem(), makeTranscriptMessage() (+3 more)
+
 ### Community 102 - "Inline Diff Component"
 Cohesion: 0.18
 Nodes (14): AdvisorIntent, AdvisorPanelState, AdvisorPanelStatus, AdvisorSideEffect, createEmptyAdvisorState(), getAdvisorSideEffect(), HandoffScope, reduceAdvisorState() (+6 more)
@@ -630,12 +631,12 @@ Cohesion: 0.67
 Nodes (5): acceptOpenFolderDialog(), acceptOpenImageDialog(), assertAccessibilityReady(), execFileAsync, runAppleScript()
 
 ### Community 113 - "Community 113"
-Cohesion: 0.38
-Nodes (4): AgentEditor(), FALLBACK_TOOLS, SettingsSubagentsSection(), settingsPill()
+Cohesion: 0.33
+Nodes (3): PersistedTranscriptItem, PersistedUiState, persistedSessionDataPaths()
 
 ### Community 114 - "Community 114"
-Cohesion: 0.13
-Nodes (22): Desktop Session State, DesktopSessionState, event(), otherRef, ref, session(), snapshot(), state() (+14 more)
+Cohesion: 0.12
+Nodes (24): Desktop Session State, applySessionEventState(), DesktopSessionState, event(), otherRef, ref, session(), snapshot() (+16 more)
 
 ### Community 115 - "Preload API Builder"
 Cohesion: 0.12
@@ -654,8 +655,8 @@ Cohesion: 0.40
 Nodes (4): PATH, PI_APP_NAME, PI_APP_USER_DATA_DIR, dev-launch-peche-pi.sh script
 
 ### Community 119 - "Runtime Command Collection"
-Cohesion: 0.19
-Nodes (9): QueuedComposerMessage, closeImageLightbox(), emit(), ImageLightbox(), LightboxImage, listeners, openImageLightbox(), QueuedComposerMessages() (+1 more)
+Cohesion: 0.28
+Nodes (6): closeImageLightbox(), emit(), ImageLightbox(), LightboxImage, listeners, openImageLightbox()
 
 ### Community 120 - "Electron Vite Config"
 Cohesion: 0.50
@@ -666,16 +667,16 @@ Cohesion: 0.33
 Nodes (6): devDependencies, fallow, @playwright/test, @types/node, typescript, fallow
 
 ### Community 130 - "Community 130"
-Cohesion: 0.40
-Nodes (4): DraftAnswer, QuestionnaireComposer(), QuestionnaireRequest, QuestionnaireInput
+Cohesion: 0.10
+Nodes (29): BeginRalphLoopProps, ComposerPanel(), formatTokenCount(), LoopControlProps, resolveFallbackContextWindow(), ComposerAttachments(), ComposerImageAttachment, QueuedComposerMessage (+21 more)
 
 ### Community 132 - "Community 132"
 Cohesion: 0.40
 Nodes (4): Cache-First Desktop Reopen Behavior, Session Isolation, Raw Session-Log Reprocessing, Driver Guidelines
 
 ### Community 148 - "Community 148"
-Cohesion: 0.50
-Nodes (4): addWorkspace(), selectWorkspace(), syncCurrentWorkspace(), syncWorkspace()
+Cohesion: 0.83
+Nodes (3): contrastRatio(), parseRgb(), relativeLuminance()
 
 ### Community 149 - "Community 149"
 Cohesion: 0.11
@@ -710,24 +711,24 @@ Nodes (8): Encodable, Never, emit(), HelperOutput, mapAuthorizationStatus(), nor
   apps/desktop/index.html · relation: references
 
 ## Knowledge Gaps
-- **778 isolated node(s):** `$schema`, `entry`, `packages`, `minOccurrences`, `ignoreDependencies` (+773 more)
+- **778 isolated node(s):** `LoopSessionInfo`, `CollectLoopIterationsParams`, `$schema`, `entry`, `packages` (+773 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **20 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **21 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
 - **What is the exact relationship between `index.html` and `logo.png`?**
   _Edge tagged AMBIGUOUS (relation: references) - confidence is low._
-- **Why does `devDependencies` connect `Desktop Dev Dependencies` to `Community 121`, `Package Metadata`, `macOS Release Workflow`, `Remotion Video Package`?**
-  _High betweenness centrality (0.121) - this node is a cross-community bridge._
 - **Why does `Homebrew Tap` connect `macOS Release Workflow` to `IPC Contract Validation`?**
-  _High betweenness centrality (0.120) - this node is a cross-community bridge._
-- **Why does `Desktop App` connect `IPC Contract Validation` to `Composer & Persistence Tests`, `Community 114`, `Desktop IPC Infrastructure`?**
-  _High betweenness centrality (0.082) - this node is a cross-community bridge._
-- **What connects `$schema`, `entry`, `packages` to the rest of the system?**
+  _High betweenness centrality (0.090) - this node is a cross-community bridge._
+- **Why does `devDependencies` connect `Desktop Dev Dependencies` to `Community 121`, `Package Metadata`, `macOS Release Workflow`, `Remotion Video Package`?**
+  _High betweenness centrality (0.090) - this node is a cross-community bridge._
+- **Why does `DesktopAppStore` connect `Desktop App Store` to `JSON Catalog Store`, `App Store Core`, `Notification Manager`, `Transcript Persistence Store`, `Worktree Management`, `Desktop Session State`, `Context View UI`, `File Diff Review`, `Community 114`, `Runtime Supervisor`, `Review UX Tests`, `Pi SDK Driver`, `Community 153`, `Composer Store Actions`, `Mention & Slash Menus`?**
+  _High betweenness centrality (0.067) - this node is a cross-community bridge._
+- **What connects `LoopSessionInfo`, `CollectLoopIterationsParams`, `$schema` to the rest of the system?**
   _778 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `Tree Tool Internals` be split into smaller, more focused modules?**
   _Cohesion score 0.06711915535444947 - nodes in this community are weakly interconnected._
 - **Should `Desktop App Store` be split into smaller, more focused modules?**
-  _Cohesion score 0.07105263157894737 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.05663474692202462 - nodes in this community are weakly interconnected._
