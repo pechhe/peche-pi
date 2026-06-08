@@ -2,9 +2,6 @@ import { useEffect, useState } from "react";
 import type { CavemanLevel } from "./ipc";
 import { useButtonSound } from "./use-button-sound";
 
-// Click cycles through these three levels only.
-const CAVEMAN_CYCLE: readonly CavemanLevel[] = ["off", "micro", "ultra"];
-
 const CAVEMAN_LABELS: Record<string, string> = {
   off: "Caveman off",
   lite: "Caveman lite",
@@ -20,14 +17,6 @@ function cavemanLabel(level: CavemanLevel): string {
   return CAVEMAN_LABELS[level] ?? `Caveman ${level}`;
 }
 
-function nextCavemanLevel(level: CavemanLevel): CavemanLevel {
-  const index = CAVEMAN_CYCLE.indexOf(level);
-  if (index === -1) {
-    return CAVEMAN_CYCLE[0]!;
-  }
-  return CAVEMAN_CYCLE[(index + 1) % CAVEMAN_CYCLE.length]!;
-}
-
 interface CavemanSelectorProps {
   readonly level: CavemanLevel;
   readonly disabled?: boolean;
@@ -36,24 +25,34 @@ interface CavemanSelectorProps {
 
 /**
  * Caveman compression control styled as a physical square push-button (the
- * shared `.devbtn` keycap recipe) with an amber indicator LED above it. Click
- * cycles off → micro → ultra; the LED lights whenever compression is active.
+ * shared `.devbtn` keycap recipe) with an indicator LED above it. The button is
+ * a binary in/out toggle: click flips between "off" and the configured "on"
+ * level (chosen in Settings; resolved here from caveman config). The LED lights
+ * whenever compression is active.
  */
 export function CavemanSelector({ level, disabled = false, onSetLevel }: CavemanSelectorProps) {
   const [visualLevel, setVisualLevel] = useState(level);
+  // What "on" means — configured in Settings, persisted in caveman config.
+  const [onLevel, setOnLevel] = useState<CavemanLevel>("ultra");
   const buttonSound = useButtonSound({ variant: "click", disabled });
 
   useEffect(() => {
     setVisualLevel(level);
   }, [level]);
 
+  useEffect(() => {
+    const api = window.piApp;
+    if (!api) return;
+    void api.getCavemanConfig().then((config) => setOnLevel(config.onLevel));
+  }, []);
+
+  const active = visualLevel !== "off";
+
   const handleClick = () => {
-    const next = nextCavemanLevel(visualLevel);
+    const next: CavemanLevel = active ? "off" : onLevel;
     setVisualLevel(next);
     onSetLevel(next);
   };
-
-  const active = visualLevel !== "off";
 
   return (
     <span className="devbtn" data-section-label="Caveman">
@@ -61,7 +60,8 @@ export function CavemanSelector({ level, disabled = false, onSetLevel }: Caveman
         type="button"
         className={`devbtn__switch${active ? " devbtn__switch--on" : ""}`}
         aria-label={`Caveman compression: ${cavemanLabel(visualLevel)}`}
-        title="Caveman output compression level (click to cycle: off → micro → ultra)"
+        aria-pressed={active}
+        title="Caveman output compression (click to toggle on/off — set the on level in Settings)"
         disabled={disabled}
         {...buttonSound}
         onClick={handleClick}

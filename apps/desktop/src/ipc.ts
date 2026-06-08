@@ -37,6 +37,7 @@ export type CavemanLevel = "off" | "lite" | "full" | "ultra" | "wenyan-lite" | "
 
 export interface CavemanConfigSnapshot {
   readonly defaultLevel: CavemanLevel;
+  readonly onLevel: CavemanLevel;
   readonly showStatus: boolean;
 }
 
@@ -81,6 +82,7 @@ export const desktopIpc = {
   setDefaultThinkingLevel: "pi-gui:set-default-thinking-level",
   getCavemanConfig: "pi-gui:get-caveman-config",
   setCavemanDefaultLevel: "pi-gui:set-caveman-default-level",
+  setCavemanOnLevel: "pi-gui:set-caveman-on-level",
   setSessionModel: "pi-gui:set-session-model",
   setSessionThinkingLevel: "pi-gui:set-session-thinking-level",
   loginProvider: "pi-gui:login-provider",
@@ -257,6 +259,7 @@ export const piDesktopApiIpcBridge = {
   setDefaultThinkingLevel: { kind: "invoke", channel: desktopIpc.setDefaultThinkingLevel },
   getCavemanConfig: { kind: "invoke", channel: desktopIpc.getCavemanConfig },
   setCavemanDefaultLevel: { kind: "invoke", channel: desktopIpc.setCavemanDefaultLevel },
+  setCavemanOnLevel: { kind: "invoke", channel: desktopIpc.setCavemanOnLevel },
   setSessionModel: { kind: "invoke", channel: desktopIpc.setSessionModel },
   setSessionThinkingLevel: { kind: "invoke", channel: desktopIpc.setSessionThinkingLevel },
   loginProvider: { kind: "invoke", channel: desktopIpc.loginProvider },
@@ -730,6 +733,7 @@ export interface PiDesktopApi {
   ): Promise<DesktopAppState>;
   getCavemanConfig(): Promise<CavemanConfigSnapshot>;
   setCavemanDefaultLevel(level: CavemanLevel): Promise<CavemanConfigSnapshot>;
+  setCavemanOnLevel(level: CavemanLevel): Promise<CavemanConfigSnapshot>;
   setSessionModel(
     workspaceId: string,
     sessionId: string,

@@ -234,6 +234,8 @@ export interface SettingsSurfaceProps {
   readonly notificationPermissionPending: boolean;
   readonly buttonSoundSettings: import("../button-click-sound").ButtonSoundSettings;
   readonly smartCompactSettings: SmartCompactSettings;
+  readonly cavemanOnLevel: import("../ipc").CavemanLevel;
+  readonly onSetCavemanOnLevel: (level: import("../ipc").CavemanLevel) => void;
   readonly rootWorkspace: WorkspaceRecord | undefined;
   readonly api: PiDesktopApi;
   readonly setSnapshot: Dispatch<SetStateAction<DesktopAppState | null>>;
@@ -261,6 +263,8 @@ export function SettingsSurface(props: SettingsSurfaceProps) {
     notificationPermissionPending,
     buttonSoundSettings,
     smartCompactSettings,
+    cavemanOnLevel,
+    onSetCavemanOnLevel,
     rootWorkspace,
     api,
     setSnapshot,
@@ -350,6 +354,8 @@ export function SettingsSurface(props: SettingsSurfaceProps) {
           void updateSnapshot(api, setSnapshot, () => api.setCommitPushModel(rootWorkspace?.id ?? "", model));
         }}
         smartCompactSettings={smartCompactSettings}
+        cavemanOnLevel={cavemanOnLevel}
+        onSetCavemanOnLevel={onSetCavemanOnLevel}
         onSetSmartCompactSettings={(settings) => {
           const appApi = window.piApp;
           if (!appApi) return;

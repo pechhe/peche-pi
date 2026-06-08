@@ -280,6 +280,17 @@ export function RefreshIcon({ className }: { readonly className?: string } = {})
   );
 }
 
+export function GraphIcon() {
+  return (
+    <Icon>
+      <circle cx="12" cy="5" r="2.5" />
+      <circle cx="5" cy="19" r="2.5" />
+      <circle cx="19" cy="19" r="2.5" />
+      <path d="M12 7.5v5M7.2 17l3-5M16.8 17l-3-5" />
+    </Icon>
+  );
+}
+
 export function WorktreeIcon() {
   return (
     <Icon>

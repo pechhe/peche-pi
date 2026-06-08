@@ -1,7 +1,7 @@
 import type { RuntimeSettingsSnapshot, RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
 import type { ModelSettingsScopeMode, NotificationPreferences, ThreadTransitionSettings, WorkspaceRecord } from "./desktop-state";
 import type { ButtonSoundSettings } from "./button-click-sound";
-import type { DesktopNotificationPermissionStatus } from "./ipc";
+import type { CavemanLevel, DesktopNotificationPermissionStatus } from "./ipc";
 import { SettingsAppearanceSection } from "./settings-appearance-section";
 import { SettingsGeneralSection } from "./settings-general-section";
 import { SettingsModelsSection } from "./settings-models-section";
@@ -57,6 +57,8 @@ interface SettingsViewProps {
   readonly onSetCommitPushModel: (model: string) => void;
   readonly smartCompactSettings: import("./ipc").SmartCompactSettings;
   readonly onSetSmartCompactSettings: (settings: Partial<import("./ipc").SmartCompactSettings>) => void;
+  readonly cavemanOnLevel: CavemanLevel;
+  readonly onSetCavemanOnLevel: (level: CavemanLevel) => void;
 }
 
 export function SettingsView({
@@ -104,6 +106,8 @@ export function SettingsView({
   onSetCommitPushModel,
   smartCompactSettings,
   onSetSmartCompactSettings,
+  cavemanOnLevel,
+  onSetCavemanOnLevel,
 }: SettingsViewProps) {
   if (!workspace && section !== "general" && section !== "notifications" && section !== "appearance" && section !== "sounds") {
     return (
@@ -165,6 +169,8 @@ export function SettingsView({
               onSetPlanModeIdeology={onSetPlanModeIdeology}
               smartCompactSettings={smartCompactSettings}
               onSetSmartCompactSettings={onSetSmartCompactSettings}
+              cavemanOnLevel={cavemanOnLevel}
+              onSetCavemanOnLevel={onSetCavemanOnLevel}
             />
           ) : null}
 

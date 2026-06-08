@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
 import type { ModelSettingsScopeMode, PlanModeIdeologySetting } from "./desktop-state";
-import type { SmartCompactSettings } from "./ipc";
+import type { CavemanLevel, SmartCompactSettings } from "./ipc";
 import { buildModelOptions } from "./composer-commands";
 import { SettingsGroup, SettingsInfoRow, SettingsRow } from "./settings-utils";
 import { SettingsSmartCompactSection } from "./settings-smart-compact-section";
@@ -21,6 +21,8 @@ interface SettingsGeneralSectionProps {
   readonly commitPushModel?: string;
   readonly planModeIdeology: PlanModeIdeologySetting;
   readonly smartCompactSettings: SmartCompactSettings;
+  readonly cavemanOnLevel: CavemanLevel;
+  readonly onSetCavemanOnLevel: (level: CavemanLevel) => void;
   readonly onSetPlanModeIdeology: (ideology: PlanModeIdeologySetting) => void;
   readonly onSetCommitPushModel: (model: string) => void;
   readonly onSetModelSettingsScopeMode: (mode: ModelSettingsScopeMode) => void;
@@ -69,6 +71,8 @@ export function SettingsGeneralSection({
   onSetPlanModeIdeology,
   smartCompactSettings,
   onSetSmartCompactSettings,
+  cavemanOnLevel,
+  onSetCavemanOnLevel,
 }: SettingsGeneralSectionProps) {
   const modelOptions = useMemo(() => buildModelOptions(runtime), [runtime]);
 
@@ -127,6 +131,22 @@ export function SettingsGeneralSection({
               Per repo
             </button>
           </div>
+        </SettingsRow>
+        <SettingsRow
+          title="Caveman on level"
+          description="What the composer Caveman toggle switches on to."
+        >
+          <select
+            aria-label="Caveman on level"
+            className="settings-text-input"
+            value={cavemanOnLevel}
+            onChange={(event) => onSetCavemanOnLevel(event.target.value as CavemanLevel)}
+          >
+            <option value="micro">Micro</option>
+            <option value="lite">Lite</option>
+            <option value="full">Full</option>
+            <option value="ultra">Ultra</option>
+          </select>
         </SettingsRow>
         <SettingsRow title="Enable skill slash commands" description="Keep skill slash commands available in the composer.">
           <input

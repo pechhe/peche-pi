@@ -6,7 +6,7 @@ import type {
   GraphifyWatchStatus,
   PiDesktopApi,
 } from "./ipc";
-import { ContextIcon, RefreshIcon } from "./icons";
+import { ContextIcon, RefreshIcon, GraphIcon } from "./icons";
 import { playButtonClick } from "./button-click-sound";
 
 interface ProjectMapPopoverProps {
@@ -132,7 +132,19 @@ export function ProjectMapPopover({ rootWorkspace, api }: ProjectMapPopoverProps
       {open ? (
         <div className="project-map-popover__menu" role="menu">
           <div className="project-map-popover__header">
-            <strong>Project map</strong>
+            <div className="project-map-popover__header-left">
+              <strong>Project map</strong>
+              {status?.htmlPath ? (
+                <button
+                  type="button"
+                  className="project-map-popover__graph-btn"
+                  onClick={() => { playButtonClick(); openGraphHtml(); }}
+                  title="Open visual graph"
+                >
+                  <GraphIcon />
+                </button>
+              ) : null}
+            </div>
             <div className="project-map-popover__header-right">
               <span className={`project-map-popover__status ${statusClass}`}>{statusLabel}</span>
               <button
@@ -198,12 +210,6 @@ export function ProjectMapPopover({ rootWorkspace, api }: ProjectMapPopoverProps
               />
             </label>
           </div>
-
-          {status?.htmlPath ? (
-            <button type="button" className="project-map-popover__link" onClick={() => { playButtonClick(); openGraphHtml(); }}>
-              Open visual graph
-            </button>
-          ) : null}
 
           {message ? <pre className="project-map-popover__message">{message}</pre> : null}
         </div>

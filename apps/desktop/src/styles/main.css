@@ -2222,11 +2222,23 @@ body.pi-thread-handoff .timeline-item--just-sent .timeline-item__bubble {
 @keyframes toast-rise {
   from {
     opacity: 0;
-    transform: translateY(100%);
+    transform: translateY(8px);
   }
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+/* Corollary of toast-rise: drifts up a little and fades out. */
+@keyframes toast-exit {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-8px);
   }
 }
 
@@ -3182,8 +3194,10 @@ body.pi-thread-handoff .timeline-item--just-sent .timeline-item__bubble {
 
 .toast {
   position: absolute;
-  left: 16px;
-  right: 16px;
+  left: 0;
+  right: 0;
+  margin-inline: auto;
+  width: min(920px, calc(100% - 32px));
   bottom: calc(100% - 6px);
   z-index: 5;
   display: flex;
@@ -3196,7 +3210,11 @@ body.pi-thread-handoff .timeline-item--just-sent .timeline-item__bubble {
   box-shadow: var(--shadow-lg);
   font-size: 13px;
   line-height: 1.4;
-  animation: toast-rise 0.22s ease-out;
+  animation: toast-rise 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.toast--exiting {
+  animation: toast-exit 0.2s ease-in forwards;
 }
 
 .toast--success {
@@ -8394,10 +8412,40 @@ mark.thread-find-active {
   gap: 12px;
 }
 
+.project-map-popover__header-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .project-map-popover__header-right {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.project-map-popover__graph-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted-strong);
+  cursor: pointer;
+  padding: 0;
+}
+
+.project-map-popover__graph-btn:hover {
+  background: var(--surface-muted);
+  color: var(--ink-strong);
+}
+
+.project-map-popover__graph-btn svg {
+  width: 13px;
+  height: 13px;
 }
 
 .project-map-popover__status {
@@ -11585,8 +11633,8 @@ mark.thread-find-active {
   flex-direction: column;
   align-items: center;
   position: relative;
-  /* Wide enough that the engraved label clears the neighbouring button's. */
-  min-width: 74px;
+  /* Breathing room so each engraved label clears its neighbour's. */
+  margin: 0 22px;
 }
 
 /* Engraved section label above the button, matching sibling keys. */
@@ -11645,11 +11693,11 @@ mark.thread-find-active {
   transition: background 160ms ease, box-shadow 200ms ease;
 }
 .composer-device--modular .devbtn__switch--on .devbtn__led {
-  background: radial-gradient(circle at 34% 28%, oklch(1 0.13 78), oklch(0.83 0.18 63) 38%, oklch(0.54 0.18 49) 72%, oklch(0.18 0.05 45) 100%);
+  background: radial-gradient(circle at 34% 28%, oklch(0.98 0.16 150), oklch(0.85 0.21 148) 38%, oklch(0.56 0.19 150) 72%, oklch(0.2 0.06 150) 100%);
   box-shadow:
-    inset 0 0 0 1px oklch(0.42 0.11 45 / 0.72),
-    0 0 4px oklch(0.84 0.17 66 / 0.86),
-    0 0 11px oklch(0.82 0.18 60 / 0.5);
+    inset 0 0 0 1px oklch(0.45 0.12 150 / 0.72),
+    0 0 4px oklch(0.85 0.2 150 / 0.86),
+    0 0 11px oklch(0.82 0.21 150 / 0.5);
 }
 
 /* Sharp, near-square push-button keycap. Flat face (no domed radials) so it
@@ -11658,39 +11706,44 @@ mark.thread-find-active {
 .composer-device--modular .devbtn__cap {
   width: 26px;
   height: 26px;
-  border-radius: 2px;
-  background: linear-gradient(180deg, oklch(0.935 0.003 250) 0%, oklch(0.86 0.003 250) 100%);
+  border-radius: 1px;
+  background: linear-gradient(180deg, oklch(0.945 0.003 250) 0%, oklch(0.875 0.003 250) 52%, oklch(0.83 0.004 250) 100%);
   box-shadow:
-    inset 0 1px 0 oklch(1 0.002 250 / 0.9),
-    inset 0 -1px 0 oklch(0.55 0.004 250 / 0.5),
-    inset 1px 0 0 oklch(1 0.002 250 / 0.4),
-    inset -1px 0 0 oklch(0.6 0.004 250 / 0.32),
-    0 0 0 1px oklch(0.46 0.004 250 / 0.5),
-    0 1px 1px oklch(0 0 0 / 0.25),
-    0 2px 3px oklch(0 0 0 / 0.16);
-  transition: transform 80ms ease, box-shadow 80ms ease, filter 120ms ease;
+    /* crisp machined edges — all 0-blur, integer px so they pixel-snap */
+    inset 0 1px 0 0 oklch(0.99 0.002 250 / 0.95),
+    inset 0 -1px 0 0 oklch(0.48 0.005 250 / 0.6),
+    inset 1px 0 0 0 oklch(0.97 0.002 250 / 0.5),
+    inset -1px 0 0 0 oklch(0.58 0.004 250 / 0.45),
+    /* crisp dark frame (0 blur) */
+    0 0 0 1px oklch(0.44 0.004 250 / 0.55),
+    /* tall raised stance — only the cast drop is blurred */
+    0 3px 3px oklch(0 0 0 / 0.24),
+    0 6px 10px oklch(0 0 0 / 0.16),
+    0 9px 16px oklch(0 0 0 / 0.08);
+  transition: transform 90ms ease, box-shadow 90ms ease, filter 120ms ease;
 }
 :root.dark .composer-device--modular .devbtn__cap {
   background: linear-gradient(180deg, oklch(0.345 0.005 250) 0%, oklch(0.245 0.005 250) 100%);
   box-shadow:
-    inset 0 1px 0 oklch(0.56 0.006 250 / 0.7),
-    inset 0 -1px 0 oklch(0 0 0 / 0.6),
-    inset 1px 0 0 oklch(0.5 0.006 250 / 0.4),
-    inset -1px 0 0 oklch(0 0 0 / 0.4),
-    0 0 0 1px oklch(0 0 0 / 0.6),
-    0 1px 1px oklch(0 0 0 / 0.4),
-    0 2px 3px oklch(0 0 0 / 0.28);
+    inset 0 1px 0 0 oklch(0.6 0.006 250 / 0.8),
+    inset 0 -1px 0 0 oklch(0 0 0 / 0.7),
+    inset 1px 0 0 0 oklch(0.52 0.006 250 / 0.45),
+    inset -1px 0 0 0 oklch(0 0 0 / 0.5),
+    0 0 0 1px oklch(0 0 0 / 0.65),
+    0 3px 3px oklch(0 0 0 / 0.4),
+    0 6px 10px oklch(0 0 0 / 0.3),
+    0 9px 16px oklch(0 0 0 / 0.16);
 }
 .composer-device--modular .devbtn__switch:hover:not(:disabled) .devbtn__cap {
   filter: brightness(1.06);
 }
-/* ON (active) or press: the key sinks into its cavity. */
-.composer-device--modular .devbtn__switch--on .devbtn__cap,
-.composer-device--modular .devbtn__switch:active:not(:disabled) .devbtn__cap {
-  transform: translateY(2px);
+/* ON: the key sinks into its cavity. Gated on state only (not :active) so a
+   toggle sinks once via --on instead of bouncing on mousedown/mouseup. */
+.composer-device--modular .devbtn__switch--on .devbtn__cap {
+  transform: translateY(3px);
   box-shadow:
-    inset 0 2px 4px oklch(0 0 0 / 0.5),
-    inset 0 1px 0 oklch(1 0.002 250 / 0.18),
-    0 0 0 1px oklch(0 0 0 / 0.5),
+    inset 0 2px 4px oklch(0 0 0 / 0.55),
+    inset 0 1px 0 0 oklch(1 0.002 250 / 0.16),
+    0 0 0 1px oklch(0 0 0 / 0.55),
     0 1px 2px oklch(0 0 0 / 0.3);
 }

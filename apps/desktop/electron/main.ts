@@ -103,11 +103,13 @@ async function getGraphifyProjectMapStatusForWorkspace(workspaceId: string, work
       edges?: readonly unknown[];
       links?: readonly unknown[];
       communities?: readonly unknown[] | Record<string, unknown>;
+      built_at_commit?: string;
       metadata?: { built_from_commit?: string; commit?: string };
     };
     const reportPreview = await readFile(reportPath, "utf8").then((text) => text.slice(0, GRAPHIFY_REPORT_PREVIEW_CHARS)).catch(() => undefined);
     const htmlAvailable = await stat(htmlPath).then(() => true).catch(() => false);
-    const builtCommit = extractBuiltCommit(reportPreview) ?? graph.metadata?.built_from_commit ?? graph.metadata?.commit;
+    const builtCommit = extractBuiltCommit(reportPreview) ?? graph.built_at_commit ?? graph.metadata?.built_from_commit ?? graph.metadata?.commit;
+    const communityCountFromReport = reportPreview?.match(/(\d+) communities/)?.[1];
     const currentCommit = await readGitCommit(workspacePath);
     // Check if hook is installed by looking for the hook file directly (avoids PATH issues in Electron)
     let hookInstalled = false;
@@ -130,7 +132,7 @@ async function getGraphifyProjectMapStatusForWorkspace(workspaceId: string, work
       currentCommit,
       nodeCount: graph.nodes?.length,
       edgeCount: graph.edges?.length ?? graph.links?.length,
-      communityCount: Array.isArray(graph.communities) ? graph.communities.length : typeof graph.communities === "object" && graph.communities ? Object.keys(graph.communities).length : undefined,
+      communityCount: communityCountFromReport ? Number(communityCountFromReport) : (Array.isArray(graph.communities) ? graph.communities.length : typeof graph.communities === "object" && graph.communities ? Object.keys(graph.communities).length : undefined),
       communities: extractGraphifyCommunities(reportPreview),
       reportPreview,
     };
@@ -886,6 +888,12 @@ app.whenReady().then(async () => {
         await writeCavemanConfig(next);
         return next;
       },
+      setCavemanOnLevel: async (_event: unknown, level: CavemanLevel) => {
+        const current = await readCavemanConfig();
+        const next = { ...current, onLevel: normalizeCavemanLevel(level) };
+        await writeCavemanConfig(next);
+        return next;
+      },
       setSessionThinkingLevel: (_event: unknown, workspaceId: string, sessionId: string, thinkingLevel: unknown) =>
         store.setSessionThinkingLevel({ workspaceId, sessionId }, thinkingLevel as never),
 
@@ -1535,7 +1543,7 @@ function createRuntimeLoginCallbacks() {
 
 const CAVEMAN_LEVELS: readonly CavemanLevel[] = ["off", "lite", "full", "ultra", "wenyan-lite", "wenyan", "wenyan-ultra", "micro"];
 const CAVEMAN_CONFIG_PATH = path.join(homedir(), ".pi", "agent", "caveman.json");
-const DEFAULT_CAVEMAN_CONFIG: CavemanConfigSnapshot = { defaultLevel: "full", showStatus: true };
+const DEFAULT_CAVEMAN_CONFIG: CavemanConfigSnapshot = { defaultLevel: "full", onLevel: "ultra", showStatus: true };
 
 function normalizeCavemanLevel(value: unknown): CavemanLevel {
   return CAVEMAN_LEVELS.includes(value as CavemanLevel) ? (value as CavemanLevel) : DEFAULT_CAVEMAN_CONFIG.defaultLevel;
@@ -1546,6 +1554,7 @@ async function readCavemanConfig(): Promise<CavemanConfigSnapshot> {
     const parsed = JSON.parse(await readFile(CAVEMAN_CONFIG_PATH, "utf8")) as Partial<CavemanConfigSnapshot>;
     return {
       defaultLevel: normalizeCavemanLevel(parsed.defaultLevel),
+      onLevel: parsed.onLevel ? normalizeCavemanLevel(parsed.onLevel) : DEFAULT_CAVEMAN_CONFIG.onLevel,
       showStatus: typeof parsed.showStatus === "boolean" ? parsed.showStatus : DEFAULT_CAVEMAN_CONFIG.showStatus,
     };
   } catch {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 export type ToastVariant = "success" | "error";
 
@@ -28,8 +28,16 @@ interface ActiveToast extends ToastPayload {
   readonly id: number;
 }
 
+/** Must match the .toast--exiting animation duration in main.css. */
+const EXIT_ANIMATION_MS = 200;
+
 export function ToastHost() {
   const [toast, setToast] = useState<ActiveToast | null>(null);
+  const [exitingId, setExitingId] = useState<number | null>(null);
+
+  const dismiss = useCallback((id: number) => {
+    setExitingId((current) => (current === null ? id : current));
+  }, []);
 
   useEffect(() => {
     let nextId = 0;
@@ -37,6 +45,7 @@ export function ToastHost() {
       const detail = (event as CustomEvent<ToastPayload>).detail;
       if (!detail) return;
       nextId += 1;
+      setExitingId(null);
       setToast({ ...detail, id: nextId });
     };
     window.addEventListener(TOAST_EVENT, handler);
@@ -49,12 +58,24 @@ export function ToastHost() {
     const ms = toast.autoDismissMs ?? defaultMs;
     if (ms === undefined) return undefined;
     const handle = window.setTimeout(() => {
-      setToast((current) => (current && current.id === toast.id ? null : current));
+      dismiss(toast.id);
     }, ms);
     return () => window.clearTimeout(handle);
-  }, [toast]);
+  }, [toast, dismiss]);
+
+  // Once an exit is triggered, unmount after the exit animation completes.
+  useEffect(() => {
+    if (exitingId === null) return undefined;
+    const handle = window.setTimeout(() => {
+      setToast((current) => (current && current.id === exitingId ? null : current));
+      setExitingId(null);
+    }, EXIT_ANIMATION_MS);
+    return () => window.clearTimeout(handle);
+  }, [exitingId]);
 
   if (!toast) return null;
+
+  const isExiting = exitingId === toast.id;
 
   const icon =
     toast.variant === "success" ? (
@@ -91,20 +112,23 @@ export function ToastHost() {
   );
 
   return (
-    <div className={`toast toast--${toast.variant}`} role={toast.variant === "error" ? "alert" : "status"}>
+    <div
+      className={`toast toast--${toast.variant}${isExiting ? " toast--exiting" : ""}`}
+      role={toast.variant === "error" ? "alert" : "status"}
+    >
       {toast.onClick ? (
         <button
           className="toast__action"
           type="button"
           onClick={() => {
             toast.onClick?.();
-            setToast(null);
+            dismiss(toast.id);
           }}
         >
           {body}
         </button>
       ) : body}
-      <button aria-label="Dismiss" className="toast__close" type="button" onClick={() => setToast(null)}>
+      <button aria-label="Dismiss" className="toast__close" type="button" onClick={() => dismiss(toast.id)}>
         <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
           <path d="M3 3L9 9M9 3L3 9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
         </svg>

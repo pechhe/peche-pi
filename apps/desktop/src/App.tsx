@@ -441,6 +441,7 @@ export default function App() {
   const prevPlanStatusRef = useRef<Map<string, SessionStatus>>(new Map());
   const [settingsSection, setSettingsSection] = useState<SettingsSection>("general");
   const [cavemanLevel, setCavemanLevel] = useState<CavemanLevel>("off");
+  const [cavemanOnLevel, setCavemanOnLevel] = useState<CavemanLevel>("ultra");
   const [settingsWorkspaceId, setSettingsWorkspaceId] = useState("");
   const [skillsWorkspaceId, setSkillsWorkspaceId] = useState("");
   const [skillsQuery, setSkillsQuery] = useState("");
@@ -531,6 +532,7 @@ export default function App() {
 
     void piApi.getCavemanConfig().then((config) => {
       setCavemanLevel(config.defaultLevel);
+      setCavemanOnLevel(config.onLevel);
     });
 
     void piApi.getResolvedTheme().then((theme) => {
@@ -2210,6 +2212,11 @@ export default function App() {
           notificationPermissionPending={notificationPermissionPending}
           buttonSoundSettings={buttonSoundSettings}
           smartCompactSettings={smartCompactSettings}
+          cavemanOnLevel={cavemanOnLevel}
+          onSetCavemanOnLevel={(level) => {
+            setCavemanOnLevel(level);
+            void window.piApp?.setCavemanOnLevel(level);
+          }}
           rootWorkspace={rootWorkspace}
           api={api!}
           setSnapshot={setSnapshot}
