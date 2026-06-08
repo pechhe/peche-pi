@@ -82,6 +82,8 @@ interface SessionComposerProps {
   /** Plan/build mode for this session, owned by the host so it survives submits. */
   readonly composerMode: ComposerMode;
   readonly onSetComposerMode: (mode: ComposerMode) => void;
+  readonly orchestratorMode?: boolean;
+  readonly onToggleOrchestrator?: () => void;
   /** True once a plan-mode run has produced a plan and the session is idle. */
   readonly planReady: boolean;
   /** Approve the written plan: sends an execute message + flips to build. */
@@ -153,6 +155,8 @@ const SessionComposerInner = forwardRef<SessionComposerHandle, SessionComposerPr
     cavemanLevel,
     composerMode,
     onSetComposerMode,
+    orchestratorMode,
+    onToggleOrchestrator,
     planReady,
     onExecutePlan,
     onPlanSubmitted,
@@ -553,6 +557,8 @@ const SessionComposerInner = forwardRef<SessionComposerHandle, SessionComposerPr
       thinkingLevel={resolvedSessionThinkingLevel}
       cavemanLevel={cavemanLevel}
       composerMode={composerMode}
+      orchestratorMode={orchestratorMode}
+      onToggleOrchestrator={onToggleOrchestrator}
       blackholeAvailable={blackholeAvailable}
       onClearSlashCommand={slashMenu.resetSlashUi}
       onComposerKeyDown={handleComposerKeyDown}
@@ -682,7 +688,9 @@ function sameSessionComposerProps(
     previous.onOpenModelSettings === next.onOpenModelSettings &&
     previous.handleClipboardImageShortcut === next.handleClipboardImageShortcut &&
     previous.questionnaireRequest === next.questionnaireRequest &&
-    previous.onRespondToQuestionnaire === next.onRespondToQuestionnaire
+    previous.onRespondToQuestionnaire === next.onRespondToQuestionnaire &&
+    previous.orchestratorMode === next.orchestratorMode &&
+    previous.onToggleOrchestrator === next.onToggleOrchestrator
   );
 }
 

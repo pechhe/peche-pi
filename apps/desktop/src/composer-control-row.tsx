@@ -6,6 +6,7 @@ import type { ComposerMode } from "./composer-mode";
 import type { CavemanLevel } from "./ipc";
 import { ModelFeatureBadges } from "./model-feature-badges";
 import { ModelSelector, type ModelSelectorHandle } from "./model-selector";
+import { OrchestrateSwitch } from "./orchestrate-switch";
 
 interface ComposerControlRowProps {
   readonly runtime: RuntimeSnapshot | undefined;
@@ -14,6 +15,7 @@ interface ComposerControlRowProps {
   readonly thinkingLevel: string | undefined;
   readonly cavemanLevel: CavemanLevel;
   readonly composerMode: ComposerMode;
+  readonly orchestratorMode?: boolean;
   readonly disabled?: boolean;
   readonly modelSelectorRef?: RefObject<ModelSelectorHandle | null>;
   /** ModelSelector display variations (new-thread surface differs from in-thread). */
@@ -26,6 +28,7 @@ interface ComposerControlRowProps {
   readonly onSetModel: (provider: string, modelId: string) => void;
   readonly onSetThinking: (level: string) => void;
   readonly onSetCavemanLevel: (level: CavemanLevel) => void;
+  readonly onToggleOrchestrator?: () => void;
 }
 
 /**
@@ -45,6 +48,7 @@ export const ComposerControlRow = memo(function ComposerControlRow({
   thinkingLevel,
   cavemanLevel,
   composerMode,
+  orchestratorMode,
   disabled,
   modelSelectorRef,
   dropdownPlacement,
@@ -56,6 +60,7 @@ export const ComposerControlRow = memo(function ComposerControlRow({
   onSetModel,
   onSetThinking,
   onSetCavemanLevel,
+  onToggleOrchestrator,
 }: ComposerControlRowProps) {
   return (
     <span className="composer__controls">
@@ -79,6 +84,8 @@ export const ComposerControlRow = memo(function ComposerControlRow({
       />
       <span className="composer__controls-sep">{" \u00b7 "}</span>
       <CavemanSelector level={cavemanLevel} disabled={disabled} onSetLevel={onSetCavemanLevel} />
+      <span className="composer__controls-sep">{" \u00b7 "}</span>
+      <OrchestrateSwitch on={orchestratorMode ?? false} disabled={disabled} onToggle={onToggleOrchestrator} />
       <ModelFeatureBadges runtime={runtime} provider={provider} modelId={modelId} />
     </span>
   );

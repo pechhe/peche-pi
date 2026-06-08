@@ -73,6 +73,10 @@ export class AutomationStore {
       enabled: input.enabled ?? true,
       createdAt: now,
       updatedAt: now,
+      // Baseline lastRunAt at creation so the automation does NOT fire for a
+      // scheduled time that already passed before it existed. It fires at the
+      // next scheduled time after creation.
+      lastRunAt: now,
     };
     this.cachedAutomations = [...this.cachedAutomations, automation];
     await this.save(this.cachedAutomations);

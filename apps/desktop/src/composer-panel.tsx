@@ -62,6 +62,8 @@ interface ComposerPanelProps {
   readonly thinkingLevel: string | undefined;
   readonly cavemanLevel: CavemanLevel;
   readonly composerMode: ComposerMode;
+  readonly orchestratorMode?: boolean;
+  readonly onToggleOrchestrator?: () => void;
   readonly blackholeAvailable: boolean;
   readonly slashSections: readonly ComposerSlashCommandSection[];
   readonly slashOptions: readonly ComposerSlashOption[];
@@ -142,6 +144,8 @@ export function ComposerPanel({
   thinkingLevel,
   cavemanLevel,
   composerMode,
+  orchestratorMode,
+  onToggleOrchestrator,
   blackholeAvailable,
   slashSections,
   slashOptions,
@@ -324,6 +328,8 @@ export function ComposerPanel({
                     thinkingLevel={thinkingLevel}
                     cavemanLevel={cavemanLevel}
                     composerMode={composerMode}
+                    orchestratorMode={orchestratorMode}
+                    onToggleOrchestrator={onToggleOrchestrator}
                     modelSelectorRef={modelSelectorRef}
                     unselectedModelLabel={modelOnboarding.unselectedModelLabel}
                     emptyModelTitle={modelOnboarding.emptyModelTitle}

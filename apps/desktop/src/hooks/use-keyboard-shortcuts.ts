@@ -165,7 +165,7 @@ export function useKeyboardShortcuts({
     // Built once per hook render (closures capture latest callback refs).
     type ShortcutHandler = () => void;
     const modKeyMap = new Map<string, ShortcutHandler>([
-      ["f", () => { threadSearch.isOpen ? threadSearch.close() : threadSearch.open(); }],
+      ["f", () => { if (threadSearch.isOpen) { threadSearch.close(); } else { threadSearch.open(); } }],
       ["k", openSearchPalette],
       ["/", openShortcutsSheet],
       ["d", toggleDiffPanel],

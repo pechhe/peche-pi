@@ -4,6 +4,26 @@ import { autoUpdater, type UpdateInfo } from "electron-updater";
 // electron-updater resolves the GitHub provider from the electron-builder.yml
 // publish config automatically.
 
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+export type UpdateStatus =
+  | "checking"
+  | "update-available"
+  | "downloading"
+  | "downloaded"
+  | "up-to-date"
+  | "error";
+
+export interface UpdateState {
+  readonly status: UpdateStatus;
+  readonly currentVersion?: string;
+  readonly latestVersion?: string;
+  readonly downloadProgress?: number; // 0-100
+  readonly errorMessage?: string;
+}
+
 export type UpdateCheckResult =
   | { status: "up-to-date"; currentVersion: string; latestVersion: string }
   | { status: "update-available"; currentVersion: string; latestVersion: string }
@@ -16,6 +36,29 @@ export type UpdateCheckResult =
 // ---------------------------------------------------------------------------
 let updateDownloaded = false;
 let pendingUpdateInfo: UpdateInfo | null = null;
+let currentState: UpdateState = { status: "up-to-date" };
+let stateListener: ((state: UpdateState) => void) | null = null;
+
+// ---------------------------------------------------------------------------
+// State management
+// ---------------------------------------------------------------------------
+
+function setState(state: UpdateState): void {
+  currentState = state;
+  stateListener?.(state);
+}
+
+/** Register a callback that fires whenever update state changes. */
+export function onUpdateStateChange(listener: (state: UpdateState) => void): void {
+  stateListener = listener;
+  // Push current state immediately so renderer is in sync.
+  listener(currentState);
+}
+
+/** Get current state (for initial renderer hydration). */
+export function getUpdateState(): UpdateState {
+  return currentState;
+}
 
 // ---------------------------------------------------------------------------
 // Auto-updater wiring
@@ -30,31 +73,51 @@ export function initAutoUpdater(): void {
 
   autoUpdater.on("checking-for-update", () => {
     console.log("[updater] Checking for update...");
+    setState({ status: "checking" });
   });
 
   autoUpdater.on("update-available", (info: UpdateInfo) => {
     console.log(`[updater] Update available: ${info.version}`);
-    // Ask the user if they want to download and install.
+    setState({
+      status: "update-available",
+      currentVersion: app.getVersion(),
+      latestVersion: info.version,
+    });
+    // Show native dialog as fallback if renderer hasn't handled it.
     promptForDownload(info);
   });
 
   autoUpdater.on("update-not-available", () => {
     console.log("[updater] App is up to date.");
+    setState({ status: "up-to-date", currentVersion: app.getVersion() });
   });
 
   autoUpdater.on("download-progress", (progress) => {
     console.log(`[updater] Download progress: ${Math.round(progress.percent)}%`);
+    const info = pendingUpdateInfo;
+    setState({
+      status: "downloading",
+      currentVersion: app.getVersion(),
+      latestVersion: info?.version,
+      downloadProgress: Math.round(progress.percent),
+    });
   });
 
   autoUpdater.on("update-downloaded", (info: UpdateInfo) => {
     console.log(`[updater] Update downloaded: ${info.version}`);
     updateDownloaded = true;
     pendingUpdateInfo = info;
+    setState({
+      status: "downloaded",
+      currentVersion: app.getVersion(),
+      latestVersion: info.version,
+    });
     showDownloadedNotification(info);
   });
 
   autoUpdater.on("error", (err: Error) => {
     console.error("[updater] Error:", err.message);
+    setState({ status: "error", errorMessage: err.message });
   });
 }
 
@@ -95,11 +158,18 @@ export async function checkForUpdate(): Promise<UpdateCheckResult> {
 }
 
 /** Trigger download of a pending update (called after user confirms). */
-async function downloadUpdate(): Promise<void> {
+export async function downloadUpdate(): Promise<void> {
   try {
+    setState({
+      status: "downloading",
+      currentVersion: app.getVersion(),
+      latestVersion: pendingUpdateInfo?.version,
+      downloadProgress: 0,
+    });
     await autoUpdater.downloadUpdate();
   } catch (err: unknown) {
     console.error("[updater] Download failed:", err instanceof Error ? err.message : err);
+    setState({ status: "error", errorMessage: err instanceof Error ? err.message : String(err) });
   }
 }
 
@@ -111,6 +181,7 @@ export function quitAndInstall(): void {
   // Quit silently — electron-updater handles the rest via autoInstallOnAppQuit.
   autoUpdater.quitAndInstall(false, true);
 }
+
 // ---------------------------------------------------------------------------
 // UI helpers
 // ---------------------------------------------------------------------------

@@ -9,7 +9,7 @@
  */
 
 import type { Automation } from "../src/desktop-state.ts";
-import { AutomationStore, resolveCron, computeLastScheduledFire } from "./automation-store.ts";
+import { AutomationStore } from "./automation-store.ts";
 import type { SessionDriver, WorkspaceRef } from "@pi-gui/session-driver/types";
 
 export interface AutomationSchedulerDeps {

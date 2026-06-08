@@ -37,6 +37,8 @@ export interface TimelineScrollHandle {
   readonly handleTimelineScroll: () => void;
   /** Jump to the latest message (smooth scroll). */
   readonly jumpToLatest: () => void;
+  /** Scroll to a specific message by ID. Unpins from bottom. */
+  readonly scrollToMessageId: (messageId: string, transcript: readonly import("../desktop-state").TranscriptMessage[]) => void;
   /** Handle content height changes in the timeline. */
   readonly handleTimelineContentHeightChange: () => void;
   /** Whether the "jump to latest" button should be visible. */
@@ -288,6 +290,48 @@ export function useTimelineScroll({
     requestPinnedBottomAlignment("smooth", { preferExactRestore: true });
   }, [requestPinnedBottomAlignment]);
 
+  const scrollToMessageId = useCallback((messageId: string, transcript: readonly import("../desktop-state").TranscriptMessage[]) => {
+    const pane = timelinePaneRef.current;
+    if (!pane || !messageId) return;
+
+    // Unpin from bottom so we can scroll to the target.
+    pinnedToBottomRef.current = false;
+    preserveBottomOnNextPaneResizeRef.current = false;
+    resetExactBottomRestoreState();
+    setShowJumpToLatest(true);
+
+    // Try direct DOM lookup first (element may be in the virtualized window).
+    const element = pane.querySelector(`[data-message-id="${messageId}"]`);
+    if (element) {
+      element.scrollIntoView({ block: "center", behavior: "smooth" });
+      return;
+    }
+
+    // Element is virtualized out — estimate position from transcript index.
+    const index = transcript.findIndex((msg) => msg.id === messageId);
+    if (index === -1) return;
+
+    // Use a rough estimate: ~60px per row + 14px gap.
+    const estimatedRowHeight = 74;
+    const targetScrollTop = Math.max(0, index * estimatedRowHeight - pane.clientHeight / 3);
+    pane.scrollTo({ top: targetScrollTop, behavior: "auto" });
+
+    // Virtualization renders rows based on scroll position, which may take a
+    // few frames to settle. Poll for the target row and snap to it precisely.
+    let attempts = 0;
+    const findAndScroll = () => {
+      const el = pane.querySelector(`[data-message-id="${messageId}"]`);
+      if (el) {
+        el.scrollIntoView({ block: "center", behavior: "auto" });
+        return;
+      }
+      if (attempts++ < 20) {
+        window.requestAnimationFrame(findAndScroll);
+      }
+    };
+    window.requestAnimationFrame(findAndScroll);
+  }, [resetExactBottomRestoreState]);
+
   const handleTimelineContentHeightChange = useCallback(() => {
     if (!pinnedToBottomRef.current && !preserveBottomOnNextPaneResizeRef.current) return;
 
@@ -421,5 +465,6 @@ export function useTimelineScroll({
     timelinePaneMountVersion,
     pinnedToBottomRef,
     preserveBottomOnNextPaneResizeRef,
+    scrollToMessageId,
   };
 }

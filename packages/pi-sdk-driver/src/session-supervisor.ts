@@ -1439,7 +1439,7 @@ export class SessionSupervisor {
   }
 
   private async emit(record: ManagedSessionRecord, event: SessionDriverEvent): Promise<void> {
-    for (const listener of [...record.listeners]) {
+    for (const listener of record.listeners) {
       await listener(event);
     }
   }

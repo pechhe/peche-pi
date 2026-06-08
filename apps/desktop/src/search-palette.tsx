@@ -1,6 +1,33 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { GlobalSearchArchiveFilter, GlobalSearchResult, GlobalSearchScope } from "./hooks/use-global-search";
 import { formatRelativeTime } from "./string-utils";
+
+/** Wraps case-insensitive occurrences of `query` in <mark> for visual highlight. */
+function HighlightedText({ text, query }: { readonly text: string; readonly query: string }) {
+  const parts = useMemo(() => {
+    const q = query.trim();
+    if (!q) return [text];
+    const segments: (string | { mark: string })[] = [];
+    const lower = text.toLowerCase();
+    const qLower = q.toLowerCase();
+    let from = 0;
+    let idx = lower.indexOf(qLower, from);
+    while (idx !== -1) {
+      if (idx > from) segments.push(text.slice(from, idx));
+      segments.push({ mark: text.slice(idx, idx + q.length) });
+      from = idx + q.length;
+      idx = lower.indexOf(qLower, from);
+    }
+    if (from < text.length) segments.push(text.slice(from));
+    return segments;
+  }, [text, query]);
+
+  return (
+    <>
+      {parts.map((part, i) => (typeof part === "string" ? part : <mark key={i}>{part.mark}</mark>))}
+    </>
+  );
+}
 
 interface SearchPaletteProps {
   readonly query: string;
@@ -112,9 +139,13 @@ export function SearchPalette({
                   {result.kind === "chat" ? "Chat" : result.projectName} · {result.archived ? "Past" : "Active"} · {formatRelativeTime(result.updatedAt)}
                 </span>
                 {result.transcriptSnippet ? (
-                  <span className="search-palette__result-preview search-palette__result-preview--transcript">{result.transcriptSnippet}</span>
+                  <span className="search-palette__result-preview search-palette__result-preview--transcript">
+                    <HighlightedText text={result.transcriptSnippet} query={query} />
+                  </span>
                 ) : result.preview ? (
-                  <span className="search-palette__result-preview">{result.preview}</span>
+                  <span className="search-palette__result-preview">
+                    <HighlightedText text={result.preview} query={query} />
+                  </span>
                 ) : null}
               </button>
             ))

@@ -18,6 +18,8 @@ export interface GlobalSearchResult {
   readonly archived: boolean;
   /** Present when this result was found via transcript content search. */
   readonly transcriptSnippet?: string;
+  /** The message ID within the transcript to jump to. */
+  readonly transcriptMessageId?: string;
 }
 
 interface UseGlobalSearchInput {
@@ -154,6 +156,7 @@ function transcriptMatchToResult(
         updatedAt: session.updatedAt,
         archived: Boolean(session.archivedAt),
         transcriptSnippet: match.snippet,
+        transcriptMessageId: match.messageId,
       };
     }
   }

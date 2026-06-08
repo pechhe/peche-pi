@@ -186,6 +186,13 @@ export const desktopIpc = {
   automationDelete: "pi-gui:automation-delete",
   automationList: "pi-gui:automation-list",
   automationFireNow: "pi-gui:automation-fire-now",
+  liveEditStats: "pi-gui:live-edit-stats",
+
+  // -- Update --
+  updateStateChanged: "pi-gui:update-state-changed",
+  checkForUpdate: "pi-gui:check-for-update",
+  downloadUpdate: "pi-gui:download-update",
+  restartToInstall: "pi-gui:restart-to-install",
 } as const;
 
 export const desktopCommands = {
@@ -215,6 +222,10 @@ export const piDesktopApiIpcBridge = {
   onCommand: { kind: "event", channel: desktopIpc.appCommand },
   onWorkspacePicked: { kind: "event", channel: desktopIpc.workspacePicked },
   onClipboardImagePasted: { kind: "event", channel: desktopIpc.clipboardImagePasted },
+  onUpdateStateChanged: { kind: "event", channel: desktopIpc.updateStateChanged },
+  triggerCheckForUpdate: { kind: "invoke", channel: desktopIpc.checkForUpdate },
+  triggerDownloadUpdate: { kind: "invoke", channel: desktopIpc.downloadUpdate },
+  triggerRestartToInstall: { kind: "invoke", channel: desktopIpc.restartToInstall },
   addWorkspacePath: { kind: "invoke", channel: desktopIpc.addWorkspacePath },
   pickWorkspace: { kind: "invoke", channel: desktopIpc.pickWorkspace },
   selectWorkspace: { kind: "invoke", channel: desktopIpc.selectWorkspace },
@@ -350,6 +361,7 @@ export const piDesktopApiIpcBridge = {
   getResolvedTheme: { kind: "invoke", channel: desktopIpc.getResolvedTheme },
   setThemeMode: { kind: "invoke", channel: desktopIpc.setThemeMode },
   onThemeChanged: { kind: "event", channel: desktopIpc.themeChanged },
+  onLiveEditStats: { kind: "event", channel: desktopIpc.liveEditStats },
 } as const;
 
 export function getDesktopShortcutLabel(platform: NodeJS.Platform, key: string): string {
@@ -493,6 +505,13 @@ export interface UndoEditsResult {
   readonly failed: { path: string; reason: string }[];
 }
 
+export interface LiveEditStats {
+  readonly callId: string;
+  readonly filePath: string;
+  readonly added: number;
+  readonly removed: number;
+}
+
 export interface CreatePrInput {
   readonly title: string;
   readonly body: string;
@@ -515,6 +534,7 @@ export interface DesktopLivePatch {
 export interface TranscriptSearchMatch {
   readonly sessionKey: string;
   readonly snippet: string;
+  readonly messageId: string;
 }
 
 export interface TranscriptDelta {
@@ -565,6 +585,29 @@ export interface HandoffPayload {
   readonly scope: HandoffScope;
   readonly tokenEstimate: number;
 }
+
+export type UpdateStatus =
+  | "checking"
+  | "update-available"
+  | "downloading"
+  | "downloaded"
+  | "up-to-date"
+  | "error";
+
+export interface UpdateState {
+  readonly status: UpdateStatus;
+  readonly currentVersion?: string;
+  readonly latestVersion?: string;
+  readonly downloadProgress?: number; // 0-100
+  readonly errorMessage?: string;
+}
+
+export type UpdateCheckResult =
+  | { status: "up-to-date"; currentVersion: string; latestVersion: string }
+  | { status: "update-available"; currentVersion: string; latestVersion: string }
+  | { status: "downloading"; currentVersion: string; latestVersion: string }
+  | { status: "downloaded"; currentVersion: string; latestVersion: string }
+  | { status: "error"; message: string };
 
 export interface CreateSeededSessionInput {
   readonly workspaceId: string;
@@ -820,6 +863,13 @@ export interface PiDesktopApi {
   automationDelete(id: string): Promise<DesktopAppState>;
   automationList(): Promise<DesktopAppState>;
   automationFireNow(id: string): Promise<DesktopAppState>;
+  onLiveEditStats(listener: (stats: LiveEditStats) => void): () => void;
+  // -- Update --
+  onUpdateStateChanged(listener: (state: UpdateState) => void): () => void;
+  triggerCheckForUpdate(): Promise<UpdateCheckResult>;
+  triggerDownloadUpdate(): Promise<void>;
+  triggerRestartToInstall(): Promise<void>;
+
   toggleWindowMaximize(): Promise<void>;
   openExternal(url: string): Promise<void>;
   getThemeMode(): Promise<"system" | "light" | "dark" | "dracula">;

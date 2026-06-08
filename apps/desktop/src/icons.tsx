@@ -5,7 +5,7 @@ import logoUrl from "./assets/logo.png";
 // Icons follow the Lucide geometry standard: a 24x24 grid, 2px stroke,
 // round caps/joins, and currentColor. The wrapper applies those defaults so
 // each icon body only carries its path data, keeping the set consistent.
-function Icon({ children }: { readonly children: ReactNode }) {
+function Icon({ children, className }: { readonly children: ReactNode; readonly className?: string }) {
   return (
     <svg
       aria-hidden="true"
@@ -15,6 +15,7 @@ function Icon({ children }: { readonly children: ReactNode }) {
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
+      className={className}
     >
       {children}
     </svg>
@@ -141,16 +142,6 @@ export function FileIcon() {
   );
 }
 
-function ArchiveIcon() {
-  return (
-    <Icon>
-      <rect x="2" y="3" width="20" height="5" rx="1" />
-      <path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8" />
-      <path d="M10 12h4" />
-    </Icon>
-  );
-}
-
 export function DoneIcon() {
   return (
     <Icon>
@@ -203,16 +194,6 @@ export function SparkIcon() {
       <path d="M20 2v4" />
       <path d="M22 4h-4" />
       <circle cx="4" cy="20" r="2" />
-    </Icon>
-  );
-}
-
-function PiGlyphIcon() {
-  return (
-    <Icon>
-      <path d="M5 7h14" />
-      <path d="M9 7v11" />
-      <path d="M15 7v9a2 2 0 0 0 2 2" />
     </Icon>
   );
 }
@@ -288,9 +269,9 @@ export function ExtensionIcon() {
   );
 }
 
-export function RefreshIcon() {
+export function RefreshIcon({ className }: { readonly className?: string } = {}) {
   return (
-    <Icon>
+    <Icon className={className}>
       <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
       <path d="M21 3v5h-5" />
       <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
@@ -305,19 +286,6 @@ export function WorktreeIcon() {
       <path d="M15 6a9 9 0 0 0-9 9V3" />
       <circle cx="18" cy="6" r="3" />
       <circle cx="6" cy="18" r="3" />
-    </Icon>
-  );
-}
-
-function GripIcon() {
-  return (
-    <Icon>
-      <circle cx="9" cy="5" r="1" fill="currentColor" />
-      <circle cx="9" cy="12" r="1" fill="currentColor" />
-      <circle cx="9" cy="19" r="1" fill="currentColor" />
-      <circle cx="15" cy="5" r="1" fill="currentColor" />
-      <circle cx="15" cy="12" r="1" fill="currentColor" />
-      <circle cx="15" cy="19" r="1" fill="currentColor" />
     </Icon>
   );
 }
@@ -362,19 +330,6 @@ export function ComposeIcon() {
     <Icon>
       <path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
       <path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z" />
-    </Icon>
-  );
-}
-
-function QueueIcon() {
-  return (
-    <Icon>
-      <path d="M11 5h10" />
-      <path d="M11 12h10" />
-      <path d="M11 19h10" />
-      <path d="M4 4h1v5" />
-      <path d="M4 9h2" />
-      <path d="M6.5 20H3.4c0-1 2.6-1.925 2.6-3.5a1.5 1.5 0 0 0-2.6-1.02" />
     </Icon>
   );
 }

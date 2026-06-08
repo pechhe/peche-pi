@@ -6,7 +6,7 @@ import type {
   GraphifyWatchStatus,
   PiDesktopApi,
 } from "./ipc";
-import { ContextIcon } from "./icons";
+import { ContextIcon, RefreshIcon } from "./icons";
 import { playButtonClick } from "./button-click-sound";
 
 interface ProjectMapPopoverProps {
@@ -14,226 +14,11 @@ interface ProjectMapPopoverProps {
   readonly api: PiDesktopApi;
 }
 
-function ProjectMapHealth({
-  healthCheck,
-  onCopyDebug,
-}: {
-  readonly healthCheck: GraphifyHealthCheckResult;
-  readonly onCopyDebug: () => void;
-}) {
-  return (
-    <div className="project-map-popover__health">
-      <span className="project-map-popover__health-title">Issues detected</span>
-      {healthCheck.issues.map((issue) => (
-        <p key={issue.code} className={`project-map-popover__issue project-map-popover__issue--${issue.severity}`}>
-          {issue.message}
-          {issue.fixHint ? <small>{issue.fixHint}</small> : null}
-        </p>
-      ))}
-      <button
-        type="button"
-        className="project-map-popover__debug-btn"
-        onClick={() => { playButtonClick(); onCopyDebug(); }}
-      >
-        Copy debug prompt
-      </button>
-    </div>
-  );
-}
-
-function ProjectMapAuto({
-  hookStatus,
-  watchStatus,
-  onToggleHook,
-  onToggleWatch,
-}: {
-  readonly hookStatus: GraphifyHookStatus | null;
-  readonly watchStatus: GraphifyWatchStatus | null;
-  readonly onToggleHook: (enable: boolean) => void;
-  readonly onToggleWatch: (enable: boolean) => void;
-}) {
-  return (
-    <div className="project-map-popover__auto">
-      <label className="project-map-popover__auto-item">
-        <span>
-          <strong>Auto-refresh hook</strong>
-          <small>Rebuild graph on git commit.</small>
-        </span>
-        <input
-          type="checkbox"
-          checked={hookStatus?.postCommit ?? false}
-          onChange={(e) => { playButtonClick(); onToggleHook(e.currentTarget.checked); }}
-        />
-      </label>
-      <label className="project-map-popover__auto-item">
-        <span>
-          <strong>File watcher</strong>
-          <small>{watchStatus?.running ? `Running (PID ${watchStatus.pid})` : "Auto-rebuild on code changes."}</small>
-        </span>
-        <input
-          type="checkbox"
-          checked={watchStatus?.running ?? false}
-          onChange={(e) => { playButtonClick(); onToggleWatch(e.currentTarget.checked); }}
-        />
-      </label>
-    </div>
-  );
-}
-
-function ProjectMapSummary({
-  status,
-  loading,
-}: {
-  readonly status: GraphifyProjectMapStatus | null;
-  readonly loading: boolean;
-}) {
-  const statusLabel = loading
-    ? "Loading"
-    : status?.available
-      ? status.stale ? "Stale" : "Fresh"
-      : "Missing";
-  const statusClass = status?.stale
-    ? "project-map-popover__status--stale"
-    : status?.available ? "project-map-popover__status--fresh" : "";
-  return (
-    <>
-      <div className="project-map-popover__header">
-        <strong>Project map</strong>
-        <span className={`project-map-popover__status ${statusClass}`}>{statusLabel}</span>
-      </div>
-      <div className="project-map-popover__stats">
-        <span>{status?.nodeCount ?? "—"}<small>nodes</small></span>
-        <span>{status?.edgeCount ?? "—"}<small>edges</small></span>
-        <span>{status?.communityCount ?? "—"}<small>communities</small></span>
-      </div>
-      {status?.builtCommit ? (
-        <p className="project-map-popover__note">Built {status.builtCommit.slice(0, 8)}{status.currentCommit ? ` · Current ${status.currentCommit.slice(0, 8)}` : ""}</p>
-      ) : null}
-      {status?.stale ? <p className="project-map-popover__note project-map-popover__note--warning">Map is behind current commit. Update before using as source of truth.</p> : null}
-    </>
-  );
-}
-
-function ProjectMapActions({
-  status,
-  loading,
-  running,
-  onRefresh,
-  onRunAction,
-  onOpenGraph,
-  onSeedPrompt,
-}: {
-  readonly status: GraphifyProjectMapStatus | null;
-  readonly loading: boolean;
-  readonly running: "build" | "update" | null;
-  readonly onRefresh: () => void;
-  readonly onRunAction: (action: "build" | "update") => void;
-  readonly onOpenGraph: () => void;
-  readonly onSeedPrompt: (prompt: string) => void;
-}) {
-  return (
-    <div className="project-map-popover__actions">
-      <button type="button" onClick={() => { playButtonClick(); onRefresh(); }} disabled={loading || Boolean(running)}>Refresh status</button>
-      <button type="button" onClick={() => { playButtonClick(); onRunAction(status?.available ? "update" : "build"); }} disabled={Boolean(running)}>{running ? "Running…" : status?.available ? "Update map" : "Build map"}</button>
-      <button type="button" onClick={() => { playButtonClick(); onRunAction("build"); }} disabled={Boolean(running)}>Rebuild</button>
-      <button type="button" onClick={() => { playButtonClick(); onOpenGraph(); }} disabled={!status?.htmlPath}>Open visual graph</button>
-      <button type="button" onClick={() => { playButtonClick(); onSeedPrompt("Use Graphify to summarize this project's architecture, main communities, and likely ownership boundaries."); }}>Copy architecture prompt</button>
-    </div>
-  );
-}
-
-function ProjectMapCommunities({
-  communities,
-  onSeed,
-}: {
-  readonly communities: readonly { readonly name: string }[];
-  readonly onSeed: (prompt: string) => void;
-}) {
-  return (
-    <div className="project-map-popover__communities">
-      <span>Top communities</span>
-      {communities.slice(0, 5).map((community) => (
-        <button
-          key={community.name}
-          type="button"
-          onClick={() => onSeed(`Use Graphify to explain the ${community.name} community in this workspace.`)}
-        >
-          {community.name}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-interface ProjectMapMenuProps {
-  readonly status: GraphifyProjectMapStatus | null;
-  readonly loading: boolean;
-  readonly running: "build" | "update" | null;
-  readonly message: string;
-  readonly healthCheck: GraphifyHealthCheckResult | null;
-  readonly hookStatus: GraphifyHookStatus | null;
-  readonly watchStatus: GraphifyWatchStatus | null;
-  readonly onRefresh: () => void;
-  readonly onRunAction: (action: "build" | "update") => void;
-  readonly onOpenGraph: () => void;
-  readonly onSeedPrompt: (prompt: string) => void;
-  readonly onCopyDebug: () => void;
-  readonly onToggleHook: (enable: boolean) => void;
-  readonly onToggleWatch: (enable: boolean) => void;
-}
-
-function ProjectMapMenu({
-  status,
-  loading,
-  running,
-  message,
-  healthCheck,
-  hookStatus,
-  watchStatus,
-  onRefresh,
-  onRunAction,
-  onOpenGraph,
-  onSeedPrompt,
-  onCopyDebug,
-  onToggleHook,
-  onToggleWatch,
-}: ProjectMapMenuProps) {
-  return (
-    <div className="project-map-popover__menu" role="menu">
-      <ProjectMapSummary status={status} loading={loading} />
-      {healthCheck && !healthCheck.healthy ? (
-        <ProjectMapHealth healthCheck={healthCheck} onCopyDebug={onCopyDebug} />
-      ) : null}
-      <ProjectMapActions
-        status={status}
-        loading={loading}
-        running={running}
-        onRefresh={onRefresh}
-        onRunAction={onRunAction}
-        onOpenGraph={onOpenGraph}
-        onSeedPrompt={onSeedPrompt}
-      />
-      {status?.available ? (
-        <ProjectMapAuto
-          hookStatus={hookStatus}
-          watchStatus={watchStatus}
-          onToggleHook={onToggleHook}
-          onToggleWatch={onToggleWatch}
-        />
-      ) : null}
-      {status?.communities.length ? (
-        <ProjectMapCommunities communities={status.communities} onSeed={onSeedPrompt} />
-      ) : null}
-      {message ? <pre className="project-map-popover__message">{message}</pre> : null}
-    </div>
-  );
-}
-
 export function ProjectMapPopover({ rootWorkspace, api }: ProjectMapPopoverProps) {
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<GraphifyProjectMapStatus | null>(null);
   const [loading, setLoading] = useState(false);
-  const [running, setRunning] = useState<"build" | "update" | null>(null);
+  const [running, setRunning] = useState(false);
   const [message, setMessage] = useState("");
   const [healthCheck, setHealthCheck] = useState<GraphifyHealthCheckResult | null>(null);
   const [hookStatus, setHookStatus] = useState<GraphifyHookStatus | null>(null);
@@ -270,20 +55,20 @@ export function ProjectMapPopover({ rootWorkspace, api }: ProjectMapPopoverProps
     });
   };
 
-  const runAction = async (action: "build" | "update") => {
+  const refresh = async () => {
     if (!rootWorkspace) return;
-    setRunning(action);
+    setRunning(true);
     setMessage("");
     try {
-      const result = action === "build"
-        ? await api.buildGraphifyProjectMap(rootWorkspace.id)
-        : await api.updateGraphifyProjectMap(rootWorkspace.id);
+      const result = status?.available
+        ? await api.updateGraphifyProjectMap(rootWorkspace.id)
+        : await api.buildGraphifyProjectMap(rootWorkspace.id);
       setStatus(result.status ?? null);
       setMessage(result.message);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
     } finally {
-      setRunning(null);
+      setRunning(false);
     }
   };
 
@@ -293,15 +78,10 @@ export function ProjectMapPopover({ rootWorkspace, api }: ProjectMapPopoverProps
     }
   };
 
-  const seedPrompt = (prompt: string) => {
-    void navigator.clipboard.writeText(prompt);
-    setMessage("Copied graph-aware prompt to clipboard.");
-  };
-
   const copyDebugPrompt = () => {
     if (healthCheck?.debugPrompt) {
       void navigator.clipboard.writeText(healthCheck.debugPrompt);
-      setMessage("Debug prompt copied. Paste into a new thread to diagnose.");
+      setMessage("Debug prompt copied.");
     }
   };
 
@@ -323,6 +103,15 @@ export function ProjectMapPopover({ rootWorkspace, api }: ProjectMapPopoverProps
     }
   };
 
+  const statusLabel = loading
+    ? "Loading"
+    : status?.available
+      ? status.stale ? "Stale" : "Fresh"
+      : "Missing";
+  const statusClass = status?.stale
+    ? "project-map-popover__status--stale"
+    : status?.available ? "project-map-popover__status--fresh" : "";
+
   return (
     <div className="project-map-popover" ref={ref}>
       <div className="shortcut-tooltip-wrap topbar__tooltip-wrap">
@@ -341,22 +130,83 @@ export function ProjectMapPopover({ rootWorkspace, api }: ProjectMapPopoverProps
         </span>
       </div>
       {open ? (
-        <ProjectMapMenu
-          status={status}
-          loading={loading}
-          running={running}
-          message={message}
-          healthCheck={healthCheck}
-          hookStatus={hookStatus}
-          watchStatus={watchStatus}
-          onRefresh={() => void loadStatus()}
-          onRunAction={(action) => void runAction(action)}
-          onOpenGraph={openGraphHtml}
-          onSeedPrompt={seedPrompt}
-          onCopyDebug={copyDebugPrompt}
-          onToggleHook={(enable) => void toggleHook(enable)}
-          onToggleWatch={(enable) => void toggleWatch(enable)}
-        />
+        <div className="project-map-popover__menu" role="menu">
+          <div className="project-map-popover__header">
+            <strong>Project map</strong>
+            <div className="project-map-popover__header-right">
+              <span className={`project-map-popover__status ${statusClass}`}>{statusLabel}</span>
+              <button
+                type="button"
+                className="project-map-popover__refresh"
+                disabled={loading || running}
+                onClick={() => { playButtonClick(); void refresh(); }}
+                title={status?.available ? "Update graph" : "Build graph"}
+              >
+                <RefreshIcon className={running ? "spin" : ""} />
+              </button>
+            </div>
+          </div>
+
+          <div className="project-map-popover__stats">
+            <span>{status?.nodeCount ?? "—"}<small>nodes</small></span>
+            <span>{status?.edgeCount ?? "—"}<small>edges</small></span>
+            <span>{status?.communityCount ?? "—"}<small>communities</small></span>
+          </div>
+
+          {status?.builtCommit ? (
+            <p className="project-map-popover__note">
+              Built {status.builtCommit.slice(0, 8)}
+              {status.currentCommit ? ` · Current ${status.currentCommit.slice(0, 8)}` : ""}
+            </p>
+          ) : null}
+
+          {healthCheck && !healthCheck.healthy ? (
+            <div className="project-map-popover__health">
+              {healthCheck.issues.map((issue) => (
+                <p key={issue.code} className={`project-map-popover__issue project-map-popover__issue--${issue.severity}`}>
+                  {issue.message}
+                  {issue.fixHint ? <small>{issue.fixHint}</small> : null}
+                </p>
+              ))}
+              <button type="button" className="project-map-popover__debug-btn" onClick={() => { playButtonClick(); copyDebugPrompt(); }}>
+                Copy debug prompt
+              </button>
+            </div>
+          ) : null}
+
+          <div className="project-map-popover__auto">
+            <label className="project-map-popover__auto-item">
+              <span>
+                <strong>Auto-refresh</strong>
+                <small>Rebuild on commit.</small>
+              </span>
+              <input
+                type="checkbox"
+                checked={hookStatus?.postCommit ?? false}
+                onChange={(e) => { playButtonClick(); void toggleHook(e.currentTarget.checked); }}
+              />
+            </label>
+            <label className="project-map-popover__auto-item">
+              <span>
+                <strong>File watcher</strong>
+                <small>{watchStatus?.running ? `Running (PID ${watchStatus.pid})` : "Rebuild on save."}</small>
+              </span>
+              <input
+                type="checkbox"
+                checked={watchStatus?.running ?? false}
+                onChange={(e) => { playButtonClick(); void toggleWatch(e.currentTarget.checked); }}
+              />
+            </label>
+          </div>
+
+          {status?.htmlPath ? (
+            <button type="button" className="project-map-popover__link" onClick={() => { playButtonClick(); openGraphHtml(); }}>
+              Open visual graph
+            </button>
+          ) : null}
+
+          {message ? <pre className="project-map-popover__message">{message}</pre> : null}
+        </div>
       ) : null}
     </div>
   );

@@ -1,5 +1,5 @@
 import type { RuntimeSettingsSnapshot, RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
-import type { ModelSettingsScopeMode, NotificationPreferences, SubagentAgentRecord, SubagentSettingsRecord, ThreadTransitionSettings, WorkspaceRecord } from "./desktop-state";
+import type { ModelSettingsScopeMode, NotificationPreferences, ThreadTransitionSettings, WorkspaceRecord } from "./desktop-state";
 import type { ButtonSoundSettings } from "./button-click-sound";
 import type { DesktopNotificationPermissionStatus } from "./ipc";
 import { SettingsAppearanceSection } from "./settings-appearance-section";
@@ -8,7 +8,6 @@ import { SettingsModelsSection } from "./settings-models-section";
 import { SettingsNotificationsSection } from "./settings-notifications-section";
 import { SettingsProvidersSection } from "./settings-providers-section";
 import { SettingsSoundsSection } from "./settings-sounds-section";
-import { SettingsSubagentsSection } from "./settings-subagents-section";
 import { type SettingsSection, sectionTitle } from "./settings-utils";
 
 export type { SettingsSection } from "./settings-utils";
@@ -30,8 +29,6 @@ interface SettingsViewProps {
   readonly composerDeviceMode: import("./desktop-state").ComposerDeviceMode;
   readonly threadTransition: ThreadTransitionSettings;
   readonly buttonSoundSettings: ButtonSoundSettings;
-  readonly subagentSettings: SubagentSettingsRecord;
-  readonly subagentAgents: readonly SubagentAgentRecord[];
   readonly onSetModelSettingsScopeMode: (mode: ModelSettingsScopeMode) => void;
   readonly onSetDefaultModel: (provider: string, modelId: string) => void;
   readonly onSetThinkingLevel: (thinkingLevel: RuntimeSettingsSnapshot["defaultThinkingLevel"]) => void;
@@ -52,10 +49,6 @@ interface SettingsViewProps {
   readonly onSetComposerDeviceMode: (mode: import("./desktop-state").ComposerDeviceMode) => void;
   readonly onSetThreadTransition: (settings: Partial<ThreadTransitionSettings>) => void;
   readonly onSetButtonSoundSettings: (settings: ButtonSoundSettings) => void;
-  readonly onSetSubagentSettings: (settings: Partial<SubagentSettingsRecord>) => void;
-  readonly onRefreshSubagentAgents: (workspaceId: string) => void;
-  readonly onSaveSubagentAgent: (workspaceId: string, input: { readonly name: string; readonly raw: string; readonly scope?: "project" | "global" }) => void;
-  readonly onDeleteSubagentAgent: (workspaceId: string, name: string, scope?: "project" | "global") => void;
   readonly retrySettings: { readonly enabled: boolean; readonly maxRetries: number; readonly baseDelayMs: number };
   readonly onSetRetrySettings: (settings: { readonly enabled: boolean; readonly maxRetries: number; readonly baseDelayMs: number }) => void;
   readonly planModeIdeology: import("./desktop-state").PlanModeIdeologySetting;
@@ -83,8 +76,6 @@ export function SettingsView({
   composerDeviceMode,
   threadTransition,
   buttonSoundSettings,
-  subagentSettings,
-  subagentAgents,
   onSetModelSettingsScopeMode,
   onSetDefaultModel,
   onSetThinkingLevel,
@@ -105,10 +96,6 @@ export function SettingsView({
   onSetComposerDeviceMode,
   onSetThreadTransition,
   onSetButtonSoundSettings,
-  onSetSubagentSettings,
-  onRefreshSubagentAgents,
-  onSaveSubagentAgent,
-  onDeleteSubagentAgent,
   retrySettings,
   onSetRetrySettings,
   planModeIdeology,
@@ -118,7 +105,7 @@ export function SettingsView({
   smartCompactSettings,
   onSetSmartCompactSettings,
 }: SettingsViewProps) {
-  if (!workspace && section !== "general" && section !== "notifications" && section !== "appearance" && section !== "sounds" && section !== "subagents") {
+  if (!workspace && section !== "general" && section !== "notifications" && section !== "appearance" && section !== "sounds") {
     return (
       <div className="empty-panel">
         <div className="session-header__eyebrow">Settings</div>
@@ -131,7 +118,7 @@ export function SettingsView({
   return (
     <div className="settings-view">
       <nav className="settings-sidebar">
-        {(["appearance", "general", "providers", "models", "subagents", "notifications", "sounds"] as const).map((item) => (
+        {(["appearance", "general", "providers", "models", "notifications", "sounds"] as const).map((item) => (
           <button
             key={item}
             className={`settings-sidebar__item${section === item ? " settings-sidebar__item--active" : ""}`}
@@ -197,19 +184,6 @@ export function SettingsView({
               onSetDefaultModel={onSetDefaultModel}
               onSetScopedModelPatterns={onSetScopedModelPatterns}
               onSetThinkingLevel={onSetThinkingLevel}
-            />
-          ) : null}
-
-          {section === "subagents" ? (
-            <SettingsSubagentsSection
-              workspace={workspace}
-              settings={subagentSettings}
-              agents={subagentAgents}
-              runtime={runtime}
-              onSetSettings={onSetSubagentSettings}
-              onRefreshAgents={onRefreshSubagentAgents}
-              onSaveAgent={onSaveSubagentAgent}
-              onDeleteAgent={onDeleteSubagentAgent}
             />
           ) : null}
 

@@ -6,7 +6,7 @@ import type {
   AutomationSchedulePreset,
   WorkspaceRecord,
 } from "./desktop-state";
-import { AUTOMATION_PRESET_CRON, automationScheduleLabel } from "./desktop-state";
+import { automationScheduleLabel } from "./desktop-state";
 import { AutomationIcon, AutomationRunIcon, ComposeIcon, SettingsIcon } from "./icons";
 import { playButtonClick, playButtonSecondary } from "./button-click-sound";
 import { formatRelativeTime } from "./string-utils";

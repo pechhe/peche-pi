@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { sessionKey } from "@pi-gui/pi-sdk-driver";
-import type { RuntimeCommandRecord, SessionConfig, SessionQueuedMessage, SessionRef } from "@pi-gui/session-driver";
+import type { RuntimeCommandRecord, SessionConfig, SessionRef } from "@pi-gui/session-driver";
 import type { ComposerAttachment, DesktopAppState, QueuedComposerMessage, WorkspaceSessionTarget } from "../src/desktop-state";
 import { buildPlanModePrompt, type ComposerMode, type PlanModeIdeology } from "../src/composer-mode";
 import { toSessionRef } from "./app-store-utils";

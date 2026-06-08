@@ -36,7 +36,7 @@ import { NotificationManager } from "./notification-manager";
 import {
   NotificationPermissionService,
 } from "./notification-permission";
-import { checkForUpdate, initAutoUpdater, quitAndInstall, startPeriodicChecks } from "./update-checker";
+import { checkForUpdate, downloadUpdate, initAutoUpdater, onUpdateStateChange, quitAndInstall, startPeriodicChecks } from "./update-checker";
 import { ThemeManager } from "./theme-manager";
 import { TerminalService } from "./terminal-service";
 import type { DesktopAppState, ThemeMode } from "../src/desktop-state";
@@ -109,11 +109,20 @@ async function getGraphifyProjectMapStatusForWorkspace(workspaceId: string, work
     const htmlAvailable = await stat(htmlPath).then(() => true).catch(() => false);
     const builtCommit = extractBuiltCommit(reportPreview) ?? graph.metadata?.built_from_commit ?? graph.metadata?.commit;
     const currentCommit = await readGitCommit(workspacePath);
+    // Check if hook is installed by looking for the hook file directly (avoids PATH issues in Electron)
+    let hookInstalled = false;
+    try {
+      const hookFile = await readFile(path.join(workspacePath, ".git", "hooks", "post-commit"), "utf8");
+      hookInstalled = hookFile.includes("graphify-hook-start");
+    } catch {
+      // no hook file
+    }
+    const commitsDiffer = Boolean(builtCommit && currentCommit && !currentCommit.startsWith(builtCommit) && builtCommit !== currentCommit);
     return {
       workspaceId,
       workspacePath,
       available: true,
-      stale: Boolean(builtCommit && currentCommit && !currentCommit.startsWith(builtCommit) && builtCommit !== currentCommit),
+      stale: commitsDiffer && !hookInstalled,
       graphPath,
       reportPath,
       htmlPath: htmlAvailable ? htmlPath : undefined,
@@ -376,6 +385,11 @@ function attachStatePublisher(window: BrowserWindow): void {
       window.webContents.send(desktopIpc.transcriptDelta, delta);
     }
   });
+  store.setLiveEditStatsListener((stats) => {
+    if (canPublishToWindow(window)) {
+      window.webContents.send(desktopIpc.liveEditStats, stats);
+    }
+  });
   window.webContents.once("render-process-gone", () => {
     stopPublishingState?.();
     stopPublishingState = undefined;
@@ -385,6 +399,7 @@ function attachStatePublisher(window: BrowserWindow): void {
     stopPublishingStatePatch = undefined;
     stopPublishingTranscriptDelta?.();
     stopPublishingTranscriptDelta = undefined;
+    store.setLiveEditStatsListener(undefined);
   });
   window.once("closed", () => {
     stopPublishingState?.();
@@ -395,6 +410,7 @@ function attachStatePublisher(window: BrowserWindow): void {
     stopPublishingStatePatch = undefined;
     stopPublishingTranscriptDelta?.();
     stopPublishingTranscriptDelta = undefined;
+    store.setLiveEditStatsListener(undefined);
     if (mainWindow === window) {
       mainWindow = null;
     }
@@ -1200,12 +1216,22 @@ app.whenReady().then(async () => {
         }
 
         if (graphValid && builtCommit && currentCommit && builtCommit !== currentCommit) {
-          issues.push({
-            severity: "warning",
-            code: "stale-graph",
-            message: `Graph was built from commit ${builtCommit}, but current HEAD is ${currentCommit}. Results may be outdated.`,
-            fixHint: "Update with: graphify update . (or click Update in the Project map popover)",
-          });
+          // Check if hook is installed by looking for the hook file directly (avoids PATH issues in Electron)
+          let hookInstalled = false;
+          try {
+            const hookFile = await readFile(path.resolve(workspacePath, ".git", "hooks", "post-commit"), "utf8");
+            hookInstalled = hookFile.includes("graphify-hook-start");
+          } catch {
+            // no hook file
+          }
+          if (!hookInstalled) {
+            issues.push({
+              severity: "warning",
+              code: "stale-graph",
+              message: `Graph was built from commit ${builtCommit}, but current HEAD is ${currentCommit}. Results may be outdated.`,
+              fixHint: "Update with: graphify update . (or click Update in the Project map popover)",
+            });
+          }
         }
 
         // Build debug prompt
@@ -1268,41 +1294,69 @@ app.whenReady().then(async () => {
           graphifyWatchProcesses.delete(workspaceId);
         }
         if (!enable) return { success: true, message: "Watcher stopped." };
-        // Start new watcher
-        const child = spawn("graphify", ["watch", "."], { cwd: workspacePath, stdio: "ignore", detached: true });
+        // Start new watcher — capture stderr to detect early failures
+        const child = spawn("graphify", ["watch", "."], { cwd: workspacePath, stdio: ["ignore", "pipe", "pipe"], detached: true });
         child.unref();
-        if (child.pid) {
-          graphifyWatchProcesses.set(workspaceId, child.pid);
-          child.on("exit", () => graphifyWatchProcesses.delete(workspaceId));
-          return { success: true, message: `Watcher started (PID ${child.pid}).` };
+        if (!child.pid) return { success: false, message: "Failed to spawn watcher." };
+        // Wait briefly to see if it dies immediately (e.g. missing watchdog)
+        const earlyExit = await new Promise<string | null>((resolve) => {
+          let stderr = "";
+          child.stderr?.on("data", (chunk: Buffer) => { stderr += chunk.toString(); });
+          child.on("exit", (_code, signal) => {
+            if (signal === "SIGTERM") return resolve(null); // intentional stop
+            resolve(stderr || "Watcher exited unexpectedly.");
+          });
+          // If still alive after 2s, consider it started successfully
+          setTimeout(() => resolve(null), 2000);
+        });
+        if (earlyExit) {
+          graphifyWatchProcesses.delete(workspaceId);
+          return { success: false, message: earlyExit };
         }
-        return { success: false, message: "Failed to start watcher." };
+        graphifyWatchProcesses.set(workspaceId, child.pid);
+        child.on("exit", () => graphifyWatchProcesses.delete(workspaceId));
+        return { success: true, message: `Watcher started (PID ${child.pid}).` };
       },
 
       // -- Automation --
       automationCreate: async (_event: unknown, input: { name: string; prompt: string; schedule: import("../src/desktop-state.ts").AutomationSchedule; workspaceId: string; model?: { provider: string; modelId: string }; thinkingLevel?: string; enabled?: boolean }) => {
         await automationStore.create(input);
-        const state = await store.getState();
-        return { ...state, automations: automationStore.getAll() };
+        // Write back into the store's canonical state so later emit() pushes
+        // (from session events etc.) don't clobber the renderer with a stale
+        // automations list. getState() then returns the fresh value.
+        store.state = { ...store.state, automations: automationStore.getAll() };
+        return store.getState();
       },
       automationUpdate: async (_event: unknown, id: string, patch: Record<string, unknown>) => {
         await automationStore.update(id, patch as never);
-        const state = await store.getState();
-        return { ...state, automations: automationStore.getAll() };
+        store.state = { ...store.state, automations: automationStore.getAll() };
+        return store.getState();
       },
       automationDelete: async (_event: unknown, id: string) => {
         await automationStore.delete(id);
-        const state = await store.getState();
-        return { ...state, automations: automationStore.getAll() };
+        store.state = { ...store.state, automations: automationStore.getAll() };
+        return store.getState();
       },
       automationList: async () => {
-        const state = await store.getState();
-        return { ...state, automations: automationStore.getAll() };
+        store.state = { ...store.state, automations: automationStore.getAll() };
+        return store.getState();
       },
       automationFireNow: async (_event: unknown, id: string) => {
         await automationScheduler.fireNow(id);
-        const state = await store.getState();
-        return { ...state, automations: automationStore.getAll() };
+        store.state = { ...store.state, automations: automationStore.getAll() };
+        return store.getState();
+      },
+
+      // -- Update --
+      triggerCheckForUpdate: async () => {
+        const result = await checkForUpdate();
+        return result;
+      },
+      triggerDownloadUpdate: async () => {
+        await downloadUpdate();
+      },
+      triggerRestartToInstall: async () => {
+        quitAndInstall();
       },
     },
   };
@@ -1314,6 +1368,13 @@ app.whenReady().then(async () => {
   notificationPermissionService.trackWindow(mainWindow);
   themeManager.setWindow(mainWindow);
   attachStatePublisher(mainWindow);
+
+  // Push update state to renderer whenever it changes.
+  onUpdateStateChange((state) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(desktopIpc.updateStateChanged, state);
+    }
+  });
   attachViewedSessionTracking(mainWindow);
   void notificationPermissionService.getCurrentStatus();
 

@@ -8,7 +8,7 @@ import type {
   WorkspaceRecord,
 } from "../desktop-state";
 import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
-import type { SmartCompactSettings, CavemanLevel, PiDesktopApi } from "../ipc";
+import type { SmartCompactSettings, PiDesktopApi } from "../ipc";
 import type { SettingsSection } from "../settings-view";
 import { useSettingsHandlers } from "../hooks/use-settings-handlers";
 import { useSkillsExtensionsHandlers } from "../hooks/use-skills-extensions";
@@ -20,6 +20,7 @@ import { type ThreadGroup } from "../thread-groups";
 import type { Automation } from "../desktop-state";
 
 import { SettingsView } from "../settings-view";
+import { SettingsSubagentsSection } from "../settings-subagents-section";
 import { SkillsView } from "../skills-view";
 import { ExtensionsView } from "../extensions-view";
 import { AutomationsView } from "../automations-view";
@@ -72,6 +73,7 @@ export interface UtilitySurfaceProps {
   readonly onOpenContext: (workspaceId?: string) => void;
   readonly onOpenKanban: () => void;
   readonly onOpenAutomations: (workspaceId?: string) => void;
+  readonly onOpenAgents: () => void;
   readonly onSetQueueMode: (enabled: boolean) => void;
   readonly onArchiveSession: (target: { workspaceId: string; sessionId: string }) => void;
   readonly onArchiveAllNonRunningSessions: (workspaceId: string, olderThanMs?: number) => void;
@@ -121,6 +123,7 @@ export function UtilitySurface(props: UtilitySurfaceProps) {
     onOpenContext,
     onOpenKanban,
     onOpenAutomations,
+    onOpenAgents,
     onSetQueueMode,
     onArchiveSession,
     onArchiveAllNonRunningSessions,
@@ -208,6 +211,7 @@ export function UtilitySurface(props: UtilitySurfaceProps) {
           pendingSidebarSelection={pendingSidebarSelection}
           automations={automations}
           onOpenAutomations={onOpenAutomations}
+          onOpenAgents={onOpenAgents}
         />
       ) : null}
       <main className="main main--skills">{content}</main>
@@ -307,7 +311,6 @@ export function SettingsSurface(props: SettingsSurfaceProps) {
         composerDeviceMode={snapshot.composerDeviceMode}
         threadTransition={snapshot.threadTransition}
         buttonSoundSettings={buttonSoundSettings}
-        subagentSettings={snapshot.subagentSettings}
         retrySettings={snapshot.retrySettings}
         planModeIdeology={snapshot.planModeIdeology}
         onSetPlanModeIdeology={(ideology) => {
@@ -316,7 +319,6 @@ export function SettingsSurface(props: SettingsSurfaceProps) {
         onSetRetrySettings={(settings) => {
           void updateSnapshot(api, setSnapshot, () => api.setRetrySettings(settings));
         }}
-        subagentAgents={settingsWorkspace ? snapshot.subagentAgentsByWorkspace[settingsWorkspace.id] ?? [] : []}
         onLoginProvider={settingsHandlers.handleLoginProvider}
         onLogoutProvider={settingsHandlers.handleLogoutProvider}
         onSetProviderApiKey={settingsHandlers.handleSetProviderApiKey}
@@ -325,10 +327,6 @@ export function SettingsSurface(props: SettingsSurfaceProps) {
         onSetDefaultModel={settingsHandlers.handleSetDefaultModel}
         onSetNotificationPreferences={settingsHandlers.handleSetNotificationPreferences}
         onSetIntegratedTerminalShell={settingsHandlers.handleSetIntegratedTerminalShell}
-        onSetSubagentSettings={settingsHandlers.handleSetSubagentSettings}
-        onRefreshSubagentAgents={settingsHandlers.handleRefreshSubagentAgents}
-        onSaveSubagentAgent={settingsHandlers.handleSaveSubagentAgent}
-        onDeleteSubagentAgent={settingsHandlers.handleDeleteSubagentAgent}
         onChooseExternalTerminalApp={settingsHandlers.handleChooseExternalTerminalApp}
         onClearExternalTerminalApp={settingsHandlers.handleClearExternalTerminalApp}
         onRequestNotificationPermission={handleRequestNotificationPermission}
@@ -361,6 +359,32 @@ export function SettingsSurface(props: SettingsSurfaceProps) {
         }}
       />
     </>
+  );
+}
+
+// ── Agents surface ─────────────────────────────────────────────────────────────
+
+export interface AgentsSurfaceProps {
+  readonly snapshot: DesktopAppState;
+  readonly agentsWorkspace: WorkspaceRecord | undefined;
+  readonly agentsRuntime: RuntimeSnapshot | undefined;
+  readonly settingsHandlers: ReturnType<typeof useSettingsHandlers>;
+}
+
+export function AgentsSurface(props: AgentsSurfaceProps) {
+  const { snapshot, agentsWorkspace, agentsRuntime, settingsHandlers } = props;
+
+  return (
+    <SettingsSubagentsSection
+      workspace={agentsWorkspace}
+      settings={snapshot.subagentSettings}
+      agents={agentsWorkspace ? snapshot.subagentAgentsByWorkspace[agentsWorkspace.id] ?? [] : []}
+      runtime={agentsRuntime}
+      onSetSettings={settingsHandlers.handleSetSubagentSettings}
+      onRefreshAgents={settingsHandlers.handleRefreshSubagentAgents}
+      onSaveAgent={settingsHandlers.handleSaveSubagentAgent}
+      onDeleteAgent={settingsHandlers.handleDeleteSubagentAgent}
+    />
   );
 }
 

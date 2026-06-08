@@ -57,13 +57,13 @@ export function automationScheduleLabel(schedule: AutomationSchedule): string {
 export type { TranscriptMessage } from "./timeline-types";
 import type { TranscriptMessage } from "./timeline-types";
 
-export type AppView = "threads" | "new-thread" | "skills" | "extensions" | "settings" | "context" | "queue" | "kanban" | "automations";
+export type AppView = "threads" | "new-thread" | "skills" | "extensions" | "settings" | "context" | "queue" | "kanban" | "automations" | "agents";
 export type WorkspaceKind = "primary" | "worktree";
 export type WorktreeStatus = "ready" | "missing" | "error";
 export type NewThreadEnvironment = "local" | "worktree";
 export type ThemeMode = "system" | "light" | "dark" | "dracula";
 
-export type ComposerDeviceMode = "off" | "screen" | "modular" | "modular-metal" | "screen-neon";
+export type ComposerDeviceMode = "off" | "screen" | "modular" | "modular-metal" | "modular-cream" | "screen-neon";
 
 /** How the composer travels from the centered new-thread position into the docked footer when the first message is sent. */
 export type ThreadTransitionMotion = "off" | "curve" | "dock" | "spring";

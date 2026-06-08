@@ -1,4 +1,4 @@
-import { useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from "react";
+import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from "react";
 import type { ComposerAttachment } from "./desktop-state";
 import type {
   ComposerSlashCommand,
@@ -112,6 +112,23 @@ export function ComposerAttachments({
   );
 }
 
+// Cream mode uses a thin bar caret, so the leading-space hack that keeps the
+// placeholder clear of the block caret (other device modes) is unwanted there.
+function useComposerDeviceCream(): boolean {
+  const [isCream, setIsCream] = useState(
+    () => typeof document !== "undefined" && document.documentElement.classList.contains("composer-device--cream"),
+  );
+  useEffect(() => {
+    const root = document.documentElement;
+    const update = () => setIsCream(root.classList.contains("composer-device--cream"));
+    update();
+    const observer = new MutationObserver(update);
+    observer.observe(root, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
+  return isCream;
+}
+
 export function ComposerSurface({
   activeSlashCommand,
   activeSlashCommandMeta,
@@ -148,6 +165,8 @@ export function ComposerSurface({
 }: ComposerSurfaceProps) {
   const [isDragActive, setIsDragActive] = useState(false);
   const dragDepthRef = useRef(0);
+  const isCream = useComposerDeviceCream();
+  const resolvedPlaceholder = isCream ? textareaPlaceholder.replace(/^ /, "") : textareaPlaceholder;
 
   const clearDragState = () => {
     dragDepthRef.current = 0;
@@ -358,7 +377,7 @@ export function ComposerSurface({
                   setComposerDraft(event.target.value);
                 }}
                 onKeyDown={onComposerKeyDown}
-                placeholder={textareaPlaceholder}
+                placeholder={resolvedPlaceholder}
               />
               {screenFooter}
             </>

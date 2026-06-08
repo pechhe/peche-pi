@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useState } from "react";
 import type { CavemanLevel } from "./ipc";
 import { useButtonSound } from "./use-button-sound";
 
@@ -28,64 +28,20 @@ function nextCavemanLevel(level: CavemanLevel): CavemanLevel {
   return CAVEMAN_CYCLE[(index + 1) % CAVEMAN_CYCLE.length]!;
 }
 
-const CAVEMAN_DIAL_LEVELS: readonly { readonly value: CavemanLevel; readonly label: string; readonly clockAngle: number }[] = [
-  { value: "off", label: "OFF", clockAngle: 180 },
-  { value: "micro", label: "MICRO", clockAngle: 270 },
-  { value: "ultra", label: "ULTRA", clockAngle: 360 },
-];
-
-function cavemanDialPoint(clockAngle: number): { readonly x: number; readonly y: number } {
-  const radians = (clockAngle * Math.PI) / 180;
-  return {
-    x: 50 + Math.cos(radians) * 40,
-    y: 50 + Math.sin(radians) * 40,
-  };
-}
-
-function cavemanPointerAngle(clockAngle: number): number {
-  return clockAngle - 270;
-}
-
-function CavemanDial({ level }: { readonly level: CavemanLevel }) {
-  const active = CAVEMAN_DIAL_LEVELS.find((entry) => entry.value === level) ?? CAVEMAN_DIAL_LEVELS[0]!;
-  const style = {
-    "--reasoning-dial-angle": `${cavemanPointerAngle(active.clockAngle)}deg`,
-  } as CSSProperties;
-
-  return (
-    <span className="reasoning-meter reasoning-meter--dial caveman-dial" style={style} aria-hidden="true">
-      <span className="reasoning-meter__face">
-        {CAVEMAN_DIAL_LEVELS.map((entry) => {
-          const point = cavemanDialPoint(entry.clockAngle);
-          return (
-            <span
-              className={`reasoning-meter__setting caveman-dial__setting caveman-dial__setting--${entry.value}${point.x >= 50 ? " reasoning-meter__setting--right" : ""}${entry.value === level ? " reasoning-meter__setting--active" : ""}`}
-              key={entry.value}
-              style={{
-                "--reasoning-setting-x": `${point.x}%`,
-                "--reasoning-setting-y": `${point.y}%`,
-              } as CSSProperties}
-            >
-              <span className="reasoning-meter__label">{entry.label}</span>
-              <span className="reasoning-meter__light" />
-            </span>
-          );
-        })}
-        <span className="reasoning-meter__knob" />
-      </span>
-    </span>
-  );
-}
-
 interface CavemanSelectorProps {
   readonly level: CavemanLevel;
   readonly disabled?: boolean;
   readonly onSetLevel: (level: CavemanLevel) => void;
 }
 
+/**
+ * Caveman compression control styled as a physical square push-button (the
+ * shared `.devbtn` keycap recipe) with an amber indicator LED above it. Click
+ * cycles off → micro → ultra; the LED lights whenever compression is active.
+ */
 export function CavemanSelector({ level, disabled = false, onSetLevel }: CavemanSelectorProps) {
   const [visualLevel, setVisualLevel] = useState(level);
-  const buttonSound = useButtonSound({ variant: "rotary", disabled });
+  const buttonSound = useButtonSound({ variant: "click", disabled });
 
   useEffect(() => {
     setVisualLevel(level);
@@ -97,22 +53,23 @@ export function CavemanSelector({ level, disabled = false, onSetLevel }: Caveman
     onSetLevel(next);
   };
 
+  const active = visualLevel !== "off";
+
   return (
-    <span className="caveman-selector" data-section-label="Caveman" title="Caveman output compression level (click to cycle: off → micro → ultra)">
-      <span aria-hidden="true">🪨</span>
-      <span className="sr-only">Caveman compression</span>
-      <span className="composer__key-mount composer__key-mount--caveman">
-        <button
-          aria-label={`Caveman compression: ${cavemanLabel(visualLevel)}`}
-          className="caveman-selector__select caveman-selector__select--dial"
-          disabled={disabled}
-          type="button"
-          {...buttonSound}
-          onClick={handleClick}
-        >
-          <CavemanDial level={visualLevel} />
-        </button>
-      </span>
+    <span className="devbtn" data-section-label="Caveman">
+      <button
+        type="button"
+        className={`devbtn__switch${active ? " devbtn__switch--on" : ""}`}
+        aria-label={`Caveman compression: ${cavemanLabel(visualLevel)}`}
+        title="Caveman output compression level (click to cycle: off → micro → ultra)"
+        disabled={disabled}
+        {...buttonSound}
+        onClick={handleClick}
+      >
+        <span className="devbtn__led" aria-hidden="true" />
+        <span className="devbtn__cap" aria-hidden="true" />
+        <span className="devbtn__caption">{cavemanLabel(visualLevel)}</span>
+      </button>
     </span>
   );
 }

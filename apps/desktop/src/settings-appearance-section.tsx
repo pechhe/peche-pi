@@ -25,6 +25,7 @@ const COMPOSER_DEVICE_OPTIONS: { mode: ComposerDeviceMode; label: string; descri
   { mode: "screen-neon", label: "Screen (Neon)", description: "Whole prompt is one green CRT screen with a glowing neon send key." },
   { mode: "modular", label: "Modular", description: "CRT screen for input, physical keys for each control." },
   { mode: "modular-metal", label: "Modular (Metal keys)", description: "Modular layout with brushed-metal control keys, matching the send dial." },
+  { mode: "modular-cream", label: "Modular (Cream)", description: "Premium audio-hardware look: warm ivory screen with dark charcoal text instead of the green CRT." },
 ];
 
 const THEME_OPTIONS: { mode: ThemeMode; label: string; description: string }[] = [

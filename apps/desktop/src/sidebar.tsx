@@ -14,7 +14,7 @@ import {
 import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { AppView, Automation, ChatRecord, SessionRecord, WorkspaceRecord, WorktreeRecord } from "./desktop-state";
-import { ChatIcon, ChevronDownIcon, ComposeIcon, ContextIcon, DoneIcon, ExtensionIcon, AutomationIcon, AutomationRunIcon, FolderIcon, ProjectIcon, RestoreIcon, SettingsIcon, SkillIcon, WorktreeIcon } from "./icons";
+import { ChatIcon, ChevronDownIcon, ComposeIcon, ContextIcon, DoneIcon, ExtensionIcon, AutomationIcon, AutomationRunIcon, FolderIcon, ProjectIcon, RestoreIcon, SettingsIcon, SkillIcon, SparkIcon, WorktreeIcon } from "./icons";
 import { WorkingSpinner } from "./working-label";
 import type { PiDesktopApi } from "./ipc";
 import { formatRelativeTime } from "./string-utils";
@@ -268,6 +268,7 @@ interface SidebarProps {
   readonly pendingSidebarSelection: SidebarNavEntry | null;
   readonly automations: readonly Automation[];
   readonly onOpenAutomations: (workspaceId?: string) => void;
+  readonly onOpenAgents: () => void;
 }
 
 export function Sidebar(props: SidebarProps) {
@@ -303,8 +304,8 @@ export function Sidebar(props: SidebarProps) {
     onUnarchiveChat,
     onRemoveChat,
     pendingSidebarSelection,
-    automations,
     onOpenAutomations,
+    onOpenAgents,
   } = props;
 
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -366,6 +367,14 @@ export function Sidebar(props: SidebarProps) {
       />
       <div className="sidebar__top">
         <MovingSidebarHighlight className="sidebar__nav" itemSelector=".sidebar__nav-item">
+          <button
+            className={`sidebar__nav-item ${activeView === "agents" ? "sidebar__nav-item--active" : ""}`}
+            type="button"
+            onClick={() => { playButtonClick(); onOpenAgents(); }}
+          >
+            <SparkIcon />
+            <span>Agents</span>
+          </button>
           <button
             className={`sidebar__nav-item ${activeView === "skills" ? "sidebar__nav-item--active" : ""}`}
             type="button"

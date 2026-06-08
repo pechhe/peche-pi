@@ -4,6 +4,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { promisify } from "node:util";
+import { EditWatcher, type LiveEditStatsListener } from "./edit-watcher.ts";
 
 const execAsync = promisify(exec);
 import {
@@ -190,6 +191,12 @@ export class DesktopAppStore implements AppStoreInternals {
   private initPromise: Promise<void> | undefined;
   private selectionEpoch = 0;
   private refreshStateDepth = 0;
+  private readonly editWatcher = new EditWatcher();
+  private liveEditStatsListener: LiveEditStatsListener | undefined;
+
+  setLiveEditStatsListener(listener: LiveEditStatsListener | undefined): void {
+    this.liveEditStatsListener = listener;
+  }
 
   /** Set externally after construction. Used by refreshState to include automations. */
   automationStoreRef: { getAll(): readonly import("../src/desktop-state.ts").Automation[] } | null = null;
@@ -211,6 +218,7 @@ export class DesktopAppStore implements AppStoreInternals {
     this.attachmentStore = new JsonFileStore<ComposerAttachment[]>(options.userDataDir, "attachments");
     this.initialWorkspacePaths = options.initialWorkspacePaths;
     this.getWindow = options.getWindow ?? (() => null);
+    this.editWatcher.setListener((stats) => this.liveEditStatsListener?.(stats));
   }
 
   /* ── Lifecycle ──────────────────────────────────────────── */
@@ -2148,6 +2156,10 @@ Return ONLY a JSON array of configuration fields, no explanation.`;
     if (subscriptionKey !== key) {
       this.migrateSessionSubscriptionKey(subscriptionKey, key);
     }
+
+    // Live edit stats: start/stop file watching for write tool calls
+    this.handleEditWatcherEvent(event);
+
     const shouldFollowSessionMutation = subscriptionKey !== key && this.currentSelectedSessionKey() === subscriptionKey;
     const refreshedFollowedSession = await this.refreshForUnknownSession(event, shouldFollowSessionMutation);
     await this.applySessionEventActions(event, key);
@@ -2155,6 +2167,22 @@ Return ONLY a JSON array of configuration fields, no explanation.`;
       sessionActivelyViewed: isSessionActivelyViewed(this.state, event.sessionRef, this.getWindow()),
     });
     await this.publishSessionEventResults(event, patch, shouldFollowSessionMutation, refreshedFollowedSession);
+  }
+
+  private handleEditWatcherEvent(event: SessionDriverEvent): void {
+    if (event.type === "toolStarted") {
+      if (/write|edit|patch|apply/i.test(event.toolName)) {
+        const filePath = extractFilePathFromInput(event.input);
+        if (filePath) {
+          const workspaceRoot = this.getWorkspacePath(event.sessionRef.workspaceId);
+          if (workspaceRoot) {
+            this.editWatcher.start(event.callId, filePath, workspaceRoot);
+          }
+        }
+      }
+    } else if (event.type === "toolFinished") {
+      this.editWatcher.stop(event.callId);
+    }
   }
 
   workspaceRefFromState(workspaceId: string): WorkspaceRef | undefined {
@@ -3477,4 +3505,11 @@ function findNextQueuedSession(
   candidates.sort((a, b) => a.session.updatedAt.localeCompare(b.session.updatedAt));
   const next = candidates[0];
   return next ? { workspaceId: next.workspaceId, sessionId: next.session.id } : undefined;
+}
+
+function extractFilePathFromInput(input: unknown): string | undefined {
+  if (typeof input !== "object" || input === null) return undefined;
+  const record = input as Record<string, unknown>;
+  const path = record.file_path ?? record.filePath ?? record.path ?? record.filename;
+  return typeof path === "string" ? path : undefined;
 }

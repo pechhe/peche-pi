@@ -353,7 +353,7 @@ export class SessionRuntimeRegistry implements SessionRuntimeRegistryInterface {
   // -- Pending host UI requests --------------------------------------------
 
   cancelPendingHostUiRequests(record: ManagedSessionRecord): void {
-    for (const [requestId, pending] of [...record.pendingHostUiRequests.entries()]) {
+    for (const [requestId, pending] of record.pendingHostUiRequests) {
       record.pendingHostUiRequests.delete(requestId);
       pending.resolve({ requestId, cancelled: true });
     }

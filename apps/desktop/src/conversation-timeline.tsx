@@ -4,7 +4,7 @@ import { ThreadSearchBar } from "./thread-search";
 import { TimelineItem } from "./timeline-item";
 import { WorkingLabel } from "./working-label";
 import { groupTranscript, type TimelineRow } from "./timeline-grouping";
-import type { UndoEditOp, UndoEditsResult } from "./ipc";
+import type { LiveEditStats, UndoEditOp, UndoEditsResult } from "./ipc";
 import { playButtonClick } from "./button-click-sound";
 
 const OVERSCAN_PX = 720;
@@ -43,6 +43,11 @@ interface ConversationTimelineProps {
   // new-thread placeholder passes "Preparing your thread…" so going live is a
   // label swap on the same timeline rather than a remount.
   readonly workingLabel?: string;
+  /** ID of a message to highlight (e.g. after jumping from search). */
+  readonly highlightedMessageId?: string | null;
+  /** Query text to highlight within the highlighted message. */
+  readonly highlightQuery?: string;
+  readonly liveEditStats?: ReadonlyMap<string, LiveEditStats>;
 }
 
 export function ConversationTimeline({
@@ -62,6 +67,9 @@ export function ConversationTimeline({
   onRedoEdits,
   isRunning,
   workingLabel = "Thinking…",
+  highlightedMessageId,
+  highlightQuery,
+  liveEditStats,
 }: ConversationTimelineProps) {
   // Group consecutive tool calls into bursts and extract meta events.
   // Re-runs whenever the transcript reference changes (the main process clones
@@ -345,6 +353,8 @@ export function ConversationTimeline({
           streamingReasoningId={streamingReasoningId}
           liveThinkingSectionId={liveThinkingSectionId}
           workingLabel={workingLabel}
+          highlightedMessageId={highlightedMessageId}
+          highlightQuery={highlightQuery}
         />
       ) : (
         <div className="timeline" data-testid="transcript">
@@ -366,6 +376,9 @@ export function ConversationTimeline({
               onStreamingCaughtUp={handleStreamingCaughtUp}
               streamingReasoningId={streamingReasoningId}
               liveThinkingSectionId={liveThinkingSectionId}
+              isHighlighted={highlightedMessageId === item.id}
+              highlightQuery={highlightedMessageId === item.id ? highlightQuery : undefined}
+              liveEditStats={liveEditStats}
             />
           ))}
           {showThinkingIndicator ? (
@@ -406,6 +419,9 @@ function VirtualizedTranscriptList({
   streamingReasoningId,
   liveThinkingSectionId,
   workingLabel,
+  highlightedMessageId,
+  highlightQuery,
+  liveEditStats,
 }: {
   readonly transcript: readonly TimelineRow[];
   readonly timelinePaneRef: MutableRefObject<HTMLDivElement | null>;
@@ -428,6 +444,9 @@ function VirtualizedTranscriptList({
   readonly streamingReasoningId?: string;
   readonly liveThinkingSectionId?: string;
   readonly workingLabel: string;
+  readonly highlightedMessageId?: string | null;
+  readonly highlightQuery?: string;
+  readonly liveEditStats?: ReadonlyMap<string, LiveEditStats>;
 }) {
   const [viewport, setViewport] = useState({ scrollTop: 0, height: 0 });
   const previousTotalHeightRef = useRef(0);
@@ -512,6 +531,9 @@ function VirtualizedTranscriptList({
             onStreamingCaughtUp={onStreamingCaughtUp}
             streamingReasoningId={streamingReasoningId}
             liveThinkingSectionId={liveThinkingSectionId}
+            isHighlighted={highlightedMessageId === item.id}
+            highlightQuery={highlightedMessageId === item.id ? highlightQuery : undefined}
+            liveEditStats={liveEditStats}
           />
         );
       })}
@@ -546,6 +568,9 @@ interface MeasuredTimelineItemProps {
   readonly onStreamingCaughtUp?: (messageId: string) => void;
   readonly streamingReasoningId?: string;
   readonly liveThinkingSectionId?: string;
+  readonly isHighlighted?: boolean;
+  readonly highlightQuery?: string;
+  readonly liveEditStats?: ReadonlyMap<string, LiveEditStats>;
 }
 
 const MeasuredTimelineItem = memo(function MeasuredTimelineItem({
@@ -566,6 +591,9 @@ const MeasuredTimelineItem = memo(function MeasuredTimelineItem({
   onStreamingCaughtUp,
   streamingReasoningId,
   liveThinkingSectionId,
+  isHighlighted,
+  highlightQuery,
+  liveEditStats,
 }: MeasuredTimelineItemProps) {
   const rowRef = useRef<HTMLDivElement | null>(null);
 
@@ -590,10 +618,13 @@ const MeasuredTimelineItem = memo(function MeasuredTimelineItem({
     };
   }, [item.id, onHeightChange]);
 
+  const rowClassName = isHighlighted ? `${className ?? ""} timeline__virtual-row--highlighted`.trim() : className;
+
   return (
     <div
-      className={className}
+      className={rowClassName}
       ref={rowRef}
+      data-message-id={item.id}
       style={top == null ? undefined : { transform: `translateY(${top}px)` }}
     >
       <TimelineItem
@@ -611,6 +642,8 @@ const MeasuredTimelineItem = memo(function MeasuredTimelineItem({
         onStreamingCaughtUp={onStreamingCaughtUp}
         streamingReasoningId={streamingReasoningId}
         liveThinkingSectionId={liveThinkingSectionId}
+        highlightQuery={isHighlighted ? highlightQuery : undefined}
+        liveEditStats={liveEditStats}
       />
     </div>
   );
@@ -700,6 +733,8 @@ function sameMeasuredTimelineItemProps(
   if (
     previous.className !== next.className ||
     previous.top !== next.top ||
+    previous.isHighlighted !== next.isHighlighted ||
+    previous.highlightQuery !== next.highlightQuery ||
     previous.onHeightChange !== next.onHeightChange ||
     previous.onToggleToolCall !== next.onToggleToolCall ||
     previous.onToggleBurst !== next.onToggleBurst ||
@@ -728,7 +763,39 @@ function sameMeasuredTimelineItemProps(
     previous.liveThinkingSectionId,
     next.liveThinkingSectionId,
   ];
-  return streamingIds.every((id) => !rowContainsId(previous.item, id) && !rowContainsId(next.item, id));
+  if (streamingIds.some((id) => rowContainsId(previous.item, id) || rowContainsId(next.item, id))) {
+    return false;
+  }
+  if (!sameLiveEditStatsForRow(previous.item, previous.liveEditStats, next.liveEditStats)) {
+    return false;
+  }
+  return true;
+}
+
+function sameLiveEditStatsForRow(
+  item: TimelineRow,
+  prev: ReadonlyMap<string, LiveEditStats> | undefined,
+  next: ReadonlyMap<string, LiveEditStats> | undefined,
+): boolean {
+  if (prev === next) return true;
+  if (!prev || !next) return false;
+  const callIds = collectCallIds(item);
+  for (const callId of callIds) {
+    const a = prev.get(callId);
+    const b = next.get(callId);
+    if (a !== b && (!a || !b || a.added !== b.added || a.removed !== b.removed)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function collectCallIds(item: TimelineRow): string[] {
+  if (item.kind === "tool") return [item.callId];
+  if (item.kind === "toolBurst") return item.tools.map((t) => t.callId);
+  if (item.kind === "thinkingSection") return item.children.filter((c) => c.kind === "tool").map((c) => c.callId);
+  if (item.kind === "editedFiles") return item.tools.map((t) => t.callId);
+  return [];
 }
 
 function findStartIndex(offsets: readonly number[], heights: readonly number[], targetOffset: number): number {

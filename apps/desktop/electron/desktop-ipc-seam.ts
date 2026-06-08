@@ -255,6 +255,13 @@ const desktopIpc = {
   automationDelete: "pi-gui:automation-delete",
   automationList: "pi-gui:automation-list",
   automationFireNow: "pi-gui:automation-fire-now",
+  liveEditStats: "pi-gui:live-edit-stats",
+
+  // -- Update --
+  updateStateChanged: "pi-gui:update-state-changed",
+  checkForUpdate: "pi-gui:check-for-update",
+  downloadUpdate: "pi-gui:download-update",
+  restartToInstall: "pi-gui:restart-to-install",
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -456,6 +463,13 @@ export const desktopIpcContracts: readonly IpcContractEntry[] = [
   { methodName: "automationDelete", channel: desktopIpc.automationDelete, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
   { methodName: "automationList", channel: desktopIpc.automationList, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
   { methodName: "automationFireNow", channel: desktopIpc.automationFireNow, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
+  { methodName: "onLiveEditStats", channel: desktopIpc.liveEditStats, direction: "main-to-renderer", kind: "event", adapter: "store", eventOnly: true },
+
+  // -- Update --
+  { methodName: "onUpdateStateChanged", channel: desktopIpc.updateStateChanged, direction: "main-to-renderer", kind: "event", adapter: "system", eventOnly: true },
+  { methodName: "triggerCheckForUpdate", channel: desktopIpc.checkForUpdate, direction: "renderer-to-main", kind: "invoke", adapter: "system" },
+  { methodName: "triggerDownloadUpdate", channel: desktopIpc.downloadUpdate, direction: "renderer-to-main", kind: "invoke", adapter: "system" },
+  { methodName: "triggerRestartToInstall", channel: desktopIpc.restartToInstall, direction: "renderer-to-main", kind: "invoke", adapter: "system" },
 ] as const;
 
 // ---------------------------------------------------------------------------
