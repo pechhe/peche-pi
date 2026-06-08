@@ -73,7 +73,13 @@ export function deriveSessionConfig(sessionManager: {
 
 export function forcePersistSession(sessionManager: object): void {
   const maybeRewrite = (sessionManager as { _rewriteFile?: () => void })._rewriteFile;
-  maybeRewrite?.call(sessionManager);
+  if (!maybeRewrite) return;
+  maybeRewrite.call(sessionManager);
+  // _rewriteFile() writes the full session to disk with flag "w". We must also mark
+  // the manager as flushed (mirroring SessionManager.setSessionFile), otherwise the
+  // next _persist() still believes it owns the first write and re-opens the file with
+  // flag "wx" — which now throws EEXIST because the file already exists on disk.
+  (sessionManager as { flushed?: boolean }).flushed = true;
 }
 
 export function sessionKey(sessionRef: SessionRef): string {
