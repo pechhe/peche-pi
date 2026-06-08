@@ -48,31 +48,34 @@ export interface LegacyPersistedUiState extends PersistedUiState {
   readonly transcripts?: Record<string, readonly unknown[]>;
 }
 
+const VALID_VERSIONS: ReadonlySet<number> = new Set([2, 3, 4, 5, 6, 7, 8, 9, 10]);
+
+function normalizeComposerDeviceMode(
+  raw: unknown,
+): "off" | "screen" | "modular" | "modular-metal" | "screen-neon" | undefined {
+  if (
+    raw === "screen" || raw === "modular" || raw === "modular-metal" || raw === "screen-neon" || raw === "off"
+  ) {
+    return raw;
+  }
+  // Migrate legacy boolean: true → screen
+  return raw === true ? "screen" : undefined;
+}
+
+function normalizeThemeMode(raw: unknown): ThemeMode | undefined {
+  return raw === "dracula" || raw === "dark" || raw === "light" || raw === "system" ? raw : undefined;
+}
+
+function normalizeModelSettingsScopeMode(raw: unknown): ModelSettingsScopeMode | undefined {
+  return raw === "per-repo" || raw === "app-global" ? raw : undefined;
+}
+
 export async function readPersistedUiState(uiStateFilePath: string): Promise<LegacyPersistedUiState> {
   try {
     const raw = await readFile(uiStateFilePath, "utf8");
     const parsed = JSON.parse(raw) as LegacyPersistedUiState;
     return {
-      version:
-        parsed.version === 10
-          ? 10
-          : parsed.version === 9
-            ? 9
-            : parsed.version === 8
-              ? 8
-              : parsed.version === 7
-                ? 7
-                : parsed.version === 6
-                  ? 6
-                  : parsed.version === 5
-                    ? 5
-                    : parsed.version === 4
-                      ? 4
-                      : parsed.version === 3
-                        ? 3
-                        : parsed.version === 2
-                          ? 2
-                          : undefined,
+      version: VALID_VERSIONS.has(parsed.version as number) ? parsed.version : undefined,
       selectedWorkspaceId: parsed.selectedWorkspaceId,
       selectedSessionId: parsed.selectedSessionId,
       activeView: parsed.activeView,
@@ -87,27 +90,15 @@ export async function readPersistedUiState(uiStateFilePath: string): Promise<Leg
         typeof parsed.externalTerminalApp === "string" ? parsed.externalTerminalApp : undefined,
       lastViewedAtBySession: parsed.lastViewedAtBySession,
       workspaceOrder: Array.isArray(parsed.workspaceOrder) ? parsed.workspaceOrder : undefined,
-      modelSettingsScopeMode:
-        parsed.modelSettingsScopeMode === "per-repo" || parsed.modelSettingsScopeMode === "app-global"
-          ? parsed.modelSettingsScopeMode
-          : undefined,
+      modelSettingsScopeMode: normalizeModelSettingsScopeMode(parsed.modelSettingsScopeMode),
       appGlobalModelSettings: toPersistedModelSettingsSnapshot(parsed.appGlobalModelSettings),
       sidebarCollapsed: typeof parsed.sidebarCollapsed === "boolean" ? parsed.sidebarCollapsed : undefined,
       allowMultiple: typeof parsed.allowMultiple === "boolean" ? parsed.allowMultiple : undefined,
       enableTransparency: typeof parsed.enableTransparency === "boolean" ? parsed.enableTransparency : undefined,
       transcriptVerbose: typeof parsed.transcriptVerbose === "boolean" ? parsed.transcriptVerbose : undefined,
-      composerDeviceMode:
-        parsed.composerDeviceMode === "screen" || parsed.composerDeviceMode === "modular" || parsed.composerDeviceMode === "modular-metal" || parsed.composerDeviceMode === "screen-neon" || parsed.composerDeviceMode === "off"
-          ? parsed.composerDeviceMode
-          : // Migrate legacy boolean: true → screen, false/undefined → off
-            (parsed as { composerDeviceMode?: unknown }).composerDeviceMode === true
-            ? "screen"
-            : undefined,
+      composerDeviceMode: normalizeComposerDeviceMode(parsed.composerDeviceMode),
       threadTransition: normalizeThreadTransition(parsed.threadTransition),
-      themeMode:
-        parsed.themeMode === "dracula" || parsed.themeMode === "dark" || parsed.themeMode === "light" || parsed.themeMode === "system"
-          ? parsed.themeMode
-          : undefined,
+      themeMode: normalizeThemeMode(parsed.themeMode),
       commitPushModel: typeof parsed.commitPushModel === "string" ? parsed.commitPushModel : undefined,
       chats: Array.isArray(parsed.chats) ? (parsed.chats as readonly ChatRecord[]) : undefined,
       selectedChatId: typeof parsed.selectedChatId === "string" ? parsed.selectedChatId : undefined,
