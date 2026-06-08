@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { sessionKey } from "@pi-gui/pi-sdk-driver";
-import type { SessionConfig, SessionQueuedMessage, SessionRef } from "@pi-gui/session-driver";
+import type { RuntimeCommandRecord, SessionConfig, SessionQueuedMessage, SessionRef } from "@pi-gui/session-driver";
 import type { ComposerAttachment, DesktopAppState, QueuedComposerMessage, WorkspaceSessionTarget } from "../src/desktop-state";
 import { buildPlanModePrompt, type ComposerMode, type PlanModeIdeology } from "../src/composer-mode";
 import { toSessionRef } from "./app-store-utils";
@@ -262,6 +262,111 @@ export async function steerQueuedComposerMessage(
   }
 }
 
+/**
+ * Save the current draft + attachments and return a terminal-only error.
+ * Used when a slash command is only available in the terminal surface.
+ */
+async function saveDraftAndRejectTerminalCommand(
+  store: AppStoreInternals,
+  sessionRef: SessionRef,
+  key: string,
+  textInput: string,
+  attachments: readonly ComposerAttachment[],
+  message: string,
+): Promise<DesktopAppState> {
+  store.sessionState.composerDraftsBySession.set(key, textInput);
+  if (attachments.length > 0) {
+    store.sessionState.composerAttachmentsBySession.set(key, cloneComposerAttachments(attachments));
+    await store.persistComposerAttachments(key, attachments);
+  }
+  store.state = {
+    ...store.state,
+    composerDraft: textInput,
+    composerDraftSyncSource: "command",
+    composerDraftSyncNonce: store.state.composerDraftSyncNonce + 1,
+    composerAttachments: cloneComposerAttachments(attachments),
+    revision: store.state.revision + 1,
+  };
+  return store.withError(message);
+}
+
+/**
+ * Submit a message to a running session's queue (followUp or steer mode).
+ * Handles editing state, optimistic transcript updates, and persistence.
+ */
+async function submitQueuedMessage(
+  store: AppStoreInternals,
+  sessionRef: SessionRef,
+  key: string,
+  text: string,
+  attachments: readonly ComposerAttachment[],
+  editingState: ReturnType<AppStoreInternals["getQueuedComposerEditState"]>,
+  options: { deliverAs: "steer" | "followUp" },
+): Promise<DesktopAppState> {
+  const nextMessage = buildQueuedComposerMessage({
+    existing: editingState
+      ? store.getQueuedComposerMessages(sessionRef).find((message) => message.id === editingState.messageId)
+      : undefined,
+    text,
+    attachments,
+    mode: options.deliverAs,
+  });
+  const nextQueuedMessages = editingState
+    ? replaceQueuedComposerMessage(
+        store.getQueuedComposerMessages(sessionRef),
+        editingState.messageId,
+        nextMessage,
+      )
+    : [
+        ...store.getQueuedComposerMessages(sessionRef),
+        nextMessage,
+      ];
+
+  store.sessionState.composerDraftsBySession.delete(key);
+  store.sessionState.composerAttachmentsBySession.delete(key);
+  store.setQueuedComposerEditState(sessionRef, undefined);
+  await store.persistComposerAttachments(key, []);
+  const nextSessionQueuedMessages = toSessionQueuedMessages(nextQueuedMessages);
+  if (options.deliverAs === "steer") {
+    const optimisticSteerMessage = nextSessionQueuedMessages.find((message) => message.id === nextMessage.id);
+    if (optimisticSteerMessage) {
+      appendQueuedUserMessage(store.sessionState.transcriptCache, sessionRef, optimisticSteerMessage);
+      store.publishSelectedTranscriptFor(sessionRef);
+      store.persistTranscriptCacheForSession(sessionRef);
+    }
+  }
+  await store.driver.replaceQueuedMessages(sessionRef, nextSessionQueuedMessages);
+  return store.refreshState({
+    clearLastError: true,
+    markSelectedSessionViewed: false,
+  });
+}
+
+/** Restore composer state after a failed submit. */
+function recoverFromSubmitError(
+  store: AppStoreInternals,
+  key: string,
+  textInput: string,
+  attachments: readonly ComposerAttachment[],
+  editingState: ReturnType<AppStoreInternals["getQueuedComposerEditState"]>,
+  resolvedRuntimeSlashCommand: RuntimeCommandRecord | undefined,
+  sessionRef: SessionRef,
+): void {
+  if (resolvedRuntimeSlashCommand) {
+    store.finishRuntimeCommandExecution(sessionRef);
+  }
+  if (textInput) {
+    store.sessionState.composerDraftsBySession.set(key, textInput);
+  }
+  if (attachments.length > 0) {
+    store.sessionState.composerAttachmentsBySession.set(key, cloneComposerAttachments(attachments));
+    void store.persistComposerAttachments(key, attachments);
+  }
+  if (editingState) {
+    store.setQueuedComposerEditState(sessionRef, editingState);
+  }
+}
+
 export async function submitComposer(
   store: AppStoreInternals,
   textInput: string,
@@ -309,68 +414,18 @@ export async function submitComposer(
     store.updateQueuedComposerMessages(sessionRef, latestSnapshot.queuedMessages);
     isRunning = latestSnapshot.status === "running";
   }
-  let optimisticSteerMessage: SessionQueuedMessage | undefined;
   try {
     if (resolvedRuntimeSlashCommand) {
       const learnedCompatibility = store.getLearnedRuntimeCommandCompatibility(sessionRef.workspaceId, resolvedRuntimeSlashCommand);
       if (learnedCompatibility?.status === "terminal-only") {
-        store.sessionState.composerDraftsBySession.set(key, textInput);
-        if (attachments.length > 0) {
-          store.sessionState.composerAttachmentsBySession.set(key, cloneComposerAttachments(attachments));
-          await store.persistComposerAttachments(key, attachments);
-        }
-        store.state = {
-          ...store.state,
-          composerDraft: textInput,
-          composerDraftSyncSource: "command",
-          composerDraftSyncNonce: store.state.composerDraftSyncNonce + 1,
-          composerAttachments: cloneComposerAttachments(attachments),
-          revision: store.state.revision + 1,
-        };
-        return store.withError(learnedCompatibility.message);
+        return saveDraftAndRejectTerminalCommand(store, sessionRef, key, textInput, attachments, learnedCompatibility.message);
       }
-
       store.beginRuntimeCommandExecution(sessionRef, resolvedRuntimeSlashCommand);
     }
 
     if (isRunning && !resolvedRuntimeSlashCommand) {
-      const deliverAs = options.deliverAs ?? "followUp";
-      const nextMessage = buildQueuedComposerMessage({
-        existing: editingState
-          ? store.getQueuedComposerMessages(sessionRef).find((message) => message.id === editingState.messageId)
-          : undefined,
-        text,
-        attachments,
-        mode: deliverAs,
-      });
-      const nextQueuedMessages = editingState
-        ? replaceQueuedComposerMessage(
-            store.getQueuedComposerMessages(sessionRef),
-            editingState.messageId,
-            nextMessage,
-          )
-        : [
-            ...store.getQueuedComposerMessages(sessionRef),
-            nextMessage,
-          ];
-
-      store.sessionState.composerDraftsBySession.delete(key);
-      store.sessionState.composerAttachmentsBySession.delete(key);
-      store.setQueuedComposerEditState(sessionRef, undefined);
-      await store.persistComposerAttachments(key, []);
-      const nextSessionQueuedMessages = toSessionQueuedMessages(nextQueuedMessages);
-      optimisticSteerMessage = deliverAs === "steer"
-        ? nextSessionQueuedMessages.find((message) => message.id === nextMessage.id)
-        : undefined;
-      if (optimisticSteerMessage) {
-        appendQueuedUserMessage(store.sessionState.transcriptCache, sessionRef, optimisticSteerMessage);
-        store.publishSelectedTranscriptFor(sessionRef);
-        store.persistTranscriptCacheForSession(sessionRef);
-      }
-      await store.driver.replaceQueuedMessages(sessionRef, nextSessionQueuedMessages);
-      return store.refreshState({
-        clearLastError: true,
-        markSelectedSessionViewed: false,
+      return submitQueuedMessage(store, sessionRef, key, text, attachments, editingState, {
+        deliverAs: options.deliverAs ?? "followUp",
       });
     }
 
@@ -395,22 +450,7 @@ export async function submitComposer(
       markSelectedSessionViewed: false,
     });
   } catch (error) {
-    if (resolvedRuntimeSlashCommand) {
-      store.finishRuntimeCommandExecution(sessionRef);
-    }
-    if (textInput) {
-      store.sessionState.composerDraftsBySession.set(key, textInput);
-    }
-    if (attachments.length > 0) {
-      store.sessionState.composerAttachmentsBySession.set(key, cloneComposerAttachments(attachments));
-      await store.persistComposerAttachments(key, attachments);
-    }
-    if (editingState) {
-      store.setQueuedComposerEditState(sessionRef, editingState);
-    }
-    if (optimisticSteerMessage) {
-      removeOptimisticQueuedUserMessage(store, sessionRef, optimisticSteerMessage.id);
-    }
+    recoverFromSubmitError(store, key, textInput, attachments, editingState, resolvedRuntimeSlashCommand, sessionRef);
     return store.withError(error);
   }
 }
