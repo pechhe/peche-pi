@@ -79,6 +79,8 @@ export class AutomationScheduler {
     try {
       const session = await this.deps.sessionDriver.createSession(workspaceRef, {
         title: `⚡ ${automation.name}`,
+        initialModel: automation.model ? { provider: automation.model.provider, modelId: automation.model.modelId } : undefined,
+        initialThinkingLevel: automation.thinkingLevel,
       });
 
       await this.deps.sessionDriver.sendUserMessage(

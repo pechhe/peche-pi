@@ -1,4 +1,5 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
+import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
 import type {
   Automation,
   AutomationSchedule,
@@ -9,11 +10,13 @@ import { AUTOMATION_PRESET_CRON, automationScheduleLabel } from "./desktop-state
 import { AutomationIcon, AutomationRunIcon, ComposeIcon, SettingsIcon } from "./icons";
 import { playButtonClick, playButtonSecondary } from "./button-click-sound";
 import { formatRelativeTime } from "./string-utils";
+import { ModelSelector, type ModelSelectorHandle } from "./model-selector";
 
 interface AutomationsViewProps {
   readonly automations: readonly Automation[];
   readonly workspaces: readonly WorkspaceRecord[];
   readonly filterWorkspaceId?: string;
+  readonly runtime?: RuntimeSnapshot;
   readonly onCreateAutomation: (input: CreateAutomationInput) => void;
   readonly onUpdateAutomation: (id: string, patch: Partial<Automation>) => void;
   readonly onDeleteAutomation: (id: string) => void;
@@ -27,6 +30,8 @@ export interface CreateAutomationInput {
   prompt: string;
   schedule: AutomationSchedule;
   workspaceId: string;
+  model?: { provider: string; modelId: string };
+  thinkingLevel?: string;
   enabled?: boolean;
 }
 
@@ -34,6 +39,7 @@ export function AutomationsView({
   automations,
   workspaces,
   filterWorkspaceId,
+  runtime,
   onCreateAutomation,
   onUpdateAutomation,
   onDeleteAutomation,
@@ -87,6 +93,7 @@ export function AutomationsView({
       {showCreateForm || editingAutomation ? (
         <AutomationForm
           workspaces={workspaces}
+          runtime={runtime}
           initial={editingAutomation}
           defaultWorkspaceId={filterWorkspaceId}
           onSubmit={(input) => {
@@ -201,6 +208,11 @@ function AutomationCard({
         <span className="automation-card__schedule">
           {automationScheduleLabel(automation.schedule)}
         </span>
+        {automation.model ? (
+          <span className="automation-card__model">
+            {automation.model.modelId}
+          </span>
+        ) : null}
         {automation.lastRunAt ? (
           <span className="automation-card__last-run">
             Last run {formatRelativeTime(automation.lastRunAt)}
@@ -220,6 +232,7 @@ function AutomationCard({
 
 interface AutomationFormProps {
   readonly workspaces: readonly WorkspaceRecord[];
+  readonly runtime?: RuntimeSnapshot;
   readonly initial?: Automation;
   readonly defaultWorkspaceId?: string;
   readonly onSubmit: (input: CreateAutomationInput) => void;
@@ -235,11 +248,13 @@ const SCHEDULE_PRESETS: { value: AutomationSchedulePreset; label: string }[] = [
 
 function AutomationForm({
   workspaces,
+  runtime,
   initial,
   defaultWorkspaceId,
   onSubmit,
   onCancel,
 }: AutomationFormProps) {
+  const modelSelectorRef = useRef<ModelSelectorHandle>(null);
   const [name, setName] = useState(initial?.name ?? "");
   const [prompt, setPrompt] = useState(initial?.prompt ?? "");
   const [scheduleKind, setScheduleKind] = useState<"preset" | "cron">(
@@ -254,6 +269,43 @@ function AutomationForm({
   const [workspaceId, setWorkspaceId] = useState(
     initial?.workspaceId ?? defaultWorkspaceId ?? (workspaces[0]?.id ?? ""),
   );
+  const [selectedProvider, setSelectedProvider] = useState(initial?.model?.provider ?? "");
+  const [selectedModelId, setSelectedModelId] = useState(initial?.model?.modelId ?? "");
+  const [thinkingLevel, setThinkingLevel] = useState(() => {
+    if (initial?.thinkingLevel) return initial.thinkingLevel;
+    if (initial?.model && runtime) {
+      const record = runtime.models.find((m) => m.providerId === initial.model!.provider && m.modelId === initial.model!.modelId);
+      const levels = record?.availableThinkingLevels ?? [];
+      return levels.length > 0 ? (levels[0] ?? "") : "";
+    }
+    if (runtime) {
+      const p = runtime.settings.defaultProvider;
+      const mid = runtime.settings.defaultModelId;
+      if (p && mid) {
+        const record = runtime.models.find((m) => m.providerId === p && m.modelId === mid);
+        const levels = record?.availableThinkingLevels ?? [];
+        return levels.length > 0 ? (levels[0] ?? "") : "";
+      }
+    }
+    return "";
+  });
+
+  const handleSetModel = useCallback((provider: string, modelId: string) => {
+    setSelectedProvider(provider);
+    setSelectedModelId(modelId);
+    // Set default thinking level so the dial appears immediately
+    if (runtime) {
+      const record = runtime.models.find((m) => m.providerId === provider && m.modelId === modelId);
+      const levels = record?.availableThinkingLevels ?? [];
+      setThinkingLevel(levels.length > 0 ? (levels[0] ?? "") : "");
+    } else {
+      setThinkingLevel("");
+    }
+  }, [runtime]);
+
+  const handleSetThinking = useCallback((level: string) => {
+    setThinkingLevel(level);
+  }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -264,11 +316,18 @@ function AutomationForm({
         ? { kind: "preset", preset }
         : { kind: "cron", expression: cronExpression };
 
+    const model = selectedProvider && selectedModelId ? {
+      provider: selectedProvider,
+      modelId: selectedModelId,
+    } : undefined;
+
     onSubmit({
       name: name.trim(),
       prompt: prompt.trim(),
       schedule,
       workspaceId,
+      model,
+      thinkingLevel: thinkingLevel || undefined,
     });
   };
 
@@ -311,6 +370,22 @@ function AutomationForm({
           ))}
         </select>
       </label>
+
+      <div className="automation-form__field automation-form__model">
+        <span>Model</span>
+        <ModelSelector
+          ref={modelSelectorRef}
+          runtime={runtime}
+          provider={selectedProvider || undefined}
+          modelId={selectedModelId || undefined}
+          thinkingLevel={thinkingLevel || undefined}
+          showEmptyModelControl
+          emptyModelLabel="Default (workspace model)"
+          emptyModelTitle="Use workspace default"
+          onSetModel={handleSetModel}
+          onSetThinking={handleSetThinking}
+        />
+      </div>
 
       <fieldset className="automation-form__field">
         <legend>Schedule</legend>

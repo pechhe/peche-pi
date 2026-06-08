@@ -13,7 +13,7 @@ import {
   type PiSdkDriverConfig,
   sessionKey,
 } from "@pi-gui/pi-sdk-driver";
-import type { SessionCatalogEntry } from "@pi-gui/catalogs";
+import type { SessionCatalogEntry, WorkspaceCatalogEntry } from "@pi-gui/catalogs";
 import type {
   NavigateSessionTreeOptions,
   NavigateSessionTreeResult,
@@ -65,7 +65,7 @@ import {
   type WorkspaceSessionTarget,
 } from "../src/desktop-state";
 import type { ComposerMode } from "../src/composer-mode";
-import { DesktopSessionState, updateSessionRecord } from "./app-store-session-state";
+import { DesktopSessionState, type DesktopSessionStatePatch, updateSessionRecord } from "./app-store-session-state";
 import { reduce } from "./app-state-reducer";
 import type { AppStoreInternals, RefreshStateOptions } from "./app-store-internals";
 import {
@@ -258,11 +258,11 @@ export class DesktopAppStore implements AppStoreInternals {
   async searchTranscripts(
     sessionKeysToSearch: readonly string[],
     query: string,
-  ): Promise<readonly { sessionKey: string; snippet: string }[]> {
+  ): Promise<readonly { sessionKey: string; snippet: string; messageId: string }[]> {
     const q = query.trim().toLowerCase();
     if (!q || sessionKeysToSearch.length === 0) return [];
 
-    const results: { sessionKey: string; snippet: string }[] = [];
+    const results: { sessionKey: string; snippet: string; messageId: string }[] = [];
     const MAX_RESULTS = 20;
 
     for (const key of sessionKeysToSearch) {
@@ -281,7 +281,7 @@ export class DesktopAppStore implements AppStoreInternals {
         const start = Math.max(0, idx - 60);
         const end = Math.min(text.length, idx + q.length + 60);
         const snippet = (start > 0 ? "…" : "") + text.slice(start, end).replace(/\s+/g, " ").trim() + (end < text.length ? "…" : "");
-        results.push({ sessionKey: key, snippet });
+        results.push({ sessionKey: key, snippet, messageId: (msg as { id?: string }).id ?? "" });
         break; // one match per session is enough
       }
     }
@@ -1390,71 +1390,95 @@ Return ONLY a JSON array of configuration fields, no explanation.`;
 
   /* ── Internal infrastructure (AppStoreInternals) ───────── */
 
+  /** Merge persisted UI preferences into the current state. ~pure. */
+  private mergePersistedState(persisted: PersistedUiState): DesktopAppState {
+    return {
+      ...this.state,
+      activeView: persisted.activeView ?? this.state.activeView,
+      modelSettingsScopeMode: persisted.modelSettingsScopeMode ?? this.state.modelSettingsScopeMode,
+      globalModelSettings: persisted.appGlobalModelSettings ?? this.state.globalModelSettings,
+      notificationPreferences: {
+        ...this.state.notificationPreferences,
+        ...persisted.notificationPreferences,
+      },
+      subagentSettings: {
+        ...this.state.subagentSettings,
+        ...persisted.subagentSettings,
+      },
+      integratedTerminalShell: persisted.integratedTerminalShell ?? this.state.integratedTerminalShell,
+      externalTerminalApp: persisted.externalTerminalApp ?? this.state.externalTerminalApp,
+      retrySettings: persisted.retrySettings ?? this.state.retrySettings,
+      lastViewedAtBySession: persisted.lastViewedAtBySession ?? {},
+      workspaceOrder: persisted.workspaceOrder ?? [],
+      sidebarCollapsed: persisted.sidebarCollapsed ?? this.state.sidebarCollapsed,
+      enableTransparency: persisted.enableTransparency ?? this.state.enableTransparency,
+      transcriptVerbose: persisted.transcriptVerbose ?? this.state.transcriptVerbose,
+      composerDeviceMode: persisted.composerDeviceMode ?? this.state.composerDeviceMode,
+      threadTransition: persisted.threadTransition
+        ? { ...this.state.threadTransition, ...persisted.threadTransition }
+        : this.state.threadTransition,
+      themeMode: persisted.themeMode ?? this.state.themeMode,
+      commitPushModel: persisted.commitPushModel ?? this.state.commitPushModel,
+      chats: persisted.chats ?? [],
+      selectedChatId: persisted.selectedChatId ?? "",
+    };
+  }
+
+  /** Copy persisted per-session maps into the in-memory session state. */
+  private restorePersistedSessionMaps(persisted: PersistedUiState): void {
+    this.sessionState.lastViewedAtBySession.clear();
+    for (const [key, viewedAt] of Object.entries(persisted.lastViewedAtBySession ?? {})) {
+      if (viewedAt) {
+        this.sessionState.lastViewedAtBySession.set(key, viewedAt);
+      }
+    }
+    this.sessionState.composerDraftsBySession.clear();
+    for (const [key, draft] of Object.entries(persisted.composerDraftsBySession ?? {})) {
+      if (draft) {
+        this.sessionState.composerDraftsBySession.set(key, draft);
+      }
+    }
+    this.extensionCommandCompatibilityByWorkspace.clear();
+    for (const [workspaceId, records] of restoreCompatibilityByWorkspace(
+      persisted.extensionCommandCompatibilityByWorkspace,
+    )) {
+      this.extensionCommandCompatibilityByWorkspace.set(workspaceId, records);
+    }
+  }
+
+  /** Build a fallback state when initializeInternal fails. */
+  private buildInitFallbackState(persisted: PersistedUiState, error: unknown): DesktopAppState {
+    return {
+      ...createEmptyDesktopAppState(),
+      enableTransparency: persisted.enableTransparency ?? false,
+      transcriptVerbose: persisted.transcriptVerbose ?? false,
+      composerDeviceMode: persisted.composerDeviceMode ?? "off",
+      themeMode: persisted.themeMode ?? "system",
+      lastError: error instanceof Error ? error.message : String(error),
+      commitPushModel: persisted.commitPushModel,
+      chats: persisted.chats ?? [],
+      selectedChatId: persisted.selectedChatId ?? "",
+      revision: 1,
+    };
+  }
+
   private async initializeInternal(): Promise<void> {
     const persisted = await this.readUiState();
     try {
-      this.state = {
-        ...this.state,
-        activeView: persisted.activeView ?? this.state.activeView,
-        modelSettingsScopeMode: persisted.modelSettingsScopeMode ?? this.state.modelSettingsScopeMode,
-        globalModelSettings: persisted.appGlobalModelSettings ?? this.state.globalModelSettings,
-        notificationPreferences: {
-          ...this.state.notificationPreferences,
-          ...persisted.notificationPreferences,
-        },
-        subagentSettings: {
-          ...this.state.subagentSettings,
-          ...persisted.subagentSettings,
-        },
-        integratedTerminalShell: persisted.integratedTerminalShell ?? this.state.integratedTerminalShell,
-        externalTerminalApp: persisted.externalTerminalApp ?? this.state.externalTerminalApp,
-        retrySettings: persisted.retrySettings ?? this.state.retrySettings,
-        lastViewedAtBySession: persisted.lastViewedAtBySession ?? {},
-        workspaceOrder: persisted.workspaceOrder ?? [],
-        sidebarCollapsed: persisted.sidebarCollapsed ?? this.state.sidebarCollapsed,
-        enableTransparency: persisted.enableTransparency ?? this.state.enableTransparency,
-        transcriptVerbose: persisted.transcriptVerbose ?? this.state.transcriptVerbose,
-        composerDeviceMode: persisted.composerDeviceMode ?? this.state.composerDeviceMode,
-        threadTransition: persisted.threadTransition
-          ? { ...this.state.threadTransition, ...persisted.threadTransition }
-          : this.state.threadTransition,
-        themeMode: persisted.themeMode ?? this.state.themeMode,
-        commitPushModel: persisted.commitPushModel ?? this.state.commitPushModel,
-        chats: persisted.chats ?? [],
-        selectedChatId: persisted.selectedChatId ?? "",
-      };
+      this.state = this.mergePersistedState(persisted);
       applySubagentEnvironment(this.state.subagentSettings);
       await this.migrateLegacyPersistence(persisted);
-      this.sessionState.lastViewedAtBySession.clear();
-      for (const [key, viewedAt] of Object.entries(persisted.lastViewedAtBySession ?? {})) {
-        if (viewedAt) {
-          this.sessionState.lastViewedAtBySession.set(key, viewedAt);
-        }
-      }
-      this.sessionState.composerDraftsBySession.clear();
-      for (const [key, draft] of Object.entries(persisted.composerDraftsBySession ?? {})) {
-        if (draft) {
-          this.sessionState.composerDraftsBySession.set(key, draft);
-        }
-      }
-      this.extensionCommandCompatibilityByWorkspace.clear();
-      for (const [workspaceId, records] of restoreCompatibilityByWorkspace(
-        persisted.extensionCommandCompatibilityByWorkspace,
-      )) {
-        this.extensionCommandCompatibilityByWorkspace.set(workspaceId, records);
-      }
+      this.restorePersistedSessionMaps(persisted);
+
       const initialWorkspacePaths = this.initialWorkspacePaths.map((path) => path.trim()).filter(Boolean);
       const knownWorkspaces = await this.driver.listWorkspaces();
       const workspacesToSync = new Map<string, string | undefined>();
-
       for (const workspacePath of initialWorkspacePaths) {
         workspacesToSync.set(workspacePath, undefined);
       }
-
       for (const ws of knownWorkspaces.workspaces) {
         workspacesToSync.set(ws.path, ws.displayName);
       }
-
       await Promise.all(
         [...workspacesToSync.entries()].map(([workspacePath, displayName]) =>
           this.driver.syncWorkspace(workspacePath, displayName),
@@ -1476,18 +1500,7 @@ Return ONLY a JSON array of configuration fields, no explanation.`;
       }
       this.startSelectedSessionHydration(restoredSessionRef, { markViewed: false });
     } catch (error) {
-      this.state = {
-        ...createEmptyDesktopAppState(),
-        enableTransparency: persisted.enableTransparency ?? false,
-        transcriptVerbose: persisted.transcriptVerbose ?? false,
-        composerDeviceMode: persisted.composerDeviceMode ?? "off",
-        themeMode: persisted.themeMode ?? "system",
-        lastError: error instanceof Error ? error.message : String(error),
-        commitPushModel: persisted.commitPushModel,
-        chats: persisted.chats ?? [],
-        selectedChatId: persisted.selectedChatId ?? "",
-        revision: 1,
-      };
+      this.state = this.buildInitFallbackState(persisted, error);
       await this.persistUiState();
       this.emit();
     }
@@ -1519,6 +1532,78 @@ Return ONLY a JSON array of configuration fields, no explanation.`;
         }
       }),
     );
+  }
+
+  /** Remove runtime + compatibility entries for workspaces no longer in the catalog. */
+  private pruneStaleMaps(liveWorkspaceIds: ReadonlySet<string>): void {
+    for (const wsId of this.runtimeByWorkspace.keys()) {
+      if (!liveWorkspaceIds.has(wsId)) {
+        this.runtimeByWorkspace.delete(wsId);
+      }
+    }
+    for (const workspaceId of this.extensionCommandCompatibilityByWorkspace.keys()) {
+      if (!liveWorkspaceIds.has(workspaceId)) {
+        this.extensionCommandCompatibilityByWorkspace.delete(workspaceId);
+      }
+    }
+  }
+
+  /** Load runtimes for all non-selected workspaces + prune stale compat entries. */
+  private async preloadSecondaryRuntimes(
+    selectedWorkspaceId: string,
+    rawWorkspaces: readonly WorkspaceCatalogEntry[],
+  ): Promise<void> {
+    if (selectedWorkspaceId && !this.runtimeByWorkspace.has(selectedWorkspaceId)) {
+      await this.ensureRuntimeLoaded(selectedWorkspaceId, rawWorkspaces);
+    }
+    const secondaryWorkspacesToLoad = rawWorkspaces
+      .filter((workspace) => workspace.workspaceId !== selectedWorkspaceId)
+      .filter((workspace) => !this.runtimeByWorkspace.has(workspace.workspaceId));
+    const secondaryRuntimeLoads = await Promise.allSettled(
+      secondaryWorkspacesToLoad.map((workspace) => this.ensureRuntimeLoaded(workspace.workspaceId, rawWorkspaces)),
+    );
+    secondaryRuntimeLoads.forEach((result, index) => {
+      if (result.status === "fulfilled") {
+        return;
+      }
+      const failedWorkspace = secondaryWorkspacesToLoad[index];
+      console.warn(
+        `[pi-gui] Failed to preload runtime for ${failedWorkspace?.path ?? "unknown workspace"}: ${
+          result.reason instanceof Error ? result.reason.message : String(result.reason)
+        }`,
+      );
+    });
+    for (const runtime of this.runtimeByWorkspace.values()) {
+      pruneCompatibilityForRuntimeSnapshot(this.extensionCommandCompatibilityByWorkspace, runtime);
+    }
+  }
+
+  /** Resolve global + per-repo model settings and restore if stale. */
+  private async resolveRefreshModelSettings(
+    workspaces: readonly WorkspaceRecord[],
+    rawWorkspaces: readonly WorkspaceCatalogEntry[],
+    selectedWorkspaceId: string,
+  ): Promise<{ globalModelSettings: ModelSettingsSnapshot; scopedModelSettingsByWorkspace: Record<string, ModelSettingsSnapshot> | undefined }> {
+    const liveGlobalModelSettings = await this.loadLiveGlobalModelSettings(
+      rawWorkspaces,
+      selectedWorkspaceId || rawWorkspaces[0]?.workspaceId,
+    );
+    const globalModelSettings =
+      this.state.modelSettingsScopeMode === "per-repo" && hasStoredModelSettings(this.state.globalModelSettings)
+        ? this.state.globalModelSettings
+        : liveGlobalModelSettings;
+    if (
+      this.state.modelSettingsScopeMode === "per-repo" &&
+      hasStoredModelSettings(globalModelSettings) &&
+      !modelSettingsEqual(globalModelSettings, liveGlobalModelSettings)
+    ) {
+      await this.restoreGlobalModelSettings(globalModelSettings, rawWorkspaces, selectedWorkspaceId);
+    }
+    const scopedModelSettingsByWorkspace =
+      this.state.modelSettingsScopeMode === "per-repo"
+        ? await this.loadScopedModelSettingsByWorkspace(workspaces, rawWorkspaces, globalModelSettings)
+        : undefined;
+    return { globalModelSettings, scopedModelSettingsByWorkspace };
   }
 
   async refreshState(options: RefreshStateOptions = {}): Promise<DesktopAppState> {
@@ -1565,60 +1650,14 @@ Return ONLY a JSON array of configuration fields, no explanation.`;
         this.sessionState.lastViewedAtBySession,
       );
       const worktreesByWorkspace = buildWorktreeRecords(workspacesSnapshot.workspaces, worktreeEntries);
-      const liveWorkspaceIds = new Set(workspaces.map((w) => w.id));
-      for (const wsId of this.runtimeByWorkspace.keys()) {
-        if (!liveWorkspaceIds.has(wsId)) {
-          this.runtimeByWorkspace.delete(wsId);
-        }
-      }
-      for (const workspaceId of this.extensionCommandCompatibilityByWorkspace.keys()) {
-        if (!liveWorkspaceIds.has(workspaceId)) {
-          this.extensionCommandCompatibilityByWorkspace.delete(workspaceId);
-        }
-      }
+      this.pruneStaleMaps(new Set(workspaces.map((w) => w.id)));
+      await this.preloadSecondaryRuntimes(selectedWorkspaceId, workspacesSnapshot.workspaces);
 
-      if (selectedWorkspaceId && !this.runtimeByWorkspace.has(selectedWorkspaceId)) {
-        await this.ensureRuntimeLoaded(selectedWorkspaceId, workspacesSnapshot.workspaces);
-      }
-      const secondaryWorkspacesToLoad = workspacesSnapshot.workspaces
-        .filter((workspace) => workspace.workspaceId !== selectedWorkspaceId)
-        .filter((workspace) => !this.runtimeByWorkspace.has(workspace.workspaceId));
-      const secondaryRuntimeLoads = await Promise.allSettled(
-        secondaryWorkspacesToLoad.map((workspace) => this.ensureRuntimeLoaded(workspace.workspaceId, workspacesSnapshot.workspaces)),
-      );
-      secondaryRuntimeLoads.forEach((result, index) => {
-        if (result.status === "fulfilled") {
-          return;
-        }
-        const failedWorkspace = secondaryWorkspacesToLoad[index];
-        console.warn(
-          `[pi-gui] Failed to preload runtime for ${failedWorkspace?.path ?? "unknown workspace"}: ${
-            result.reason instanceof Error ? result.reason.message : String(result.reason)
-          }`,
-        );
-      });
-      for (const runtime of this.runtimeByWorkspace.values()) {
-        pruneCompatibilityForRuntimeSnapshot(this.extensionCommandCompatibilityByWorkspace, runtime);
-      }
-      const liveGlobalModelSettings = await this.loadLiveGlobalModelSettings(
+      const { globalModelSettings, scopedModelSettingsByWorkspace } = await this.resolveRefreshModelSettings(
+        workspaces,
         workspacesSnapshot.workspaces,
-        selectedWorkspaceId || workspacesSnapshot.workspaces[0]?.workspaceId,
+        selectedWorkspaceId,
       );
-      const globalModelSettings =
-        this.state.modelSettingsScopeMode === "per-repo" && hasStoredModelSettings(this.state.globalModelSettings)
-          ? this.state.globalModelSettings
-          : liveGlobalModelSettings;
-      if (
-        this.state.modelSettingsScopeMode === "per-repo" &&
-        hasStoredModelSettings(globalModelSettings) &&
-        !modelSettingsEqual(globalModelSettings, liveGlobalModelSettings)
-      ) {
-        await this.restoreGlobalModelSettings(globalModelSettings, workspacesSnapshot.workspaces, selectedWorkspaceId);
-      }
-      const scopedModelSettingsByWorkspace =
-        this.state.modelSettingsScopeMode === "per-repo"
-          ? await this.loadScopedModelSettingsByWorkspace(workspaces, workspacesSnapshot.workspaces, globalModelSettings)
-          : undefined;
       const runtimeByWorkspace = this.serializeEffectiveRuntimeState(workspaces, scopedModelSettingsByWorkspace);
       for (const workspace of workspaces) {
         await this.reloadSubagentAgentsForWorkspace(workspace.id, workspace.path);
@@ -2002,35 +2041,8 @@ Return ONLY a JSON array of configuration fields, no explanation.`;
       });
   }
 
-  private async handleSessionEvent(event: SessionDriverEvent, subscriptionKey = sessionKey(event.sessionRef)): Promise<void> {
-    const key = sessionKey(event.sessionRef);
-    if (subscriptionKey !== key) {
-      this.migrateSessionSubscriptionKey(subscriptionKey, key);
-    }
-    const knownSession = this.sessionFromState(event.sessionRef);
-    const shouldFollowSessionMutation = subscriptionKey !== key && this.currentSelectedSessionKey() === subscriptionKey;
-    let refreshedFollowedSession = false;
-    if (
-      !knownSession &&
-      (event.type === "sessionOpened" ||
-        event.type === "sessionUpdated" ||
-        event.type === "runCompleted" ||
-        event.type === "runFailed" ||
-        event.type === "hostUiRequest")
-    ) {
-      if (this.refreshStateDepth === 0) {
-        await this.refreshState({
-          selectedWorkspaceId:
-            this.state.selectedWorkspaceId === event.sessionRef.workspaceId
-              ? event.sessionRef.workspaceId
-              : this.state.selectedWorkspaceId,
-          selectedSessionId: shouldFollowSessionMutation ? event.sessionRef.sessionId : this.state.selectedSessionId,
-          clearLastError: true,
-        });
-        refreshedFollowedSession = shouldFollowSessionMutation;
-      }
-    }
-
+  /** Apply the event-specific side effects (update config, errors, cleanup). */
+  private async applySessionEventActions(event: SessionDriverEvent, key: string): Promise<void> {
     switch (event.type) {
       case "sessionOpened":
       case "runCompleted":
@@ -2046,8 +2058,6 @@ Return ONLY a JSON array of configuration fields, no explanation.`;
         }
         break;
       case "runFailed":
-        // runFailed errors already render in the transcript as activity items.
-        // Don't also set lastError (avoid double display as banner + timeline).
         await this.refreshSessionCommands(event.sessionRef);
         this.sessionState.sessionErrorsBySession.set(key, event.error.message);
         break;
@@ -2065,14 +2075,18 @@ Return ONLY a JSON array of configuration fields, no explanation.`;
       default:
         break;
     }
-
     if (event.type === "runCompleted") {
       this.sessionState.sessionErrorsBySession.delete(key);
     }
+  }
 
-    const patch = this.desktopSessionState.consumeSessionDriverEvent(this.state, event, {
-      sessionActivelyViewed: isSessionActivelyViewed(this.state, event.sessionRef, this.getWindow()),
-    });
+  /** Hydrate the state patch, persist, and publish all relevant channels. */
+  private async publishSessionEventResults(
+    event: SessionDriverEvent,
+    patch: DesktopSessionStatePatch,
+    shouldFollowSessionMutation: boolean,
+    refreshedFollowedSession: boolean,
+  ): Promise<DesktopAppState> {
     this.state = {
       ...patch.state,
       extensionCommandCompatibilityByWorkspace: serializeCompatibilityByWorkspace(this.extensionCommandCompatibilityByWorkspace),
@@ -2099,6 +2113,48 @@ Return ONLY a JSON array of configuration fields, no explanation.`;
       this.publishSelectedTranscriptFor(event.sessionRef);
     }
     await this.emitSessionEvent(event, snapshot);
+    return snapshot;
+  }
+
+  /** For events from unknown sessions, trigger a full catalog refresh. */
+  private async refreshForUnknownSession(
+    event: SessionDriverEvent,
+    shouldFollowSessionMutation: boolean,
+  ): Promise<boolean> {
+    if (
+      this.sessionFromState(event.sessionRef) ||
+      this.refreshStateDepth !== 0 ||
+      (event.type !== "sessionOpened" &&
+        event.type !== "sessionUpdated" &&
+        event.type !== "runCompleted" &&
+        event.type !== "runFailed" &&
+        event.type !== "hostUiRequest")
+    ) {
+      return false;
+    }
+    await this.refreshState({
+      selectedWorkspaceId:
+        this.state.selectedWorkspaceId === event.sessionRef.workspaceId
+          ? event.sessionRef.workspaceId
+          : this.state.selectedWorkspaceId,
+      selectedSessionId: shouldFollowSessionMutation ? event.sessionRef.sessionId : this.state.selectedSessionId,
+      clearLastError: true,
+    });
+    return shouldFollowSessionMutation;
+  }
+
+  private async handleSessionEvent(event: SessionDriverEvent, subscriptionKey = sessionKey(event.sessionRef)): Promise<void> {
+    const key = sessionKey(event.sessionRef);
+    if (subscriptionKey !== key) {
+      this.migrateSessionSubscriptionKey(subscriptionKey, key);
+    }
+    const shouldFollowSessionMutation = subscriptionKey !== key && this.currentSelectedSessionKey() === subscriptionKey;
+    const refreshedFollowedSession = await this.refreshForUnknownSession(event, shouldFollowSessionMutation);
+    await this.applySessionEventActions(event, key);
+    const patch = this.desktopSessionState.consumeSessionDriverEvent(this.state, event, {
+      sessionActivelyViewed: isSessionActivelyViewed(this.state, event.sessionRef, this.getWindow()),
+    });
+    await this.publishSessionEventResults(event, patch, shouldFollowSessionMutation, refreshedFollowedSession);
   }
 
   workspaceRefFromState(workspaceId: string): WorkspaceRef | undefined {
