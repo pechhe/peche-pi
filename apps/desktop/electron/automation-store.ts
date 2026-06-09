@@ -17,7 +17,7 @@ interface StoredAutomationData {
 
 /**
  * Migrate a persisted automation from older shapes to the current one:
- *  - legacy schedule `{ kind: "preset"|"cron", ... }` → `{ frequency, time, dayOfWeek? }`
+ *  - legacy schedule `{ kind: "preset"|"cron", ... }` → `{ frequency, time }`
  *  - missing `environment` → "local"
  */
 function migrateAutomation(raw: Record<string, unknown>): Automation {
@@ -32,17 +32,13 @@ function migrateSchedule(raw: unknown): AutomationSchedule {
   const s = raw as Record<string, unknown> | undefined;
   // Already in new shape.
   if (s && typeof s.frequency === "string") {
-    return {
-      frequency: s.frequency as AutomationSchedule["frequency"],
-      time: typeof s.time === "string" ? s.time : "09:00",
-      ...(typeof s.dayOfWeek === "number" ? { dayOfWeek: s.dayOfWeek } : {}),
-    };
+    const freq = s.frequency === "weekly" || s.frequency === "monthly" ? s.frequency : "daily";
+    return { frequency: freq, time: typeof s.time === "string" ? s.time : "09:00" };
   }
   // Legacy preset.
   if (s && s.kind === "preset") {
     switch (s.preset) {
-      case "hourly": return { frequency: "hourly", time: "00:00" };
-      case "every-evening": return { frequency: "daily", time: "18:00" };
+      case "every-evening": return { frequency: "daily", time: "17:00" };
       case "every-morning":
       case "weekdays-morning":
       default: return { frequency: "daily", time: "09:00" };

@@ -3,19 +3,19 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { DesktopAppState } from "../src/desktop-state";
-import { createEmptyDesktopAppState } from "../src/desktop-state";
-import type { AppStoreInternals, RefreshStateOptions } from "./app-store-internals";
-import { SessionStateMap } from "./session-state-map";
-import { JsonFileStore } from "./json-file-store";
-import type { ComposerAttachment, TranscriptMessage } from "../src/desktop-state";
-import type { SessionRef } from "@pi-gui/session-driver";
+import type { DesktopAppState } from "../src/desktop-state.ts";
+import { createEmptyDesktopAppState } from "../src/desktop-state.ts";
+import type { AppStoreInternals } from "./app-store-internals.ts";
+import { SessionStateMap } from "./session-state-map.ts";
+import { JsonFileStore } from "./json-file-store.ts";
+import type { ComposerAttachment, TranscriptMessage } from "../src/desktop-state.ts";
+
 import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
-import type { ExtensionCommandCompatibilityRecord } from "../src/desktop-state";
-import type { PendingRuntimeCommandExecution } from "./extension-command-compatibility";
+import type { ExtensionCommandCompatibilityRecord } from "../src/desktop-state.ts";
+import type { PendingRuntimeCommandExecution } from "./extension-command-compatibility.ts";
 import type { WorkspaceRef } from "@pi-gui/session-driver";
-import { PersistenceManager } from "./app-store-persistence-manager";
-import { writePersistedUiState, type PersistedUiState } from "./app-store-persistence";
+import { PersistenceManager } from "./app-store-persistence-manager.ts";
+import { type PersistedUiState } from "./app-store-persistence.ts";
 
 /* ── Fake store ──────────────────────────────────────────── */
 
@@ -64,7 +64,6 @@ function createFakeStore(overrides?: Partial<DesktopAppState>): AppStoreInternal
     getLearnedRuntimeCommandCompatibility: () => undefined,
     beginRuntimeCommandExecution: () => {},
     finishRuntimeCommandExecution: () => undefined,
-    subscribeToSessionEvents: () => () => {},
     updateQueuedComposerMessages: () => {},
     getQueuedComposerMessages: () => [],
     setQueuedComposerEditState: () => {},
@@ -101,7 +100,7 @@ test("PersistenceManager.persistUiState writes state to disk", async () => {
     const store = createFakeStore({
       selectedWorkspaceId: "ws-1",
       selectedSessionId: "sess-1",
-      activeView: "conversation",
+      activeView: "threads",
       sidebarCollapsed: true,
     });
 
@@ -124,7 +123,7 @@ test("PersistenceManager.persistUiState writes state to disk", async () => {
     const parsed = JSON.parse(raw) as PersistedUiState;
     assert.equal(parsed.selectedWorkspaceId, "ws-1");
     assert.equal(parsed.selectedSessionId, "sess-1");
-    assert.equal(parsed.activeView, "conversation");
+    assert.equal(parsed.activeView, "threads");
     assert.equal(parsed.sidebarCollapsed, true);
     assert.equal(parsed.version, 10);
   });
@@ -201,7 +200,6 @@ test("PersistenceManager.persistComposerAttachments writes attachments then pers
     await mkdir(attachmentsDir, { recursive: true });
 
     const fakeAttachmentStore = new JsonFileStore<ComposerAttachment[]>(attachmentsDir, "attachments");
-    let attachmentWritten = false;
     const store = createFakeStore({ selectedWorkspaceId: "ws-4" });
 
     // Override attachmentStore with our file-backed store
@@ -217,7 +215,7 @@ test("PersistenceManager.persistComposerAttachments writes attachments then pers
     });
 
     const attachments: ComposerAttachment[] = [
-      { kind: "file", name: "test.txt", path: "/tmp/test.txt", size: 100, mimeType: "text/plain" },
+      { kind: "file", id: "att-1", name: "test.txt", fsPath: "/tmp/test.txt", sizeBytes: 100, mimeType: "text/plain" },
     ];
 
     await mgr.persistComposerAttachments("key-1", attachments);
@@ -225,8 +223,9 @@ test("PersistenceManager.persistComposerAttachments writes attachments then pers
     // Verify attachment was written
     const written = await fakeAttachmentStore.read("key-1");
     assert.ok(written, "attachment should be written");
-    assert.equal(written!.length, 1);
-    assert.equal(written![0].name, "test.txt");
+    const items = written!;
+    assert.equal(items.length, 1);
+    assert.equal(items[0]!.name, "test.txt");
 
     // Verify UI state was also persisted
     const raw = await readFile(uiStatePath, "utf8");
@@ -245,7 +244,7 @@ test("PersistenceManager persistUiState serializes extensionCommandCompatibility
 
     const store = createFakeStore();
     const compat = new Map<string, ExtensionCommandCompatibilityRecord>();
-    compat.set("cmd-1", { command: "test", compatible: true, lastCheckedAt: "2026-01-01" });
+    compat.set("cmd-1", { commandName: "test", extensionPath: "/ext", status: "supported", message: "ok", capability: "gui-safe", updatedAt: "2026-01-01" });
     store.extensionCommandCompatibilityByWorkspace.set("ws-1", compat);
 
     const transcriptStore = new JsonFileStore<any>(transcriptDir, "transcript");
@@ -263,8 +262,8 @@ test("PersistenceManager persistUiState serializes extensionCommandCompatibility
     const raw = await readFile(uiStatePath, "utf8");
     const parsed = JSON.parse(raw) as PersistedUiState;
     assert.ok(parsed.extensionCommandCompatibilityByWorkspace, "compat should be serialized");
-    assert.deepEqual(parsed.extensionCommandCompatibilityByWorkspace!["ws-1"], [
-      { command: "test", compatible: true, lastCheckedAt: "2026-01-01" },
+    assert.deepEqual(parsed.extensionCommandCompatibilityByWorkspace["ws-1"], [
+      { commandName: "test", extensionPath: "/ext", status: "supported", message: "ok", capability: "gui-safe", updatedAt: "2026-01-01" },
     ]);
   });
 });

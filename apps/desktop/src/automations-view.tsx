@@ -8,6 +8,7 @@ import type {
   WorkspaceRecord,
 } from "./desktop-state";
 import { automationScheduleLabel } from "./desktop-state";
+import { buildModelOptions, type ComposerModelOption } from "./composer-commands";
 import {
   AutomationIcon,
   AutomationRunIcon,
@@ -259,15 +260,13 @@ interface AutomationFormProps {
 
 type OpenMenu = "none" | "env" | "project" | "schedule" | "model" | "reasoning";
 
-const DAY_OPTIONS: { value: number; label: string }[] = [
-  { value: 1, label: "Monday" },
-  { value: 2, label: "Tuesday" },
-  { value: 3, label: "Wednesday" },
-  { value: 4, label: "Thursday" },
-  { value: 5, label: "Friday" },
-  { value: 6, label: "Saturday" },
-  { value: 0, label: "Sunday" },
+const FREQUENCY_OPTIONS: { value: AutomationFrequency; label: string }[] = [
+  { value: "daily", label: "Daily" },
+  { value: "weekly", label: "Weekly" },
+  { value: "monthly", label: "Monthly" },
 ];
+
+const TIME_OPTIONS = ["09:00", "13:00", "17:00"] as const;
 
 function AutomationForm({
   workspaces,
@@ -285,12 +284,14 @@ function AutomationForm({
   );
   const [frequency, setFrequency] = useState<AutomationFrequency>(initial?.schedule.frequency ?? "daily");
   const [time, setTime] = useState(initial?.schedule.time ?? "09:00");
-  const [dayOfWeek, setDayOfWeek] = useState<number>(initial?.schedule.dayOfWeek ?? 1);
   const [selectedProvider, setSelectedProvider] = useState(initial?.model?.provider ?? "");
   const [selectedModelId, setSelectedModelId] = useState(initial?.model?.modelId ?? "");
   const [thinkingLevel, setThinkingLevel] = useState(initial?.thinkingLevel ?? "");
   const [openMenu, setOpenMenu] = useState<OpenMenu>("none");
+  const [modelFilter, setModelFilter] = useState("");
   const barRef = useRef<HTMLDivElement>(null);
+  const modelPillRef = useRef<HTMLButtonElement>(null);
+  const [modelMenuStyle, setModelMenuStyle] = useState<React.CSSProperties>({});
 
   useEffect(() => {
     if (openMenu === "none") return;
@@ -306,18 +307,37 @@ function AutomationForm({
     };
   }, [openMenu]);
 
-  const models = runtime?.models ?? [];
-  const selectedModelRecord = models.find(
+  const allModels = runtime?.models ?? [];
+  // Same scoped set the composer offers (available + enabled patterns).
+  const modelOptions = useMemo(() => buildModelOptions(runtime), [runtime]);
+  const selectedModelRecord = allModels.find(
     (m) => m.providerId === selectedProvider && m.modelId === selectedModelId,
   );
   const thinkingLevels = selectedModelRecord?.availableThinkingLevels ?? [];
   const thinkingLabels = selectedModelRecord?.thinkingLevelLabels ?? {};
 
-  const schedule: AutomationSchedule = {
-    frequency,
-    time,
-    ...(frequency === "weekly" ? { dayOfWeek } : {}),
-  };
+  const filteredModels = useMemo(() => {
+    if (!modelFilter) return modelOptions;
+    const q = modelFilter.toLowerCase();
+    return modelOptions.filter(
+      (opt) =>
+        opt.label.toLowerCase().includes(q) ||
+        opt.description.toLowerCase().includes(q) ||
+        opt.providerId.toLowerCase().includes(q),
+    );
+  }, [modelOptions, modelFilter]);
+
+  const filteredGroupedModels = useMemo(() => {
+    const groups = new Map<string, ComposerModelOption[]>();
+    for (const opt of filteredModels) {
+      const existing = groups.get(opt.providerId);
+      if (existing) existing.push(opt);
+      else groups.set(opt.providerId, [opt]);
+    }
+    return Array.from(groups.entries()).map(([provider, items]) => ({ provider, items }));
+  }, [filteredModels]);
+
+  const schedule: AutomationSchedule = { frequency, time };
   const selectedWorkspace = workspaces.find((w) => w.id === workspaceId);
   const canCreate = prompt.trim().length > 0 && Boolean(workspaceId);
 
@@ -335,7 +355,19 @@ function AutomationForm({
     setOpenMenu("none");
   };
 
-  const toggle = (menu: OpenMenu) => setOpenMenu((cur) => (cur === menu ? "none" : menu));
+  const toggle = (menu: OpenMenu) => {
+    if (menu === "model" && openMenu !== "model" && modelPillRef.current) {
+      const rect = modelPillRef.current.getBoundingClientRect();
+      setModelMenuStyle({
+        position: "fixed",
+        bottom: `${window.innerHeight - rect.top + 6}px`,
+        right: `${window.innerWidth - rect.right}px`,
+        zIndex: 1010,
+      });
+    }
+    setOpenMenu((cur) => (cur === menu ? "none" : menu));
+    if (menu === "model") setModelFilter("");
+  };
 
   const handleSubmit = () => {
     if (!canCreate) return;
@@ -433,35 +465,32 @@ function AutomationForm({
               </button>
               {openMenu === "schedule" ? (
                 <div className="ab-menu ab-menu--schedule">
-                  <span className="ab-menu__label">Schedule</span>
-                  <select
-                    className="ab-field"
-                    value={frequency}
-                    onChange={(e) => setFrequency(e.target.value as AutomationFrequency)}
-                  >
-                    <option value="hourly">Hourly</option>
-                    <option value="daily">Daily</option>
-                    <option value="weekly">Weekly</option>
-                  </select>
-                  {frequency === "weekly" ? (
-                    <select
-                      className="ab-field"
-                      value={dayOfWeek}
-                      onChange={(e) => setDayOfWeek(Number(e.target.value))}
-                    >
-                      {DAY_OPTIONS.map((d) => (
-                        <option key={d.value} value={d.value}>{d.label}</option>
-                      ))}
-                    </select>
-                  ) : null}
-                  {frequency !== "hourly" ? (
-                    <input
-                      className="ab-field"
-                      type="time"
-                      value={time}
-                      onChange={(e) => setTime(e.target.value)}
-                    />
-                  ) : null}
+                  <span className="ab-menu__label">Frequency</span>
+                  <div className="ab-seg">
+                    {FREQUENCY_OPTIONS.map((f) => (
+                      <button
+                        key={f.value}
+                        type="button"
+                        className={`ab-seg__btn ${frequency === f.value ? "ab-seg__btn--active" : ""}`}
+                        onClick={() => setFrequency(f.value)}
+                      >
+                        {f.label}
+                      </button>
+                    ))}
+                  </div>
+                  <span className="ab-menu__label">Time</span>
+                  <div className="ab-seg">
+                    {TIME_OPTIONS.map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        className={`ab-seg__btn ${time === t ? "ab-seg__btn--active" : ""}`}
+                        onClick={() => setTime(t)}
+                      >
+                        {t}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               ) : null}
             </div>
@@ -469,6 +498,7 @@ function AutomationForm({
             {/* Model */}
             <div className="ab-pill-wrap">
               <button
+                ref={modelPillRef}
                 className={`ab-icon-pill ${selectedModelId ? "ab-icon-pill--set" : ""}`}
                 type="button"
                 title={selectedModelRecord ? `Model: ${selectedModelRecord.label}` : "Model (workspace default)"}
@@ -477,25 +507,48 @@ function AutomationForm({
                 <ModelIcon />
               </button>
               {openMenu === "model" ? (
-                <div className="ab-menu ab-menu--scroll ab-menu--right">
+                <div className="ab-model-menu" style={modelMenuStyle}>
+                  <div className="ab-model-menu__filter">
+                    <input
+                      className="ab-model-menu__filter-input"
+                      placeholder="Filter models..."
+                      value={modelFilter}
+                      onChange={(e) => setModelFilter(e.target.value)}
+                      autoFocus
+                    />
+                  </div>
                   <button
-                    className={`ab-menu__item ${!selectedModelId ? "ab-menu__item--active" : ""}`}
+                    className={`ab-model-menu__item ${!selectedModelId ? "ab-model-menu__item--active" : ""}`}
                     type="button"
                     onClick={clearModel}
                   >
-                    Default (workspace model)
+                    <span className="ab-model-menu__item-label">Default (workspace model)</span>
                   </button>
-                  {models.map((m) => (
-                    <button
-                      key={`${m.providerId}:${m.modelId}`}
-                      className={`ab-menu__item ${m.providerId === selectedProvider && m.modelId === selectedModelId ? "ab-menu__item--active" : ""}`}
-                      type="button"
-                      onClick={() => selectModel(m.providerId, m.modelId, m.availableThinkingLevels)}
-                    >
-                      <span className="ab-menu__item-main">{m.label}</span>
-                      <span className="ab-menu__item-sub">{m.providerName}</span>
-                    </button>
+                  {filteredGroupedModels.map((group) => (
+                    <div key={group.provider}>
+                      <div className="ab-model-menu__group-title">{group.provider}</div>
+                      {group.items.map((opt) => {
+                        const record = allModels.find(
+                          (m) => m.providerId === opt.providerId && m.modelId === opt.modelId,
+                        );
+                        const isActive = opt.providerId === selectedProvider && opt.modelId === selectedModelId;
+                        return (
+                          <button
+                            key={`${opt.providerId}:${opt.modelId}`}
+                            className={`ab-model-menu__item ${isActive ? "ab-model-menu__item--active" : ""}`}
+                            type="button"
+                            onClick={() => selectModel(opt.providerId, opt.modelId, record?.availableThinkingLevels ?? [])}
+                          >
+                            <span className="ab-model-menu__item-label">{opt.label}</span>
+                            <span className="ab-model-menu__item-meta">{record?.providerName ?? opt.providerId}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
                   ))}
+                  {filteredGroupedModels.length === 0 ? (
+                    <div className="ab-model-menu__empty">No matching models</div>
+                  ) : null}
                 </div>
               ) : null}
             </div>

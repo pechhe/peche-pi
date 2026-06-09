@@ -1,12 +1,13 @@
 import { sessionKey } from "@pi-gui/pi-sdk-driver";
 import type { SessionRef } from "@pi-gui/session-driver";
-import { ghAvailable, getIssueState, listMilestones, listRunnableIssues } from "./gh-issues";
+import { ghAvailable, getIssueState, listLoops, listSubIssues } from "./gh-issues";
 import type { AppStoreInternals } from "./app-store-internals";
+type SessionEventListener = (event: import("@pi-gui/session-driver").SessionDriverEvent, state: DesktopAppState) => void | Promise<void>;
 import type { DesktopAppState } from "../src/desktop-state";
 import type {
   GhIssueOutcome,
   GhIssueRecord,
-  GhMilestoneRecord,
+  GhLoopRecord,
   GhRunnerState,
 } from "../src/gh-types";
 
@@ -26,49 +27,54 @@ function workspacePath(store: AppStoreInternals, workspaceId: string): string | 
   return store.state.workspaces.find((w) => w.id === workspaceId)?.path;
 }
 
-export async function refreshMilestones(
+export async function refreshLoops(
   store: AppStoreInternals,
   workspaceId: string,
 ): Promise<DesktopAppState> {
   const cwd = workspacePath(store, workspaceId);
-  let milestones: GhMilestoneRecord[] = [];
+  let loops: GhLoopRecord[] = [];
   if (cwd && (await ghAvailable(cwd))) {
-    milestones = await listMilestones(cwd);
+    loops = await listLoops(cwd);
   }
   store.state = {
     ...store.state,
-    ghMilestones: milestones,
+    ghLoops: loops,
     revision: store.state.revision + 1,
   };
   return store.emit();
 }
 
-export async function runMilestone(
+export async function runLoop(
   store: AppStoreInternals,
   workspaceId: string,
-  milestoneNumber: number,
+  loopNumber: number,
 ): Promise<void> {
   const cwd = workspacePath(store, workspaceId);
   if (!cwd) return;
-  const milestone = (store.state.ghMilestones ?? []).find((m) => m.number === milestoneNumber);
-  if (!milestone) return;
+  const loop = (store.state.ghLoops ?? []).find((l) => l.number === loopNumber);
+  if (!loop) return;
 
-  const issues = await listRunnableIssues(cwd, milestone.title);
+  const subIssues = await listSubIssues(cwd, loopNumber);
   cancelRequested = false;
 
   setRunner(store, {
     status: "running",
     workspaceId,
-    milestoneNumber,
-    milestoneTitle: milestone.title,
+    loopNumber,
+    loopTitle: loop.title,
     currentIssueNumber: undefined,
     error: undefined,
     startedAt: new Date().toISOString(),
     finishedAt: undefined,
-    outcomes: issues.map((i) => ({ number: i.number, title: i.title, result: "pending" as const })),
+    outcomes: subIssues.map((i) => ({
+      number: i.number,
+      title: i.title,
+      result: i.state === "closed" ? ("completed" as const) : ("pending" as const),
+    })),
   });
 
-  for (const issue of issues) {
+  for (const issue of subIssues) {
+    if (issue.state === "closed") continue;
     if (cancelRequested) {
       markRemaining(store, "skipped");
       break;
@@ -157,7 +163,8 @@ function waitForCompletion(
 ): Promise<"completed" | "failed"> {
   return new Promise((resolve) => {
     const target = sessionKey(ref);
-    const unsub = store.subscribeToSessionEvents((event, _state) => {
+    const storeWithEvents = store as unknown as { subscribeToSessionEvents(listener: SessionEventListener): () => void };
+    const unsub = storeWithEvents.subscribeToSessionEvents((event, _state) => {
       if (sessionKey(event.sessionRef) !== target) return;
       if (event.type === "runCompleted") {
         unsub();

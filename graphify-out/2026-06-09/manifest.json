@@ -20,13 +20,13 @@
     "semantic_hash": ""
   },
   "apps/desktop/electron/app-store-composer.ts": {
-    "mtime": 1780950427.759223,
-    "ast_hash": "6d798e05372593ba808c40118bd6b124",
+    "mtime": 1780998457.7413542,
+    "ast_hash": "de19ccb3d55c0fbab1de8253302cda7c",
     "semantic_hash": ""
   },
   "apps/desktop/electron/app-store-internals.ts": {
-    "mtime": 1780967304.2699363,
-    "ast_hash": "8d4959005eb471b13c18b39e71072fad",
+    "mtime": 1780998558.2972672,
+    "ast_hash": "c67cfe2d74660b27c49e38747dce3c96",
     "semantic_hash": ""
   },
   "apps/desktop/electron/app-store-persistence.ts": {
@@ -45,8 +45,8 @@
     "semantic_hash": ""
   },
   "apps/desktop/electron/app-store-subagent.ts": {
-    "mtime": 1780993836.219169,
-    "ast_hash": "77e14f8f768a68f8742f41e398f6f8ca",
+    "mtime": 1780998357.291789,
+    "ast_hash": "730fac11586af1c5f854f26a495f0096",
     "semantic_hash": ""
   },
   "apps/desktop/electron/app-store-timeline.ts": {
@@ -60,18 +60,18 @@
     "semantic_hash": ""
   },
   "apps/desktop/electron/app-store-workspace.ts": {
-    "mtime": 1780964261.570582,
-    "ast_hash": "d3b39168c6442e125a11aa54c5d301d4",
+    "mtime": 1780998448.325111,
+    "ast_hash": "e27bb48f6968468860e16ac2462e7db6",
     "semantic_hash": ""
   },
   "apps/desktop/electron/app-store-worktree.ts": {
-    "mtime": 1780997741.8296328,
-    "ast_hash": "7c42a3fe2e46647fcc7f7b90327eb617",
+    "mtime": 1780998443.0956297,
+    "ast_hash": "1ec576a648598b3e6c44fbbd694f0e39",
     "semantic_hash": ""
   },
   "apps/desktop/electron/app-store.ts": {
-    "mtime": 1780997945.111379,
-    "ast_hash": "46088b12d1cd6b2bfcf3197976380382",
+    "mtime": 1780998584.6791544,
+    "ast_hash": "5a97675149c9a5821174744a7b54f4d8",
     "semantic_hash": ""
   },
   "apps/desktop/electron/commit-push-service.ts": {
@@ -95,8 +95,8 @@
     "semantic_hash": "4edaee449f6b0adfbe584b1c53d7d002"
   },
   "apps/desktop/electron/desktop-ipc-seam.ts": {
-    "mtime": 1780997962.9832494,
-    "ast_hash": "71f7ac49840492c0e9a746cf1a5167b6",
+    "mtime": 1780998602.2992606,
+    "ast_hash": "88e90371626c5d0cb16ec43a6e398ad1",
     "semantic_hash": ""
   },
   "apps/desktop/electron/dev-reload-main-probe.ts": {
@@ -165,8 +165,8 @@
     "semantic_hash": "fa1a895f10da0461dd23b500537150a3"
   },
   "apps/desktop/electron/main.ts": {
-    "mtime": 1780997951.469679,
-    "ast_hash": "2523fed87d8ef1b533a368e8578a2d8e",
+    "mtime": 1780998623.5865078,
+    "ast_hash": "16b3f7c62e711b0975412cda96675c1b",
     "semantic_hash": ""
   },
   "apps/desktop/electron/notification-manager.ts": {
@@ -385,8 +385,8 @@
     "semantic_hash": ""
   },
   "apps/desktop/src/desktop-state.ts": {
-    "mtime": 1780997926.2829366,
-    "ast_hash": "7f9cecf1bf5a00e7bef6a6e619124146",
+    "mtime": 1780998561.903199,
+    "ast_hash": "ee1e7789804a49b9b79c7a14517ad5dd",
     "semantic_hash": ""
   },
   "apps/desktop/src/desktop-surface-controller.test.ts": {
@@ -525,8 +525,8 @@
     "semantic_hash": "2758c19249dcd0a6748a3dfc641911eb"
   },
   "apps/desktop/src/ipc.ts": {
-    "mtime": 1780997974.7245393,
-    "ast_hash": "dac35abfb61f32c0d61d059fb79baad8",
+    "mtime": 1780998617.2427423,
+    "ast_hash": "f065e65a5247f9b14e3e29d50d39cd13",
     "semantic_hash": ""
   },
   "apps/desktop/src/kanban-board.test.ts": {
@@ -1825,8 +1825,8 @@
     "semantic_hash": ""
   },
   "apps/desktop/electron/automation-scheduler.test.ts": {
-    "mtime": 1780994270.7089262,
-    "ast_hash": "7d67bbbc34898de9000526e036093da8",
+    "mtime": 1780998266.9101326,
+    "ast_hash": "bb0e46f1ab59de04c5bb560bda5a81b4",
     "semantic_hash": ""
   },
   "apps/desktop/electron/overlay-window-manager.test.ts": {
@@ -1877,6 +1877,21 @@
   "docs/agents/triage-labels.md": {
     "mtime": 1780996134.0960972,
     "ast_hash": "fdb6ad5301cc027d1baf40cd6bd7ae06",
+    "semantic_hash": ""
+  },
+  "apps/desktop/electron/gh-issues.ts": {
+    "mtime": 1780998530.2120373,
+    "ast_hash": "aee22c34e64c94db1e38bb9037608e2d",
+    "semantic_hash": ""
+  },
+  "apps/desktop/electron/gh-runner.ts": {
+    "mtime": 1780998553.7080128,
+    "ast_hash": "1caa4a4fd8514dde515c253a0f8e4a6a",
+    "semantic_hash": ""
+  },
+  "apps/desktop/src/gh-types.ts": {
+    "mtime": 1780998521.0112233,
+    "ast_hash": "ff0e09aa1000e1acf757f538cc66512d",
     "semantic_hash": ""
   }
 }

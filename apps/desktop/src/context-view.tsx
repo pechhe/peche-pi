@@ -393,7 +393,6 @@ function analyzeTokens(sections: readonly ContextSection[]): TokenAnalysis {
   }
 
   // Check for too many skills
-  const skillTokens = byKind.get("skill") ?? 0;
   const skillCount = sections.filter((s) => s.kind === "skill").length;
   if (skillCount > 20) {
     warnings.push(`${skillCount} skills registered. Each adds description tokens to the system prompt.`);

@@ -1458,14 +1458,17 @@ app.whenReady().then(async () => {
         return store.getState();
       },
       automationFireNow: async (_event: unknown, id: string) => {
-        await automationScheduler.fireNow(id);
-        store.state = { ...store.state, automations: automationStore.getAll() };
+        // Fire in background — don't block the IPC response. The scheduler's
+        // startAutomationThread → refreshState → emit chain will push the new
+        // session to the renderer via the onStateChanged subscription once
+        // worktree creation and session setup complete.
+        void automationScheduler.fireNow(id);
         return store.getState();
       },
 
       // -- GitHub issue runner --
-      listGhMilestones: async (_event: unknown, workspaceId?: string) => store.listGhMilestones(workspaceId),
-      runGhMilestone: async (_event: unknown, workspaceId: string, milestoneNumber: number) => store.runGhMilestone(workspaceId, milestoneNumber),
+      listGhLoops: async (_event: unknown, workspaceId?: string) => store.listGhLoops(workspaceId),
+      runGhLoop: async (_event: unknown, workspaceId: string, loopNumber: number) => store.runGhLoop(workspaceId, loopNumber),
       cancelGhRun: async () => store.cancelGhRun(),
 
       // -- Update --

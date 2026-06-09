@@ -383,5 +383,6 @@ export function useKeyboardShortcuts({
     onOpenExtensions,
     onOpenAutomations,
     onOpenContext,
+    onCopyLastResponse,
   ]);
 }

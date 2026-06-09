@@ -450,6 +450,7 @@ export class SessionSupervisor {
     const isQueuedMessage = session.isStreaming && !isExtensionCommand && Boolean(input.deliverAs);
     const runId = isQueuedMessage || isExtensionCommand ? undefined : crypto.randomUUID();
     record.runningRunId = runId ?? record.runningRunId;
+    record.abortPending = false;
     record.status = isQueuedMessage || isExtensionCommand ? record.status : "running";
     record.updatedAt = nowIso();
     record.config = deriveSessionConfig(session.sessionManager);
@@ -534,6 +535,7 @@ export class SessionSupervisor {
 
     await record.session.abort();
     record.runningRunId = undefined;
+    record.abortPending = true;
     record.status = "idle";
     await this.persistSnapshot(record);
     await this.emit(record, sessionUpdatedEvent(record, this.registry));
@@ -1292,6 +1294,13 @@ export class SessionSupervisor {
   }
 
   private async handleAgentEvent(record: ManagedSessionRecord, event: AgentSessionEvent): Promise<void> {
+    // After abort, ignore stale in-flight events that would reset status to
+    // "running" — they arrive because the agent pipeline was already flushed
+    // before the abort took effect.
+    if (record.abortPending && event.type !== "agent_end") {
+      return;
+    }
+
     const mapped = this.mapAgentEvent(record, event);
     if (mapped.length === 0) {
       return;

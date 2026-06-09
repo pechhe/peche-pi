@@ -228,6 +228,7 @@ function buildSessionRecord(
     isAwaitingAssistantText: isAwaitingAssistantText(session.status, transcript),
     config: sessionConfigBySession.get(key),
     contextUsage: contextUsageBySession.get(key),
+    sessionFilePath: session.sessionFilePath,
   };
 }
 

@@ -72,7 +72,6 @@ export interface SessionLifecycle {
   ): ExtensionCommandCompatibilityRecord | undefined;
   beginRuntimeCommandExecution(sessionRef: SessionRef, command: RuntimeCommandRecord): void;
   finishRuntimeCommandExecution(sessionRef: SessionRef, timestamp?: string): PendingRuntimeCommandExecution | undefined;
-  subscribeToSessionEvents(listener: (event: import("@pi-gui/session-driver").SessionDriverEvent, state: DesktopAppState) => void | Promise<void>): () => void;
 }
 
 /** Composer message queue and transcript operations. */

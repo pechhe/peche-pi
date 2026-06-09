@@ -622,20 +622,6 @@ function buildUndoOps(tools: TimelineEditedFiles["tools"]): UndoEditOp[] {
 }
 
 /**
- * Collect all undo ops from every edited-files card in a grouped transcript.
- * Used for thread-level "revert all" functionality.
- */
-function collectAllUndoOps(rows: readonly TimelineRow[]): UndoEditOp[] {
-  const allOps: UndoEditOp[] = [];
-  for (const row of rows) {
-    if (row.kind === "editedFiles") {
-      allOps.push(...buildUndoOps(row.tools));
-    }
-  }
-  return allOps;
-}
-
-/**
  * Build maps from edited-files card IDs and activity item IDs to the
  * combined undo ops for that entire "turn" (all edited-files since the
  * last user message). Activity items get the same ops so the "Worked for

@@ -7,14 +7,14 @@ export interface GhIssueRecord {
   readonly url: string;
 }
 
-export interface GhMilestoneRecord {
+export interface GhLoopRecord {
   readonly number: number;
   readonly title: string;
-  readonly description: string;
-  readonly openIssues: number;
-  readonly closedIssues: number;
-  /** Open, ready-for-agent issues in run order (ascending number). */
-  readonly issues: readonly GhIssueRecord[];
+  readonly body: string;
+  readonly openSubIssues: number;
+  readonly closedSubIssues: number;
+  /** Sub-issues in GitHub's defined order. */
+  readonly subIssues: readonly GhIssueRecord[];
 }
 
 export type GhRunStatus = "idle" | "running" | "cancelling" | "done" | "error";
@@ -31,8 +31,8 @@ export interface GhIssueOutcome {
 export interface GhRunnerState {
   readonly status: GhRunStatus;
   readonly workspaceId?: string;
-  readonly milestoneNumber?: number;
-  readonly milestoneTitle?: string;
+  readonly loopNumber?: number;
+  readonly loopTitle?: string;
   readonly currentIssueNumber?: number;
   readonly outcomes: readonly GhIssueOutcome[];
   readonly error?: string;

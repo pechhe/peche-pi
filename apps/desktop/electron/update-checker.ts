@@ -55,11 +55,6 @@ export function onUpdateStateChange(listener: (state: UpdateState) => void): voi
   listener(currentState);
 }
 
-/** Get current state (for initial renderer hydration). */
-function getUpdateState(): UpdateState {
-  return currentState;
-}
-
 // ---------------------------------------------------------------------------
 // Auto-updater wiring
 // ---------------------------------------------------------------------------

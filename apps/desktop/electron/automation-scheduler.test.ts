@@ -27,13 +27,14 @@ async function makeDueScheduler() {
   const store = new AutomationStore(dir);
   await store.load();
   const automation = await store.create({
-    name: "Hourly job",
+    name: "Daily job",
     prompt: "do the thing",
-    schedule: { frequency: "hourly", time: "00:00" },
+    schedule: { frequency: "daily", time: "00:00" },
     workspaceId: "ws-1",
   });
-  // Force "due": baseline lastRunAt is creation time, push it into the past.
-  await store.update(automation.id, { lastRunAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString() });
+  // Force "due": baseline lastRunAt is creation time, push it 2 days into the
+  // past so today's scheduled fire is always after it regardless of clock time.
+  await store.update(automation.id, { lastRunAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString() });
 
   const { startAutomationThread, getCreateCount } = makeFakeStarter();
   const scheduler = new AutomationScheduler({

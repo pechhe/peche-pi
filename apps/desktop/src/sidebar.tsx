@@ -32,7 +32,7 @@ import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
 
 import type { SidebarResize } from "./hooks/use-sidebar-width";
 import type { SidebarNavEntry } from "./hooks/build-sidebar-nav-list";
-import { GhMilestoneSection } from "./gh-milestone-section";
+import { GhLoopSection } from "./gh-loop-section";
 
 interface MovingHighlightState {
   readonly left: number;
@@ -279,9 +279,9 @@ interface SidebarProps {
   readonly threadTypeBySession?: Readonly<Record<string, string>>;
   /** Runtime snapshot for model selection. */
   readonly runtime?: RuntimeSnapshot;
-  readonly ghMilestones?: readonly import("./gh-types").GhMilestoneRecord[];
+  readonly ghLoops?: readonly import("./gh-types").GhLoopRecord[];
   readonly ghRunnerState?: import("./gh-types").GhRunnerState;
-  readonly onRunMilestone?: (workspaceId: string, milestoneNumber: number) => void;
+  readonly onRunLoop?: (workspaceId: string, loopNumber: number) => void;
   readonly onCancelGhRun?: () => void;
 }
 
@@ -322,9 +322,9 @@ export function Sidebar(props: SidebarProps) {
     onOpenSearch,
     sessionsWithRunningSubagents,
     threadTypeBySession,
-    ghMilestones,
+    ghLoops,
     ghRunnerState,
-    onRunMilestone,
+    onRunLoop,
     onCancelGhRun,
   } = props;
 
@@ -507,11 +507,11 @@ export function Sidebar(props: SidebarProps) {
           <DndContext sensors={sensors} collisionDetection={headerCollision} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
             <SortableContext items={rootGroupIds} strategy={verticalListSortingStrategy}>
               <div className="workspace-list" data-testid="workspace-list">
-                <GhMilestoneSection
-                  milestones={ghMilestones}
+                <GhLoopSection
+                  loops={ghLoops}
                   runnerState={ghRunnerState}
                   selectedWorkspaceId={selectedWorkspace?.id}
-                  onRun={onRunMilestone ?? (() => {})}
+                  onRun={onRunLoop ?? (() => {})}
                   onCancel={onCancelGhRun ?? (() => {})}
                 />
                 {rootGroups.map((group) => (

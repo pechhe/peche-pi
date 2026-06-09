@@ -867,23 +867,7 @@
   cursor: pointer;
 }
 
-/* Workspace accent bar — thin coloured stripe on the left edge. */
-.session-row::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 6px;
-  bottom: 6px;
-  width: 3px;
-  border-radius: 2px;
-  background: var(--ws-accent, transparent);
-  opacity: 0.7;
-  transition: opacity 150ms ease;
-}
-.session-row:hover::after,
-.session-row--active::after {
-  opacity: 1;
-}
+
 
 
 
@@ -989,7 +973,8 @@
   background: none;
   border: 0;
   border-radius: 0;
-  animation: none;
+  font-size: 1.1em;
+  filter: drop-shadow(0 0 3px var(--accent)) drop-shadow(0 0 6px var(--accent));
 }
 
 .session-row__status--unseen {

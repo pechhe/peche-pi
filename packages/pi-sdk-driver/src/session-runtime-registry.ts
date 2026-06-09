@@ -45,6 +45,8 @@ export interface ManagedSessionRecord {
   preview: string | undefined;
   config: SessionConfig | undefined;
   runningRunId: string | undefined;
+  /** Set after abort to ignore stale in-flight agent events. */
+  abortPending: boolean;
   queuedMessages: SessionQueuedMessage[];
   contextUsage: SessionContextUsage | undefined;
   closed: boolean;
@@ -188,6 +190,7 @@ export class SessionRuntimeRegistry implements SessionRuntimeRegistryInterface {
       preview: undefined,
       config: deriveSessionConfig(session.sessionManager),
       runningRunId: undefined,
+      abortPending: false,
       queuedMessages: [],
       contextUsage: undefined,
       closed: false,

@@ -11928,7 +11928,7 @@ mark.thread-find-active {
   align-items: center;
   gap: 6px;
   padding: 2px 10px;
-  background: var(--surface-2);
+  background: var(--surface-muted);
   border: 1px solid var(--border);
   border-radius: 999px;
   font-size: 12px;
@@ -11986,7 +11986,7 @@ mark.thread-find-active {
 
 .automation-card {
   padding: 14px 16px;
-  background: var(--surface-1);
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px;
   transition: border-color 120ms ease;
@@ -12033,7 +12033,7 @@ mark.thread-find-active {
   font-size: 11px;
   color: var(--muted);
   padding: 1px 6px;
-  background: var(--surface-2);
+  background: var(--surface-muted);
   border-radius: 4px;
   white-space: nowrap;
 }
@@ -12110,23 +12110,31 @@ mark.thread-find-active {
 /* ── Automation builder (Codex-style floating card) ──── */
 
 .automation-builder-overlay {
-  position: fixed;
+  position: absolute;
   inset: 0;
   z-index: 1000;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 24px;
+}
+
+/* Full-screen dim backdrop so sidebar stays greyed out */
+.automation-builder-overlay::before {
+  content: "";
+  position: fixed;
+  inset: 0;
   background: rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(2px);
 }
 
 .automation-builder {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   width: min(880px, 100%);
   max-height: min(680px, 90vh);
-  background: var(--surface-1);
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 14px;
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
@@ -12205,7 +12213,7 @@ mark.thread-find-active {
   gap: 6px;
   height: 30px;
   padding: 0 10px;
-  background: var(--surface-2, rgba(255, 255, 255, 0.05));
+  background: var(--surface-muted);
   border: 1px solid var(--border);
   border-radius: 999px;
   color: var(--foreground);
@@ -12251,7 +12259,7 @@ mark.thread-find-active {
   gap: 2px;
   min-width: 180px;
   padding: 6px;
-  background: var(--surface-1);
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 10px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
@@ -12294,7 +12302,7 @@ mark.thread-find-active {
 }
 
 .ab-menu__item:hover {
-  background: var(--surface-2, rgba(255, 255, 255, 0.06));
+  background: var(--surface-muted);
 }
 
 .ab-menu__item--active {
@@ -12306,20 +12314,121 @@ mark.thread-find-active {
   color: var(--muted);
 }
 
-.ab-field {
-  width: 100%;
-  padding: 7px 9px;
-  background: var(--surface-0);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--foreground);
-  font-size: 13px;
-  font-family: inherit;
+/* Model picker dropdown (matches ModelSelector style) */
+.ab-model-menu {
+  min-width: 280px;
+  max-height: 480px;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
 }
 
-.ab-field:focus {
+.ab-model-menu__filter {
+  padding: 4px 8px 8px;
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  z-index: 1;
+}
+
+.ab-model-menu__filter-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--surface-muted);
+  color: var(--text);
+  font-size: 13px;
   outline: none;
-  border-color: var(--accent, #3b82f6);
+}
+
+.ab-model-menu__filter-input:focus {
+  border-color: var(--accent);
+}
+
+.ab-model-menu__group-title {
+  padding: 6px 10px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.ab-model-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.ab-model-menu__item:hover {
+  background: var(--surface-muted);
+}
+
+.ab-model-menu__item--active {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.ab-model-menu__item-label {
+  flex: 1;
+}
+
+.ab-model-menu__item-meta {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.ab-model-menu__empty {
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.ab-seg {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.ab-seg__btn {
+  flex: 1;
+  padding: 6px 8px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.ab-seg__btn:hover {
+  color: var(--foreground);
+}
+
+.ab-seg__btn--active {
+  background: var(--surface);
+  color: var(--foreground);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
 }
 
 /* ── Sidebar automation icon on workspace row ──────── */
@@ -12706,19 +12815,19 @@ mark.thread-find-active {
   padding: 2px;
 }
 
-/* ── GH milestone sidebar section ────────────────────── */
+/* ── GH loops sidebar section ────────────────────── */
 
-.gh-milestones { display: flex; flex-direction: column; gap: 2px; padding: 4px 8px 8px; }
-.gh-milestones__header { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.6; padding: 4px 4px; }
-.gh-milestone { display: flex; flex-direction: column; }
-.gh-milestone__row { display: flex; align-items: center; gap: 6px; padding: 4px 6px; border-radius: 6px; }
-.gh-milestone__row:hover { background: var(--color-surface-hover, rgba(127,127,127,0.12)); }
-.gh-milestone__title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
-.gh-milestone__count { font-size: 11px; opacity: 0.6; font-variant-numeric: tabular-nums; }
-.gh-milestone__btn { border: none; background: transparent; cursor: pointer; font-size: 12px; line-height: 1; padding: 2px 4px; border-radius: 4px; color: inherit; }
-.gh-milestone__btn:hover:not(:disabled) { background: var(--color-surface-hover, rgba(127,127,127,0.18)); }
-.gh-milestone__btn:disabled { opacity: 0.35; cursor: default; }
-.gh-milestone__issues { list-style: none; margin: 0; padding: 2px 0 4px 14px; display: flex; flex-direction: column; gap: 1px; }
+.gh-loops { display: flex; flex-direction: column; gap: 2px; padding: 4px 8px 8px; }
+.gh-loops__header { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.6; padding: 4px 4px; }
+.gh-loop { display: flex; flex-direction: column; }
+.gh-loop__row { display: flex; align-items: center; gap: 6px; padding: 4px 6px; border-radius: 6px; }
+.gh-loop__row:hover { background: var(--color-surface-hover, rgba(127,127,127,0.12)); }
+.gh-loop__title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.gh-loop__count { font-size: 11px; opacity: 0.6; font-variant-numeric: tabular-nums; }
+.gh-loop__btn { border: none; background: transparent; cursor: pointer; font-size: 12px; line-height: 1; padding: 2px 4px; border-radius: 4px; color: inherit; }
+.gh-loop__btn:hover:not(:disabled) { background: var(--color-surface-hover, rgba(127,127,127,0.18)); }
+.gh-loop__btn:disabled { opacity: 0.35; cursor: default; }
+.gh-loop__issues { list-style: none; margin: 0; padding: 2px 0 4px 14px; display: flex; flex-direction: column; gap: 1px; }
 .gh-issue { display: flex; align-items: center; gap: 6px; font-size: 12px; opacity: 0.85; }
 .gh-issue__dot { width: 7px; height: 7px; border-radius: 50%; background: var(--color-border, #888); flex: none; }
 .gh-issue--running .gh-issue__dot { background: #f5a623; animation: gh-pulse 1s ease-in-out infinite; }

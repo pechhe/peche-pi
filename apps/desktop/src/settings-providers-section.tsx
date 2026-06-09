@@ -20,7 +20,7 @@ export function SettingsProvidersSection({
   onSetProviderApiKey,
   onRemoveProviderApiKey,
   onAddCustomProvider,
-  onRemoveCustomProvider,
+  onRemoveCustomProvider: _onRemoveCustomProvider,
 }: SettingsProvidersSectionProps) {
   const [providerQuery, setProviderQuery] = useState("");
   const [apiKeyProviderId, setApiKeyProviderId] = useState<string | undefined>();

@@ -45,4 +45,4 @@ export function parseThreadType(raw: string): ThreadType {
 }
 
 /** All valid thread type keys, for validation / UI pickers. */
-const ALL_THREAD_TYPES: readonly ThreadType[] = ["bug", "feature", "refactor", "investigate", "other"];
+const _ALL_THREAD_TYPES: readonly ThreadType[] = ["bug", "feature", "refactor", "investigate", "other"];

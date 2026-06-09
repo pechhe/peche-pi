@@ -55,7 +55,7 @@ function passesArchiveFilter(archived: boolean, filter: GlobalSearchArchiveFilte
 function buildCandidateSessionKeys({
   state,
   selectedWorkspace,
-  selectedSession,
+  selectedSession: _selectedSession,
   query,
   scope,
   archiveFilter,
@@ -85,7 +85,7 @@ function buildCandidateSessionKeys({
 export function buildGlobalSearchResults({
   state,
   selectedWorkspace,
-  selectedSession,
+  selectedSession: _selectedSession,
   query,
   scope,
   archiveFilter,

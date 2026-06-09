@@ -161,10 +161,11 @@ export function Topbar(props: TopbarProps) {
             <span className="topbar__separator">/</span>
             <span
               className="topbar__session topbar__session--clickable"
-              title="Click to copy session ID"
+              title="Click to copy session path"
               onClick={() => {
-                void navigator.clipboard.writeText(selectedSession.id);
-                showToast({ variant: "success", message: "Session ID copied", autoDismissMs: 2000 });
+                const text = selectedSession.sessionFilePath ?? selectedSession.id;
+                void navigator.clipboard.writeText(text);
+                showToast({ variant: "success", message: selectedSession.sessionFilePath ? "Session path copied" : "Session ID copied", autoDismissMs: 2000 });
               }}
             >{selectedSessionTitle ?? selectedSession.title}</span>
           </>
