@@ -531,6 +531,7 @@ export default function App() {
   const lastErrorToastKeyRef = useRef("");
   const [subagentPanel, setSubagentPanel] = useState<{ readonly sessionFile: string; readonly name: string } | null>(null);
   const [showDiffPanel, setShowDiffPanel] = useState(false);
+  const [showContextPanel, setShowContextPanel] = useState(false);
   const [featureDoneState, setFeatureDoneState] = useState<"idle" | "working" | "done" | "error">("idle");
   const [pendingScrollToMessageId, setPendingScrollToMessageId] = useState<string | null>(null);
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
@@ -810,10 +811,10 @@ export default function App() {
       .finally(() => setContextLoading(false));
   }, [api, contextWorkspace, selectedSession?.id]);
   useEffect(() => {
-    if (snapshot?.activeView === "context") {
+    if (showContextPanel) {
       loadContextSnapshot();
     }
-  }, [snapshot?.activeView, loadContextSnapshot]);
+  }, [showContextPanel, loadContextSnapshot]);
   const extensionsCommandCompatibility = extensionsWorkspace
     ? snapshot?.extensionCommandCompatibilityByWorkspace[extensionsWorkspace.id] ?? []
     : [];
@@ -1821,7 +1822,7 @@ export default function App() {
   };
 
   const openContext = () => {
-    setActiveView("context");
+    setShowContextPanel((prev) => !prev);
   };
 
   const openAgents = () => {
@@ -1914,6 +1915,7 @@ export default function App() {
   const mainClassName = [
     "main",
     showDiffPanel ? "main--with-diff" : "",
+    showContextPanel ? "main--with-context" : "",
     advisorState.visible ? "main--with-advisor" : "",
     subagentPanel ? "main--with-subagent" : "",
     isTerminalVisibleForSelectedThread ? "main--with-terminal" : "",
@@ -2367,7 +2369,6 @@ export default function App() {
     onOpenSkills: openSkills,
     onOpenExtensions: openExtensions,
     onOpenSettings: openSettings,
-    onOpenContext: openContext,
     onOpenKanban: openKanbanView,
     onOpenAutomations: openAutomations,
     onOpenAgents: openAgents,
@@ -2536,21 +2537,6 @@ export default function App() {
     );
   }
 
-  if (snapshot.activeView === "context") {
-    return (
-      <UtilitySurface {...utilityShellProps} content={
-        <ContextSurface
-          contextWorkspace={contextWorkspace}
-          contextRuntime={contextRuntime}
-          contextSnapshot={contextSnapshot}
-          contextLoading={contextLoading}
-          loadContextSnapshot={loadContextSnapshot}
-          api={api!}
-        />
-      } />
-    );
-  }
-
   if (snapshot.activeView === "agents") {
     return (
       <UtilitySurface {...utilityShellProps} content={
@@ -2623,7 +2609,6 @@ export default function App() {
           onOpenSkills={openSkills}
           onOpenExtensions={openExtensions}
           onOpenSettings={openSettings}
-          onOpenContext={openContext}
           queueMode={snapshot.queueMode}
           onArchiveSession={handleArchiveSession}
             onArchiveAllNonRunningSessions={handleArchiveAllNonRunningSessions}
@@ -2673,6 +2658,8 @@ export default function App() {
           onOpenExternalTerminal={openExternalTerminal}
           showDiffPanel={showDiffPanel}
           onToggleDiffPanel={toggleDiffPanel}
+          showContextPanel={showContextPanel}
+          onToggleContextPanel={openContext}
           showAdvisorPanel={advisorState.visible}
           onToggleAdvisorPanel={toggleAdvisorPanel}
           selectedRuntime={rootRuntime}
@@ -2928,6 +2915,18 @@ export default function App() {
             fileRequest={diffFileRequest}
             refreshNonce={diffRefreshNonce}
           />
+        ) : null}
+        {showContextPanel ? (
+          <aside className="context-panel" data-testid="context-panel">
+            <ContextSurface
+              contextWorkspace={contextWorkspace}
+              contextRuntime={contextRuntime}
+              contextSnapshot={contextSnapshot}
+              contextLoading={contextLoading}
+              loadContextSnapshot={loadContextSnapshot}
+              api={api!}
+            />
+          </aside>
         ) : null}
         {subagentPanel ? (
           <SubagentSessionPanel

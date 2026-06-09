@@ -1984,6 +1984,46 @@ body.pi-thread-handoff .timeline-item--just-sent .timeline-item__bubble {
 }
 
 /* ------------------------------------------------------------------ */
+/* Context Panel (overlay, toggled from topbar)                        */
+/* ------------------------------------------------------------------ */
+
+.main--with-context {
+  grid-template-columns: 1fr 460px;
+}
+
+.main--with-context > .topbar {
+  grid-column: 1 / -1;
+}
+
+.main--with-context > .composer,
+.main--with-context > .terminal-panel {
+  grid-column: 1;
+}
+
+.context-panel {
+  width: 460px;
+  min-width: 360px;
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  overflow: hidden;
+  grid-column: 2;
+  grid-row: 2 / -1;
+}
+
+.main--with-context.main--with-terminal > .context-panel {
+  grid-row: 2 / span 3;
+}
+
+.context-panel > .context-view,
+.context-panel > .empty-panel {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* ------------------------------------------------------------------ */
 /* Subagent Session Panel (read-only)                                  */
 /* ------------------------------------------------------------------ */
 

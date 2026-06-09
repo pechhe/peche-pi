@@ -70,7 +70,6 @@ export interface UtilitySurfaceProps {
   readonly onOpenSkills: (workspaceId?: string) => void;
   readonly onOpenExtensions: (workspaceId?: string) => void;
   readonly onOpenSettings: (workspaceId?: string) => void;
-  readonly onOpenContext: (workspaceId?: string) => void;
   readonly onOpenKanban: () => void;
   readonly onOpenAutomations: (workspaceId?: string) => void;
   readonly onOpenAgents: () => void;
@@ -128,7 +127,6 @@ export function UtilitySurface(props: UtilitySurfaceProps) {
     onOpenSkills,
     onOpenExtensions,
     onOpenSettings,
-    onOpenContext,
     onOpenKanban: _onOpenKanban,
     onOpenAutomations,
     onOpenAgents,
@@ -213,7 +211,6 @@ export function UtilitySurface(props: UtilitySurfaceProps) {
           onOpenSkills={onOpenSkills}
           onOpenExtensions={onOpenExtensions}
           onOpenSettings={onOpenSettings}
-          onOpenContext={onOpenContext}
           queueMode={queueMode}
           onArchiveSession={onArchiveSession}
           onArchiveAllNonRunningSessions={onArchiveAllNonRunningSessions}

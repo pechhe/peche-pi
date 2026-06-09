@@ -17,7 +17,7 @@ import type { AppView, Automation, ChatRecord, SessionRecord, WorkspaceRecord, W
 import { countAutomationsNext24h } from "./desktop-state";
 import { type ThreadType, threadTypeAccent, parseThreadType } from "./thread-types";
 import { BugIcon, FeatureIcon, RefactorIcon, InvestigateIcon, OtherIcon } from "./icons";
-import { ChatIcon, ChevronDownIcon, ComposeIcon, ContextIcon, DoneIcon, EyeIcon, ExtensionIcon, AutomationIcon, AutomationRunIcon, FolderIcon, ProjectIcon, RestoreIcon, SearchIcon, SettingsIcon, SkillIcon, SparkIcon, WorktreeIcon, ClockIcon as SnoozeIcon } from "./icons";
+import { ChatIcon, ChevronDownIcon, ComposeIcon, DoneIcon, EyeIcon, ExtensionIcon, AutomationIcon, AutomationRunIcon, FolderIcon, ProjectIcon, RestoreIcon, SearchIcon, SettingsIcon, SkillIcon, SparkIcon, WorktreeIcon, ClockIcon as SnoozeIcon } from "./icons";
 import { WorkingSpinner } from "./working-label";
 import { getDesktopShortcutLabel, type PiDesktopApi } from "./ipc";
 import { formatRelativeTime } from "./string-utils";
@@ -269,7 +269,6 @@ interface SidebarProps {
   readonly onSetActiveView: (view: AppView) => void;
   readonly onOpenSkills: (workspaceId?: string) => void;
   readonly onOpenExtensions: (workspaceId?: string) => void;
-  readonly onOpenContext: (workspaceId?: string) => void;
   readonly onOpenSettings: (workspaceId?: string) => void;
   readonly queueMode: boolean;
   readonly onArchiveSession: (target: { workspaceId: string; sessionId: string; selectNextSessionId?: string }) => void;
@@ -321,7 +320,6 @@ export function Sidebar(props: SidebarProps) {
     onSetActiveView: _onSetActiveView,
     onOpenSkills,
     onOpenExtensions,
-    onOpenContext,
     onOpenSettings,
     queueMode,
     onArchiveSession,
@@ -470,15 +468,6 @@ export function Sidebar(props: SidebarProps) {
               </span>
             ) : null}
             <kbd className="sidebar__nav-shortcut shortcut-hint">{getDesktopShortcutLabel(api.platform, "⇧4")}</kbd>
-          </button>
-          <button
-            className={`sidebar__nav-item ${activeView === "context" ? "sidebar__nav-item--active" : ""}`}
-            type="button"
-            onClick={() => { playButtonClick(); onOpenContext(selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id); }}
-          >
-            <ContextIcon />
-            <span>Context</span>
-            <kbd className="sidebar__nav-shortcut shortcut-hint">{getDesktopShortcutLabel(api.platform, "⇧5")}</kbd>
           </button>
           <button
             className={`sidebar__nav-item ${activeView === "testing" ? "sidebar__nav-item--active" : ""}`}
