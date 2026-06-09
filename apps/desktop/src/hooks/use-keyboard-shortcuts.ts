@@ -118,7 +118,12 @@ export function useKeyboardShortcuts({
     const cycleThinking = () => {
       const session = selectedSession;
       const workspace = selectedWorkspace;
-      if (!session || !workspace || !api) return;
+      if (!session || !workspace || !api) {
+        // No session yet (new-thread view): delegate to the model selector
+        // which owns the pre-session thinking level via onSetThinking.
+        modelSelectorRef.current?.cycleThinkingLevel(1);
+        return;
+      }
       const currentLevel = session.config?.thinkingLevel ?? "off";
       const runtime = snapshot?.runtimeByWorkspace[workspace.id];
       // Resolve the effective model (default model when the session has no

@@ -96,8 +96,13 @@ export function CommitPushButton({
 
 
 
+  // A running session is still writing files. Committing now snapshots a
+  // partial working tree (`git add -A` happens mid-write), leaving the late
+  // writes uncommitted — the "have to press it again" bug. Gate at the source.
+  const sessionRunning = sessionStatus === "running";
+
   const handleCommitPush = useCallback(async () => {
-    if (busy || !workspaceId) return;
+    if (busy || !workspaceId || sessionRunning) return;
     if (!gitInfo.isGitRepo) return;
     setBusy(true);
     // eslint-disable-next-line no-console
@@ -125,7 +130,7 @@ export function CommitPushButton({
       refreshGitInfo();
       refreshPrInfo();
     }
-  }, [api, busy, commitPushModel, gitInfo.isGitRepo, refreshGitInfo, refreshPrInfo, workspaceId]);
+  }, [api, busy, commitPushModel, gitInfo.isGitRepo, refreshGitInfo, refreshPrInfo, sessionRunning, workspaceId]);
 
   // Trigger via global shortcut event (dispatched by App.tsx Cmd+Shift+K handler)
   useEffect(() => {
@@ -158,9 +163,13 @@ export function CommitPushButton({
           ? "commit-push commit-push--dirty"
           : "commit-push";
 
+  // Only commit-push is unsafe mid-run; viewing/creating a PR is fine.
+  const blockForRunning = mode === "commit-push" && sessionRunning;
+
   const handlePrimaryClick = () => {
     if (busy || disabled) return;
     if (mode === "commit-push") {
+      if (sessionRunning) return;
       void handleCommitPush();
       return;
     }
@@ -187,7 +196,9 @@ export function CommitPushButton({
       ? prInfo?.prNumber ? `View PR #${prInfo.prNumber}` : "View PR"
       : mode === "create-pr"
         ? "Create pull request"
-        : "Commit & Push";
+        : blockForRunning
+          ? "Finishing changes… wait for the session to stop"
+          : "Commit & Push";
 
   return (
     <div className={containerClass} ref={containerRef}>
@@ -196,7 +207,7 @@ export function CommitPushButton({
           aria-label={primaryLabel}
           className={`commit-push__button${busy ? " commit-push__button--busy" : ""}${isPill ? " commit-push__button--pill" : " icon-button topbar__icon"}`}
           type="button"
-          disabled={disabled || busy}
+          disabled={disabled || busy || blockForRunning}
           onClick={() => { playButtonClick(); handlePrimaryClick(); }}
         >
           {busy ? (

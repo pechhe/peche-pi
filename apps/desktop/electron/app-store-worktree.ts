@@ -504,11 +504,12 @@ function buildWorktreeOptions(
     ? clampSlug(slugify(preferredTitle), 18)
     : "wt";
   const repoName = basename(workspace.path) || "repo";
+  const folderName = `${baseLabel}-${suffix}`;
   const displayName = preferredTitle || `Worktree ${suffix}`;
   return {
-    path: join(dirname(workspace.path), `${repoName}-${baseLabel}`),
+    path: join(dirname(workspace.path), `${repoName}-${folderName}`),
     displayName,
-    branchName: baseLabel,
+    branchName: folderName,
     startPoint: "HEAD",
   };
 }
