@@ -164,7 +164,7 @@ function BranchPicker({
             </>
           ) : null}
           <div className="branch-picker__section-label">Branches</div>
-          {branches.map((b) => (
+          {branches.filter((b) => b.name !== currentBranch).map((b) => (
             <button
               key={b.name}
               className={`branch-picker__item ${selectedBranch === b.name ? "branch-picker__item--active" : ""}`}
@@ -178,7 +178,6 @@ function BranchPicker({
                   {b.name}{b.isRemote ? " (remote)" : ""}
                 </span>
               </span>
-              {b.name === currentBranch ? <span className="branch-picker__check">✓</span> : null}
             </button>
           ))}
         </div>
