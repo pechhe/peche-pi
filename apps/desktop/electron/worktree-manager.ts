@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { mkdir, realpath } from "node:fs/promises";
-import { basename, dirname, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import type {
   CatalogStorage,
@@ -13,11 +14,20 @@ const execFileAsync = promisify(execFile);
 
 export interface GitWorktreeManagerOptions {
   readonly catalogStorage: CatalogStorage;
+  /**
+   * Managed directory new worktrees are created under (`…/peche-pi/worktrees`).
+   * Detached-first worktrees live here as `<worktreesRoot>/<id>` instead of as
+   * siblings of the repo. See ADR 0003.
+   */
+  readonly worktreesRoot: string;
 }
 
 export interface CreateWorktreeOptions {
-  readonly path: string;
-  readonly branchName?: string;
+  /**
+   * Explicit worktree path. When omitted, the worktree is created in the
+   * managed dir at `<worktreesRoot>/<id>` (the detached-first default).
+   */
+  readonly path?: string;
   readonly startPoint?: string;
   readonly displayName?: string;
 }
@@ -50,21 +60,26 @@ export class GitWorktreeManager {
     return inspectGitWorkspace(workspace.path);
   }
 
-  async createWorktree(workspace: WorkspaceRef, input: CreateWorktreeOptions): Promise<WorktreeCatalogEntry> {
+  async createWorktree(workspace: WorkspaceRef, input: CreateWorktreeOptions = {}): Promise<WorktreeCatalogEntry> {
     const repoRoot = await resolveRepositoryRoot(workspace.path);
-    const normalizedPath = input.path.trim();
-    if (!normalizedPath) {
-      throw new Error("Worktree path cannot be empty.");
-    }
-    const worktreePath = resolve(normalizedPath);
+    const explicitPath = input.path?.trim();
+    // Detached-first: when no explicit path is given, create the worktree in
+    // the managed dir at `<worktreesRoot>/<id>` (ADR 0003).
+    const worktreePath = resolve(explicitPath || join(this.options.worktreesRoot, randomUUID()));
 
     await mkdir(dirname(worktreePath), { recursive: true });
 
-    const args = ["-C", repoRoot, "worktree", "add"];
-    if (input.branchName) {
-      args.push("-b", input.branchName);
-    }
-    args.push(worktreePath, input.startPoint?.trim() || "HEAD");
+    // `--detach` creates the worktree at detached HEAD with no git branch.
+    // A branch is created lazily on the first commit/Ship.
+    const args = [
+      "-C",
+      repoRoot,
+      "worktree",
+      "add",
+      "--detach",
+      worktreePath,
+      input.startPoint?.trim() || "HEAD",
+    ];
     await runGit(args);
 
     const canonicalWorktreePath = await canonicalPath(worktreePath);

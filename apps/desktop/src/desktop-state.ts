@@ -23,7 +23,7 @@ export interface Automation {
   readonly prompt: string;
   readonly schedule: AutomationSchedule;
   readonly workspaceId: string;
-  readonly environment: NewThreadEnvironment;
+  readonly environment: ThreadLocation;
   readonly model?: { readonly provider: string; readonly modelId: string };
   readonly thinkingLevel?: string;
   readonly enabled: boolean;
@@ -170,7 +170,12 @@ import type { TranscriptMessage } from "./timeline-types";
 export type AppView = "threads" | "new-thread" | "skills" | "extensions" | "settings" | "context" | "queue" | "kanban" | "automations" | "agents" | "graph" | "testing";
 export type WorkspaceKind = "primary" | "worktree";
 export type WorktreeStatus = "ready" | "missing" | "error";
-export type NewThreadEnvironment = "local" | "worktree";
+/**
+ * Location: the checkout a thread runs against — the user's main checkout
+ * (`local`) or an isolated git worktree (`worktree`). The laptop-row axis of
+ * the Environment widget. See CONTEXT.md ("Location") and ADR 0003.
+ */
+export type ThreadLocation = "local" | "worktree";
 export type ThemeMode = "system" | "light" | "dark" | "dracula";
 
 export type ComposerDeviceMode = "modular-cream" | "modular-metal";
@@ -402,7 +407,7 @@ export interface CreateWorktreeInput {
 
 export type StartThreadInput = {
   readonly rootWorkspaceId: string;
-  readonly environment: NewThreadEnvironment;
+  readonly environment: ThreadLocation;
   readonly prompt?: string;
   readonly attachments?: readonly ComposerAttachment[];
   readonly provider?: string;
@@ -414,7 +419,7 @@ export type StartThreadInput = {
 
 export type StartAutomationThreadInput = {
   readonly rootWorkspaceId: string;
-  readonly environment: NewThreadEnvironment;
+  readonly environment: ThreadLocation;
   readonly prompt: string;
   readonly name?: string;
   readonly provider?: string;

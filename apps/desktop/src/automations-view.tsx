@@ -4,7 +4,7 @@ import type {
   Automation,
   AutomationFrequency,
   AutomationSchedule,
-  NewThreadEnvironment,
+  ThreadLocation,
   WorkspaceRecord,
 } from "./desktop-state";
 import { automationScheduleLabel } from "./desktop-state";
@@ -46,7 +46,7 @@ export interface CreateAutomationInput {
   prompt: string;
   schedule: AutomationSchedule;
   workspaceId: string;
-  environment: NewThreadEnvironment;
+  environment: ThreadLocation;
   model?: { provider: string; modelId: string };
   thinkingLevel?: string;
   enabled?: boolean;
@@ -278,7 +278,7 @@ function AutomationForm({
 }: AutomationFormProps) {
   const [name, setName] = useState(initial?.name ?? "");
   const [prompt, setPrompt] = useState(initial?.prompt ?? "");
-  const [environment, setEnvironment] = useState<NewThreadEnvironment>(initial?.environment ?? "worktree");
+  const [environment, setEnvironment] = useState<ThreadLocation>(initial?.environment ?? "worktree");
   const [workspaceId, setWorkspaceId] = useState(
     initial?.workspaceId ?? defaultWorkspaceId ?? (workspaces[0]?.id ?? ""),
   );

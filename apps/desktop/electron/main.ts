@@ -1485,7 +1485,7 @@ app.whenReady().then(async () => {
       },
 
       // -- Automation --
-      automationCreate: async (_event: unknown, input: { name?: string; prompt: string; schedule: import("../src/desktop-state.ts").AutomationSchedule; workspaceId: string; environment?: import("../src/desktop-state.ts").NewThreadEnvironment; model?: { provider: string; modelId: string }; thinkingLevel?: string; enabled?: boolean }) => {
+      automationCreate: async (_event: unknown, input: { name?: string; prompt: string; schedule: import("../src/desktop-state.ts").AutomationSchedule; workspaceId: string; environment?: import("../src/desktop-state.ts").ThreadLocation; model?: { provider: string; modelId: string }; thinkingLevel?: string; enabled?: boolean }) => {
         await automationStore.create(input);
         // Write back into the store's canonical state so later emit() pushes
         // (from session events etc.) don't clobber the renderer with a stale

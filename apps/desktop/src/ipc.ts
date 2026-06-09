@@ -931,7 +931,7 @@ export interface PiDesktopApi {
   getSessionTranscript(workspaceId: string, sessionId: string): Promise<readonly TranscriptMessage[]>;
   getSubagentSessionEntries(sessionFilePath: string): Promise<readonly unknown[]>;
   searchTranscriptText(sessionKeys: readonly string[], query: string): Promise<readonly TranscriptSearchMatch[]>;
-  automationCreate(input: { name?: string; prompt: string; schedule: import("./desktop-state").AutomationSchedule; workspaceId: string; environment?: import("./desktop-state").NewThreadEnvironment; model?: { provider: string; modelId: string }; thinkingLevel?: string; enabled?: boolean }): Promise<DesktopAppState>;
+  automationCreate(input: { name?: string; prompt: string; schedule: import("./desktop-state").AutomationSchedule; workspaceId: string; environment?: import("./desktop-state").ThreadLocation; model?: { provider: string; modelId: string }; thinkingLevel?: string; enabled?: boolean }): Promise<DesktopAppState>;
   automationUpdate(id: string, patch: Partial<Pick<import("./desktop-state").Automation, "name" | "prompt" | "schedule" | "workspaceId" | "environment" | "model" | "thinkingLevel" | "enabled">>): Promise<DesktopAppState>;
   automationDelete(id: string): Promise<DesktopAppState>;
   automationList(): Promise<DesktopAppState>;

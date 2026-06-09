@@ -749,7 +749,7 @@ export default function App() {
   const newThreadIsChat = nt.isChat;
   const setNewThreadIsChat = nt.setIsChat;
   const newThreadEnvironment = nt.environment;
-  const setNewThreadEnvironment = nt.setEnvironment;
+  const setThreadLocation = nt.setEnvironment;
   const newThreadPrompt = nt.prompt;
   const setNewThreadPrompt = nt.setPrompt;
   const newThreadAttachments = nt.attachments;
@@ -1634,7 +1634,7 @@ export default function App() {
       setExtensionsWorkspaceId("");
       setPendingNewThreadWorkspaceId("");
       setNewThreadRootWorkspaceId("");
-      setNewThreadEnvironment("local");
+      setThreadLocation("local");
       // No workspaces left — wipe all per-workspace drafts.
       clearAllDrafts();
       return;
@@ -1651,7 +1651,7 @@ export default function App() {
     setNewThreadRootWorkspaceId((current) =>
       rootWorkspaceOptions.some((workspace) => workspace.id === current) ? current : (current || rootWorkspaceOptions[0]?.id || ""),
     );
-  }, [rootWorkspaceOptions, setNewThreadRootWorkspaceId, setNewThreadEnvironment, setPendingNewThreadWorkspaceId, clearAllDrafts]);
+  }, [rootWorkspaceOptions, setNewThreadRootWorkspaceId, setThreadLocation, setPendingNewThreadWorkspaceId, clearAllDrafts]);
 
   useEffect(() => {
     if (!snapshot || !pendingNewThreadWorkspaceId) {
@@ -2253,7 +2253,7 @@ export default function App() {
     const startedInPlanMode = newThreadComposerMode === "plan";
     const startWithOrchestrator = newThreadOrchestratorMode;
     setNewThreadOrchestratorMode(false);
-    setNewThreadEnvironment("local");
+    setThreadLocation("local");
     const doStartThread = () => {
       void updateSnapshot(api, setSnapshot, () =>
         api.startThread(input),
@@ -2709,7 +2709,7 @@ export default function App() {
               mentionOptions={newThreadMentionMenu.mentionOptions}
               selectedMentionIndex={newThreadMentionMenu.selectedIndex}
               onChangePrompt={setNewThreadPrompt}
-              onSelectEnvironment={setNewThreadEnvironment}
+              onSelectEnvironment={setThreadLocation}
               branches={newThreadBranches}
               selectedBranch={newThreadSelectedBranch}
               onSelectBranch={setNewThreadSelectedBranch}

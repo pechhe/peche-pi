@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type RefObject } from "react";
 import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
-import type { ComposerAttachment, NewThreadEnvironment, WorkspaceRecord, WorktreeRecord } from "./desktop-state";
+import type { ComposerAttachment, ThreadLocation, WorkspaceRecord, WorktreeRecord } from "./desktop-state";
 import type { BranchInfo } from "./ipc";
 import type { ComposerMode } from "./composer-mode";
 import { ComposerControlRow } from "./composer-control-row";
@@ -25,7 +25,7 @@ interface NewThreadViewProps {
   readonly workspaces: readonly WorkspaceRecord[];
   readonly selectedWorkspaceId: string;
   readonly runtime?: RuntimeSnapshot;
-  readonly environment: NewThreadEnvironment;
+  readonly environment: ThreadLocation;
   readonly prompt: string;
   readonly attachments: readonly ComposerAttachment[];
   readonly provider: string | undefined;
@@ -49,7 +49,7 @@ interface NewThreadViewProps {
   readonly mentionOptions: readonly string[];
   readonly selectedMentionIndex: number;
   readonly onChangePrompt: (prompt: string) => void;
-  readonly onSelectEnvironment: (environment: NewThreadEnvironment) => void;
+  readonly onSelectEnvironment: (environment: ThreadLocation) => void;
   readonly branches?: readonly BranchInfo[];
   readonly selectedBranch?: string;
   readonly onSelectBranch?: (branch: string) => void;

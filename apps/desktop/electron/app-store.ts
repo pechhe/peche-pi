@@ -215,7 +215,10 @@ export class DesktopAppStore implements AppStoreInternals {
 
     this.driver = new PiSdkDriver(driverOptions);
     this.catalogStore = new JsonCatalogStore({ catalogFilePath });
-    this.worktreeManager = new GitWorktreeManager({ catalogStorage: this.catalogStore });
+    this.worktreeManager = new GitWorktreeManager({
+      catalogStorage: this.catalogStore,
+      worktreesRoot: join(options.userDataDir, "worktrees"),
+    });
     this.uiStateFilePath = join(options.userDataDir, "ui-state.json");
     this.transcriptStore = new JsonFileStore<PersistedTranscriptStoreValue>(options.userDataDir, "transcripts");
     this.attachmentStore = new JsonFileStore<ComposerAttachment[]>(options.userDataDir, "attachments");

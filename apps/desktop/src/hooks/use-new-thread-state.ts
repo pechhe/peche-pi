@@ -4,7 +4,7 @@ import type {
   AppView,
   ComposerAttachment,
   DesktopAppState,
-  NewThreadEnvironment,
+  ThreadLocation,
   WorkspaceRecord,
 } from "../desktop-state";
 import { resolveRepoWorkspaceId } from "../workspace-roots";
@@ -14,7 +14,7 @@ import type { ComposerMode } from "../composer-mode";
 export interface NewThreadState {
   readonly rootWorkspaceId: string;
   readonly isChat: boolean;
-  readonly environment: NewThreadEnvironment;
+  readonly environment: ThreadLocation;
   readonly prompt: string;
   readonly attachments: readonly ComposerAttachment[];
   readonly provider: string | undefined;
@@ -26,7 +26,7 @@ export interface NewThreadState {
 
   readonly setRootWorkspaceId: Dispatch<SetStateAction<string>>;
   readonly setIsChat: Dispatch<SetStateAction<boolean>>;
-  readonly setEnvironment: Dispatch<SetStateAction<NewThreadEnvironment>>;
+  readonly setEnvironment: Dispatch<SetStateAction<ThreadLocation>>;
   readonly setPrompt: Dispatch<SetStateAction<string>>;
   readonly setAttachments: Dispatch<SetStateAction<readonly ComposerAttachment[]>>;
   readonly setProvider: Dispatch<SetStateAction<string | undefined>>;
@@ -58,7 +58,7 @@ export function useNewThreadState(params: {
 
   const [rootWorkspaceId, setRootWorkspaceId] = useState("");
   const [isChat, setIsChat] = useState(false);
-  const [environment, setEnvironment] = useState<NewThreadEnvironment>("local");
+  const [environment, setEnvironment] = useState<ThreadLocation>("local");
   const [pendingWorkspaceId, setPendingWorkspaceId] = useState("");
   const [composerMode, setComposerMode] = useState<ComposerMode>("build");
   const [orchestratorMode, setOrchestratorMode] = useState(snapshot?.subagentSettings.orchestratorMode ?? false);

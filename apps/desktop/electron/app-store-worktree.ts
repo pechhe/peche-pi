@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { basename, dirname, join } from "node:path";
 import { sessionKey } from "@pi-gui/pi-sdk-driver";
 import type { WorktreeCatalogEntry } from "@pi-gui/catalogs";
 import type { WorkspaceRef } from "@pi-gui/session-driver";
@@ -126,9 +125,9 @@ export async function startThread(store: WorktreeStore, input: StartThreadInput)
       } else {
         // Create new worktree — detached HEAD at the selected branch (or current HEAD)
         const baseOptions = buildWorktreeOptions(store, rootWorkspace, undefined, undefined, input.prompt);
-        // If user selected a branch, use it as the start point (still detached HEAD — no branchName)
+        // If user selected a branch, use it as the detached start point.
         const worktreeOptions = input.startBranch
-          ? { ...baseOptions, startPoint: input.startBranch, branchName: undefined }
+          ? { ...baseOptions, startPoint: input.startBranch }
           : baseOptions;
         const created = await store.worktreeManager.createWorktree(rootWorkspace, worktreeOptions);
         const synced = await store.driver.syncWorkspace(created.path, created.displayName);
@@ -500,16 +499,11 @@ function buildWorktreeOptions(
       : undefined;
   const preferredTitle = shortDisplayTitle(titleHint?.trim() || sessionTitle);
   const suffix = shortUniqueSuffix();
-  const baseLabel = preferredTitle
-    ? clampSlug(slugify(preferredTitle), 18)
-    : "wt";
-  const repoName = basename(workspace.path) || "repo";
-  const folderName = `${baseLabel}-${suffix}`;
   const displayName = preferredTitle || `Worktree ${suffix}`;
+  // Detached-first (ADR 0003): no path (the manager places it in the managed
+  // dir) and no branchName (created lazily on first commit/Ship).
   return {
-    path: join(dirname(workspace.path), `${repoName}-${folderName}`),
     displayName,
-    branchName: folderName,
     startPoint: "HEAD",
   };
 }

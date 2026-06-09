@@ -1,3 +1,7 @@
+import { execFile } from "node:child_process";
+import { realpath } from "node:fs/promises";
+import { sep } from "node:path";
+import { promisify } from "node:util";
 import { expect, test } from "@playwright/test";
 import {
   assertExists,
@@ -7,6 +11,7 @@ import {
   launchDesktop,
   makeGitWorkspace,
   makeUserDataDir,
+  startThreadViaIpc,
   waitForWorkspaceByPath,
 } from "../helpers/electron-app";
 
@@ -144,6 +149,70 @@ test("keeps orphaned worktree workspaces visible after removing the root workspa
         return state.workspaces.some((workspace) => workspace.id === createdWorkspace.id);
       })
       .toBe(true);
+  } finally {
+    await harness.close();
+  }
+});
+
+const execFileAsync = promisify(execFile);
+
+async function git(cwd: string, args: readonly string[]): Promise<{ stdout: string; code: number }> {
+  try {
+    const { stdout } = await execFileAsync("git", [...args], { cwd, encoding: "utf8" });
+    return { stdout: stdout.trim(), code: 0 };
+  } catch (error) {
+    const err = error as { code?: number; stdout?: string };
+    return { stdout: (err.stdout ?? "").trim(), code: typeof err.code === "number" ? err.code : 1 };
+  }
+}
+
+test("creates new worktrees detached in the managed dir with no git branch", async () => {
+  test.setTimeout(90_000);
+  const userDataDir = await makeUserDataDir();
+  const workspacePath = await makeGitWorkspace("worktree-detached-managed");
+  const harness = await launchDesktop(userDataDir, {
+    initialWorkspaces: [workspacePath],
+    testMode: "background",
+  });
+
+  try {
+    const window = await harness.firstWindow();
+    await waitForWorkspaceByPath(window, workspacePath);
+
+    // Drive new-thread with Location = worktree through the Desktop IPC seam.
+    await startThreadViaIpc(window, { environment: "worktree", prompt: "detached worktree probe" });
+
+    await expect
+      .poll(async () => {
+        const state = await getDesktopState(window);
+        const selected = state.workspaces.find((workspace) => workspace.id === state.selectedWorkspaceId);
+        return selected?.kind === "worktree";
+      })
+      .toBe(true);
+
+    const state = await getDesktopState(window);
+    const worktree = state.workspaces.find((workspace) => workspace.id === state.selectedWorkspaceId);
+    assertExists(worktree, "Expected the selected workspace to be the created worktree");
+
+    const worktreePath = await realpath(worktree.path);
+
+    // Managed dir: the worktree lives under `<userDataDir>/worktrees/<id>`,
+    // not as a sibling of the repo.
+    const managedRoot = `${await realpath(userDataDir)}${sep}worktrees${sep}`;
+    expect(worktreePath.startsWith(managedRoot)).toBe(true);
+
+    // Detached HEAD: `symbolic-ref HEAD` fails (non-zero) when detached.
+    const symbolicRef = await git(worktreePath, ["symbolic-ref", "-q", "HEAD"]);
+    expect(symbolicRef.code).not.toBe(0);
+
+    // No `branch` line in the porcelain worktree listing for this path = no branch.
+    const list = await git(workspacePath, ["worktree", "list", "--porcelain"]);
+    const block = list.stdout
+      .split(/\n\s*\n/)
+      .find((b) => b.split(/\r?\n/).some((line) => line.trim() === `worktree ${worktreePath}`));
+    assertExists(block, "Expected the new worktree in `git worktree list --porcelain`");
+    expect(block).toContain("detached");
+    expect(block).not.toMatch(/^branch /m);
   } finally {
     await harness.close();
   }

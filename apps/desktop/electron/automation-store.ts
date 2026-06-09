@@ -8,7 +8,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
-import type { Automation, AutomationSchedule, NewThreadEnvironment } from "../src/desktop-state.ts";
+import type { Automation, AutomationSchedule, ThreadLocation } from "../src/desktop-state.ts";
 import { scheduleToCron } from "../src/desktop-state.ts";
 
 interface StoredAutomationData {
@@ -24,7 +24,7 @@ function migrateAutomation(raw: Record<string, unknown>): Automation {
   return {
     ...(raw as unknown as Automation),
     schedule: migrateSchedule(raw.schedule),
-    environment: ((raw.environment as NewThreadEnvironment) ?? "local"),
+    environment: ((raw.environment as ThreadLocation) ?? "local"),
   };
 }
 
@@ -91,7 +91,7 @@ export class AutomationStore {
     prompt: string;
     schedule: AutomationSchedule;
     workspaceId: string;
-    environment?: NewThreadEnvironment;
+    environment?: ThreadLocation;
     model?: { provider: string; modelId: string };
     thinkingLevel?: string;
     enabled?: boolean;

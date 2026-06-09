@@ -10,7 +10,7 @@ import type { SessionDriverEvent, SessionRef } from "@pi-gui/session-driver";
 import type { PiDesktopApi } from "../../src/ipc";
 import type {
   DesktopAppState,
-  NewThreadEnvironment,
+  ThreadLocation,
   SelectedTranscriptRecord,
   SessionRecord,
   WorkspaceRecord,
@@ -1362,7 +1362,7 @@ export async function expectNewThreadWorkspace(window: Page, workspacePath: stri
 export async function startThreadFromSurface(
   window: Page,
   options: {
-    readonly environment?: NewThreadEnvironment;
+    readonly environment?: ThreadLocation;
     readonly prompt?: string;
     readonly workspaceName?: string;
   } = {},
@@ -1395,7 +1395,7 @@ export async function startThreadFromSurface(
 export async function startThreadViaIpc(
   window: Page,
   options: {
-    readonly environment?: NewThreadEnvironment;
+    readonly environment?: ThreadLocation;
     readonly prompt?: string;
     readonly workspaceName?: string;
   } = {},
@@ -1471,7 +1471,7 @@ export async function createNamedThread(
   window: Page,
   title: string,
   options: {
-    readonly environment?: NewThreadEnvironment;
+    readonly environment?: ThreadLocation;
     readonly workspaceName?: string;
   } = {},
 ): Promise<void> {

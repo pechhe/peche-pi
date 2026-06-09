@@ -51,14 +51,51 @@ _Avoid_: Runtime map, session supervisor helpers
 **Workspace Review**:
 The Desktop App workflow for inspecting local workspace changes before
 publishing work: changed files, file diffs, staging decisions, reviewed
-state, and safe undo/redo of pi-authored edits.
+state, and safe undo/redo of pi-authored edits. Reached from the
+**Changes** row of the Environment widget.
 _Avoid_: Git panel, diff helpers, review UI state
+
+**Environment**:
+The per-thread bundle describing where work happens and how it is
+published: its Location (local vs worktree), current branch, the Changes
+entrypoint, and commit/push actions. Surfaced as a persistent widget so the
+user always knows which checkout and branch a thread is operating in.
+_Avoid_: Surface, mode (when meaning the whole bundle)
+
+**Ship**:
+The one-click publish action available when **Auto-ship** is enabled:
+commit all changes, push, open a PR, and merge — spawning a resolver thread
+if the merge conflicts. The opt-in alternative to the default manual flow
+(stage → commit → push → PR). Replaces the old always-on `feature-done`
+behavior; the engine is reused but is never automatic.
+_Avoid_: Feature done, auto-merge, chore: ship
+
+**Auto-ship**:
+The mode that swaps the Environment widget's manual "Commit or push" row
+for a single **Ship** button. A global default in Git settings,
+overridable per-thread from the Environment gear.
+_Avoid_: Lazy mode, autopilot, one-click mode
+
+**Location**:
+The checkout a thread runs against: the user's main checkout (`local`) or
+an isolated git worktree (`worktree`). This is the laptop-row axis inside
+the Environment widget.
+_Avoid_: Environment (for this narrow axis), env, target
 
 ## Flagged ambiguities
 
 - "Backend" was used to mean both a hosted service and a local companion
   process — the app has no backend; canonical state lives in the
   Electron main process.
+- "Branch" is overloaded. pi owns it for **session/transcript branching**
+  (`/tree`, `/clone`, fork). The Environment widget means **git branch**.
+  In GUI code and docs, always qualify: say "git branch" (or the branch
+  name, e.g. `main`); reserve unqualified "branch"/"fork" for pi sessions.
+- pi has no native worktree/branch/commit/PR management; it only *reads*
+  the current git branch from a session's cwd (internal footer plumbing).
+  The Desktop App owns git/worktree orchestration. The Environment widget's
+  git branch read-out must derive from the worktree's cwd (matching pi),
+  not a parallel store that can drift.
 
 ## History
 
