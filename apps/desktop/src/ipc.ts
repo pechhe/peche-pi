@@ -174,6 +174,7 @@ export const desktopIpc = {
   getChatAgentsMd: "pi-gui:get-chat-agents-md",
   writeChatAgentsMd: "pi-gui:write-chat-agents-md",
   listBranches: "pi-gui:list-branches",
+  checkoutBranch: "pi-gui:checkout-branch",
   generatePrDraft: "pi-gui:generate-pr-draft",
   prCreate: "pi-gui:pr-create",
   featureDone: "pi-gui:feature-done",
@@ -359,6 +360,7 @@ export const piDesktopApiIpcBridge = {
   checkExtensionUpdates: { kind: "invoke", channel: desktopIpc.checkExtensionUpdates },
   getWorkspacePrInfo: { kind: "invoke", channel: desktopIpc.getWorkspacePrInfo },
   listBranches: { kind: "invoke", channel: desktopIpc.listBranches },
+  checkoutBranch: { kind: "invoke", channel: desktopIpc.checkoutBranch },
   generatePrDraft: { kind: "invoke", channel: desktopIpc.generatePrDraft },
   prCreate: { kind: "invoke", channel: desktopIpc.prCreate },
   featureDone: { kind: "invoke", channel: desktopIpc.featureDone },
@@ -915,6 +917,7 @@ export interface PiDesktopApi {
   generatePrDraft(workspaceId: string, baseBranch?: string): Promise<PrDraftResult>;
   prCreate(workspaceId: string, input: CreatePrInput): Promise<CreatePrResult>;
   listBranches(workspaceId: string): Promise<BranchListResult>;
+  checkoutBranch(workspaceId: string, branchName: string): Promise<{ readonly success: boolean; readonly message: string }>;
   featureDone(input: FeatureDoneInput): Promise<FeatureDoneResult>;
   getContextSnapshot(workspaceId: string, sessionId?: string): Promise<ContextSnapshot>;
   getGraphifyProjectMapStatus(workspaceId: string): Promise<GraphifyProjectMapStatus>;

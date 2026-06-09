@@ -1211,6 +1211,22 @@ app.whenReady().then(async () => {
         const isDirty = status.code === 0 && status.stdout.trim().length > 0;
         return { branches, currentBranch, isDirty };
       },
+      checkoutBranch: async (_event: unknown, workspaceId: string, branchName: string) => {
+        const workspacePath = store.getWorkspacePath(workspaceId);
+        if (!workspacePath) return { success: false, message: `Unknown workspace: ${workspaceId}` };
+        const { execGit } = await import("./git-runner.js");
+        // Block on dirty working tree — no auto-stash
+        const status = await execGit(["status", "--porcelain"], workspacePath);
+        if (status.code === 0 && status.stdout.trim().length > 0) {
+          return { success: false, message: "Can't switch branch: you have uncommitted changes. Commit or discard them first (no auto-stash)." };
+        }
+        const result = await execGit(["checkout", branchName], workspacePath);
+        if (result.code !== 0) {
+          return { success: false, message: result.stderr || result.stdout || `git checkout failed (code ${result.code})` };
+        }
+        await store.refreshState();
+        return { success: true, message: result.stdout || `Switched to branch '${branchName}'` };
+      },
       getWorkspacePrInfo: async (_event: unknown, workspaceId: string) => {
         const workspacePath = store.getWorkspacePath(workspaceId);
         if (!workspacePath) throw new Error(`Unknown workspace: ${workspaceId}`);

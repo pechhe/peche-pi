@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import type { WorkspaceRecord, WorktreeRecord } from "./desktop-state";
 import type { WorkspaceMenuState } from "./hooks/use-workspace-menu";
-import type { PiDesktopApi } from "./ipc";
+import type { BranchInfo, PiDesktopApi } from "./ipc";
 import { playButtonClick } from "./button-click-sound";
 import { DiffIcon } from "./icons";
 import { CommitPushButton } from "./commit-push-button";
+import { showToast } from "./toast";
 import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
 
 interface EnvironmentWidgetProps {
@@ -41,10 +42,17 @@ export function EnvironmentWidget(props: EnvironmentWidgetProps) {
   } = props;
 
   const [open, setOpen] = useState(false);
+  const [branchPickerOpen, setBranchPickerOpen] = useState(false);
+  const [branchList, setBranchList] = useState<readonly BranchInfo[]>([]);
+  const [branchLoading, setBranchLoading] = useState(false);
+  const [checkoutInProgress, setCheckoutInProgress] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setBranchPickerOpen(false);
+      return;
+    }
     const handlePointerDown = (event: PointerEvent) => {
       if (containerRef.current?.contains(event.target as Node)) return;
       setOpen(false);
@@ -160,19 +168,87 @@ export function EnvironmentWidget(props: EnvironmentWidgetProps) {
             </div>
           </div>
 
-          <div className="environment-widget__branch-row" data-testid="env-row-branch">
-            <span className="environment-widget__row-label">Branch</span>
-            <span className="environment-widget__row-value">
-              {isDetached ? (
-                <>
-                  <span className="environment-widget__detached-badge">no branch yet</span>
-                  <span className="environment-widget__base-branch">base: {displayBranch}</span>
-                </>
-              ) : (
-                displayBranch
-              )}
-            </span>
-          </div>
+          {isWorktree ? (
+            <div className="environment-widget__branch-row" data-testid="env-row-branch">
+              <span className="environment-widget__row-label">Branch</span>
+              <span className="environment-widget__row-value">
+                {isDetached ? (
+                  <>
+                    <span className="environment-widget__detached-badge">no branch yet</span>
+                    <span className="environment-widget__base-branch">base: {displayBranch}</span>
+                  </>
+                ) : (
+                  displayBranch
+                )}
+              </span>
+            </div>
+          ) : (
+            <div className="environment-widget__branch-row" data-testid="env-row-branch">
+              <span className="environment-widget__row-label">Branch</span>
+              <button
+                className="environment-widget__branch-picker-btn"
+                data-testid="env-branch-picker"
+                type="button"
+                onClick={async () => {
+                  playButtonClick();
+                  if (branchPickerOpen) {
+                    setBranchPickerOpen(false);
+                    return;
+                  }
+                  if (!rootWorkspace) return;
+                  setBranchLoading(true);
+                  setBranchPickerOpen(true);
+                  try {
+                    const result = await api.listBranches(rootWorkspace.id);
+                    setBranchList(result.branches.filter((b) => !b.isRemote));
+                  } catch {
+                    setBranchList([]);
+                  } finally {
+                    setBranchLoading(false);
+                  }
+                }}
+              >
+                {displayBranch}
+              </button>
+              {branchPickerOpen ? (
+                <div className="environment-widget__branch-list" data-testid="env-branch-list">
+                  {branchLoading ? (
+                    <span className="environment-widget__branch-loading">Loading…</span>
+                  ) : (
+                    branchList.map((branch) => (
+                      <button
+                        key={branch.name}
+                        className={`environment-widget__branch-option${branch.isCurrent ? " environment-widget__branch-option--current" : ""}`}
+                        data-testid={`env-branch-option-${branch.name}`}
+                        type="button"
+                        disabled={branch.isCurrent || checkoutInProgress}
+                        onClick={async () => {
+                          if (!rootWorkspace || branch.isCurrent) return;
+                          playButtonClick();
+                          setCheckoutInProgress(true);
+                          try {
+                            const result = await api.checkoutBranch(rootWorkspace.id, branch.name);
+                            if (result.success) {
+                              setBranchPickerOpen(false);
+                              setOpen(false);
+                            } else {
+                              showToast({ variant: "error", message: result.message });
+                            }
+                          } catch (err) {
+                            showToast({ variant: "error", message: `Checkout failed: ${err instanceof Error ? err.message : String(err)}` });
+                          } finally {
+                            setCheckoutInProgress(false);
+                          }
+                        }}
+                      >
+                        {branch.isCurrent ? "✓ " : ""}{branch.name}
+                      </button>
+                    ))
+                  )}
+                </div>
+              ) : null}
+            </div>
+          )}
 
           <div className="environment-widget__commit-row" data-testid="env-row-commit-push">
             <CommitPushButton

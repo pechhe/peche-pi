@@ -1,3 +1,5 @@
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { expect, test } from "@playwright/test";
 import {
   assertExists,
@@ -8,6 +10,10 @@ import {
   startThreadViaIpc,
   waitForWorkspaceByPath,
 } from "../helpers/electron-app";
+import type { PiAppWindow } from "../helpers/electron-app";
+import type { PiDesktopApi } from "../../src/ipc";
+
+const execFileAsync = promisify(execFile);
 
 test("environment widget shows local read-out with branch for local thread", async () => {
   test.setTimeout(90_000);
@@ -130,6 +136,93 @@ test("environment widget popover location row allows switching between local and
     await expect(locationRow).toBeVisible();
     await expect(locationRow).toContainText("Local");
     await expect(locationRow).toContainText("Worktree");
+  } finally {
+    await harness.close();
+  }
+});
+
+test("local branch picker checks out a branch on select", async () => {
+  test.setTimeout(90_000);
+  const userDataDir = await makeUserDataDir();
+  const workspacePath = await makeGitWorkspace("branch-switch");
+
+  // Create a second branch in the temp repo
+  await execFileAsync("git", ["checkout", "-b", "feature-x"], { cwd: workspacePath });
+  await execFileAsync("git", ["checkout", "main"], { cwd: workspacePath });
+
+  const harness = await launchDesktop(userDataDir, {
+    initialWorkspaces: [workspacePath],
+    testMode: "background",
+  });
+
+  try {
+    const window = await harness.firstWindow();
+    const rootWorkspace = await waitForWorkspaceByPath(window, workspacePath);
+    const wsId = rootWorkspace.id;
+
+    // Verify we start on main
+    const initialState = await window.evaluate(async (id: string) => {
+      const api = (window as PiAppWindow).piApp as PiDesktopApi;
+      return api.listBranches(id);
+    }, wsId);
+    expect(initialState.currentBranch).toBe("main");
+
+    // Checkout feature-x via IPC
+    const result = await window.evaluate(async (id: string) => {
+      const api = (window as PiAppWindow).piApp as PiDesktopApi;
+      return api.checkoutBranch(id, "feature-x");
+    }, wsId);
+    expect(result.success).toBe(true);
+
+    // Assert branch changed
+    const afterState = await window.evaluate(async (id: string) => {
+      const api = (window as PiAppWindow).piApp as PiDesktopApi;
+      return api.listBranches(id);
+    }, wsId);
+    expect(afterState.currentBranch).toBe("feature-x");
+  } finally {
+    await harness.close();
+  }
+});
+
+test("dirty working tree blocks branch switch with clear message", async () => {
+  test.setTimeout(90_000);
+  const userDataDir = await makeUserDataDir();
+  const workspacePath = await makeGitWorkspace("branch-dirty-block");
+
+  // Create a second branch
+  await execFileAsync("git", ["checkout", "-b", "feature-y"], { cwd: workspacePath });
+  await execFileAsync("git", ["checkout", "main"], { cwd: workspacePath });
+
+  const harness = await launchDesktop(userDataDir, {
+    initialWorkspaces: [workspacePath],
+    testMode: "background",
+  });
+
+  try {
+    const window = await harness.firstWindow();
+    const rootWorkspace = await waitForWorkspaceByPath(window, workspacePath);
+    const wsId = rootWorkspace.id;
+
+    // Write an uncommitted change
+    const { writeFile } = await import("node:fs/promises");
+    const { join } = await import("node:path");
+    await writeFile(join(workspacePath, "dirty.txt"), "uncommitted", "utf8");
+
+    // Attempt checkout — should fail
+    const result = await window.evaluate(async (id: string) => {
+      const api = (window as PiAppWindow).piApp as PiDesktopApi;
+      return api.checkoutBranch(id, "feature-y");
+    }, wsId);
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("uncommitted changes");
+
+    // Branch should still be main
+    const afterState = await window.evaluate(async (id: string) => {
+      const api = (window as PiAppWindow).piApp as PiDesktopApi;
+      return api.listBranches(id);
+    }, wsId);
+    expect(afterState.currentBranch).toBe("main");
   } finally {
     await harness.close();
   }
