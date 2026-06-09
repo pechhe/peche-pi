@@ -164,8 +164,7 @@ export function countAutomationsNext24h(automations: readonly Automation[]): num
 
 export type { TranscriptMessage } from "./timeline-types";
 import type { TranscriptMessage } from "./timeline-types";
-import type { PlanRecord, PlanSummary } from "./plan-types";
-export type { PlanRecord, PlanSummary, PlanIssueRecord, PlanStatus, PlanIssueStatus } from "./plan-types";
+
 
 export type AppView = "threads" | "new-thread" | "skills" | "extensions" | "settings" | "context" | "queue" | "kanban" | "automations" | "agents" | "graph";
 export type WorkspaceKind = "primary" | "worktree";
@@ -476,11 +475,7 @@ export interface DesktopAppState {
   readonly selectedChatId: string;
   readonly automations: readonly Automation[];
   readonly automationFilterWorkspaceId?: string;
-  /** Plans discovered in workspaces. Each plan has nested issue sessions. */
-  readonly plans?: readonly PlanRecord[];
   readonly threadTypeBySession: Readonly<Record<string, string>>;
-  /** Maps sessionId → planId for sessions that are plan issues. */
-  readonly planIdBySession: Readonly<Record<string, string>>;
   readonly revision: number;
   readonly lastError?: string;
 }
@@ -595,7 +590,6 @@ export function createEmptyDesktopAppState(): DesktopAppState {
     automations: [],
     automationFilterWorkspaceId: undefined,
     threadTypeBySession: {},
-    planIdBySession: {},
     revision: 0,
   };
 }

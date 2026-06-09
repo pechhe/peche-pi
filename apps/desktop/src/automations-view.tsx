@@ -29,6 +29,8 @@ interface AutomationsViewProps {
   readonly automations: readonly Automation[];
   readonly workspaces: readonly WorkspaceRecord[];
   readonly filterWorkspaceId?: string;
+  /** Last-used project; pre-selected for new automations. */
+  readonly defaultWorkspaceId?: string;
   readonly runtime?: RuntimeSnapshot;
   readonly onCreateAutomation: (input: CreateAutomationInput) => void;
   readonly onUpdateAutomation: (id: string, patch: Partial<Automation>) => void;
@@ -53,6 +55,7 @@ export function AutomationsView({
   automations,
   workspaces,
   filterWorkspaceId,
+  defaultWorkspaceId,
   runtime,
   onCreateAutomation,
   onUpdateAutomation,
@@ -109,7 +112,7 @@ export function AutomationsView({
           workspaces={workspaces}
           runtime={runtime}
           initial={editingAutomation}
-          defaultWorkspaceId={filterWorkspaceId}
+          defaultWorkspaceId={filterWorkspaceId ?? defaultWorkspaceId}
           onSubmit={(input) => {
             if (editingAutomation) {
               onUpdateAutomation(editingAutomation.id, input);
@@ -242,7 +245,8 @@ function AutomationCard({
   );
 }
 
-/* ── Create / Edit form ──────────────────────────────── */
+
+/* ── Create / Edit builder (Codex-style floating card) ─── */
 
 interface AutomationFormProps {
   readonly workspaces: readonly WorkspaceRecord[];
@@ -253,11 +257,16 @@ interface AutomationFormProps {
   readonly onCancel: () => void;
 }
 
-const SCHEDULE_PRESETS: { value: AutomationSchedulePreset; label: string }[] = [
-  { value: "every-morning", label: "Every morning (9am)" },
-  { value: "every-evening", label: "Every evening (6pm)" },
-  { value: "weekdays-morning", label: "Weekday mornings (9am)" },
-  { value: "hourly", label: "Hourly" },
+type OpenMenu = "none" | "env" | "project" | "schedule" | "model" | "reasoning";
+
+const DAY_OPTIONS: { value: number; label: string }[] = [
+  { value: 1, label: "Monday" },
+  { value: 2, label: "Tuesday" },
+  { value: 3, label: "Wednesday" },
+  { value: 4, label: "Thursday" },
+  { value: 5, label: "Friday" },
+  { value: 6, label: "Saturday" },
+  { value: 0, label: "Sunday" },
 ];
 
 function AutomationForm({
@@ -268,186 +277,272 @@ function AutomationForm({
   onSubmit,
   onCancel,
 }: AutomationFormProps) {
-  const modelSelectorRef = useRef<ModelSelectorHandle>(null);
   const [name, setName] = useState(initial?.name ?? "");
   const [prompt, setPrompt] = useState(initial?.prompt ?? "");
-  const [scheduleKind, setScheduleKind] = useState<"preset" | "cron">(
-    initial?.schedule.kind ?? "preset",
-  );
-  const [preset, setPreset] = useState<AutomationSchedulePreset>(
-    initial?.schedule.kind === "preset" ? initial.schedule.preset : "every-morning",
-  );
-  const [cronExpression, setCronExpression] = useState(
-    initial?.schedule.kind === "cron" ? initial.schedule.expression : "",
-  );
+  const [environment, setEnvironment] = useState<NewThreadEnvironment>(initial?.environment ?? "worktree");
   const [workspaceId, setWorkspaceId] = useState(
     initial?.workspaceId ?? defaultWorkspaceId ?? (workspaces[0]?.id ?? ""),
   );
+  const [frequency, setFrequency] = useState<AutomationFrequency>(initial?.schedule.frequency ?? "daily");
+  const [time, setTime] = useState(initial?.schedule.time ?? "09:00");
+  const [dayOfWeek, setDayOfWeek] = useState<number>(initial?.schedule.dayOfWeek ?? 1);
   const [selectedProvider, setSelectedProvider] = useState(initial?.model?.provider ?? "");
   const [selectedModelId, setSelectedModelId] = useState(initial?.model?.modelId ?? "");
-  const [thinkingLevel, setThinkingLevel] = useState(() => {
-    if (initial?.thinkingLevel) return initial.thinkingLevel;
-    if (initial?.model && runtime) {
-      const record = runtime.models.find((m) => m.providerId === initial.model!.provider && m.modelId === initial.model!.modelId);
-      const levels = record?.availableThinkingLevels ?? [];
-      return levels.length > 0 ? (levels[0] ?? "") : "";
-    }
-    if (runtime) {
-      const p = runtime.settings.defaultProvider;
-      const mid = runtime.settings.defaultModelId;
-      if (p && mid) {
-        const record = runtime.models.find((m) => m.providerId === p && m.modelId === mid);
-        const levels = record?.availableThinkingLevels ?? [];
-        return levels.length > 0 ? (levels[0] ?? "") : "";
-      }
-    }
-    return "";
-  });
+  const [thinkingLevel, setThinkingLevel] = useState(initial?.thinkingLevel ?? "");
+  const [openMenu, setOpenMenu] = useState<OpenMenu>("none");
+  const barRef = useRef<HTMLDivElement>(null);
 
-  const handleSetModel = useCallback((provider: string, modelId: string) => {
-    setSelectedProvider(provider);
+  useEffect(() => {
+    if (openMenu === "none") return;
+    const onDown = (e: MouseEvent) => {
+      if (barRef.current && !barRef.current.contains(e.target as Node)) setOpenMenu("none");
+    };
+    const onEsc = (e: KeyboardEvent) => { if (e.key === "Escape") setOpenMenu("none"); };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onEsc);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onEsc);
+    };
+  }, [openMenu]);
+
+  const models = runtime?.models ?? [];
+  const selectedModelRecord = models.find(
+    (m) => m.providerId === selectedProvider && m.modelId === selectedModelId,
+  );
+  const thinkingLevels = selectedModelRecord?.availableThinkingLevels ?? [];
+  const thinkingLabels = selectedModelRecord?.thinkingLevelLabels ?? {};
+
+  const schedule: AutomationSchedule = {
+    frequency,
+    time,
+    ...(frequency === "weekly" ? { dayOfWeek } : {}),
+  };
+  const selectedWorkspace = workspaces.find((w) => w.id === workspaceId);
+  const canCreate = prompt.trim().length > 0 && Boolean(workspaceId);
+
+  const selectModel = (providerId: string, modelId: string, levels: readonly string[]) => {
+    setSelectedProvider(providerId);
     setSelectedModelId(modelId);
-    // Set default thinking level so the dial appears immediately
-    if (runtime) {
-      const record = runtime.models.find((m) => m.providerId === provider && m.modelId === modelId);
-      const levels = record?.availableThinkingLevels ?? [];
-      setThinkingLevel(levels.length > 0 ? (levels[0] ?? "") : "");
-    } else {
-      setThinkingLevel("");
-    }
-  }, [runtime]);
+    setThinkingLevel(levels.length > 0 ? (levels[0] ?? "") : "");
+    setOpenMenu("none");
+  };
 
-  const handleSetThinking = useCallback((level: string) => {
-    setThinkingLevel(level);
-  }, []);
+  const clearModel = () => {
+    setSelectedProvider("");
+    setSelectedModelId("");
+    setThinkingLevel("");
+    setOpenMenu("none");
+  };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim() || !prompt.trim() || !workspaceId) return;
+  const toggle = (menu: OpenMenu) => setOpenMenu((cur) => (cur === menu ? "none" : menu));
 
-    const schedule: AutomationSchedule =
-      scheduleKind === "preset"
-        ? { kind: "preset", preset }
-        : { kind: "cron", expression: cronExpression };
-
-    const model = selectedProvider && selectedModelId ? {
-      provider: selectedProvider,
-      modelId: selectedModelId,
-    } : undefined;
-
+  const handleSubmit = () => {
+    if (!canCreate) return;
+    playButtonClick();
     onSubmit({
-      name: name.trim(),
+      name: name.trim() || undefined,
       prompt: prompt.trim(),
       schedule,
       workspaceId,
-      model,
+      environment,
+      model: selectedProvider && selectedModelId
+        ? { provider: selectedProvider, modelId: selectedModelId }
+        : undefined,
       thinkingLevel: thinkingLevel || undefined,
     });
   };
 
   return (
-    <form className="automation-form" onSubmit={handleSubmit}>
-      <h2>{initial ? "Edit automation" : "New automation"}</h2>
+    <div
+      className="automation-builder-overlay"
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onCancel(); }}
+    >
+      <div className="automation-builder">
+        <div className="automation-builder__head">
+          <input
+            className="automation-builder__title"
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Automation title"
+            autoFocus
+          />
+          <button className="icon-button" type="button" title="Close" onClick={() => { playButtonSecondary(); onCancel(); }}>
+            <CloseIcon />
+          </button>
+        </div>
 
-      <label className="automation-form__field">
-        <span>Name</span>
-        <input
-          type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="e.g. Morning code review"
-          autoFocus
-          required
-        />
-      </label>
-
-      <label className="automation-form__field">
-        <span>Prompt</span>
         <textarea
+          className="automation-builder__prompt"
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
-          placeholder="What should the agent do?"
-          rows={4}
-          required
+          placeholder="Add prompt e.g. look for crashes in $sentry"
         />
-      </label>
 
-      <label className="automation-form__field">
-        <span>Project</span>
-        <select
-          value={workspaceId}
-          onChange={(e) => setWorkspaceId(e.target.value)}
-          required
-        >
-          {workspaces.map((w) => (
-            <option key={w.id} value={w.id}>{w.name}</option>
-          ))}
-        </select>
-      </label>
+        <div className="automation-builder__bar" ref={barRef}>
+          <div className="automation-builder__bar-left">
+            {/* Environment */}
+            <div className="ab-pill-wrap">
+              <button className="ab-pill" type="button" onClick={() => toggle("env")}>
+                {environment === "worktree" ? <WorktreeIcon /> : <MonitorIcon />}
+                <span>{environment === "worktree" ? "Worktree" : "Local"}</span>
+                <ChevronDownIcon />
+              </button>
+              {openMenu === "env" ? (
+                <div className="ab-menu">
+                  <button className="ab-menu__item" type="button" onClick={() => { setEnvironment("worktree"); setOpenMenu("none"); }}>
+                    <WorktreeIcon /> Worktree
+                  </button>
+                  <button className="ab-menu__item" type="button" onClick={() => { setEnvironment("local"); setOpenMenu("none"); }}>
+                    <MonitorIcon /> Local
+                  </button>
+                </div>
+              ) : null}
+            </div>
 
-      <div className="automation-form__field automation-form__model">
-        <span>Model</span>
-        <ModelSelector
-          ref={modelSelectorRef}
-          runtime={runtime}
-          provider={selectedProvider || undefined}
-          modelId={selectedModelId || undefined}
-          thinkingLevel={thinkingLevel || undefined}
-          showEmptyModelControl
-          emptyModelLabel="Default (workspace model)"
-          emptyModelTitle="Use workspace default"
-          onSetModel={handleSetModel}
-          onSetThinking={handleSetThinking}
-        />
-      </div>
+            {/* Project */}
+            <div className="ab-pill-wrap">
+              <button className="ab-pill" type="button" onClick={() => toggle("project")}>
+                <ProjectIcon />
+                <span>{selectedWorkspace?.name ?? "Select project"}</span>
+                <ChevronDownIcon />
+              </button>
+              {openMenu === "project" ? (
+                <div className="ab-menu ab-menu--scroll">
+                  {workspaces.map((w) => (
+                    <button
+                      key={w.id}
+                      className={`ab-menu__item ${w.id === workspaceId ? "ab-menu__item--active" : ""}`}
+                      type="button"
+                      onClick={() => { setWorkspaceId(w.id); setOpenMenu("none"); }}
+                    >
+                      <ProjectIcon /> {w.name}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
 
-      <fieldset className="automation-form__field">
-        <legend>Schedule</legend>
-        <div className="automation-form__schedule-options">
-          {SCHEDULE_PRESETS.map((p) => (
-            <label key={p.value} className="automation-form__radio">
-              <input
-                type="radio"
-                name="scheduleKind"
-                checked={scheduleKind === "preset" && preset === p.value}
-                onChange={() => { setScheduleKind("preset"); setPreset(p.value); }}
-              />
-              <span>{p.label}</span>
-            </label>
-          ))}
-          <label className="automation-form__radio">
-            <input
-              type="radio"
-              name="scheduleKind"
-              checked={scheduleKind === "cron"}
-              onChange={() => setScheduleKind("cron")}
-            />
-            <span>Custom cron</span>
-          </label>
+            {/* Schedule */}
+            <div className="ab-pill-wrap">
+              <button className="ab-pill" type="button" onClick={() => toggle("schedule")}>
+                <ClockIcon />
+                <span>{automationScheduleLabel(schedule)}</span>
+                <ChevronDownIcon />
+              </button>
+              {openMenu === "schedule" ? (
+                <div className="ab-menu ab-menu--schedule">
+                  <span className="ab-menu__label">Schedule</span>
+                  <select
+                    className="ab-field"
+                    value={frequency}
+                    onChange={(e) => setFrequency(e.target.value as AutomationFrequency)}
+                  >
+                    <option value="hourly">Hourly</option>
+                    <option value="daily">Daily</option>
+                    <option value="weekly">Weekly</option>
+                  </select>
+                  {frequency === "weekly" ? (
+                    <select
+                      className="ab-field"
+                      value={dayOfWeek}
+                      onChange={(e) => setDayOfWeek(Number(e.target.value))}
+                    >
+                      {DAY_OPTIONS.map((d) => (
+                        <option key={d.value} value={d.value}>{d.label}</option>
+                      ))}
+                    </select>
+                  ) : null}
+                  {frequency !== "hourly" ? (
+                    <input
+                      className="ab-field"
+                      type="time"
+                      value={time}
+                      onChange={(e) => setTime(e.target.value)}
+                    />
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+
+            {/* Model */}
+            <div className="ab-pill-wrap">
+              <button
+                className={`ab-icon-pill ${selectedModelId ? "ab-icon-pill--set" : ""}`}
+                type="button"
+                title={selectedModelRecord ? `Model: ${selectedModelRecord.label}` : "Model (workspace default)"}
+                onClick={() => toggle("model")}
+              >
+                <ModelIcon />
+              </button>
+              {openMenu === "model" ? (
+                <div className="ab-menu ab-menu--scroll ab-menu--right">
+                  <button
+                    className={`ab-menu__item ${!selectedModelId ? "ab-menu__item--active" : ""}`}
+                    type="button"
+                    onClick={clearModel}
+                  >
+                    Default (workspace model)
+                  </button>
+                  {models.map((m) => (
+                    <button
+                      key={`${m.providerId}:${m.modelId}`}
+                      className={`ab-menu__item ${m.providerId === selectedProvider && m.modelId === selectedModelId ? "ab-menu__item--active" : ""}`}
+                      type="button"
+                      onClick={() => selectModel(m.providerId, m.modelId, m.availableThinkingLevels)}
+                    >
+                      <span className="ab-menu__item-main">{m.label}</span>
+                      <span className="ab-menu__item-sub">{m.providerName}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+
+            {/* Reasoning */}
+            <div className="ab-pill-wrap">
+              <button
+                className={`ab-icon-pill ${thinkingLevel ? "ab-icon-pill--set" : ""}`}
+                type="button"
+                title={thinkingLevels.length === 0 ? "Reasoning (unavailable for this model)" : `Reasoning: ${thinkingLevel || "default"}`}
+                disabled={thinkingLevels.length === 0}
+                onClick={() => toggle("reasoning")}
+              >
+                <ReasoningIcon />
+              </button>
+              {openMenu === "reasoning" ? (
+                <div className="ab-menu">
+                  {thinkingLevels.map((level) => (
+                    <button
+                      key={level}
+                      className={`ab-menu__item ${level === thinkingLevel ? "ab-menu__item--active" : ""}`}
+                      type="button"
+                      onClick={() => { setThinkingLevel(level); setOpenMenu("none"); }}
+                    >
+                      {thinkingLabels[level] ?? level}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="automation-builder__bar-right">
+            <button className="button" type="button" onClick={() => { playButtonSecondary(); onCancel(); }}>
+              Cancel
+            </button>
+            <button
+              className="button button--primary"
+              type="button"
+              disabled={!canCreate}
+              onClick={handleSubmit}
+            >
+              {initial ? "Save" : "Create"}
+            </button>
+          </div>
         </div>
-        {scheduleKind === "cron" ? (
-          <input
-            type="text"
-            className="automation-form__cron-input"
-            value={cronExpression}
-            onChange={(e) => setCronExpression(e.target.value)}
-            placeholder="0 9 * * 1-5"
-          />
-        ) : null}
-      </fieldset>
-
-      <div className="automation-form__actions">
-        <button className="button" type="button" onClick={onCancel}>
-          Cancel
-        </button>
-        <button
-          className="button button--primary"
-          type="submit"
-          disabled={!name.trim() || !prompt.trim() || !workspaceId}
-        >
-          {initial ? "Save" : "Create"}
-        </button>
       </div>
-    </form>
+    </div>
   );
 }

@@ -161,9 +161,6 @@ export const desktopIpc = {
   getWorkspacePrInfo: "pi-gui:get-workspace-pr-info",
   startChat: "pi-gui:start-chat",
   selectChat: "pi-gui:select-chat",
-  startPlan: "pi-gui:start-plan",
-  pausePlan: "pi-gui:pause-plan",
-  cancelPlan: "pi-gui:cancel-plan",
   archiveChat: "pi-gui:archive-chat",
   unarchiveChat: "pi-gui:unarchive-chat",
   removeChat: "pi-gui:remove-chat",
@@ -369,9 +366,6 @@ export const piDesktopApiIpcBridge = {
   automationFireNow: { kind: "invoke", channel: desktopIpc.automationFireNow },
   startChat: { kind: "invoke", channel: desktopIpc.startChat },
   selectChat: { kind: "invoke", channel: desktopIpc.selectChat },
-  startPlan: { kind: "invoke", channel: desktopIpc.startPlan },
-  pausePlan: { kind: "invoke", channel: desktopIpc.pausePlan },
-  cancelPlan: { kind: "invoke", channel: desktopIpc.cancelPlan },
   archiveChat: { kind: "invoke", channel: desktopIpc.archiveChat },
   unarchiveChat: { kind: "invoke", channel: desktopIpc.unarchiveChat },
   removeChat: { kind: "invoke", channel: desktopIpc.removeChat },
@@ -856,9 +850,6 @@ export interface PiDesktopApi {
   getWorkspacePrInfo(workspaceId: string): Promise<WorkspacePrInfo>;
   startChat(input: StartChatInput): Promise<DesktopAppState>;
   selectChat(chatId: string): Promise<DesktopAppState>;
-  startPlan(planId: string, modelConfig?: { provider?: string; modelId?: string; thinkingLevel?: string }): Promise<DesktopAppState>;
-  pausePlan(planId: string): Promise<DesktopAppState>;
-  cancelPlan(planId: string): Promise<DesktopAppState>;
   archiveChat(chatId: string): Promise<DesktopAppState>;
   unarchiveChat(chatId: string): Promise<DesktopAppState>;
   removeChat(chatId: string): Promise<DesktopAppState>;

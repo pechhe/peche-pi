@@ -1,4 +1,4 @@
-import type { DesktopAppState, PlanRecord, SessionRecord, WorkspaceRecord } from "./desktop-state";
+import type { DesktopAppState, SessionRecord, WorkspaceRecord } from "./desktop-state";
 
 /**
  * Sentinel session id for the optimistic sidebar row shown while a new thread
@@ -24,8 +24,6 @@ export interface ThreadGroup {
   readonly rootWorkspace: WorkspaceRecord;
   readonly threads: readonly ThreadListEntry[];
   readonly archivedThreads: readonly ThreadListEntry[];
-  /** When present, this group represents a plan with nested issue sessions. */
-  readonly plan?: PlanRecord;
 }
 
 export function buildThreadGroups(state: DesktopAppState): readonly ThreadGroup[] {
@@ -56,10 +54,7 @@ export function buildThreadGroups(state: DesktopAppState): readonly ThreadGroup[
     return ai - bi;
   });
 
-  const planGroups = buildPlanGroups(state, workspacesById);
-
   return [
-    ...planGroups,
     ...sortedRoots.map((workspace) => buildRootGroup(state, workspacesById, workspace)),
     ...orphanWorktrees.map(buildOrphanGroup),
   ];
@@ -126,85 +121,6 @@ function buildOrphanGroup(workspace: WorkspaceRecord): ThreadGroup {
       },
     })),
   );
-}
-
-/**
- * Build ThreadGroups for plans. Each plan becomes an expandable group
- * with its issue sessions nested inside.
- */
-function buildPlanGroups(
-  state: DesktopAppState,
-  workspacesById: ReadonlyMap<string, WorkspaceRecord>,
-): ThreadGroup[] {
-  const plans = state.plans ?? [];
-  const planIdBySession = state.planIdBySession ?? {};
-
-  return plans.map((plan) => {
-    const workspace = workspacesById.get(plan.workspaceId);
-    if (!workspace) {
-      // Fallback: create a minimal workspace record
-      return {
-        rootWorkspace: {
-          id: plan.workspaceId,
-          name: plan.title,
-          path: plan.directoryPath,
-          lastOpenedAt: plan.updatedAt,
-          kind: "primary" as const,
-          sessions: [],
-        },
-        threads: [],
-        archivedThreads: [],
-        plan,
-      };
-    }
-
-    // Find sessions belonging to this plan
-    const planSessionIds = new Set(
-      Object.entries(planIdBySession)
-        .filter(([, pid]) => pid === plan.id)
-        .map(([sid]) => sid),
-    );
-
-    const allSessions = workspace.sessions.filter(
-      (session) => planSessionIds.has(session.id),
-    );
-
-    // Also include sessions referenced by plan issues directly
-    const issueSessionIds = new Set(
-      plan.issues.map((issue) => issue.sessionId).filter((id): id is string => Boolean(id)),
-    );
-    for (const session of workspace.sessions) {
-      if (issueSessionIds.has(session.id) && !planSessionIds.has(session.id)) {
-        allSessions.push(session);
-      }
-    }
-
-    const entries: ThreadListEntry[] = allSessions.map((session) => ({
-      workspaceId: plan.workspaceId,
-      session,
-      environment: {
-        kind: "local" as const,
-        label: "Issue",
-      },
-    }));
-
-    entries.sort((left, right) => {
-      // Sort by plan issue order
-      const leftIssue = plan.issues.find((i) => i.sessionId === left.session.id);
-      const rightIssue = plan.issues.find((i) => i.sessionId === right.session.id);
-      if (leftIssue && rightIssue) return leftIssue.order - rightIssue.order;
-      if (leftIssue) return -1;
-      if (rightIssue) return 1;
-      return right.session.updatedAt.localeCompare(left.session.updatedAt);
-    });
-
-    return {
-      rootWorkspace: workspace,
-      threads: entries.filter((entry) => !entry.session.archivedAt),
-      archivedThreads: entries.filter((entry) => Boolean(entry.session.archivedAt)),
-      plan,
-    };
-  });
 }
 
 function partitionThreads(rootWorkspace: WorkspaceRecord, entries: readonly ThreadListEntry[]): ThreadGroup {

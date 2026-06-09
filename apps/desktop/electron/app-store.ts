@@ -1754,16 +1754,6 @@ Return ONLY a JSON array of configuration fields, no explanation.`;
         await this.reloadSubagentAgentsForWorkspace(workspace.id, workspace.path);
       }
 
-      // Discover plans in all workspaces
-      try {
-        const orchestrator = require("./plan-orchestrator");
-        for (const workspace of workspaces) {
-          orchestrator.discoverAndRegisterPlans(this, workspace.path, workspace.id);
-        }
-      } catch {
-        // Plan discovery is optional
-      }
-
       const activeView = options.activeView ?? this.state.activeView;
       const composerDraftSync = this.resolveComposerDraftSync(selectedWorkspaceId, selectedSessionId, options);
       this.state = {
@@ -1788,8 +1778,6 @@ Return ONLY a JSON array of configuration fields, no explanation.`;
         queuedComposerMessages: this.resolveQueuedComposerMessages(selectedWorkspaceId, selectedSessionId),
         editingQueuedMessageId: this.resolveEditingQueuedMessageId(selectedWorkspaceId, selectedSessionId),
         lastError: this.resolveSelectedSessionError(selectedWorkspaceId, selectedSessionId, options.clearLastError),
-        plans: this.state.plans,
-        planIdBySession: this.state.planIdBySession,
         automations: this.automationStoreRef ? this.automationStoreRef.getAll() : this.state.automations,
         revision: this.state.revision + 1,
       };
@@ -2533,44 +2521,6 @@ Return ONLY a JSON array of configuration fields, no explanation.`;
   }
 
   // ── Plan orchestrator ─────────────────────────────────
-
-  async startPlan(planId: string, modelConfig?: { provider?: string; modelId?: string; thinkingLevel?: string }): Promise<DesktopAppState> {
-    await this.initialize();
-    const plan = this.state.plans?.find((p) => p.id === planId);
-    if (!plan) {
-      return this.withError(`Unknown plan: ${planId}`);
-    }
-    return this.withErrorHandling(async () => {
-      const orchestrator = require("./plan-orchestrator");
-      orchestrator.startPlanExecution(this, plan.directoryPath, plan.workspaceId, modelConfig);
-      return this.emit();
-    });
-  }
-
-  async pausePlan(planId: string): Promise<DesktopAppState> {
-    await this.initialize();
-    const orchestrator = require("./plan-orchestrator");
-    const handle = orchestrator.getActiveOrchestrator(planId);
-    if (handle) {
-      handle.pause();
-    }
-    return this.emit();
-  }
-
-  async cancelPlan(planId: string): Promise<DesktopAppState> {
-    await this.initialize();
-    const orchestrator = require("./plan-orchestrator");
-    const handle = orchestrator.getActiveOrchestrator(planId);
-    if (handle) {
-      handle.cancel();
-    }
-    return this.emit();
-  }
-
-  async discoverPlans(workspacePath: string, workspaceId: string): Promise<void> {
-    const orchestrator = require("./plan-orchestrator");
-    orchestrator.discoverAndRegisterPlans(this, workspacePath, workspaceId);
-  }
 
   async selectChat(chatId: string): Promise<DesktopAppState> {
     await this.initialize();

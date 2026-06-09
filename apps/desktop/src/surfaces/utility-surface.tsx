@@ -593,6 +593,7 @@ export function AutomationsSurface(props: AutomationsSurfaceProps) {
       automations={snapshot.automations ?? []}
       workspaces={rootWorkspaceOptions}
       filterWorkspaceId={snapshot.automationFilterWorkspaceId}
+      defaultWorkspaceId={selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id}
       runtime={automationsRuntime}
       onCreateAutomation={(input) => {
         void updateSnapshot(api, setSnapshot, () => api.automationCreate(input));

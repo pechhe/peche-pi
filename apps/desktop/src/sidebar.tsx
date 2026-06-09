@@ -13,7 +13,7 @@ import {
 } from "@dnd-kit/core";
 import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { AppView, Automation, ChatRecord, PlanRecord, SessionRecord, WorkspaceRecord, WorktreeRecord } from "./desktop-state";
+import type { AppView, Automation, ChatRecord, SessionRecord, WorkspaceRecord, WorktreeRecord } from "./desktop-state";
 import { countAutomationsNext24h } from "./desktop-state";
 import { type ThreadType, threadTypeAccent, parseThreadType } from "./thread-types";
 import { BugIcon, FeatureIcon, RefactorIcon, InvestigateIcon, OtherIcon } from "./icons";
@@ -29,7 +29,7 @@ import { PENDING_THREAD_SESSION_ID, type ThreadGroup, type ThreadListEntry } fro
 import type { Dispatch, SetStateAction } from "react";
 import type { DesktopAppState } from "./desktop-state";
 import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
-import { PlanLaunchDialog } from "./plan-launch-dialog";
+
 import type { SidebarResize } from "./hooks/use-sidebar-width";
 import type { SidebarNavEntry } from "./hooks/build-sidebar-nav-list";
 
@@ -276,14 +276,6 @@ interface SidebarProps {
   readonly onOpenSearch: () => void;
   readonly sessionsWithRunningSubagents?: ReadonlySet<string>;
   readonly threadTypeBySession?: Readonly<Record<string, string>>;
-  /** Plans to show as expandable groups in the sidebar. */
-  readonly plans?: readonly PlanRecord[];
-  /** Called when user clicks play on a plan. */
-  readonly onStartPlan?: (planId: string, modelConfig?: { provider?: string; modelId?: string; thinkingLevel?: string }) => void;
-  /** Called when user clicks pause on a plan. */
-  readonly onPausePlan?: (planId: string) => void;
-  /** Called when user clicks cancel/stop on a plan. */
-  readonly onCancelPlan?: (planId: string) => void;
   /** Runtime snapshot for model selection. */
   readonly runtime?: RuntimeSnapshot;
 }
@@ -352,10 +344,8 @@ export function Sidebar(props: SidebarProps) {
     return closest ? [{ id: closest.id, data: { droppableContainer: args.droppableContainers.find((c) => String(c.id) === closest!.id)! } }] : [];
   };
 
-  const planGroups = threadGroups.filter((g) => g.plan);
-  const nonPlanGroups = threadGroups.filter((g) => !g.plan);
-  const rootGroups = nonPlanGroups.filter((g) => g.rootWorkspace.kind === "primary");
-  const orphanGroups = nonPlanGroups.filter((g) => g.rootWorkspace.kind !== "primary");
+  const rootGroups = threadGroups.filter((g) => g.rootWorkspace.kind === "primary");
+  const orphanGroups = threadGroups.filter((g) => g.rootWorkspace.kind !== "primary");
   const rootGroupIds = rootGroups.map((g) => g.rootWorkspace.id);
   const canDrag = rootGroups.length > 1;
 
@@ -528,23 +518,6 @@ export function Sidebar(props: SidebarProps) {
                     onOpenAutomations={onOpenAutomations}
                     sessionsWithRunningSubagents={sessionsWithRunningSubagents}
                     threadTypeBySession={threadTypeBySession}
-                  />
-                ))}
-                {planGroups.map((group) => (
-                  <PlanGroupContent
-                    key={`plan:${group.plan!.id}`}
-                    group={group}
-                    activeView={activeView}
-                    selectedWorkspace={selectedWorkspace}
-                    selectedSession={selectedSession}
-                    onSelectSession={onSelectSession}
-                    onArchiveSession={onArchiveSession}
-                    pendingSidebarSelection={pendingSidebarSelection}
-                    onStartPlan={props.onStartPlan}
-                    onPausePlan={props.onPausePlan}
-                    onCancelPlan={props.onCancelPlan}
-                    threadTypeBySession={threadTypeBySession}
-                    runtime={props.runtime}
                   />
                 ))}
                 {orphanGroups.map((group) => (
@@ -995,278 +968,6 @@ function WorkspaceGroupContent(
             </div>
           ) : null}
         </>
-      ) : null}
-    </>
-  );
-}
-
-/* ── Plan group ───────────────────────────────────────── */
-
-interface PlanGroupContentProps {
-  readonly group: ThreadGroup;
-  readonly activeView: AppView;
-  readonly selectedWorkspace: WorkspaceRecord | undefined;
-  readonly selectedSession: SessionRecord | undefined;
-  readonly onSelectSession: (target: { workspaceId: string; sessionId: string }) => void;
-  readonly onArchiveSession: (target: { workspaceId: string; sessionId: string; selectNextSessionId?: string }) => void;
-  readonly pendingSidebarSelection: SidebarNavEntry | null;
-  readonly onStartPlan?: (planId: string, modelConfig?: { provider?: string; modelId?: string; thinkingLevel?: string }) => void;
-  readonly onPausePlan?: (planId: string) => void;
-  readonly onCancelPlan?: (planId: string) => void;
-  readonly threadTypeBySession?: Readonly<Record<string, string>>;
-  readonly runtime?: RuntimeSnapshot;
-}
-
-function PlanGroupContent(props: PlanGroupContentProps) {
-  const {
-    group,
-    activeView,
-    selectedWorkspace,
-    selectedSession,
-    onSelectSession,
-    onArchiveSession,
-    pendingSidebarSelection,
-    onStartPlan,
-    onPausePlan,
-    onCancelPlan,
-    threadTypeBySession,
-    runtime,
-  } = props;
-
-  const plan = group.plan!;
-  const completedCount = plan.issues.filter((i) => i.status === "completed").length;
-  const totalCount = plan.issues.length;
-  const isRunning = plan.status === "running";
-  const isPaused = plan.status === "paused";
-  const isCompleted = plan.status === "completed";
-  const isFailed = plan.status === "failed";
-  const [isCollapsed, setIsCollapsed] = useState(!isRunning);
-  const [showLaunchDialog, setShowLaunchDialog] = useState(false);
-  const [launchProvider, setLaunchProvider] = useState<string | undefined>(undefined);
-  const [launchModelId, setLaunchModelId] = useState<string | undefined>(undefined);
-  const [launchThinking, setLaunchThinking] = useState<string | undefined>(undefined);
-  const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
-  const selectedIssue = selectedIssueId ? plan.issues.find((i) => i.id === selectedIssueId) : null;
-
-  const workspaceActive =
-    group.rootWorkspace.id === selectedWorkspace?.id ||
-    group.rootWorkspace.id === selectedWorkspace?.rootWorkspaceId;
-
-  const statusLabel = isRunning
-    ? `Running ${completedCount}/${totalCount}`
-    : isPaused
-      ? `Paused ${completedCount}/${totalCount}`
-      : isCompleted
-        ? `Done ${completedCount}/${totalCount}`
-        : isFailed
-          ? `Failed ${completedCount}/${totalCount}`
-          : `${totalCount} issues`;
-
-  return (
-    <>
-      <div
-        className={`workspace-row plan-row ${workspaceActive ? "workspace-row--active" : ""} ${isRunning ? "plan-row--running" : ""}`}
-      >
-        <button
-          className="workspace-row__select"
-          onClick={() => setIsCollapsed(!isCollapsed)}
-          type="button"
-        >
-          <span className="workspace-row__icon" aria-hidden="true" data-collapsed={isCollapsed || undefined}>
-            <span className="workspace-row__icon-folder"><ProjectIcon /></span>
-            <span className="workspace-row__icon-chevron"><ChevronDownIcon /></span>
-          </span>
-          <span className="workspace-row__name">{plan.title}</span>
-          <span className="plan-row__status" data-status={plan.status}>
-            {statusLabel}
-          </span>
-        </button>
-        <span className="workspace-row__actions">
-          {isRunning ? (
-            <button
-              aria-label="Pause plan"
-              className="icon-button plan-row__control-button"
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                onPausePlan?.(plan.id);
-              }}
-            >
-              ⏸
-            </button>
-          ) : isPaused || plan.status === "idle" || isFailed ? (
-            <button
-              aria-label={isPaused ? "Resume plan" : "Start plan"}
-              className="icon-button plan-row__control-button"
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                if (isPaused) {
-                  // Resume doesn't need model selection
-                  onPausePlan?.(plan.id); // This will be resume
-                } else {
-                  // Show model selection dialog for new start
-                  setShowLaunchDialog(true);
-                }
-              }}
-            >
-              ▶
-            </button>
-          ) : null}
-          {(isRunning || isPaused) && onCancelPlan ? (
-            <button
-              aria-label="Cancel plan"
-              className="icon-button plan-row__control-button plan-row__control-button--danger"
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                onCancelPlan(plan.id);
-              }}
-            >
-              ■
-            </button>
-          ) : null}
-        </span>
-      </div>
-      {!isCollapsed ? (
-        <>
-          {/* Show plan progress bar */}
-          <div className="plan-row__progress">
-            <div
-              className="plan-row__progress-fill"
-              style={{ width: totalCount > 0 ? `${(completedCount / totalCount) * 100}%` : "0%" }}
-            />
-          </div>
-          <MovingSidebarHighlight className="session-list" itemSelector=".session-row">
-            {group.threads.map((thread, index) => {
-              const active =
-                thread.session.id === PENDING_THREAD_SESSION_ID ||
-                (activeView === "threads" &&
-                  thread.workspaceId === selectedWorkspace?.id &&
-                  thread.session.id === selectedSession?.id);
-              const pending =
-                pendingSidebarSelection?.kind === "thread" &&
-                pendingSidebarSelection.workspaceId === thread.workspaceId &&
-                pendingSidebarSelection.sessionId === thread.session.id;
-              const issue = plan.issues.find((i) => i.sessionId === thread.session.id);
-              const nextThread = group.threads[index + 1] ?? (index > 0 ? group.threads[index - 1] : undefined);
-              return (
-                <div key={`${thread.workspaceId}:${thread.session.id}`} className="plan-issue-row">
-                  <span className="plan-issue-row__marker" data-status={issue?.status ?? "pending"}>
-                    {issue?.status === "completed" ? "✓" : issue?.status === "running" ? "◉" : issue?.status === "failed" ? "✗" : "○"}
-                  </span>
-                  <span className="plan-issue-row__type" data-type={issue?.type ?? "afk"}>
-                    {(issue?.type ?? "afk").toUpperCase()}
-                  </span>
-                  <ThreadSessionRow
-                    active={active}
-                    pending={pending}
-                    thread={thread}
-                    hasRunningSubagents={false}
-                    threadType={threadTypeBySession?.[thread.session.id]}
-                    onAction={() =>
-                      onArchiveSession({
-                        workspaceId: thread.workspaceId,
-                        sessionId: thread.session.id,
-                        selectNextSessionId: nextThread?.session.id,
-                      })
-                    }
-                    onSelect={() => onSelectSession({ workspaceId: thread.workspaceId, sessionId: thread.session.id })}
-                  />
-                </div>
-              );
-            })}
-          </MovingSidebarHighlight>
-          {/* Show pending issues that don't have sessions yet */}
-          {plan.issues
-            .filter((issue) => !issue.sessionId)
-            .map((issue) => (
-              <div
-                key={issue.id}
-                className="plan-issue-row plan-issue-row--pending"
-                onClick={() => setSelectedIssueId(issue.id)}
-                role="button"
-                tabIndex={0}
-              >
-                <span className="plan-issue-row__marker" data-status={issue.status}>
-                  {issue.status === "completed" ? "✓" : issue.status === "running" ? "◉" : issue.status === "failed" ? "✗" : "○"}
-                </span>
-                <span className="plan-issue-row__type" data-type={issue.type}>
-                  {issue.type.toUpperCase()}
-                </span>
-                <span className="plan-issue-row__title">{issue.title}</span>
-              </div>
-            ))}
-        </>
-      ) : null}
-      {selectedIssue ? (
-        <div className="extension-dialog-backdrop" onClick={() => setSelectedIssueId(null)}>
-          <div className="extension-dialog" onClick={(event) => event.stopPropagation()}>
-            <div className="extension-dialog__title">{selectedIssue.title}</div>
-            <p className="extension-dialog__body">
-              <span className="plan-issue-row__type" data-type={selectedIssue.type}>
-                {selectedIssue.type.toUpperCase()}
-              </span>
-              &nbsp;—&nbsp;Issue {selectedIssue.order + 1} of {totalCount}
-            </p>
-            {selectedIssue.description ? (
-              <div className="extension-dialog__section">
-                <div className="extension-dialog__section-title">What to build</div>
-                <p className="extension-dialog__body">{selectedIssue.description}</p>
-              </div>
-            ) : null}
-            {selectedIssue.acceptanceCriteria && selectedIssue.acceptanceCriteria.length > 0 ? (
-              <div className="extension-dialog__section">
-                <div className="extension-dialog__section-title">Acceptance Criteria</div>
-                <ul className="extension-dialog__list">
-                  {selectedIssue.acceptanceCriteria.map((criterion, i) => (
-                    <li key={i}>{criterion}</li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-            {selectedIssue.dependencies.length > 0 ? (
-              <div className="extension-dialog__section">
-                <div className="extension-dialog__section-title">Blocked by</div>
-                <ul className="extension-dialog__list">
-                  {selectedIssue.dependencies.map((depId) => {
-                    const dep = plan.issues.find((i) => i.id === depId);
-                    return <li key={depId}>{dep?.title ?? depId}</li>;
-                  })}
-                </ul>
-              </div>
-            ) : null}
-            <div className="extension-dialog__actions">
-              <button type="button" className="button" onClick={() => setSelectedIssueId(null)}>
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-      {showLaunchDialog ? (
-        <PlanLaunchDialog
-          planTitle={plan.title}
-          issueCount={totalCount}
-          runtime={runtime}
-          provider={launchProvider}
-          modelId={launchModelId}
-          thinkingLevel={launchThinking}
-          onSetModel={(provider, modelId) => {
-            setLaunchProvider(provider);
-            setLaunchModelId(modelId);
-          }}
-          onSetThinking={setLaunchThinking}
-          onCancel={() => setShowLaunchDialog(false)}
-          onRun={() => {
-            onStartPlan?.(plan.id, {
-              provider: launchProvider,
-              modelId: launchModelId,
-              thinkingLevel: launchThinking,
-            });
-            setShowLaunchDialog(false);
-          }}
-        />
       ) : null}
     </>
   );

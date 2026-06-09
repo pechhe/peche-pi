@@ -228,9 +228,6 @@ const desktopIpc = {
   renameChat: "pi-gui:rename-chat",
   getChatAgentsMd: "pi-gui:get-chat-agents-md",
   writeChatAgentsMd: "pi-gui:write-chat-agents-md",
-  startPlan: "pi-gui:start-plan",
-  pausePlan: "pi-gui:pause-plan",
-  cancelPlan: "pi-gui:cancel-plan",
   generatePrDraft: "pi-gui:generate-pr-draft",
   prCreate: "pi-gui:pr-create",
   getContextSnapshot: "pi-gui:get-context-snapshot",
@@ -470,11 +467,6 @@ export const desktopIpcContracts: readonly IpcContractEntry[] = [
   { methodName: "renameChat", channel: desktopIpc.renameChat, direction: "renderer-to-main", kind: "invoke", adapter: "chat" },
   { methodName: "getChatAgentsMd", channel: desktopIpc.getChatAgentsMd, direction: "renderer-to-main", kind: "invoke", adapter: "chat" },
   { methodName: "writeChatAgentsMd", channel: desktopIpc.writeChatAgentsMd, direction: "renderer-to-main", kind: "invoke", adapter: "chat" },
-
-  // -- Plan Orchestrator --
-  { methodName: "startPlan", channel: desktopIpc.startPlan, direction: "renderer-to-main", kind: "invoke", adapter: "chat" },
-  { methodName: "pausePlan", channel: desktopIpc.pausePlan, direction: "renderer-to-main", kind: "invoke", adapter: "chat" },
-  { methodName: "cancelPlan", channel: desktopIpc.cancelPlan, direction: "renderer-to-main", kind: "invoke", adapter: "chat" },
 
   // -- Handoff / Advisor --
   { methodName: "buildHandoffPayload", channel: desktopIpc.buildHandoffPayload, direction: "renderer-to-main", kind: "invoke", adapter: "session" },

@@ -1172,11 +1172,6 @@ app.whenReady().then(async () => {
         await store.writeChatAgentsMd(chatId, content);
       },
 
-      // -- Plan orchestrator --
-      startPlan: async (_event: unknown, planId: string, modelConfig?: { provider?: string; modelId?: string; thinkingLevel?: string }) => store.startPlan(planId, modelConfig),
-      pausePlan: async (_event: unknown, planId: string) => store.pausePlan(planId),
-      cancelPlan: async (_event: unknown, planId: string) => store.cancelPlan(planId),
-
       // -- Handoff / Advisor --
       buildHandoffPayload: async (_event: unknown, input: { workspaceId: string; sessionId: string; scope: string; quotedText?: string; userNote?: string; framing?: string }) => {
         const sessionRef = { workspaceId: input.workspaceId, sessionId: input.sessionId };

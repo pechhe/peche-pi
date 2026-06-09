@@ -2499,10 +2499,6 @@ export default function App() {
           onOpenAgents={openAgents}
           onOpenSearch={globalSearch.open}
           threadTypeBySession={snapshot.threadTypeBySession}
-          plans={snapshot.plans}
-          onStartPlan={(planId, modelConfig) => void api.startPlan(planId, modelConfig)}
-          onPausePlan={(planId) => void api.pausePlan(planId)}
-          onCancelPlan={(planId) => void api.cancelPlan(planId)}
           runtime={rootRuntime}
         />
       )}

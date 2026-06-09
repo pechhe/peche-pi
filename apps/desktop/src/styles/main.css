@@ -8444,29 +8444,6 @@ mark.thread-find-active {
 
 
 
-/* Ralph loop launch dialog fields. */
-.ralph-launch__field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin: 12px 0;
-}
-
-.ralph-launch__label {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-muted);
-}
-
-.ralph-launch__input {
-  width: 120px;
-  padding: 6px 10px;
-  border-radius: 8px;
-  border: 1px solid var(--border, #cfd7ea);
-  background: var(--surface, #fff);
-  color: var(--text-strong);
-  font-size: 13px;
-}
 
 
 
@@ -12130,82 +12107,219 @@ mark.thread-find-active {
 
 /* ── Automation form ────────────────────────────────── */
 
-.automation-form {
-  padding: 20px;
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  margin-bottom: 20px;
+/* ── Automation builder (Codex-style floating card) ──── */
+
+.automation-builder-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(2px);
 }
 
-.automation-form h2 {
-  font-size: 16px;
-  font-weight: 600;
-  margin: 0 0 16px;
-}
-
-.automation-form__field {
+.automation-builder {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  margin-bottom: 14px;
+  width: min(880px, 100%);
+  max-height: min(680px, 90vh);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
 }
 
-.automation-form__field > span,
-.automation-form__field > legend {
-  font-size: 12px;
-  font-weight: 500;
+.automation-builder__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 16px 8px;
+}
+
+.automation-builder__title {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--foreground);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.automation-builder__title::placeholder {
   color: var(--muted);
 }
 
-.automation-form__field input[type="text"],
-.automation-form__field textarea,
-.automation-form__field select {
-  padding: 8px 10px;
+.automation-builder__prompt {
+  flex: 1;
+  min-height: 200px;
+  margin: 0 16px;
+  padding: 4px 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  resize: none;
+  color: var(--foreground);
+  font-size: 14px;
+  font-family: inherit;
+  line-height: 1.5;
+}
+
+.automation-builder__prompt::placeholder {
+  color: var(--muted);
+}
+
+.automation-builder__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+}
+
+.automation-builder__bar-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.automation-builder__bar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ab-pill-wrap {
+  position: relative;
+}
+
+.ab-pill,
+.ab-icon-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  background: var(--surface-2, rgba(255, 255, 255, 0.05));
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--foreground);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.ab-icon-pill {
+  width: 32px;
+  justify-content: center;
+  padding: 0;
+  color: var(--muted);
+}
+
+.ab-pill:hover,
+.ab-icon-pill:hover:not(:disabled) {
+  border-color: var(--accent, #3b82f6);
+}
+
+.ab-icon-pill--set {
+  color: var(--accent, #3b82f6);
+  border-color: var(--accent, #3b82f6);
+}
+
+.ab-icon-pill:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.ab-pill svg,
+.ab-icon-pill svg {
+  width: 14px;
+  height: 14px;
+}
+
+.ab-menu {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 180px;
+  padding: 6px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+}
+
+.ab-menu--right {
+  left: auto;
+  right: 0;
+}
+
+.ab-menu--scroll {
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.ab-menu--schedule {
+  gap: 8px;
+  padding: 10px;
+  min-width: 200px;
+}
+
+.ab-menu__label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.ab-menu__item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 7px 9px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--foreground);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ab-menu__item:hover {
+  background: var(--surface-2, rgba(255, 255, 255, 0.06));
+}
+
+.ab-menu__item--active {
+  color: var(--accent, #3b82f6);
+}
+
+.ab-menu__item-sub {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.ab-field {
+  width: 100%;
+  padding: 7px 9px;
   background: var(--surface-0);
   border: 1px solid var(--border);
   border-radius: 6px;
   color: var(--foreground);
   font-size: 13px;
   font-family: inherit;
-  resize: vertical;
 }
 
-.automation-form__field input[type="text"]:focus,
-.automation-form__field textarea:focus,
-.automation-form__field select:focus {
+.ab-field:focus {
   outline: none;
   border-color: var(--accent, #3b82f6);
-}
-
-.automation-form__schedule-options {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-top: 6px;
-}
-
-.automation-form__radio {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  cursor: pointer;
-}
-
-.automation-form__radio input[type="radio"] {
-  accent-color: var(--accent, #3b82f6);
-}
-
-.automation-form__cron-input {
-  margin-top: 8px;
-}
-
-.automation-form__actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 16px;
 }
 
 /* ── Sidebar automation icon on workspace row ──────── */
