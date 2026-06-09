@@ -373,12 +373,16 @@ export interface SessionExtensionTerminalCustomRecord {
   readonly requestId: string;
   readonly title?: string;
   readonly lines: readonly string[];
+  /** Component settled; show a spinner over the last frame until the next screen. */
+  readonly busy?: boolean;
 }
 
 export interface SessionExtensionUiStateRecord {
   readonly statuses: readonly SessionExtensionStatusRecord[];
   readonly widgets: readonly SessionExtensionWidgetRecord[];
   readonly pendingDialogs: readonly SessionExtensionDialogRecord[];
+  /** An extension command (slash command) is executing right now. */
+  readonly commandActive?: boolean;
   readonly pendingTerminalCustom?: SessionExtensionTerminalCustomRecord;
   readonly title?: string;
   readonly editorText?: string;
@@ -448,6 +452,7 @@ export type StartChatInput = {
 export interface RemoveWorktreeInput {
   readonly workspaceId: string;
   readonly worktreeId: string;
+  readonly force?: boolean;
 }
 
 export type PlanModeIdeologySetting = "default" | "grill";

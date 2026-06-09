@@ -1249,6 +1249,39 @@ app.whenReady().then(async () => {
         await store.refreshState();
         return { success: true, message: result.stdout || `Created and switched to branch '${name}'` };
       },
+      getWorktreeRemovalPreview: async (_event: unknown, worktreeId: string) => {
+        const workspacePath = store.getWorkspacePath(worktreeId);
+        if (!workspacePath) return { uncommittedFiles: 0, unpushedCommits: 0 };
+        const { execGit } = await import("./git-runner.js");
+        let uncommittedFiles = 0;
+        let unpushedCommits = 0;
+        try {
+          const status = await execGit(["status", "--porcelain"], workspacePath);
+          if (status.code === 0) {
+            uncommittedFiles = status.stdout.split("\n").filter((line: string) => line.trim().length > 0).length;
+          }
+        } catch {
+          /* best-effort */
+        }
+        try {
+          const result = await execGit(["rev-list", "--count", "@{u}..HEAD"], workspacePath);
+          if (result.code === 0) {
+            unpushedCommits = parseInt(result.stdout.trim(), 10) || 0;
+          } else {
+            throw new Error("fallback");
+          }
+        } catch {
+          try {
+            const result = await execGit(["rev-list", "--count", "HEAD", "--not", "--remotes"], workspacePath);
+            if (result.code === 0) {
+              unpushedCommits = parseInt(result.stdout.trim(), 10) || 0;
+            }
+          } catch {
+            /* best-effort */
+          }
+        }
+        return { uncommittedFiles, unpushedCommits };
+      },
       getWorkspacePrInfo: async (_event: unknown, workspaceId: string) => {
         const workspacePath = store.getWorkspacePath(workspaceId);
         if (!workspacePath) throw new Error(`Unknown workspace: ${workspaceId}`);

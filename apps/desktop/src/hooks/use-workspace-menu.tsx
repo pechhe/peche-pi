@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type Dispatch, type MouseEvent as ReactMouseEvent, type RefObject, type SetStateAction } from "react";
 import type { DesktopAppState, WorkspaceRecord, WorktreeRecord } from "../desktop-state";
 import type { PiDesktopApi } from "../ipc";
+import { buildRemovalConfirm } from "../worktree-removal";
 
 interface UseWorkspaceMenuParams {
   readonly api: PiDesktopApi | undefined;
@@ -184,14 +185,14 @@ export function useWorkspaceMenu(params: UseWorkspaceMenuParams): WorkspaceMenuS
   };
 
   const removeWorktree = (workspaceId: string, worktree: WorktreeRecord) => {
-    const confirmed = window.confirm(`Remove worktree ${worktree.name}? This removes the git worktree from disk.`);
-    setEnvironmentMenuOpen(false);
-    if (!confirmed || !api) {
-      return;
-    }
-    void updateSnapshot(api, setSnapshot, () =>
-      api.removeWorktree({ workspaceId, worktreeId: worktree.id }),
-    );
+    void (async () => {
+      if (!api) return;
+      const preview = await api.getWorktreeRemovalPreview(worktree.id);
+      const { message, force } = buildRemovalConfirm(preview, worktree.name);
+      setEnvironmentMenuOpen(false);
+      if (!window.confirm(message)) return;
+      void updateSnapshot(api, setSnapshot, () => api.removeWorktree({ workspaceId, worktreeId: worktree.id, force }));
+    })();
   };
 
   const selectWorkspace = (workspaceId: string) => {

@@ -63,6 +63,7 @@ export const desktopIpc = {
   showFileInFolder: "pi-gui:show-file-in-folder",
   createWorktree: "pi-gui:create-worktree",
   removeWorktree: "pi-gui:remove-worktree",
+  getWorktreeRemovalPreview: "pi-gui:worktree-removal-preview",
   openSkillInFinder: "pi-gui:open-skill-in-finder",
   openExtensionInFinder: "pi-gui:open-extension-in-finder",
   syncCurrentWorkspace: "pi-gui:sync-current-workspace",
@@ -261,6 +262,7 @@ export const piDesktopApiIpcBridge = {
   showFileInFolder: { kind: "invoke", channel: desktopIpc.showFileInFolder },
   createWorktree: { kind: "invoke", channel: desktopIpc.createWorktree },
   removeWorktree: { kind: "invoke", channel: desktopIpc.removeWorktree },
+  getWorktreeRemovalPreview: { kind: "invoke", channel: desktopIpc.getWorktreeRemovalPreview },
   openSkillInFinder: { kind: "invoke", channel: desktopIpc.openSkillInFinder },
   openExtensionInFinder: { kind: "invoke", channel: desktopIpc.openExtensionInFinder },
   syncCurrentWorkspace: { kind: "invoke", channel: desktopIpc.syncCurrentWorkspace },
@@ -772,6 +774,7 @@ export interface PiDesktopApi {
   showFileInFolder(workspaceId: string, filePath: string): Promise<void>;
   createWorktree(input: CreateWorktreeInput): Promise<DesktopAppState>;
   removeWorktree(input: RemoveWorktreeInput): Promise<DesktopAppState>;
+  getWorktreeRemovalPreview(worktreeId: string): Promise<{ readonly uncommittedFiles: number; readonly unpushedCommits: number }>;
   openSkillInFinder(workspaceId: string, filePath: string): Promise<void>;
   openExtensionInFinder(workspaceId: string, filePath: string): Promise<void>;
   syncCurrentWorkspace(): Promise<DesktopAppState>;

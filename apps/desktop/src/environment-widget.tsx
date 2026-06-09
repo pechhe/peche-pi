@@ -378,6 +378,21 @@ export function EnvironmentWidget(props: EnvironmentWidgetProps) {
           ) : null}
 
           <div className="environment-widget__commit-row" data-testid="env-row-commit-push">
+            {isWorktree && selectedWorktree && rootWorkspace ? (
+              <button
+                className="workspace-menu__item workspace-menu__item--danger"
+                data-testid="env-remove-worktree"
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  playButtonClick();
+                  wsMenu.removeWorktree(rootWorkspace.id, selectedWorktree);
+                  setOpen(false);
+                }}
+              >
+                Remove worktree
+              </button>
+            ) : null}
             {autoShipEffective && onFeatureDone ? (
               <button
                 className="workspace-menu__item environment-widget__ship-row"

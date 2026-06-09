@@ -55,7 +55,7 @@ export async function removeWorktree(store: WorktreeStore, input: RemoveWorktree
 
   return store.withErrorHandling(async () => {
     const worktree = await store.catalogStore.worktrees.getWorktree(input.worktreeId);
-    await store.worktreeManager.removeWorktree(rootWorkspace, input.worktreeId);
+    await store.worktreeManager.removeWorktree(rootWorkspace, input.worktreeId, { force: input.force });
     if (worktree?.path) {
       await store.driver.removeWorkspace(worktree.path).catch(() => undefined);
     }

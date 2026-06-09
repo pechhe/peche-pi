@@ -217,3 +217,71 @@ test("creates new worktrees detached in the managed dir with no git branch", asy
     await harness.close();
   }
 });
+
+test("removes a clean worktree via preview + removeWorktree API", async () => {
+  test.setTimeout(90_000);
+  const userDataDir = await makeUserDataDir();
+  const workspacePath = await makeGitWorkspace("worktree-remove-clean");
+  const harness = await launchDesktop(userDataDir, {
+    initialWorkspaces: [workspacePath],
+    testMode: "background",
+  });
+
+  try {
+    const window = await harness.firstWindow();
+    const rootWorkspace = await waitForWorkspaceByPath(window, workspacePath);
+
+    // Create a worktree thread
+    await startThreadViaIpc(window, { environment: "worktree", prompt: "clean worktree remove" });
+
+    // Wait for worktree workspace to be selected
+    await expect
+      .poll(async () => {
+        const state = await getDesktopState(window);
+        const selected = state.workspaces.find((w) => w.id === state.selectedWorkspaceId);
+        return selected?.kind === "worktree";
+      })
+      .toBe(true);
+
+    // Get worktree info from state
+    const stateBefore = await getDesktopState(window);
+    const worktreeWs = stateBefore.workspaces.find((w) => w.id === stateBefore.selectedWorkspaceId);
+    assertExists(worktreeWs, "Expected worktree workspace to be selected");
+
+    // Preview should return valid shape
+    const preview = await window.evaluate(async (worktreeId) => {
+      const app = (window as { piApp?: { getWorktreeRemovalPreview(id: string): Promise<{ uncommittedFiles: number; unpushedCommits: number }> } }).piApp;
+      if (!app) throw new Error("piApp unavailable");
+      return app.getWorktreeRemovalPreview(worktreeId);
+    }, worktreeWs.id);
+    expect(typeof preview.uncommittedFiles).toBe("number");
+    expect(typeof preview.unpushedCommits).toBe("number");
+
+    // Switch back to root workspace before removing worktree
+    await window.evaluate(async (rootId) => {
+      const app = (window as { piApp?: { selectWorkspace(id: string): Promise<unknown> } }).piApp;
+      if (!app) throw new Error("piApp unavailable");
+      await app.selectWorkspace(rootId);
+    }, rootWorkspace.id);
+
+    // Remove the worktree (force=false since it's clean)
+    await window.evaluate(
+      async ({ rootId, worktreeId }) => {
+        const app = (window as { piApp?: { removeWorktree(input: { workspaceId: string; worktreeId: string; force?: boolean }): Promise<unknown> } }).piApp;
+        if (!app) throw new Error("piApp unavailable");
+        await app.removeWorktree({ workspaceId: rootId, worktreeId, force: false });
+      },
+      { rootId: rootWorkspace.id, worktreeId: worktreeWs.id },
+    );
+
+    // Assert worktree is gone from workspaces
+    await expect
+      .poll(async () => {
+        const state = await getDesktopState(window);
+        return state.workspaces.some((w) => w.id === worktreeWs.id);
+      })
+      .toBe(false);
+  } finally {
+    await harness.close();
+  }
+});

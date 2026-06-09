@@ -1111,6 +1111,10 @@ export default function App() {
   const activeQuestionnaireRequest = activeHostDialog?.kind === "questionnaire" ? activeHostDialog : undefined;
   const activeExtensionDialog = activeHostDialog?.kind !== "questionnaire" ? activeHostDialog : undefined;
   const activeTerminalCustom = selectedExtensionUi?.pendingTerminalCustom;
+  // Generic activity for extension commands that don't (or no longer) show a
+  // terminal-custom surface — covers the dead zone where an extension does
+  // async work with no UI of its own.
+  const extensionCommandWorking = Boolean(selectedExtensionUi?.commandActive) && !activeTerminalCustom;
   const persistedComposerDraft = snapshot?.composerDraft ?? "";
   // Drop "done" guards once the snapshot confirms the session is archived (or
   // gone), so the real backend state takes over from the optimistic override.
@@ -2052,6 +2056,8 @@ export default function App() {
   };
 
   const handleArchiveSession = (target: { workspaceId: string; sessionId: string }) => {
+    // Look up workspace before archiving so we can offer worktree cleanup after.
+    const ws = snapshot?.workspaces.find((w) => w.id === target.workspaceId);
     // Optimistically guard the row out of the active list immediately; the
     // guard is dropped once the backend snapshot confirms the archive.
     setRecentlyDone((prev) => {
@@ -2059,7 +2065,16 @@ export default function App() {
       next.add(doneSessionKey(target.workspaceId, target.sessionId));
       return next;
     });
-    void updateSnapshot(api, setSnapshot, () => api.archiveSession(target));
+    void updateSnapshot(api, setSnapshot, () => api.archiveSession(target)).then(() => {
+      if (ws?.kind === "worktree") {
+        const rootId = ws.rootWorkspaceId ?? target.workspaceId;
+        const worktrees = snapshot?.worktreesByWorkspace[rootId] ?? [];
+        const worktreeRecord = worktrees.find((wt) => wt.linkedWorkspaceId === ws.id);
+        if (worktreeRecord) {
+          wsMenu.removeWorktree(rootId, worktreeRecord);
+        }
+      }
+    });
   };
 
   const handleArchiveAllNonRunningSessions = (workspaceId: string, olderThanMs?: number) => {
@@ -2899,6 +2914,12 @@ export default function App() {
             ) : null}
             {activeTerminalCustom ? (
               <TerminalCustomOverlay request={activeTerminalCustom} onInput={handleTerminalCustomInput} />
+            ) : null}
+            {extensionCommandWorking ? (
+              <div className="extension-command-pill" role="status" aria-live="polite">
+                <span className="extension-command-pill__dot" />
+                <span>Extension working…</span>
+              </div>
             ) : null}
             {treeModalState.open ? (
               <TreeModal
