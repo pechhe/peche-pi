@@ -40,7 +40,7 @@ import {
 } from "./ipc";
 import { deriveModelOnboardingState } from "./model-onboarding";
 import { type ModelSelectorHandle } from "./model-selector";
-import { UtilitySurface, SettingsSurface, SkillsSurface, ExtensionsSurface, AutomationsSurface, ContextSurface, AgentsSurface } from "./surfaces/utility-surface";
+import { UtilitySurface, SettingsSurface, SkillsSurface, ExtensionsSurface, AutomationsSurface, ContextSurface, AgentsSurface, TestingSurface } from "./surfaces/utility-surface";
 import { GraphSurface } from "./surfaces/graph-surface";
 import { type SettingsSection } from "./settings-view";
 import { NewThreadView } from "./new-thread-view";
@@ -74,6 +74,7 @@ import { useSelfHealTranscript } from "./hooks/use-self-heal-transcript";
 import { useSidebarWidth } from "./hooks/use-sidebar-width";
 import { ExtensionDialog } from "./extension-session-ui";
 import { SubagentLiveProvider } from "./subagent-live";
+import { SubagentTimelineProvider } from "./subagent-timeline";
 import { FLEET_WIDGET_KEY, parseFleet } from "./subagent-fleet";
 import { TreeModal } from "./tree-modal";
 import { ShortcutsSheet } from "./shortcuts-sheet";
@@ -530,6 +531,8 @@ export default function App() {
   const lastErrorToastKeyRef = useRef("");
   const [subagentPanel, setSubagentPanel] = useState<{ readonly sessionFile: string; readonly name: string } | null>(null);
   const [showDiffPanel, setShowDiffPanel] = useState(false);
+  const [showContextPanel, setShowContextPanel] = useState(false);
+  const [featureDoneState, setFeatureDoneState] = useState<"idle" | "working" | "done" | "error">("idle");
   const [pendingScrollToMessageId, setPendingScrollToMessageId] = useState<string | null>(null);
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   // Query that produced the jump, captured before the search palette clears it.
@@ -540,7 +543,6 @@ export default function App() {
   const [terminalHeight, setTerminalHeight] = useState(340);
   const [diffFileRequest, setDiffFileRequest] = useState<DiffPanelFileRequest | null>(null);
   const [diffRefreshNonce, _setDiffRefreshNonce] = useState(0);
-  const threadSearch = useThreadSearch({ current: null } as React.RefObject<HTMLDivElement | null>);
   const api = window.piApp;
   const sidebarToggleStateRef = useRef<{
     readonly api: typeof window.piApp;
@@ -641,7 +643,7 @@ export default function App() {
 
   useEffect(() => {
     if (!api || !snapshot?.selectedWorkspaceId) return;
-    void api.listGhLoops(snapshot.selectedWorkspaceId);
+    if (typeof api.listGhLoops === "function") void api.listGhLoops(snapshot.selectedWorkspaceId);
   }, [api, snapshot?.selectedWorkspaceId]);
 
   const selectedWorkspace = snapshot ? (getSelectedWorkspace(snapshot) ?? snapshot.workspaces[0]) : undefined;
@@ -766,6 +768,34 @@ export default function App() {
   const setNewThreadOrchestratorMode = nt.setOrchestratorMode;
   const clearAllDrafts = nt.clearAllDrafts;
 
+  // Branch + worktree picker state for new thread
+  const [newThreadBranches, setNewThreadBranches] = useState<readonly import("./ipc").BranchInfo[]>([]);
+  const [newThreadSelectedBranch, setNewThreadSelectedBranch] = useState<string>("");
+  const [newThreadCurrentBranch, setNewThreadCurrentBranch] = useState<string>("");
+  const [newThreadIsDirty, setNewThreadIsDirty] = useState<boolean>(false);
+  const [newThreadWorktreeMode, setNewThreadWorktreeMode] = useState<"new" | "existing">("new");
+  const [newThreadSelectedWorktreeId, setNewThreadSelectedWorktreeId] = useState<string>("");
+
+  // Fetch branches when workspace changes or new-thread view opens
+  useEffect(() => {
+    if (!api || !newThreadRootWorkspaceId || snapshot?.activeView !== "new-thread") return;
+    void api.listBranches(newThreadRootWorkspaceId).then((result) => {
+      const list = result?.branches ?? [];
+      setNewThreadBranches(list);
+      setNewThreadCurrentBranch(result?.currentBranch ?? "");
+      setNewThreadIsDirty(result?.isDirty ?? false);
+      // Default selection = current branch ("Local file state"): keep the
+      // working tree as-is, no checkout.
+      const current = list.find((b) => b.isCurrent);
+      if (current) setNewThreadSelectedBranch(current.name);
+      else if (list[0]) setNewThreadSelectedBranch(list[0].name);
+    }).catch(() => {
+      setNewThreadBranches([]);
+      setNewThreadCurrentBranch("");
+      setNewThreadIsDirty(false);
+    });
+  }, [api, newThreadRootWorkspaceId, snapshot?.activeView]);
+
   const [contextSnapshot, setContextSnapshot] = useState<ContextSnapshot | null>(null);
   const [contextLoading, setContextLoading] = useState(false);
   const loadContextSnapshot = useCallback(() => {
@@ -781,10 +811,10 @@ export default function App() {
       .finally(() => setContextLoading(false));
   }, [api, contextWorkspace, selectedSession?.id]);
   useEffect(() => {
-    if (snapshot?.activeView === "context") {
+    if (showContextPanel) {
       loadContextSnapshot();
     }
-  }, [snapshot?.activeView, loadContextSnapshot]);
+  }, [showContextPanel, loadContextSnapshot]);
   const extensionsCommandCompatibility = extensionsWorkspace
     ? snapshot?.extensionCommandCompatibilityByWorkspace[extensionsWorkspace.id] ?? []
     : [];
@@ -968,6 +998,7 @@ export default function App() {
     activeTranscript,
     setShowDiffPanel,
   });
+  const threadSearch = useThreadSearch(timelineScroll.timelinePaneRef);
 
   // Scroll to a transcript message when navigating from a search result.
   // NOTE: timelineScroll is a fresh object each render, so this effect re-runs
@@ -1396,7 +1427,40 @@ export default function App() {
     const ops = allUndoOpsRef.current;
     if (ops.length === 0) return { reverted: [], failed: [] };
     return settingsHandlers.handleUndoEdits(ops);
-  }, [settingsHandlers.handleUndoEdits]);
+  }, [settingsHandlers]);
+
+  const handleFeatureDone = useCallback(async () => {
+    if (!rootWorkspace || !selectedSession || !api) return;
+    const title = selectedSession.title || "feature";
+    const modelString = snapshot?.commitPushModel ?? "deepseek:deepseek-chat";
+    setFeatureDoneState("working");
+    try {
+      const result = await api.featureDone({
+        workspaceId: rootWorkspace.id,
+        threadTitle: title,
+        modelString,
+      });
+      if (result.status === "ok") {
+        setFeatureDoneState("done");
+        showToast({ variant: "success", message: `Feature shipped — ${result.message}` });
+      } else if (result.status === "conflicts" && result.handoffPrompt) {
+        setFeatureDoneState("done");
+        showToast({ variant: "success", message: "Merge conflicts found — spawning resolver thread…" });
+        // Spawn a resolver thread in the same worktree
+        await api.startThread({
+          rootWorkspaceId: rootWorkspace.id,
+          environment: "local",
+          prompt: result.handoffPrompt,
+        });
+      } else {
+        setFeatureDoneState("error");
+        showToast({ variant: "error", message: `Ship failed — ${result.message}` });
+      }
+    } catch (err) {
+      setFeatureDoneState("error");
+      showToast({ variant: "error", message: `Ship failed — ${String(err)}` });
+    }
+  }, [api, rootWorkspace, selectedSession, snapshot?.commitPushModel]);
 
   const skillsExtensionsHandlers = useSkillsExtensionsHandlers({
     api,
@@ -1758,11 +1822,15 @@ export default function App() {
   };
 
   const openContext = () => {
-    setActiveView("context");
+    setShowContextPanel((prev) => !prev);
   };
 
   const openAgents = () => {
     setActiveView("agents");
+  };
+
+  const openTesting = () => {
+    setActiveView("testing");
   };
 
   const openNewThreadSurface = nt.open;
@@ -1821,6 +1889,7 @@ export default function App() {
     onOpenExtensions: openExtensions,
     onOpenAutomations: openAutomations,
     onOpenContext: openContext,
+    onOpenTesting: openTesting,
     onCopyLastResponse: () => {
       const lastAssistant = [...activeTranscript].reverse().find((msg) => msg.kind === "message" && msg.role === "assistant");
       if (lastAssistant && lastAssistant.kind === "message") {
@@ -1846,6 +1915,7 @@ export default function App() {
   const mainClassName = [
     "main",
     showDiffPanel ? "main--with-diff" : "",
+    showContextPanel ? "main--with-context" : "",
     advisorState.visible ? "main--with-advisor" : "",
     subagentPanel ? "main--with-subagent" : "",
     isTerminalVisibleForSelectedThread ? "main--with-terminal" : "",
@@ -1998,6 +2068,22 @@ export default function App() {
     void updateSnapshot(api, setSnapshot, () => api.unarchiveSession(target));
   };
 
+  const handleSnoozeSession = (target: { workspaceId: string; sessionId: string }, until: string) => {
+    void updateSnapshot(api, setSnapshot, () => api.snoozeSession(target, until));
+  };
+
+  const handleUnsnoozeSession = (target: { workspaceId: string; sessionId: string }) => {
+    void updateSnapshot(api, setSnapshot, () => api.unsnoozeSession(target));
+  };
+
+  const handleMarkToTestSession = (target: { workspaceId: string; sessionId: string }) => {
+    void updateSnapshot(api, setSnapshot, () => api.markToTestSession(target));
+  };
+
+  const handleUnmarkToTestSession = (target: { workspaceId: string; sessionId: string }) => {
+    void updateSnapshot(api, setSnapshot, () => api.unmarkToTestSession(target));
+  };
+
   const handleCreateChat = () => {
     openNewChatSurface();
   };
@@ -2133,6 +2219,8 @@ export default function App() {
       rootWorkspaceId: newThreadRootWorkspaceId,
       environment: newThreadEnvironment,
       ...modelConfig,
+      ...(newThreadSelectedBranch && newThreadSelectedBranch !== newThreadCurrentBranch ? { startBranch: newThreadSelectedBranch } : {}),
+      ...(newThreadEnvironment === "worktree" && newThreadWorktreeMode === "existing" && newThreadSelectedWorktreeId ? { existingWorktreeId: newThreadSelectedWorktreeId } : {}),
     };
     wsMenu.expandWorkspace(newThreadRootWorkspaceId);
     // Capture a snapshot of what the user just sent so we can render an
@@ -2253,6 +2341,11 @@ export default function App() {
   };
 
   // ── Utility view dispatch ────────────────────────────────────────────────────
+  const testingCount = snapshot.workspaces.reduce(
+    (total, workspace) => total + workspace.sessions.filter((session) => session.toTestAt).length,
+    0,
+  );
+
   const utilityShellProps = {
     activeView: snapshot.activeView,
     snapshot,
@@ -2276,15 +2369,20 @@ export default function App() {
     onOpenSkills: openSkills,
     onOpenExtensions: openExtensions,
     onOpenSettings: openSettings,
-    onOpenContext: openContext,
     onOpenKanban: openKanbanView,
     onOpenAutomations: openAutomations,
     onOpenAgents: openAgents,
+    testingCount,
+    onOpenTesting: openTesting,
     onSetQueueMode: setQueueMode,
     onArchiveSession: handleArchiveSession,
     onArchiveAllNonRunningSessions: handleArchiveAllNonRunningSessions,
     onSelectSession: handleSelectSession,
     onUnarchiveSession: handleUnarchiveSession,
+    onSnoozeSession: handleSnoozeSession,
+    onUnsnoozeSession: handleUnsnoozeSession,
+    onMarkToTestSession: handleMarkToTestSession,
+    onUnmarkToTestSession: handleUnmarkToTestSession,
     onCreateChat: handleCreateChat,
     onSelectChat: handleSelectChat,
     onArchiveChat: handleArchiveChat,
@@ -2385,6 +2483,19 @@ export default function App() {
     );
   }
 
+  if (snapshot.activeView === "testing") {
+    return (
+      <UtilitySurface {...utilityShellProps} content={
+        <TestingSurface
+          snapshot={snapshot}
+          onSelectSession={handleSelectSession}
+          onSetActiveView={setActiveView}
+          onUnmarkToTestSession={handleUnmarkToTestSession}
+        />
+      } />
+    );
+  }
+
   if (snapshot.activeView === "automations") {
     return (
       <UtilitySurface {...utilityShellProps} content={
@@ -2395,21 +2506,32 @@ export default function App() {
           api={api!}
           setSnapshot={setSnapshot}
           updateSnapshot={updateSnapshot}
-        />
-      } />
-    );
-  }
-
-  if (snapshot.activeView === "context") {
-    return (
-      <UtilitySurface {...utilityShellProps} content={
-        <ContextSurface
-          contextWorkspace={contextWorkspace}
-          contextRuntime={contextRuntime}
-          contextSnapshot={contextSnapshot}
-          contextLoading={contextLoading}
-          loadContextSnapshot={loadContextSnapshot}
-          api={api!}
+          onFireNow={(automationId, automationName, workspaceId, prompt) => {
+            // Optimistic: inject a placeholder thread immediately and navigate
+            // to it, same as creating a new thread normally.
+            setPendingThreadStart({
+              rootWorkspaceId: workspaceId,
+              title: `⚡ ${automationName}`,
+              priorSelectedSessionId: snapshot?.selectedSessionId,
+              createdAt: new Date().toISOString(),
+              prompt,
+              attachments: [],
+              provider: undefined,
+              modelId: undefined,
+              thinkingLevel: undefined,
+              cavemanLevel: "off",
+              composerMode: "build",
+            });
+            void updateSnapshot(api, setSnapshot, () => api.automationFireNow(automationId)).then((state) => {
+              setPendingThreadStart((prev) =>
+                prev
+                  ? { ...prev, sessionId: state.selectedSessionId, workspaceId: state.selectedWorkspaceId }
+                  : prev,
+              );
+            }).catch(() => {
+              setPendingThreadStart(null);
+            });
+          }}
         />
       } />
     );
@@ -2487,12 +2609,15 @@ export default function App() {
           onOpenSkills={openSkills}
           onOpenExtensions={openExtensions}
           onOpenSettings={openSettings}
-          onOpenContext={openContext}
           queueMode={snapshot.queueMode}
           onArchiveSession={handleArchiveSession}
             onArchiveAllNonRunningSessions={handleArchiveAllNonRunningSessions}
           onSelectSession={handleSelectSession}
           onUnarchiveSession={handleUnarchiveSession}
+          onSnoozeSession={handleSnoozeSession}
+          onUnsnoozeSession={handleUnsnoozeSession}
+          onMarkToTestSession={handleMarkToTestSession}
+          onUnmarkToTestSession={handleUnmarkToTestSession}
           onCreateChat={handleCreateChat}
           onSelectChat={handleSelectChat}
           onArchiveChat={handleArchiveChat}
@@ -2502,12 +2627,14 @@ export default function App() {
           automations={snapshot.automations ?? []}
           onOpenAutomations={openAutomations}
           onOpenAgents={openAgents}
+          testingCount={testingCount}
+          onOpenTesting={openTesting}
           onOpenSearch={globalSearch.open}
           threadTypeBySession={snapshot.threadTypeBySession}
           runtime={rootRuntime}
           ghLoops={snapshot.ghLoops}
           ghRunnerState={snapshot.ghRunnerState}
-          onRunLoop={(workspaceId, loopNumber) => void api.runGhLoop(workspaceId, loopNumber)}
+          onRunLoop={(workspaceId, loopNumber) => typeof api.runGhLoop === "function" && void api.runGhLoop(workspaceId, loopNumber)}
           onCancelGhRun={() => void api.cancelGhRun()}
         />
       )}
@@ -2531,6 +2658,8 @@ export default function App() {
           onOpenExternalTerminal={openExternalTerminal}
           showDiffPanel={showDiffPanel}
           onToggleDiffPanel={toggleDiffPanel}
+          showContextPanel={showContextPanel}
+          onToggleContextPanel={openContext}
           showAdvisorPanel={advisorState.visible}
           onToggleAdvisorPanel={toggleAdvisorPanel}
           selectedRuntime={rootRuntime}
@@ -2541,6 +2670,8 @@ export default function App() {
           }}
           onOpenGraph={() => setActiveView("graph")}
           onUndoAllEdits={handleUndoAllEdits}
+          onFeatureDone={handleFeatureDone}
+          featureDoneState={featureDoneState}
         />
 
         {showTerminalTakeover ? (
@@ -2579,6 +2710,16 @@ export default function App() {
               selectedMentionIndex={newThreadMentionMenu.selectedIndex}
               onChangePrompt={setNewThreadPrompt}
               onSelectEnvironment={setNewThreadEnvironment}
+              branches={newThreadBranches}
+              selectedBranch={newThreadSelectedBranch}
+              onSelectBranch={setNewThreadSelectedBranch}
+              currentBranch={newThreadCurrentBranch}
+              isDirty={newThreadIsDirty}
+              existingWorktrees={activeWorktrees}
+              worktreeMode={newThreadWorktreeMode}
+              onSelectWorktreeMode={setNewThreadWorktreeMode}
+              selectedExistingWorktreeId={newThreadSelectedWorktreeId}
+              onSelectExistingWorktree={setNewThreadSelectedWorktreeId}
               onSetModel={(provider, modelId) => { setNewThreadProvider(provider); setNewThreadModelId(modelId); }}
               onSetThinking={setNewThreadThinkingLevel}
               onSetCavemanLevel={settingsHandlers.handleSetDefaultCavemanLevel}
@@ -2624,6 +2765,7 @@ export default function App() {
               <LoadingBar loading={pendingThreadStart ? false : isTranscriptLoading} />
               <div className="conversation conversation--thread">
                 <SubagentLiveProvider widgets={selectedExtensionUi?.widgets ?? []}>
+                <SubagentTimelineProvider transcript={threadViewTranscript}>
                 <SubagentSessionOpenProvider value={(sessionFile, name) => setSubagentPanel({ sessionFile, name })}>
                 <ConversationTimeline
                   transcript={threadViewTranscript}
@@ -2649,6 +2791,7 @@ export default function App() {
                   liveEditStats={liveEditStats}
                 />
                 </SubagentSessionOpenProvider>
+                </SubagentTimelineProvider>
                 </SubagentLiveProvider>
               </div>
             </section>
@@ -2772,6 +2915,18 @@ export default function App() {
             fileRequest={diffFileRequest}
             refreshNonce={diffRefreshNonce}
           />
+        ) : null}
+        {showContextPanel ? (
+          <aside className="context-panel" data-testid="context-panel">
+            <ContextSurface
+              contextWorkspace={contextWorkspace}
+              contextRuntime={contextRuntime}
+              contextSnapshot={contextSnapshot}
+              contextLoading={contextLoading}
+              loadContextSnapshot={loadContextSnapshot}
+              api={api!}
+            />
+          </aside>
         ) : null}
         {subagentPanel ? (
           <SubagentSessionPanel

@@ -912,6 +912,9 @@ function UserTimelineMessage({ item, highlightQuery }: { readonly item: SessionT
 
   return (
     <article className={`timeline-item timeline-item--user${justSent ? " timeline-item--just-sent" : ""}`}>
+      {item.deliveryMode === "steer" ? (
+        <div className="timeline-item__steer-tag">steer</div>
+      ) : null}
       <div className="timeline-item__bubble">
         {item.attachments?.length ? (
           <div className="timeline-item__attachments">

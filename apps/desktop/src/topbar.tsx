@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import type { AppView, SessionRecord, WorkspaceRecord, WorktreeRecord } from "./desktop-state";
-import { AdvisorIcon, DiffIcon, ExternalTerminalIcon, FolderIcon, SettingsIcon, TerminalIcon } from "./icons";
+import { AdvisorIcon, ContextIcon, DiffIcon, ExternalTerminalIcon, FolderIcon, SettingsIcon, TerminalIcon } from "./icons";
 import { playButtonClick } from "./button-click-sound";
 import { getDesktopShortcutLabel, type PiDesktopApi } from "./ipc";
 import { ProjectMapPopover } from "./project-map-popover";
@@ -29,6 +29,8 @@ interface TopbarProps {
   readonly onOpenExternalTerminal: () => void;
   readonly showDiffPanel: boolean;
   readonly onToggleDiffPanel: () => void;
+  readonly showContextPanel?: boolean;
+  readonly onToggleContextPanel?: () => void;
   readonly showAdvisorPanel?: boolean;
   readonly onToggleAdvisorPanel?: () => void;
   readonly selectedRuntime?: RuntimeSnapshot;
@@ -37,6 +39,8 @@ interface TopbarProps {
   readonly onSetTranscriptVerbose: (enabled: boolean) => void;
   readonly onOpenGraph?: () => void;
   readonly onUndoAllEdits?: () => Promise<UndoEditsResult>;
+  readonly onFeatureDone?: () => void;
+  readonly featureDoneState?: "idle" | "working" | "done" | "error";
 }
 
 export function Topbar(props: TopbarProps) {
@@ -59,6 +63,8 @@ export function Topbar(props: TopbarProps) {
     onOpenExternalTerminal,
     showDiffPanel,
     onToggleDiffPanel,
+    showContextPanel,
+    onToggleContextPanel,
     showAdvisorPanel,
     onToggleAdvisorPanel,
     selectedRuntime,
@@ -66,10 +72,13 @@ export function Topbar(props: TopbarProps) {
     transcriptVerbose,
     onSetTranscriptVerbose,
     onUndoAllEdits,
+    onFeatureDone,
+    featureDoneState,
   } = props;
   const [undoAllState, setUndoAllState] = useState<"idle" | "undoing" | "done" | "error">("idle");
   const terminalShortcut = getDesktopShortcutLabel(api.platform, "J");
   const diffShortcut = getDesktopShortcutLabel(api.platform, "D");
+  const contextShortcut = getDesktopShortcutLabel(api.platform, "⇧5");
   const commitShortcut = api.platform === "darwin" ? "⌘⇧K" : "Ctrl+Shift+K";
   const [viewSettingsOpen, setViewSettingsOpen] = useState(false);
   const viewSettingsRef = useRef<HTMLDivElement | null>(null);
@@ -187,6 +196,23 @@ export function Topbar(props: TopbarProps) {
           sessionStatus={selectedSession?.status}
           shortcutLabel={commitShortcut}
         />
+        {onFeatureDone && selectedWorktree && activeView === "threads" && selectedSession && selectedSession.status !== "running" ? (
+          <div className="shortcut-tooltip-wrap topbar__tooltip-wrap">
+            <button
+              aria-label="Ship feature: commit, push, create PR, and merge to main"
+              className="topbar__feature-done"
+              data-testid="topbar-feature-done"
+              type="button"
+              disabled={featureDoneState === "working"}
+              onClick={() => {
+                playButtonClick();
+                onFeatureDone();
+              }}
+            >
+              {featureDoneState === "working" ? "Shipping…" : featureDoneState === "done" ? "Shipped" : "Ship feature"}
+            </button>
+          </div>
+        ) : null}
         {onUndoAllEdits && activeView === "threads" && selectedSession && selectedSession.status !== "running" ? (
           <div className="shortcut-tooltip-wrap topbar__tooltip-wrap">
             <button
@@ -291,6 +317,22 @@ export function Topbar(props: TopbarProps) {
             <kbd>{diffShortcut}</kbd>
           </span>
         </div>
+        {onToggleContextPanel ? (
+          <div className="shortcut-tooltip-wrap topbar__tooltip-wrap">
+            <button
+              aria-label="Toggle context"
+              className={`icon-button topbar__icon ${showContextPanel ? "icon-button--active" : ""}`}
+              type="button"
+              onClick={() => { playButtonClick(); onToggleContextPanel(); }}
+            >
+              <ContextIcon />
+            </button>
+            <span className="shortcut-tooltip topbar__tooltip" role="tooltip">
+              <span>Toggle context</span>
+              <kbd>{contextShortcut}</kbd>
+            </span>
+          </div>
+        ) : null}
         {onToggleAdvisorPanel ? (
           <div className="shortcut-tooltip-wrap topbar__tooltip-wrap">
             <button

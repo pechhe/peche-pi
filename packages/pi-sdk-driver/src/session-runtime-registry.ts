@@ -42,6 +42,10 @@ export interface ManagedSessionRecord {
   status: SessionStatus;
   updatedAt: string;
   archivedAt: string | undefined;
+  snoozedUntil: string | undefined;
+  toTestAt: string | undefined;
+  toTestNote: string | undefined;
+  awaitingTestCapture: boolean;
   preview: string | undefined;
   config: SessionConfig | undefined;
   runningRunId: string | undefined;
@@ -187,6 +191,10 @@ export class SessionRuntimeRegistry implements SessionRuntimeRegistryInterface {
       status: "idle",
       updatedAt: nowIso(),
       archivedAt: undefined,
+      snoozedUntil: undefined,
+      toTestAt: undefined,
+      toTestNote: undefined,
+      awaitingTestCapture: false,
       preview: undefined,
       config: deriveSessionConfig(session.sessionManager),
       runningRunId: undefined,
@@ -269,6 +277,9 @@ export class SessionRuntimeRegistry implements SessionRuntimeRegistryInterface {
     record.status = sessionEntry.status;
     record.updatedAt = sessionEntry.updatedAt;
     record.archivedAt = sessionEntry.archivedAt;
+    record.snoozedUntil = sessionEntry.snoozedUntil;
+    record.toTestAt = sessionEntry.toTestAt;
+    record.toTestNote = sessionEntry.toTestNote;
     record.preview = sessionEntry.previewSnippet ?? undefined;
     record.config = deriveSessionConfig(session.sessionManager);
     record.closed = false;

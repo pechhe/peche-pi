@@ -68,6 +68,10 @@ export const desktopIpc = {
   selectSession: "pi-gui:select-session",
   archiveSession: "pi-gui:archive-session",
   unarchiveSession: "pi-gui:unarchive-session",
+  snoozeSession: "pi-gui:snooze-session",
+  unsnoozeSession: "pi-gui:unsnooze-session",
+  markToTestSession: "pi-gui:mark-to-test-session",
+  unmarkToTestSession: "pi-gui:unmark-to-test-session",
   archiveAllNonRunningSessions: "pi-gui:archive-all-non-running-sessions",
   createSession: "pi-gui:create-session",
   startThread: "pi-gui:start-thread",
@@ -169,8 +173,10 @@ export const desktopIpc = {
   renameChat: "pi-gui:rename-chat",
   getChatAgentsMd: "pi-gui:get-chat-agents-md",
   writeChatAgentsMd: "pi-gui:write-chat-agents-md",
+  listBranches: "pi-gui:list-branches",
   generatePrDraft: "pi-gui:generate-pr-draft",
   prCreate: "pi-gui:pr-create",
+  featureDone: "pi-gui:feature-done",
   getContextSnapshot: "pi-gui:get-context-snapshot",
   getGraphifyProjectMapStatus: "pi-gui:get-graphify-project-map-status",
   updateGraphifyProjectMap: "pi-gui:update-graphify-project-map",
@@ -258,6 +264,10 @@ export const piDesktopApiIpcBridge = {
   selectSession: { kind: "invoke", channel: desktopIpc.selectSession },
   archiveSession: { kind: "invoke", channel: desktopIpc.archiveSession },
   unarchiveSession: { kind: "invoke", channel: desktopIpc.unarchiveSession },
+  snoozeSession: { kind: "invoke", channel: desktopIpc.snoozeSession },
+  unsnoozeSession: { kind: "invoke", channel: desktopIpc.unsnoozeSession },
+  markToTestSession: { kind: "invoke", channel: desktopIpc.markToTestSession },
+  unmarkToTestSession: { kind: "invoke", channel: desktopIpc.unmarkToTestSession },
   archiveAllNonRunningSessions: { kind: "invoke", channel: desktopIpc.archiveAllNonRunningSessions },
   createSession: { kind: "invoke", channel: desktopIpc.createSession },
   startThread: { kind: "invoke", channel: desktopIpc.startThread },
@@ -348,8 +358,10 @@ export const piDesktopApiIpcBridge = {
   uninstallExtension: { kind: "invoke", channel: desktopIpc.uninstallExtension },
   checkExtensionUpdates: { kind: "invoke", channel: desktopIpc.checkExtensionUpdates },
   getWorkspacePrInfo: { kind: "invoke", channel: desktopIpc.getWorkspacePrInfo },
+  listBranches: { kind: "invoke", channel: desktopIpc.listBranches },
   generatePrDraft: { kind: "invoke", channel: desktopIpc.generatePrDraft },
   prCreate: { kind: "invoke", channel: desktopIpc.prCreate },
+  featureDone: { kind: "invoke", channel: desktopIpc.featureDone },
   getContextSnapshot: { kind: "invoke", channel: desktopIpc.getContextSnapshot },
   getGraphifyProjectMapStatus: { kind: "invoke", channel: desktopIpc.getGraphifyProjectMapStatus },
   updateGraphifyProjectMap: { kind: "invoke", channel: desktopIpc.updateGraphifyProjectMap },
@@ -529,6 +541,34 @@ export interface CreatePrResult {
   readonly message: string;
   readonly url?: string;
   readonly number?: number;
+}
+
+export interface BranchInfo {
+  readonly name: string;
+  readonly isCurrent: boolean;
+  readonly isRemote: boolean;
+}
+
+export interface BranchListResult {
+  readonly branches: readonly BranchInfo[];
+  readonly currentBranch: string;
+  readonly isDirty: boolean;
+}
+
+export interface FeatureDoneInput {
+  readonly workspaceId: string;
+  readonly threadTitle: string;
+  readonly modelString: string;
+}
+
+export interface FeatureDoneResult {
+  readonly status: "ok" | "conflicts" | "error";
+  readonly message: string;
+  readonly prUrl?: string;
+  readonly prNumber?: number;
+  readonly branchName?: string;
+  readonly conflicts?: ReadonlyArray<{ file: string; content: string }>;
+  readonly handoffPrompt?: string;
 }
 
 export interface DesktopLivePatch {
@@ -732,6 +772,10 @@ export interface PiDesktopApi {
   selectSession(target: WorkspaceSessionTarget): Promise<DesktopAppState>;
   archiveSession(target: WorkspaceSessionTarget): Promise<DesktopAppState>;
   unarchiveSession(target: WorkspaceSessionTarget): Promise<DesktopAppState>;
+  snoozeSession(target: WorkspaceSessionTarget, until: string): Promise<DesktopAppState>;
+  unsnoozeSession(target: WorkspaceSessionTarget): Promise<DesktopAppState>;
+  markToTestSession(target: WorkspaceSessionTarget): Promise<DesktopAppState>;
+  unmarkToTestSession(target: WorkspaceSessionTarget): Promise<DesktopAppState>;
   archiveAllNonRunningSessions(workspaceId: string, olderThanMs?: number): Promise<DesktopAppState>;
   createSession(input: CreateSessionInput): Promise<DesktopAppState>;
   startThread(input: StartThreadInput): Promise<DesktopAppState>;
@@ -870,6 +914,8 @@ export interface PiDesktopApi {
   writeChatAgentsMd(chatId: string, content: string): Promise<void>;
   generatePrDraft(workspaceId: string, baseBranch?: string): Promise<PrDraftResult>;
   prCreate(workspaceId: string, input: CreatePrInput): Promise<CreatePrResult>;
+  listBranches(workspaceId: string): Promise<BranchListResult>;
+  featureDone(input: FeatureDoneInput): Promise<FeatureDoneResult>;
   getContextSnapshot(workspaceId: string, sessionId?: string): Promise<ContextSnapshot>;
   getGraphifyProjectMapStatus(workspaceId: string): Promise<GraphifyProjectMapStatus>;
   updateGraphifyProjectMap(workspaceId: string): Promise<GraphifyRunResult>;

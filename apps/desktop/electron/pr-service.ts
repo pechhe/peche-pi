@@ -68,12 +68,12 @@ async function ghAvailable(cwd: string): Promise<boolean> {
   return code === 0;
 }
 
-async function getHeadBranch(cwd: string): Promise<string> {
+export async function getHeadBranch(cwd: string): Promise<string> {
   const { stdout } = await execGit(["rev-parse", "--abbrev-ref", "HEAD"], cwd);
   return stdout;
 }
 
-async function hasUpstream(cwd: string): Promise<boolean> {
+export async function hasUpstream(cwd: string): Promise<boolean> {
   const { code } = await execGit(
     ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
     cwd,
@@ -81,7 +81,7 @@ async function hasUpstream(cwd: string): Promise<boolean> {
   return code === 0;
 }
 
-async function getDefaultBranch(cwd: string): Promise<string> {
+export async function getDefaultBranch(cwd: string): Promise<string> {
   // Prefer gh's view of the repo default; fall back to origin/HEAD; fall back to "main".
   const ghResult = await execGh(
     ["repo", "view", "--json", "defaultBranchRef", "-q", ".defaultBranchRef.name"],

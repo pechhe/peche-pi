@@ -66,6 +66,22 @@ export class PiSdkDriver implements SessionDriver {
     return this.supervisor.unarchiveSession(sessionRef);
   }
 
+  snoozeSession(sessionRef: SessionRef, until: string): Promise<void> {
+    return this.supervisor.snoozeSession(sessionRef, until);
+  }
+
+  unsnoozeSession(sessionRef: SessionRef): Promise<void> {
+    return this.supervisor.unsnoozeSession(sessionRef);
+  }
+
+  markToTest(sessionRef: SessionRef): Promise<void> {
+    return this.supervisor.markToTest(sessionRef);
+  }
+
+  unmarkToTest(sessionRef: SessionRef): Promise<void> {
+    return this.supervisor.unmarkToTest(sessionRef);
+  }
+
   sendUserMessage(sessionRef: SessionRef, input: SessionMessageInput): Promise<void> {
     return this.supervisor.sendUserMessage(sessionRef, input);
   }

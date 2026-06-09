@@ -24,6 +24,8 @@ export interface SessionTranscriptMessage {
   readonly attachments?: readonly SessionTranscriptAttachment[];
   readonly createdAt: string;
   readonly id: string;
+  /** How this message was delivered. Steer messages appear with a visual tag. */
+  readonly deliveryMode?: "steer" | "followUp";
 }
 
 /**

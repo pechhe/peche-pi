@@ -1035,11 +1035,19 @@
 }
 
 .session-row__time,
-.session-row__action {
+.session-row__action,
+.session-row__actions {
   grid-area: 1 / 1;
   transition:
     opacity 140ms ease,
     transform 140ms ease;
+}
+
+.session-row__actions {
+  justify-self: end;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
 }
 
 .session-row__time {
@@ -1118,6 +1126,53 @@
   visibility: visible;
   pointer-events: auto;
   transform: scale(1);
+}
+
+/* ── Entry animation ──────────────────────────────────────
+ * Reverse of the done animation: expand from height 0 with a purple accent
+ * so new sessions slide in and push siblings down smoothly. */
+.session-row--entering {
+  animation: session-row-enter 500ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  overflow: hidden;
+}
+
+@keyframes session-row-enter {
+  0% {
+    opacity: 0;
+    transform: scale(0.96);
+    height: 0;
+    min-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    margin-bottom: -2px;
+  }
+  30% {
+    opacity: 1;
+    transform: scale(1.03);
+  }
+  56% {
+    background: color-mix(in srgb, var(--accent) 20%, transparent);
+    transform: scale(1);
+    opacity: 1;
+    height: 36px;
+    min-height: 36px;
+    padding-top: 7px;
+    padding-bottom: 7px;
+    margin-bottom: 0;
+  }
+  84% {
+    background: color-mix(in srgb, var(--accent) 34%, transparent);
+  }
+  100% {
+    background: color-mix(in srgb, var(--accent) 0%, transparent);
+    transform: scale(1);
+    opacity: 1;
+    height: 36px;
+    min-height: 36px;
+    padding-top: 7px;
+    padding-bottom: 7px;
+    margin-bottom: 0;
+  }
 }
 
 /* ── "Done" moment ──────────────────────────────────────────
@@ -1288,6 +1343,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .session-row--entering,
   .session-row--completing,
   .session-row--completing .session-row__action--done svg,
   .session-row--completing .session-row__action--done svg path,
@@ -1360,6 +1416,138 @@
 
 .session-list--archived {
   padding-left: 0;
+}
+
+/* ── Snoozed section ────────────────────────────────── */
+
+.snoozed-thread-group {
+  padding-left: 24px;
+  display: grid;
+  gap: 4px;
+}
+
+.snoozed-thread-group__toggle {
+  min-height: 28px;
+  padding: 2px 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  border-radius: 999px;
+  color: #7f889c;
+  font-size: 11px;
+  font-weight: 620;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.snoozed-thread-group__toggle:hover {
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.snoozed-thread-group__chevron {
+  width: 14px;
+  height: 14px;
+  display: grid;
+  place-items: center;
+  transition: transform 140ms ease;
+}
+
+.snoozed-thread-group__chevron--open {
+  transform: rotate(0deg);
+}
+
+.snoozed-thread-group__toggle:not([aria-expanded="true"]) .snoozed-thread-group__chevron {
+  transform: rotate(-90deg);
+}
+
+.snoozed-thread-group__count {
+  color: #9ba3b4;
+}
+
+.snoozed-thread-group__show-all {
+  display: block;
+  width: 100%;
+  padding: 4px 8px 4px 32px;
+  border: none;
+  background: transparent;
+  color: var(--muted-strong);
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.snoozed-thread-group__show-all:hover {
+  color: var(--fg);
+}
+
+.session-list--snoozed {
+  padding-left: 0;
+}
+
+/* ── Snooze picker ────────────────────────────────── */
+
+.snooze-picker {
+  position: relative;
+}
+
+.snooze-picker__popover {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 100;
+  margin-top: 4px;
+  padding: 10px;
+  background: var(--surface-overlay);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 160px;
+}
+
+.snooze-picker__row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.snooze-picker__input {
+  width: 48px;
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-size: 13px;
+  background: var(--surface);
+  color: var(--fg);
+  text-align: center;
+}
+
+.snooze-picker__select {
+  flex: 1;
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-size: 13px;
+  background: var(--surface);
+  color: var(--fg);
+}
+
+.snooze-picker__confirm {
+  width: 100%;
+  padding: 6px;
+  font-size: 13px;
+}
+
+.session-row__action--snooze {
+  opacity: 0;
+  transition: opacity 100ms ease;
+}
+
+.session-row:hover .session-row__action--snooze {
+  opacity: 1;
 }
 
 .sidebar__footer {
@@ -1457,6 +1645,90 @@
 }
 
 :root.dark .archived-thread-group__toggle:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+:root.dark .snoozed-thread-group__toggle:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+/* ── To Test section ────────────────────────────────── */
+
+.to-test-thread-group {
+  padding-left: 24px;
+  display: grid;
+  gap: 4px;
+}
+
+.to-test-thread-group__toggle {
+  min-height: 28px;
+  padding: 2px 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  border-radius: 999px;
+  color: #7f889c;
+  font-size: 11px;
+  font-weight: 620;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.to-test-thread-group__toggle:hover {
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.to-test-thread-group__chevron {
+  width: 14px;
+  height: 14px;
+  display: grid;
+  place-items: center;
+  transition: transform 140ms ease;
+}
+
+.to-test-thread-group__chevron--open {
+  transform: rotate(0deg);
+}
+
+.to-test-thread-group__toggle:not([aria-expanded="true"]) .to-test-thread-group__chevron {
+  transform: rotate(-90deg);
+}
+
+.to-test-thread-group__count {
+  color: #9ba3b4;
+}
+
+.to-test-thread-group__show-all {
+  display: block;
+  width: 100%;
+  padding: 4px 8px 4px 32px;
+  border: none;
+  background: transparent;
+  color: var(--muted-strong);
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.to-test-thread-group__show-all:hover {
+  color: var(--fg);
+}
+
+.session-list--to-test {
+  padding-left: 0;
+}
+
+.session-row__action--to-test {
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.session-row:hover .session-row__action--to-test {
+  opacity: 1;
+}
+
+:root.dark .to-test-thread-group__toggle:hover {
   background: rgba(255, 255, 255, 0.04);
 }
 

@@ -30,6 +30,7 @@ import {
   generatePrDraft,
   getWorkspacePrInfo,
 } from "./pr-service";
+import { featureDone as featureDoneOrchestrator } from "./feature-done";
 import { listWorkspaceFiles } from "./workspace-review";
 import { MAIN_DEV_RELOAD_MARKER } from "./dev-reload-main-probe";
 import { importLoginShellEnv } from "./login-shell-env";
@@ -951,6 +952,10 @@ app.whenReady().then(async () => {
       selectSession: (_event: unknown, target: WorkspaceSessionTarget) => store.selectSession(target),
       archiveSession: (_event: unknown, target: WorkspaceSessionTarget) => store.archiveSession(target),
       unarchiveSession: (_event: unknown, target: WorkspaceSessionTarget) => store.unarchiveSession(target),
+      snoozeSession: (_event: unknown, target: WorkspaceSessionTarget, until: string) => store.snoozeSession(target, until),
+      unsnoozeSession: (_event: unknown, target: WorkspaceSessionTarget) => store.unsnoozeSession(target),
+      markToTestSession: (_event: unknown, target: WorkspaceSessionTarget) => store.markToTestSession(target),
+      unmarkToTestSession: (_event: unknown, target: WorkspaceSessionTarget) => store.unmarkToTestSession(target),
       archiveAllNonRunningSessions: (_event: unknown, workspaceId: string, olderThanMs?: number) =>
         store.archiveAllNonRunningSessions(workspaceId, olderThanMs),
       createSession: (_event: unknown, input: CreateSessionInput) => store.createSession(input),
@@ -1172,6 +1177,40 @@ app.whenReady().then(async () => {
         const getApiKey = (providerId: string) => store.getProviderApiKey(providerId);
         return executeCommitPush(workspacePath, modelString, getApiKey);
       },
+      listBranches: async (_event: unknown, workspaceId: string) => {
+        const workspacePath = store.getWorkspacePath(workspaceId);
+        if (!workspacePath) return { branches: [], currentBranch: "", isDirty: false };
+        const { execGit } = await import("./git-runner.js");
+        // Get local branches
+        const local = await execGit(["branch", "--format=%(refname:short)|%(HEAD)"], workspacePath);
+        const allRemote = await execGit(["branch", "-r", "--format=%(refname:short)"], workspacePath);
+        const branches: Array<{ name: string; isCurrent: boolean; isRemote: boolean }> = [];
+        let currentBranch = "";
+        if (local.code === 0) {
+          for (const line of local.stdout.split("\n")) {
+            const [name, head] = line.split("|");
+            const trimmed = name?.trim();
+            if (trimmed) {
+              const isCurrent = head === "*";
+              if (isCurrent) currentBranch = trimmed;
+              branches.push({ name: trimmed, isCurrent, isRemote: false });
+            }
+          }
+        }
+        if (allRemote.code === 0) {
+          const localNames = new Set(branches.map((b) => b.name));
+          for (const line of allRemote.stdout.split("\n")) {
+            const name = line.trim();
+            if (name && !name.includes("HEAD") && !localNames.has(name.replace("origin/", ""))) {
+              branches.push({ name, isCurrent: false, isRemote: true });
+            }
+          }
+        }
+        // Detect dirty working tree
+        const status = await execGit(["status", "--porcelain"], workspacePath);
+        const isDirty = status.code === 0 && status.stdout.trim().length > 0;
+        return { branches, currentBranch, isDirty };
+      },
       getWorkspacePrInfo: async (_event: unknown, workspaceId: string) => {
         const workspacePath = store.getWorkspacePath(workspaceId);
         if (!workspacePath) throw new Error(`Unknown workspace: ${workspaceId}`);
@@ -1188,6 +1227,17 @@ app.whenReady().then(async () => {
         const workspacePath = store.getWorkspacePath(workspaceId);
         if (!workspacePath) return { success: false, message: `Unknown workspace: ${workspaceId}` };
         return createPullRequest(workspacePath, input);
+      },
+      featureDone: async (_event: unknown, input: { workspaceId: string; threadTitle: string; modelString: string }) => {
+        const workspacePath = store.getWorkspacePath(input.workspaceId);
+        if (!workspacePath) return { status: "error" as const, message: `Unknown workspace: ${input.workspaceId}` };
+        const getApiKey = (providerId: string) => store.getProviderApiKey(providerId);
+        return featureDoneOrchestrator({
+          workspacePath,
+          threadTitle: input.threadTitle,
+          modelString: input.modelString,
+          getApiKey,
+        });
       },
 
       // -- Chat --
@@ -1458,11 +1508,27 @@ app.whenReady().then(async () => {
         return store.getState();
       },
       automationFireNow: async (_event: unknown, id: string) => {
-        // Fire in background — don't block the IPC response. The scheduler's
-        // startAutomationThread → refreshState → emit chain will push the new
-        // session to the renderer via the onStateChanged subscription once
-        // worktree creation and session setup complete.
-        void automationScheduler.fireNow(id);
+        // Look up the automation and fire in background with select:true so
+        // the new session is navigated to immediately (like creating a thread).
+        const automation = automationStore.getById(id);
+        if (automation) {
+          void store.startAutomationThread({
+            rootWorkspaceId: automation.workspaceId,
+            environment: automation.environment,
+            prompt: automation.prompt,
+            name: automation.name,
+            provider: automation.model?.provider,
+            modelId: automation.model?.modelId,
+            thinkingLevel: automation.thinkingLevel,
+            select: true,
+          }).then(async () => {
+            await automationStore.markRan(id);
+          }).then(() => {
+            void store.refreshState();
+          }).catch((error) => {
+            console.error(`[automation-fire-now] Failed:`, error);
+          });
+        }
         return store.getState();
       },
 

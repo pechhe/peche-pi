@@ -39,6 +39,9 @@ export interface SessionSnapshot {
   readonly status: SessionStatus;
   readonly updatedAt: Timestamp;
   readonly archivedAt?: Timestamp;
+  readonly snoozedUntil?: Timestamp;
+  readonly toTestAt?: Timestamp;
+  readonly toTestNote?: string;
   readonly preview?: string;
   readonly config?: SessionConfig;
   readonly runningRunId?: RunId;
@@ -373,6 +376,10 @@ export interface SessionDriver {
   openSession(sessionRef: SessionRef): Promise<SessionSnapshot>;
   archiveSession(sessionRef: SessionRef): Promise<void>;
   unarchiveSession(sessionRef: SessionRef): Promise<void>;
+  snoozeSession(sessionRef: SessionRef, until: Timestamp): Promise<void>;
+  unsnoozeSession(sessionRef: SessionRef): Promise<void>;
+  markToTest(sessionRef: SessionRef): Promise<void>;
+  unmarkToTest(sessionRef: SessionRef): Promise<void>;
   sendUserMessage(sessionRef: SessionRef, input: SessionMessageInput): Promise<void>;
   replaceQueuedMessages(sessionRef: SessionRef, messages: readonly SessionQueuedMessage[]): Promise<void>;
   cancelCurrentRun(sessionRef: SessionRef): Promise<void>;

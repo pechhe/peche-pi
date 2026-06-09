@@ -222,6 +222,82 @@ export async function unarchiveSession(
   });
 }
 
+export async function snoozeSession(
+  store: WorkspaceStore,
+  target: WorkspaceSessionTarget,
+  until: string,
+): Promise<DesktopAppState> {
+  await store.initialize();
+
+  return store.withErrorHandling(async () => {
+    const sessionRef = toSessionRef(target);
+    store.clearPendingAutoTitle(sessionRef);
+    await store.driver.snoozeSession(sessionRef, until);
+    return store.refreshState({
+      selectedWorkspaceId: store.state.selectedWorkspaceId,
+      selectedSessionId: store.state.selectedSessionId,
+      clearLastError: true,
+      activeView: "threads",
+    });
+  });
+}
+
+export async function unsnoozeSession(
+  store: WorkspaceStore,
+  target: WorkspaceSessionTarget,
+): Promise<DesktopAppState> {
+  await store.initialize();
+
+  return store.withErrorHandling(async () => {
+    const sessionRef = toSessionRef(target);
+    store.clearPendingAutoTitle(sessionRef);
+    await store.driver.unsnoozeSession(sessionRef);
+    return store.refreshState({
+      selectedWorkspaceId: store.state.selectedWorkspaceId,
+      selectedSessionId: store.state.selectedSessionId,
+      clearLastError: true,
+      activeView: "threads",
+    });
+  });
+}
+
+export async function toTestSession(
+  store: WorkspaceStore,
+  target: WorkspaceSessionTarget,
+): Promise<DesktopAppState> {
+  await store.initialize();
+
+  return store.withErrorHandling(async () => {
+    const sessionRef = toSessionRef(target);
+    store.clearPendingAutoTitle(sessionRef);
+    await store.driver.markToTest(sessionRef);
+    return store.refreshState({
+      selectedWorkspaceId: store.state.selectedWorkspaceId,
+      selectedSessionId: store.state.selectedSessionId,
+      clearLastError: true,
+      activeView: "threads",
+    });
+  });
+}
+
+export async function unmarkToTestSession(
+  store: WorkspaceStore,
+  target: WorkspaceSessionTarget,
+): Promise<DesktopAppState> {
+  await store.initialize();
+
+  return store.withErrorHandling(async () => {
+    const sessionRef = toSessionRef(target);
+    store.clearPendingAutoTitle(sessionRef);
+    await store.driver.unmarkToTest(sessionRef);
+    return store.refreshState({
+      selectedWorkspaceId: store.state.selectedWorkspaceId,
+      selectedSessionId: store.state.selectedSessionId,
+      clearLastError: true,
+    });
+  });
+}
+
 export async function createSession(store: WorkspaceStore, input: CreateSessionInput): Promise<DesktopAppState> {
   await store.initialize();
   const ws = store.workspaceRefFromState(input.workspaceId);

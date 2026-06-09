@@ -23,6 +23,12 @@ export function QueuedComposerMessages({
     return null;
   }
 
+  // Filter out steer messages — they appear in the transcript, not the queue.
+  const visibleMessages = messages.filter((message) => message.mode !== "steer");
+  if (visibleMessages.length === 0 && !editingQueuedMessageId) {
+    return null;
+  }
+
   return (
     <div className="queued-composer-messages" data-testid="queued-composer-messages">
       {editingQueuedMessageId ? (
@@ -33,13 +39,16 @@ export function QueuedComposerMessages({
           </button>
         </div>
       ) : null}
-      {messages.map((message) => (
+      {visibleMessages.map((message, index) => (
         <div
           className={`queued-composer-message ${message.id === editingQueuedMessageId ? "queued-composer-message--editing" : ""}`}
           data-testid="queued-composer-message"
           key={message.id}
         >
           <div className="queued-composer-message__header">
+            <span className="queued-composer-message__index" aria-hidden="true">
+              {index + 1}
+            </span>
             {message.text ? <div className="queued-composer-message__text">{message.text}</div> : null}
             <div className="queued-composer-message__actions">
               {message.mode !== "steer" ? (
@@ -57,8 +66,8 @@ export function QueuedComposerMessages({
           </div>
           {message.attachments.length > 0 ? (
             <div className="queued-composer-message__attachments">
-              {message.attachments.map((attachment, index) => (
-                <QueuedAttachmentPreview attachment={attachment} key={`${message.id}:${attachment.name}:${index}`} />
+              {message.attachments.map((attachment, aIndex) => (
+                <QueuedAttachmentPreview attachment={attachment} key={`${message.id}:${attachment.name}:${aIndex}`} />
               ))}
             </div>
           ) : null}

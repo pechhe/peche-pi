@@ -42,6 +42,9 @@ declare module "@pi-gui/catalogs" {
     title: string;
     updatedAt: string;
     archivedAt?: string;
+    snoozedUntil?: string;
+    toTestAt?: string;
+    toTestNote?: string;
     previewSnippet?: string;
     sessionFilePath?: string;
     status: SessionStatus;

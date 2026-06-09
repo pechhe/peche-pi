@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type RefObject } from "react";
 import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
-import type { ComposerAttachment, NewThreadEnvironment, WorkspaceRecord } from "./desktop-state";
+import type { ComposerAttachment, NewThreadEnvironment, WorkspaceRecord, WorktreeRecord } from "./desktop-state";
+import type { BranchInfo } from "./ipc";
 import type { ComposerMode } from "./composer-mode";
 import { ComposerControlRow } from "./composer-control-row";
 import { ArrowUpIcon, ChevronDownIcon, MonitorIcon, PiLogoMark, WorktreeIcon } from "./icons";
@@ -49,6 +50,16 @@ interface NewThreadViewProps {
   readonly selectedMentionIndex: number;
   readonly onChangePrompt: (prompt: string) => void;
   readonly onSelectEnvironment: (environment: NewThreadEnvironment) => void;
+  readonly branches?: readonly BranchInfo[];
+  readonly selectedBranch?: string;
+  readonly onSelectBranch?: (branch: string) => void;
+  readonly currentBranch?: string;
+  readonly isDirty?: boolean;
+  readonly existingWorktrees?: readonly WorktreeRecord[];
+  readonly worktreeMode?: "new" | "existing";
+  readonly onSelectWorktreeMode?: (mode: "new" | "existing") => void;
+  readonly selectedExistingWorktreeId?: string;
+  readonly onSelectExistingWorktree?: (worktreeId: string) => void;
   readonly onSetModel: (provider: string, modelId: string) => void;
   readonly onSetThinking: (level: string) => void;
   readonly onSetCavemanLevel: (level: CavemanLevel) => void;
@@ -65,6 +76,115 @@ interface NewThreadViewProps {
   readonly onSelectMention: (filePath: string) => void;
   readonly onRemoveAttachment: (attachmentId: string) => void;
   readonly onSubmit: (prompt: string) => void;
+}
+
+function BranchGlyph({ dot = false }: { dot?: boolean }) {
+  return (
+    <svg className="branch-picker__glyph" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <circle cx="4" cy="3.5" r="1.6" stroke="currentColor" strokeWidth="1.3" />
+      <circle cx="4" cy="12.5" r="1.6" stroke="currentColor" strokeWidth="1.3" />
+      <circle cx="12" cy="5.5" r="1.6" stroke="currentColor" strokeWidth="1.3" />
+      <path d="M4 5v6" stroke="currentColor" strokeWidth="1.3" />
+      <path d="M4 8.5c0-2 1.5-3 4-3" stroke="currentColor" strokeWidth="1.3" />
+      {dot ? <circle cx="6.6" cy="3" r="1.7" fill="#f5a623" /> : null}
+    </svg>
+  );
+}
+
+function BranchPicker({
+  branches,
+  selectedBranch,
+  currentBranch,
+  isDirty,
+  onSelectBranch,
+}: {
+  readonly branches: readonly BranchInfo[];
+  readonly selectedBranch: string;
+  readonly currentBranch: string;
+  readonly isDirty: boolean;
+  readonly onSelectBranch: (branch: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const label = selectedBranch || currentBranch || "branch";
+  const localStateLabel = currentBranch || "current";
+  const select = (name: string) => {
+    onSelectBranch(name);
+    setOpen(false);
+  };
+
+  return (
+    <div className="branch-picker" ref={rootRef}>
+      <button
+        className="branch-picker__trigger"
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+      >
+        <BranchGlyph />
+        <span className="branch-picker__trigger-label">{label}</span>
+        <ChevronDownIcon />
+      </button>
+      {open ? (
+        <div className="branch-picker__popover" role="menu">
+          {currentBranch ? (
+            <>
+              <div className="branch-picker__section-label">Local file state</div>
+              <button
+                className={`branch-picker__item ${selectedBranch === currentBranch ? "branch-picker__item--active" : ""}`}
+                type="button"
+                role="menuitem"
+                onClick={() => select(currentBranch)}
+              >
+                <BranchGlyph dot={isDirty} />
+                <span className="branch-picker__item-text">
+                  <span className="branch-picker__item-name">{localStateLabel}</span>
+                  {isDirty ? (
+                    <span className="branch-picker__item-sub">with local code changes</span>
+                  ) : null}
+                </span>
+              </button>
+            </>
+          ) : null}
+          <div className="branch-picker__section-label">Branches</div>
+          {branches.map((b) => (
+            <button
+              key={b.name}
+              className={`branch-picker__item ${selectedBranch === b.name ? "branch-picker__item--active" : ""}`}
+              type="button"
+              role="menuitem"
+              onClick={() => select(b.name)}
+            >
+              <BranchGlyph />
+              <span className="branch-picker__item-text">
+                <span className="branch-picker__item-name">
+                  {b.name}{b.isRemote ? " (remote)" : ""}
+                </span>
+              </span>
+              {b.name === currentBranch ? <span className="branch-picker__check">✓</span> : null}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 export function NewThreadView({
@@ -97,6 +217,16 @@ export function NewThreadView({
   selectedMentionIndex,
   onChangePrompt,
   onSelectEnvironment,
+  branches,
+  selectedBranch,
+  onSelectBranch,
+  currentBranch,
+  isDirty,
+  existingWorktrees,
+  worktreeMode,
+  onSelectWorktreeMode,
+  selectedExistingWorktreeId,
+  onSelectExistingWorktree,
   onSetModel,
   onSetThinking,
   onSetCavemanLevel,
@@ -245,6 +375,61 @@ export function NewThreadView({
                 </button>
               </span>
             </div>
+
+            {/* Worktree sub-options: new vs existing (only when Worktree env) */}
+            {environment === "worktree" && existingWorktrees && existingWorktrees.length > 0 && onSelectWorktreeMode ? (
+              <div className="new-thread__option">
+                <span className="new-thread__option-label">Worktree</span>
+                <span className="new-thread__env-group">
+                  <button
+                    className={`new-thread__env ${worktreeMode === "new" ? "new-thread__env--active" : ""}`}
+                    type="button"
+                    onClick={() => onSelectWorktreeMode("new")}
+                  >
+                    <span>New</span>
+                  </button>
+                  <button
+                    className={`new-thread__env ${worktreeMode === "existing" ? "new-thread__env--active" : ""}`}
+                    type="button"
+                    onClick={() => onSelectWorktreeMode("existing")}
+                  >
+                    <span>Existing</span>
+                  </button>
+                </span>
+              </div>
+            ) : null}
+
+            {/* Existing worktree picker */}
+            {environment === "worktree" && worktreeMode === "existing" && existingWorktrees && onSelectExistingWorktree ? (
+              <div className="new-thread__option">
+                <span className="new-thread__option-label">Pick worktree</span>
+                <select
+                  className="new-thread__select"
+                  value={selectedExistingWorktreeId || ""}
+                  onChange={(e) => onSelectExistingWorktree(e.target.value)}
+                >
+                  {existingWorktrees.map((wt) => (
+                    <option key={wt.id} value={wt.id}>
+                      {wt.name}{wt.branchName ? ` (${wt.branchName})` : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
+
+            {/* Branch selector — always shown, independent of environment */}
+            {branches && branches.length > 0 && onSelectBranch ? (
+              <div className="new-thread__option">
+                <span className="new-thread__option-label">Branch</span>
+                <BranchPicker
+                  branches={branches}
+                  selectedBranch={selectedBranch || ""}
+                  currentBranch={currentBranch || ""}
+                  isDirty={isDirty ?? false}
+                  onSelectBranch={onSelectBranch}
+                />
+              </div>
+            ) : null}
           </div>
         ) : null}
 

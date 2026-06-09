@@ -62,6 +62,7 @@ export interface KeyboardShortcutDeps {
   readonly onOpenExtensions: (workspaceId?: string) => void;
   readonly onOpenAutomations: (workspaceId?: string) => void;
   readonly onOpenContext: (workspaceId?: string) => void;
+  readonly onOpenTesting: () => void;
   readonly onCopyLastResponse: () => void;
 }
 
@@ -103,6 +104,7 @@ export function useKeyboardShortcuts({
   onOpenExtensions,
   onOpenAutomations,
   onOpenContext,
+  onOpenTesting,
   onCopyLastResponse,
 }: KeyboardShortcutDeps): void {
   // Sidebar keyboard navigation state (Cmd+Shift+Arrow)
@@ -116,7 +118,12 @@ export function useKeyboardShortcuts({
     const cycleThinking = () => {
       const session = selectedSession;
       const workspace = selectedWorkspace;
-      if (!session || !workspace || !api) return;
+      if (!session || !workspace || !api) {
+        // No session yet (new-thread view): delegate to the model selector
+        // which owns the pre-session thinking level via onSetThinking.
+        modelSelectorRef.current?.cycleThinkingLevel(1);
+        return;
+      }
       const currentLevel = session.config?.thinkingLevel ?? "off";
       const runtime = snapshot?.runtimeByWorkspace[workspace.id];
       // Resolve the effective model (default model when the session has no
@@ -204,6 +211,7 @@ export function useKeyboardShortcuts({
       ["Digit3", () => { playRotary(); onOpenExtensions(selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id); }],
       ["Digit4", () => { playRotary(); onOpenAutomations(selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id); }],
       ["Digit5", () => { playRotary(); onOpenContext(selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id); }],
+      ["Digit6", () => { playRotary(); onOpenTesting(); }],
       ["c", () => { onCopyLastResponse(); }],
     ]);
 
@@ -383,6 +391,7 @@ export function useKeyboardShortcuts({
     onOpenExtensions,
     onOpenAutomations,
     onOpenContext,
+    onOpenTesting,
     onCopyLastResponse,
   ]);
 }
