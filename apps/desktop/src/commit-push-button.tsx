@@ -31,7 +31,7 @@ interface GitInfo {
   readonly changedCount: number;
 }
 
-type ButtonMode = "commit-push" | "create-pr" | "view-pr";
+type ButtonMode = "commit-push" | "create-pr" | "view-pr" | "merged-pr";
 
 const SHORTCUT_EVENT = "pi:commit-and-push";
 
@@ -143,14 +143,20 @@ export function CommitPushButton({
   const hasChanges = gitInfo.changedCount > 0;
   const ghAvailable = prInfo?.ghAvailable ?? false;
   const prState = prInfo?.prState ?? "none";
+  // merged: the branch's PR is already in main and the tree is clean — there's
+  // nothing to PR, so show a passive link to the merged PR rather than
+  // re-offering "Create PR". `closed` (PR closed unmerged) still routes to
+  // create-pr since opening a fresh PR is the expected next step there.
   const mode: ButtonMode = hasChanges || !ghAvailable
     ? "commit-push"
     : prState === "open"
       ? "view-pr"
-      : "create-pr";
+      : prState === "merged"
+        ? "merged-pr"
+        : "create-pr";
   const isPill = mode !== "commit-push" || hasChanges;
   const containerClass =
-    mode === "view-pr"
+    mode === "view-pr" || mode === "merged-pr"
       ? "commit-push commit-push--view-pr"
       : mode === "create-pr"
         ? "commit-push commit-push--create-pr"
@@ -168,13 +174,15 @@ export function CommitPushButton({
       setPrDialogOpen(true);
       return;
     }
-    if (mode === "view-pr" && prInfo?.prUrl) {
+    if ((mode === "view-pr" || mode === "merged-pr") && prInfo?.prUrl) {
       void api.openExternal(prInfo.prUrl);
     }
   };
 
   const primaryLabel =
-    mode === "view-pr"
+    mode === "merged-pr"
+      ? prInfo?.prNumber ? `View PR #${prInfo.prNumber} (merged)` : "View merged PR"
+      : mode === "view-pr"
       ? prInfo?.prNumber ? `View PR #${prInfo.prNumber}` : "View PR"
       : mode === "create-pr"
         ? "Create PR"
@@ -183,7 +191,9 @@ export function CommitPushButton({
           : "Commit & Push";
 
   const tooltipText =
-    mode === "view-pr"
+    mode === "merged-pr"
+      ? prInfo?.prNumber ? `Merged — view PR #${prInfo.prNumber}` : "Merged — view PR"
+      : mode === "view-pr"
       ? prInfo?.prNumber ? `View PR #${prInfo.prNumber}` : "View PR"
       : mode === "create-pr"
         ? "Create pull request"
