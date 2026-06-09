@@ -55,14 +55,16 @@ test("readPersistedUiState keeps known versions and drops unknown ones", async (
 });
 
 test("readPersistedUiState normalizes composerDeviceMode enum values", async () => {
-  for (const mode of ["off", "screen", "modular", "modular-metal", "screen-neon"]) {
+  for (const mode of ["modular-cream", "modular-metal"]) {
     const result = await readWith({ composerDeviceMode: mode });
     assert.equal(result.composerDeviceMode, mode);
   }
 });
 
-test("readPersistedUiState migrates legacy boolean composerDeviceMode", async () => {
-  assert.equal((await readWith({ composerDeviceMode: true })).composerDeviceMode, "screen");
+test("readPersistedUiState drops removed composerDeviceMode values", async () => {
+  assert.equal((await readWith({ composerDeviceMode: "off" })).composerDeviceMode, undefined);
+  assert.equal((await readWith({ composerDeviceMode: "screen" })).composerDeviceMode, undefined);
+  assert.equal((await readWith({ composerDeviceMode: true })).composerDeviceMode, undefined);
   assert.equal((await readWith({ composerDeviceMode: false })).composerDeviceMode, undefined);
   assert.equal((await readWith({ composerDeviceMode: "bogus" })).composerDeviceMode, undefined);
   assert.equal((await readWith({})).composerDeviceMode, undefined);
@@ -115,12 +117,10 @@ test("readPersistedUiState type-guards boolean fields", async () => {
   const good = await readWith({
     sidebarCollapsed: true,
     allowMultiple: false,
-    enableTransparency: true,
     transcriptVerbose: false,
   });
   assert.equal(good.sidebarCollapsed, true);
   assert.equal(good.allowMultiple, false);
-  assert.equal(good.enableTransparency, true);
   assert.equal(good.transcriptVerbose, false);
 
   const bad = await readWith({ sidebarCollapsed: "yes", allowMultiple: 1 });

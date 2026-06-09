@@ -79,6 +79,11 @@ export class DesktopSessionState {
       activeReasoningMessageBySession: this.sessionState.activeReasoningMessageBySession,
     });
 
+    const eventSnapshot = snapshotForEvent(event);
+    if (eventSnapshot?.contextUsage) {
+      this.sessionState.contextUsageBySession.set(key, eventSnapshot.contextUsage);
+    }
+
     state = applySessionEventState(
       state,
       event,

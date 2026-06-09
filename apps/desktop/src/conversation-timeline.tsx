@@ -5,6 +5,7 @@ import { TimelineItem } from "./timeline-item";
 import { WorkingLabel } from "./working-label";
 import { groupTranscript, type TimelineRow } from "./timeline-grouping";
 import type { LiveEditStats, UndoEditOp, UndoEditsResult } from "./ipc";
+import { buildTurnUndoOpsMap } from "./timeline-item";
 import { playButtonClick } from "./button-click-sound";
 
 const OVERSCAN_PX = 720;
@@ -38,6 +39,8 @@ interface ConversationTimelineProps {
   readonly onViewFileInDiff?: (path: string) => void;
   readonly onUndoEdits?: (ops: readonly UndoEditOp[]) => Promise<UndoEditsResult>;
   readonly onRedoEdits?: (ops: readonly UndoEditOp[]) => Promise<UndoEditsResult>;
+  /** Called when the collected all-undo-ops changes (for thread-level undo). */
+  readonly onAllUndoOpsChange?: (ops: readonly UndoEditOp[]) => void;
   readonly isRunning: boolean;
   // Label for the bottom live indicator. Defaults to "Thinking…"; the
   // new-thread placeholder passes "Preparing your thread…" so going live is a
@@ -65,6 +68,7 @@ export function ConversationTimeline({
   onViewFileInDiff,
   onUndoEdits,
   onRedoEdits,
+  onAllUndoOpsChange,
   isRunning,
   workingLabel = "Thinking…",
   highlightedMessageId,
@@ -75,6 +79,28 @@ export function ConversationTimeline({
   // Re-runs whenever the transcript reference changes (the main process clones
   // on every push, so identity changes per event).
   const { rows: timelineRows } = useMemo(() => groupTranscript(transcript), [transcript]);
+
+  // Map from edited-files card ID → combined undo ops for that entire turn.
+  // Lets the Undo button on any card revert all cards since the last user message.
+  const turnUndoOpsMap = useMemo(() => buildTurnUndoOpsMap(timelineRows), [timelineRows]);
+  const turnUndoOps = useMemo(() => ({
+    byEditedFilesId: turnUndoOpsMap.byEditedFilesId,
+    byActivityId: turnUndoOpsMap.byActivityId,
+  }), [turnUndoOpsMap]);
+
+  // Report all unique undo ops to parent for thread-level "Revert All".
+  useEffect(() => {
+    if (!onAllUndoOpsChange) return;
+    const seen = new Set<readonly UndoEditOp[]>();
+    const allOps: UndoEditOp[] = [];
+    for (const ops of turnUndoOpsMap.byEditedFilesId.values()) {
+      if (!seen.has(ops)) {
+        seen.add(ops);
+        allOps.push(...ops);
+      }
+    }
+    onAllUndoOpsChange(allOps);
+  }, [turnUndoOpsMap, onAllUndoOpsChange]);
 
   // Giant prose blocks and attachment-heavy rows routinely blow past the estimator,
   // so keep those transcripts on the exact DOM path instead of restoring to a fake bottom.
@@ -347,6 +373,7 @@ export function ConversationTimeline({
           onViewFileInDiff={onViewFileInDiff}
           onUndoEdits={onUndoEdits}
           onRedoEdits={onRedoEdits}
+          turnUndoOps={turnUndoOps}
           isRunning={showThinkingIndicator}
           streamingAssistantId={streamingAssistantId}
           onStreamingCaughtUp={handleStreamingCaughtUp}
@@ -372,6 +399,7 @@ export function ConversationTimeline({
               onViewFileInDiff={onViewFileInDiff}
               onUndoEdits={onUndoEdits}
               onRedoEdits={onRedoEdits}
+              turnUndoOps={turnUndoOps}
               streamingAssistantId={streamingAssistantId}
               onStreamingCaughtUp={handleStreamingCaughtUp}
               streamingReasoningId={streamingReasoningId}
@@ -413,6 +441,7 @@ function VirtualizedTranscriptList({
   onViewFileInDiff,
   onUndoEdits,
   onRedoEdits,
+  turnUndoOps,
   isRunning,
   streamingAssistantId,
   onStreamingCaughtUp,
@@ -438,6 +467,7 @@ function VirtualizedTranscriptList({
   readonly onViewFileInDiff?: (path: string) => void;
   readonly onUndoEdits?: (ops: readonly UndoEditOp[]) => Promise<UndoEditsResult>;
   readonly onRedoEdits?: (ops: readonly UndoEditOp[]) => Promise<UndoEditsResult>;
+  readonly turnUndoOps?: { byEditedFilesId: ReadonlyMap<string, readonly UndoEditOp[]>; byActivityId: ReadonlyMap<string, readonly UndoEditOp[]> };
   readonly isRunning: boolean;
   readonly streamingAssistantId?: string;
   readonly onStreamingCaughtUp?: (messageId: string) => void;
@@ -527,6 +557,7 @@ function VirtualizedTranscriptList({
             onViewFileInDiff={onViewFileInDiff}
             onUndoEdits={onUndoEdits}
             onRedoEdits={onRedoEdits}
+            turnUndoOps={turnUndoOps}
             streamingAssistantId={streamingAssistantId}
             onStreamingCaughtUp={onStreamingCaughtUp}
             streamingReasoningId={streamingReasoningId}
@@ -571,6 +602,7 @@ interface MeasuredTimelineItemProps {
   readonly isHighlighted?: boolean;
   readonly highlightQuery?: string;
   readonly liveEditStats?: ReadonlyMap<string, LiveEditStats>;
+  readonly turnUndoOps?: { byEditedFilesId: ReadonlyMap<string, readonly UndoEditOp[]>; byActivityId: ReadonlyMap<string, readonly UndoEditOp[]> };
 }
 
 const MeasuredTimelineItem = memo(function MeasuredTimelineItem({
@@ -594,6 +626,7 @@ const MeasuredTimelineItem = memo(function MeasuredTimelineItem({
   isHighlighted,
   highlightQuery,
   liveEditStats,
+  turnUndoOps,
 }: MeasuredTimelineItemProps) {
   const rowRef = useRef<HTMLDivElement | null>(null);
 
@@ -644,6 +677,7 @@ const MeasuredTimelineItem = memo(function MeasuredTimelineItem({
         liveThinkingSectionId={liveThinkingSectionId}
         highlightQuery={isHighlighted ? highlightQuery : undefined}
         liveEditStats={liveEditStats}
+        turnUndoOps={turnUndoOps}
       />
     </div>
   );
@@ -742,6 +776,7 @@ function sameMeasuredTimelineItemProps(
     previous.onViewFileInDiff !== next.onViewFileInDiff ||
     previous.onUndoEdits !== next.onUndoEdits ||
     previous.onRedoEdits !== next.onRedoEdits ||
+    previous.turnUndoOps !== next.turnUndoOps ||
     previous.onStreamingCaughtUp !== next.onStreamingCaughtUp
   ) {
     return false;

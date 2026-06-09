@@ -155,6 +155,21 @@ function selectionAfterArchiving(state: DesktopAppState, target: WorkspaceSessio
     };
   }
 
+  // Use the caller's hint if the session still exists and isn't the one being archived.
+  if (target.selectNextSessionId) {
+    const hintedWorkspace = state.workspaces.find((w) =>
+      w.sessions.some((s) => s.id === target.selectNextSessionId && !s.archivedAt),
+    );
+    if (hintedWorkspace) {
+      return {
+        selectedWorkspaceId: hintedWorkspace.id,
+        selectedSessionId: target.selectNextSessionId,
+        clearLastError: true,
+        activeView: "threads",
+      };
+    }
+  }
+
   const rootWorkspaceId =
     targetWorkspace.kind === "worktree" ? (targetWorkspace.rootWorkspaceId ?? targetWorkspace.id) : targetWorkspace.id;
   const rankedCandidates = state.workspaces

@@ -51,6 +51,8 @@ import {
   type DesktopAppState,
   type NotificationPreferences,
   type ComposerDeviceMode,
+  type StreamRevealMode,
+  type StreamRevealSpeed,
   type PlanModeIdeologySetting,
   type ThreadTransitionSettings,
   type ThemeMode,
@@ -490,7 +492,7 @@ export class DesktopAppStore implements AppStoreInternals {
 
   async submitComposer(
     textInput: string,
-    options?: { readonly deliverAs?: "steer" | "followUp"; readonly mode?: ComposerMode },
+    options?: { readonly deliverAs?: "steer" | "followUp"; readonly mode?: ComposerMode; readonly isFirstPlanPrompt?: boolean },
   ): Promise<DesktopAppState> {
     return composer.submitComposer(this, textInput, options);
   }
@@ -1102,17 +1104,6 @@ Return ONLY a JSON array of configuration fields, no explanation.`;
     }
   }
 
-  async setEnableTransparency(enabled: boolean): Promise<DesktopAppState> {
-    await this.initialize();
-    const next = reduce(this.state, { type: "settings/setEnableTransparency", enableTransparency: enabled });
-    if (next === this.state) {
-      return structuredClone(this.state);
-    }
-    this.state = next;
-    await this.persistUiState();
-    return this.emit();
-  }
-
   async setTranscriptVerbose(enabled: boolean): Promise<DesktopAppState> {
     await this.initialize();
     const next = reduce(this.state, { type: "settings/setTranscriptVerbose", transcriptVerbose: enabled });
@@ -1127,6 +1118,28 @@ Return ONLY a JSON array of configuration fields, no explanation.`;
   async setComposerDeviceMode(mode: ComposerDeviceMode): Promise<DesktopAppState> {
     await this.initialize();
     const next = reduce(this.state, { type: "settings/setComposerDeviceMode", composerDeviceMode: mode });
+    if (next === this.state) {
+      return structuredClone(this.state);
+    }
+    this.state = next;
+    await this.persistUiState();
+    return this.emit();
+  }
+
+  async setStreamReveal(mode: StreamRevealMode): Promise<DesktopAppState> {
+    await this.initialize();
+    const next = reduce(this.state, { type: "settings/setStreamReveal", streamReveal: mode });
+    if (next === this.state) {
+      return structuredClone(this.state);
+    }
+    this.state = next;
+    await this.persistUiState();
+    return this.emit();
+  }
+
+  async setStreamRevealSpeed(speed: StreamRevealSpeed): Promise<DesktopAppState> {
+    await this.initialize();
+    const next = reduce(this.state, { type: "settings/setStreamRevealSpeed", streamRevealSpeed: speed });
     if (next === this.state) {
       return structuredClone(this.state);
     }
@@ -1283,6 +1296,35 @@ Return ONLY a JSON array of configuration fields, no explanation.`;
   async setProviderApiKey(workspaceId: string, providerId: string, apiKey: string): Promise<DesktopAppState> {
     return this.withRuntimeUpdate(workspaceId, (ws) =>
       this.driver.runtimeSupervisor.setProviderApiKey(ws, providerId, apiKey),
+    );
+  }
+
+  async addCustomProvider(
+    workspaceId: string,
+    config: {
+      readonly providerId: string;
+      readonly displayName: string;
+      readonly baseUrl: string;
+      readonly api: "openai-completions" | "openai-responses" | "anthropic-messages";
+      readonly apiKey: string;
+      readonly models: ReadonlyArray<{
+        readonly id: string;
+        readonly name: string;
+        readonly reasoning: boolean;
+        readonly input: readonly ("text" | "image")[];
+        readonly contextWindow: number;
+        readonly maxTokens: number;
+      }>;
+    },
+  ): Promise<DesktopAppState> {
+    return this.withRuntimeUpdate(workspaceId, (ws) =>
+      this.driver.runtimeSupervisor.addCustomProvider(ws, config),
+    );
+  }
+
+  async removeCustomProvider(workspaceId: string, providerId: string): Promise<DesktopAppState> {
+    return this.withRuntimeUpdate(workspaceId, (ws) =>
+      this.driver.runtimeSupervisor.removeCustomProvider(ws, providerId),
     );
   }
 
@@ -1444,12 +1486,14 @@ Return ONLY a JSON array of configuration fields, no explanation.`;
       externalTerminalApp: persisted.externalTerminalApp ?? this.state.externalTerminalApp,
       retrySettings: persisted.retrySettings ?? this.state.retrySettings,
       lastViewedAtBySession: persisted.lastViewedAtBySession ?? {},
+      threadTypeBySession: persisted.threadTypeBySession ?? {},
       workspaceOrder: persisted.workspaceOrder ?? [],
       sidebarCollapsed: persisted.sidebarCollapsed ?? this.state.sidebarCollapsed,
       zoomFactor: persisted.zoomFactor ?? this.state.zoomFactor,
-      enableTransparency: persisted.enableTransparency ?? this.state.enableTransparency,
       transcriptVerbose: persisted.transcriptVerbose ?? this.state.transcriptVerbose,
       composerDeviceMode: persisted.composerDeviceMode ?? this.state.composerDeviceMode,
+      streamReveal: persisted.streamReveal ?? this.state.streamReveal,
+      streamRevealSpeed: persisted.streamRevealSpeed ?? this.state.streamRevealSpeed,
       threadTransition: persisted.threadTransition
         ? { ...this.state.threadTransition, ...persisted.threadTransition }
         : this.state.threadTransition,
@@ -1487,9 +1531,10 @@ Return ONLY a JSON array of configuration fields, no explanation.`;
     return {
       ...createEmptyDesktopAppState(),
       zoomFactor: persisted.zoomFactor ?? ZOOM_BASELINE,
-      enableTransparency: persisted.enableTransparency ?? false,
       transcriptVerbose: persisted.transcriptVerbose ?? false,
-      composerDeviceMode: persisted.composerDeviceMode ?? "off",
+      composerDeviceMode: persisted.composerDeviceMode ?? "modular-cream",
+      streamReveal: persisted.streamReveal ?? "blur",
+      streamRevealSpeed: persisted.streamRevealSpeed ?? "medium",
       themeMode: persisted.themeMode ?? "system",
       lastError: error instanceof Error ? error.message : String(error),
       commitPushModel: persisted.commitPushModel,
@@ -1685,6 +1730,7 @@ Return ONLY a JSON array of configuration fields, no explanation.`;
         this.sessionState.runningSinceBySession,
         this.sessionState.sessionConfigBySession,
         this.sessionState.lastViewedAtBySession,
+        this.sessionState.contextUsageBySession,
       );
       const worktreesByWorkspace = buildWorktreeRecords(workspacesSnapshot.workspaces, worktreeEntries);
       this.pruneStaleMaps(new Set(workspaces.map((w) => w.id)));
@@ -1782,6 +1828,9 @@ Return ONLY a JSON array of configuration fields, no explanation.`;
     // openSession is idempotent for already-subscribed sessions.
     const snapshot = await this.driver.openSession(sessionRef);
     this.updateSessionConfig(sessionRef, snapshot.config);
+    if (snapshot.contextUsage) {
+      this.sessionState.contextUsageBySession.set(sessionKey(sessionRef), snapshot.contextUsage);
+    }
     await this.ensureSessionSubscribed(sessionRef);
     await this.refreshSessionCommands(sessionRef);
     return snapshot;
@@ -1791,6 +1840,9 @@ Return ONLY a JSON array of configuration fields, no explanation.`;
     if (!this.sessionState.sessionSubscriptions.has(sessionKey(sessionRef))) {
       const snapshot = await this.driver.openSession(sessionRef);
       this.updateSessionConfig(sessionRef, snapshot.config);
+      if (snapshot.contextUsage) {
+        this.sessionState.contextUsageBySession.set(sessionKey(sessionRef), snapshot.contextUsage);
+      }
       this.updateQueuedComposerMessages(sessionRef, snapshot.queuedMessages);
     }
     await this.ensureSessionSubscribed(sessionRef);
@@ -2654,14 +2706,16 @@ Return ONLY a JSON array of configuration fields, no explanation.`;
       externalTerminalApp: this.state.externalTerminalApp || undefined,
       retrySettings: this.state.retrySettings,
       lastViewedAtBySession: mapToRecord(this.sessionState.lastViewedAtBySession),
+      threadTypeBySession: Object.keys(this.state.threadTypeBySession).length > 0 ? this.state.threadTypeBySession : undefined,
       workspaceOrder: this.state.workspaceOrder.length > 0 ? this.state.workspaceOrder : undefined,
       modelSettingsScopeMode: this.state.modelSettingsScopeMode,
       appGlobalModelSettings: hasStoredModelSettings(this.state.globalModelSettings) ? this.state.globalModelSettings : undefined,
       sidebarCollapsed: this.state.sidebarCollapsed || undefined,
       zoomFactor: this.state.zoomFactor,
-      enableTransparency: this.state.enableTransparency,
       transcriptVerbose: this.state.transcriptVerbose,
       composerDeviceMode: this.state.composerDeviceMode,
+      streamReveal: this.state.streamReveal,
+      streamRevealSpeed: this.state.streamRevealSpeed,
       threadTransition: this.state.threadTransition,
       themeMode: this.state.themeMode,
       chats: this.state.chats.length > 0 ? this.state.chats : undefined,
@@ -3316,6 +3370,16 @@ Return ONLY a JSON array of configuration fields, no explanation.`;
     }
     this.sessionState.pendingAutoTitleBySession.delete(key);
     pendingAutoTitle.cancel();
+  }
+
+  setThreadType(sessionId: string, type: string): void {
+    console.log("[setThreadType] called", { sessionId, type, currentKeys: Object.keys(this.state.threadTypeBySession) });
+    this.state = {
+      ...this.state,
+      threadTypeBySession: { ...this.state.threadTypeBySession, [sessionId]: type },
+    };
+    void this.persistUiState();
+    void this.emit();
   }
 }
 

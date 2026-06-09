@@ -31,6 +31,7 @@ function isEventInsideTerminal(event: globalThis.KeyboardEvent): boolean {
 export interface KeyboardShortcutDeps {
   readonly api: PiDesktopApi | undefined;
   readonly snapshot: DesktopAppState;
+  readonly activeView: string;
   readonly selectedWorkspace: WorkspaceRecord | undefined;
   readonly selectedSession: SessionRecord | undefined;
   readonly threadGroups: readonly ThreadGroup[];
@@ -56,6 +57,11 @@ export interface KeyboardShortcutDeps {
   readonly onSelectSession: (target: { workspaceId: string; sessionId: string }) => void;
   readonly onSelectChat: (chatId: string) => void;
   readonly onPendingSidebarSelection: (entry: SidebarNavEntry | null) => void;
+  readonly onOpenAgents: () => void;
+  readonly onOpenSkills: (workspaceId?: string) => void;
+  readonly onOpenExtensions: (workspaceId?: string) => void;
+  readonly onOpenAutomations: (workspaceId?: string) => void;
+  readonly onOpenContext: (workspaceId?: string) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -65,6 +71,7 @@ export interface KeyboardShortcutDeps {
 export function useKeyboardShortcuts({
   api,
   snapshot,
+  activeView,
   selectedWorkspace,
   selectedSession,
   threadGroups,
@@ -90,6 +97,11 @@ export function useKeyboardShortcuts({
   onSelectSession,
   onSelectChat,
   onPendingSidebarSelection,
+  onOpenAgents,
+  onOpenSkills,
+  onOpenExtensions,
+  onOpenAutomations,
+  onOpenContext,
 }: KeyboardShortcutDeps): void {
   // Sidebar keyboard navigation state (Cmd+Shift+Arrow)
   const pendingNavIndexRef = useRef<number>(-1);
@@ -165,7 +177,14 @@ export function useKeyboardShortcuts({
     // Built once per hook render (closures capture latest callback refs).
     type ShortcutHandler = () => void;
     const modKeyMap = new Map<string, ShortcutHandler>([
-      ["f", () => { if (threadSearch.isOpen) { threadSearch.close(); } else { threadSearch.open(); } }],
+      ["f", () => {
+        // When settings is open, focus the settings search bar instead.
+        if (activeView === "settings") {
+          const input = document.querySelector<HTMLInputElement>("[data-settings-search]");
+          if (input) { input.focus(); input.select(); return; }
+        }
+        if (threadSearch.isOpen) { threadSearch.close(); } else { threadSearch.open(); }
+      }],
       ["k", openSearchPalette],
       ["/", openShortcutsSheet],
       ["d", toggleDiffPanel],
@@ -176,6 +195,11 @@ export function useKeyboardShortcuts({
     ]);
     const modShiftKeyMap = new Map<string, ShortcutHandler>([
       ["a", () => { toggleAdvisorPanel?.(); }],
+      ["Digit1", () => { playRotary(); onOpenAgents(); }],
+      ["Digit2", () => { playRotary(); onOpenSkills(selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id); }],
+      ["Digit3", () => { playRotary(); onOpenExtensions(selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id); }],
+      ["Digit4", () => { playRotary(); onOpenAutomations(selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id); }],
+      ["Digit5", () => { playRotary(); onOpenContext(selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id); }],
     ]);
 
     const handleKeyDown = (event: globalThis.KeyboardEvent) => {
@@ -207,7 +231,8 @@ export function useKeyboardShortcuts({
 
         // Mod+Shift+<key> shortcuts
         if (event.shiftKey) {
-          const handler = modShiftKeyMap.get(key);
+          // Check by key first (for letter keys like A), then by code (for number keys like Digit1)
+          const handler = modShiftKeyMap.get(key) ?? modShiftKeyMap.get(event.code);
           if (handler) {
             event.preventDefault();
             handler();
@@ -359,6 +384,7 @@ export function useKeyboardShortcuts({
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [
+    activeView,
     selectedWorkspace,
     selectedWorkspace?.id,
     selectedWorkspace?.rootWorkspaceId,
@@ -388,5 +414,10 @@ export function useKeyboardShortcuts({
     onSelectSession,
     onSelectChat,
     onPendingSidebarSelection,
+    onOpenAgents,
+    onOpenSkills,
+    onOpenExtensions,
+    onOpenAutomations,
+    onOpenContext,
   ]);
 }

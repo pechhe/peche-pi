@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChatRecord, DesktopAppState, SessionRecord, WorkspaceRecord } from "../desktop-state";
 import type { TranscriptSearchMatch } from "../ipc";
 
-export type GlobalSearchScope = "thread" | "project" | "all";
-export type GlobalSearchArchiveFilter = "all" | "active" | "past";
+export type GlobalSearchScope = "project" | "all";
+export type GlobalSearchArchiveFilter = "all" | "active";
 
 export interface GlobalSearchResult {
   readonly id: string;
@@ -48,7 +48,6 @@ function workspaceInCurrentProject(workspace: WorkspaceRecord, selectedWorkspace
 
 function passesArchiveFilter(archived: boolean, filter: GlobalSearchArchiveFilter): boolean {
   if (filter === "active") return !archived;
-  if (filter === "past") return archived;
   return true;
 }
 
@@ -70,7 +69,6 @@ function buildCandidateSessionKeys({
   for (const workspace of state.workspaces) {
     if (scope === "project" && !workspaceInCurrentProject(workspace, selectedWorkspace)) continue;
     for (const session of workspace.sessions) {
-      if (scope === "thread" && session.id !== selectedSession?.id) continue;
       const archived = Boolean(session.archivedAt);
       if (!passesArchiveFilter(archived, archiveFilter)) continue;
       if (haystackMatches(trimmed, session.title, session.preview)) {
@@ -91,16 +89,15 @@ export function buildGlobalSearchResults({
   query,
   scope,
   archiveFilter,
-}: BuildGlobalSearchResultsInput): readonly GlobalSearchResult[] {
+}: BuildGlobalSearchResultsInput): { results: readonly GlobalSearchResult[]; currentProjectIds: ReadonlySet<string> } {
   const trimmed = query.trim();
-  if (!state || !trimmed) return [];
+  if (!state || !trimmed) return { results: [], currentProjectIds: new Set() };
 
   const items: GlobalSearchResult[] = [];
 
   for (const workspace of state.workspaces) {
     if (scope === "project" && !workspaceInCurrentProject(workspace, selectedWorkspace)) continue;
     for (const session of workspace.sessions) {
-      if (scope === "thread" && session.id !== selectedSession?.id) continue;
       const archived = Boolean(session.archivedAt);
       if (!passesArchiveFilter(archived, archiveFilter)) continue;
       if (!haystackMatches(trimmed, session.title, session.preview)) continue;
@@ -122,7 +119,6 @@ export function buildGlobalSearchResults({
     scope === "project" && selectedWorkspace ? [selectedWorkspace.id, selectedWorkspace.rootWorkspaceId].filter(Boolean) : undefined,
   );
   for (const chat of state.chats) {
-    if (scope === "thread" && chat.id !== state.selectedChatId) continue;
     if (scope === "project" && chat.chatWorkspaceId && !chatWorkspaceIds.has(chat.chatWorkspaceId)) continue;
     if (scope === "project" && !chat.chatWorkspaceId) continue;
     const archived = Boolean(chat.archivedAt);
@@ -131,7 +127,22 @@ export function buildGlobalSearchResults({
     items.push(chatToResult(chat));
   }
 
-  return items.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+  // Sort: current project items first, then by updatedAt descending
+  const currentProjectIds = new Set<string>();
+  items.sort((left, right) => {
+    const leftIn = workspaceInCurrentProject({ id: left.workspaceId } as WorkspaceRecord, selectedWorkspace);
+    const rightIn = workspaceInCurrentProject({ id: right.workspaceId } as WorkspaceRecord, selectedWorkspace);
+    if (leftIn && !rightIn) return -1;
+    if (!leftIn && rightIn) return 1;
+    return right.updatedAt.localeCompare(left.updatedAt);
+  });
+  for (const item of items) {
+    if (workspaceInCurrentProject({ id: item.workspaceId } as WorkspaceRecord, selectedWorkspace)) {
+      currentProjectIds.add(item.id);
+    }
+  }
+
+  return { results: items, currentProjectIds };
 }
 
 /** Look up session metadata to build a GlobalSearchResult from a transcript match. */
@@ -166,13 +177,13 @@ function transcriptMatchToResult(
 export function useGlobalSearch({ state, selectedWorkspace, selectedSession }: UseGlobalSearchInput) {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [scope, setScope] = useState<GlobalSearchScope>("project");
+  const [scope, setScope] = useState<GlobalSearchScope>("all");
   const [archiveFilter, setArchiveFilter] = useState<GlobalSearchArchiveFilter>("all");
   const [activeIndex, setActiveIndex] = useState(0);
   const [transcriptResults, setTranscriptResults] = useState<readonly GlobalSearchResult[]>([]);
 
   // Sync title/preview results
-  const titleResults = useMemo<readonly GlobalSearchResult[]>(() => buildGlobalSearchResults({
+  const titleSearch = useMemo(() => buildGlobalSearchResults({
     state,
     selectedWorkspace,
     selectedSession,
@@ -180,6 +191,8 @@ export function useGlobalSearch({ state, selectedWorkspace, selectedSession }: U
     scope,
     archiveFilter,
   }), [archiveFilter, query, scope, selectedSession, selectedWorkspace, state]);
+  const titleResults = titleSearch.results;
+  const currentProjectIds = titleSearch.currentProjectIds;
 
   // Async transcript search — debounced, runs after sync results are computed
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -233,6 +246,18 @@ export function useGlobalSearch({ state, selectedWorkspace, selectedSession }: U
     return merged.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
   }, [titleResults, transcriptResults]);
 
+  // currentProjectIds from title search covers most cases; extend with transcript matches
+  const allCurrentProjectIds = useMemo(() => {
+    if (transcriptResults.length === 0) return currentProjectIds;
+    const extended = new Set(currentProjectIds);
+    for (const r of transcriptResults) {
+      if (workspaceInCurrentProject({ id: r.workspaceId } as WorkspaceRecord, selectedWorkspace)) {
+        extended.add(r.id);
+      }
+    }
+    return extended;
+  }, [currentProjectIds, transcriptResults, selectedWorkspace]);
+
   return {
     isOpen,
     query,
@@ -240,6 +265,7 @@ export function useGlobalSearch({ state, selectedWorkspace, selectedSession }: U
     archiveFilter,
     activeIndex: Math.min(activeIndex, Math.max(0, results.length - 1)),
     results,
+    currentProjectIds: allCurrentProjectIds,
     open: () => setIsOpen(true),
     close: () => {
       setIsOpen(false);
@@ -268,6 +294,7 @@ function chatToResult(chat: ChatRecord): GlobalSearchResult {
     id: `chat:${chat.id}`,
     kind: "chat",
     chatId: chat.id,
+    workspaceId: chat.chatWorkspaceId,
     projectName: "Chats",
     title: chat.title,
     preview: chat.preview,

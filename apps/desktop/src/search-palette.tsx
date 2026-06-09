@@ -34,6 +34,7 @@ interface SearchPaletteProps {
   readonly scope: GlobalSearchScope;
   readonly archiveFilter: GlobalSearchArchiveFilter;
   readonly results: readonly GlobalSearchResult[];
+  readonly currentProjectIds: ReadonlySet<string>;
   readonly activeIndex: number;
   readonly onQueryChange: (query: string) => void;
   readonly onScopeChange: (scope: GlobalSearchScope) => void;
@@ -48,6 +49,7 @@ export function SearchPalette({
   scope,
   archiveFilter,
   results,
+  currentProjectIds,
   activeIndex,
   onQueryChange,
   onScopeChange,
@@ -108,6 +110,16 @@ export function SearchPalette({
               onActiveIndexChange(results.length === 0 ? 0 : (activeIndex - 1 + results.length) % results.length);
               return;
             }
+            if (event.key === "Tab") {
+              event.preventDefault();
+              onArchiveFilterChange(archiveFilter === "all" ? "active" : "all");
+              return;
+            }
+            if (event.key === "A" && (event.metaKey || event.ctrlKey) && event.shiftKey) {
+              event.preventDefault();
+              onScopeChange(scope === "all" ? "project" : "all");
+              return;
+            }
             if (event.key === "Enter" && activeResult) {
               event.preventDefault();
               onSelect(activeResult);
@@ -119,30 +131,42 @@ export function SearchPalette({
             label="Scope"
             value={scope}
             options={[
-              ["thread", "Thread"],
-              ["project", "Project"],
               ["all", "All"],
+              ["project", "This Project"],
             ]}
             onChange={(value) => onScopeChange(value as GlobalSearchScope)}
           />
-          <SegmentedControl
-            label="Thread state"
-            value={archiveFilter}
-            options={[
-              ["all", "All"],
-              ["active", "Active"],
-              ["past", "Past"],
-            ]}
-            onChange={(value) => onArchiveFilterChange(value as GlobalSearchArchiveFilter)}
-          />
+          <div className="search-palette__archive-toggle">
+            <SegmentedControl
+              label="Thread state"
+              value={archiveFilter}
+              options={[
+                ["all", "All"],
+                ["active", "Active"],
+              ]}
+              onChange={(value) => onArchiveFilterChange(value as GlobalSearchArchiveFilter)}
+
+            />
+          </div>
         </div>
+        {query.trim() && results.length > 0 && (
+          <div className="search-palette__controls-hint">
+            <kbd>Tab</kbd> active · <kbd>⌘⇧A</kbd> scope
+          </div>
+        )}
         <div className="search-palette__results" role="listbox" aria-label="Search results">
           {!query.trim() ? (
             <div className="search-palette__empty">Type to search titles, previews, and message history.</div>
           ) : results.length === 0 ? (
             <div className="search-palette__empty">No matches.</div>
-          ) : (
-            results.map((result, index) => (
+          ) : (() => {
+            const currentItems: GlobalSearchResult[] = [];
+            const otherItems: GlobalSearchResult[] = [];
+            for (const r of results) {
+              if (currentProjectIds.has(r.id)) currentItems.push(r);
+              else otherItems.push(r);
+            }
+            const renderResult = (result: GlobalSearchResult, index: number) => (
               <button
                 key={result.id}
                 className={`search-palette__result ${index === activeIndex ? "search-palette__result--active" : ""}`}
@@ -166,8 +190,27 @@ export function SearchPalette({
                   </span>
                 ) : null}
               </button>
-            ))
-          )}
+            );
+            return (
+              <>
+                {currentItems.length > 0 && (
+                  <div className="search-palette__group">
+                    <span className="search-palette__group-label">This Project</span>
+                    {currentItems.map((r) => renderResult(r, results.indexOf(r)))}
+                  </div>
+                )}
+                {currentItems.length > 0 && otherItems.length > 0 && (
+                  <div className="search-palette__group-divider" />
+                )}
+                {otherItems.length > 0 && (
+                  <div className="search-palette__group">
+                    {scope === "all" && currentItems.length > 0 && <span className="search-palette__group-label">All Projects</span>}
+                    {otherItems.map((r) => renderResult(r, results.indexOf(r)))}
+                  </div>
+                )}
+              </>
+            );
+          })()}
         </div>
       </div>
     </div>
@@ -179,11 +222,13 @@ function SegmentedControl({
   value,
   options,
   onChange,
+  showKbdHint,
 }: {
   readonly label: string;
   readonly value: string;
   readonly options: readonly (readonly [string, string])[];
   readonly onChange: (value: string) => void;
+  readonly showKbdHint?: string;
 }) {
   return (
     <div className="search-palette__segmented" aria-label={label}>
@@ -197,6 +242,7 @@ function SegmentedControl({
           {optionLabel}
         </button>
       ))}
+      {showKbdHint && <kbd className="search-palette__kbd-hint" title="Press to toggle">{showKbdHint}</kbd>}
     </div>
   );
 }

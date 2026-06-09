@@ -33,22 +33,12 @@ test("settings/setSidebarCollapsed does not mutate the input state", () => {
   assert.equal(frozen.revision, 3);
 });
 
-test("settings/setEnableTransparency sets the field and is a no-op when unchanged", () => {
-  const base = { ...createEmptyDesktopAppState(), enableTransparency: false, revision: 1 };
-  const next = reduce(base, { type: "settings/setEnableTransparency", enableTransparency: true });
-  assert.equal(next.enableTransparency, true);
-  assert.equal(next.revision, 2);
-
-  const noop = reduce(next, { type: "settings/setEnableTransparency", enableTransparency: true });
-  assert.equal(noop, next);
-});
-
 test("settings/setComposerDeviceMode sets the field and is a no-op when unchanged", () => {
-  const base = { ...createEmptyDesktopAppState(), composerDeviceMode: "off" as const };
-  const next = reduce(base, { type: "settings/setComposerDeviceMode", composerDeviceMode: "screen" });
-  assert.equal(next.composerDeviceMode, "screen");
+  const base = { ...createEmptyDesktopAppState(), composerDeviceMode: "modular-cream" as const };
+  const next = reduce(base, { type: "settings/setComposerDeviceMode", composerDeviceMode: "modular-metal" });
+  assert.equal(next.composerDeviceMode, "modular-metal");
 
-  const noop = reduce(next, { type: "settings/setComposerDeviceMode", composerDeviceMode: "screen" });
+  const noop = reduce(next, { type: "settings/setComposerDeviceMode", composerDeviceMode: "modular-metal" });
   assert.equal(noop, next);
 });
 

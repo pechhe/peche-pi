@@ -9,6 +9,7 @@ import { CommitPushButton } from "./commit-push-button";
 import { UpdatePill } from "./update-pill";
 import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
 import { showToast } from "./toast";
+import type { UndoEditsResult } from "./ipc";
 
 interface TopbarProps {
   readonly activeView: AppView;
@@ -35,6 +36,7 @@ interface TopbarProps {
   readonly transcriptVerbose: boolean;
   readonly onSetTranscriptVerbose: (enabled: boolean) => void;
   readonly onOpenGraph?: () => void;
+  readonly onUndoAllEdits?: () => Promise<UndoEditsResult>;
 }
 
 export function Topbar(props: TopbarProps) {
@@ -63,7 +65,9 @@ export function Topbar(props: TopbarProps) {
     commitPushModel,
     transcriptVerbose,
     onSetTranscriptVerbose,
+    onUndoAllEdits,
   } = props;
+  const [undoAllState, setUndoAllState] = useState<"idle" | "undoing" | "done" | "error">("idle");
   const terminalShortcut = getDesktopShortcutLabel(api.platform, "J");
   const diffShortcut = getDesktopShortcutLabel(api.platform, "D");
   const commitShortcut = api.platform === "darwin" ? "⌘⇧K" : "Ctrl+Shift+K";
@@ -182,6 +186,38 @@ export function Topbar(props: TopbarProps) {
           sessionStatus={selectedSession?.status}
           shortcutLabel={commitShortcut}
         />
+        {onUndoAllEdits && activeView === "threads" && selectedSession && selectedSession.status !== "running" ? (
+          <div className="shortcut-tooltip-wrap topbar__tooltip-wrap">
+            <button
+              aria-label="Revert all changes in this thread"
+              className="topbar__revert-all"
+              data-testid="topbar-revert-all"
+              type="button"
+              disabled={undoAllState === "undoing"}
+              onClick={() => {
+                playButtonClick();
+                setUndoAllState("undoing");
+                void onUndoAllEdits().then(
+                  (result) => {
+                    if (result.reverted.length === 0) {
+                      setUndoAllState("error");
+                      showToast({ variant: "success", message: "Nothing to revert", autoDismissMs: 2000 });
+                    } else {
+                      setUndoAllState("done");
+                      showToast({ variant: "success", message: `Reverted ${result.reverted.length} file${result.reverted.length === 1 ? "" : "s"}`, autoDismissMs: 3000 });
+                    }
+                  },
+                  () => setUndoAllState("error"),
+                );
+              }}
+            >
+              {undoAllState === "undoing" ? "Reverting…" : "Revert All"}
+            </button>
+            <span className="shortcut-tooltip topbar__tooltip" role="tooltip">
+              <span>Revert all thread changes</span>
+            </span>
+          </div>
+        ) : null}
         <ProjectMapPopover rootWorkspace={rootWorkspace} api={api} onOpenGraph={props.onOpenGraph} />
         <div className="view-settings" ref={viewSettingsRef}>
           <button

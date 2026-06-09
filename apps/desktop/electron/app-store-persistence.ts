@@ -34,14 +34,16 @@ export interface PersistedUiState {
   readonly sidebarCollapsed?: boolean;
   readonly zoomFactor?: number;
   readonly allowMultiple?: boolean;
-  readonly enableTransparency?: boolean;
   readonly transcriptVerbose?: boolean;
-  readonly composerDeviceMode?: "off" | "screen" | "modular" | "modular-metal" | "screen-neon";
+  readonly composerDeviceMode?: "modular-cream" | "modular-metal";
+  readonly streamReveal?: "plain" | "blur" | "blur-rise" | "warm" | "glow";
+  readonly streamRevealSpeed?: "low" | "medium" | "high";
   readonly threadTransition?: ThreadTransitionSettings;
   readonly themeMode?: ThemeMode;
   readonly commitPushModel?: string;
   readonly chats?: readonly ChatRecord[];
   readonly selectedChatId?: string;
+  readonly threadTypeBySession?: Record<string, string>;
 }
 
 export interface LegacyPersistedUiState extends PersistedUiState {
@@ -53,14 +55,23 @@ const VALID_VERSIONS: ReadonlySet<number> = new Set([2, 3, 4, 5, 6, 7, 8, 9, 10]
 
 function normalizeComposerDeviceMode(
   raw: unknown,
-): "off" | "screen" | "modular" | "modular-metal" | "screen-neon" | undefined {
-  if (
-    raw === "screen" || raw === "modular" || raw === "modular-metal" || raw === "screen-neon" || raw === "off"
-  ) {
+): "modular-cream" | "modular-metal" | undefined {
+  if (raw === "modular-cream" || raw === "modular-metal") {
     return raw;
   }
-  // Migrate legacy boolean: true → screen
-  return raw === true ? "screen" : undefined;
+  return undefined;
+}
+
+function normalizeStreamReveal(
+  raw: unknown,
+): "plain" | "blur" | "blur-rise" | "warm" | "glow" | undefined {
+  return raw === "plain" || raw === "blur" || raw === "blur-rise" || raw === "warm" || raw === "glow"
+    ? raw
+    : undefined;
+}
+
+function normalizeStreamRevealSpeed(raw: unknown): "low" | "medium" | "high" | undefined {
+  return raw === "low" || raw === "medium" || raw === "high" ? raw : undefined;
 }
 
 function normalizeThemeMode(raw: unknown): ThemeMode | undefined {
@@ -97,9 +108,10 @@ export async function readPersistedUiState(uiStateFilePath: string): Promise<Leg
       zoomFactor:
         typeof parsed.zoomFactor === "number" && Number.isFinite(parsed.zoomFactor) ? parsed.zoomFactor : undefined,
       allowMultiple: typeof parsed.allowMultiple === "boolean" ? parsed.allowMultiple : undefined,
-      enableTransparency: typeof parsed.enableTransparency === "boolean" ? parsed.enableTransparency : undefined,
       transcriptVerbose: typeof parsed.transcriptVerbose === "boolean" ? parsed.transcriptVerbose : undefined,
       composerDeviceMode: normalizeComposerDeviceMode(parsed.composerDeviceMode),
+      streamReveal: normalizeStreamReveal(parsed.streamReveal),
+      streamRevealSpeed: normalizeStreamRevealSpeed(parsed.streamRevealSpeed),
       threadTransition: normalizeThreadTransition(parsed.threadTransition),
       themeMode: normalizeThemeMode(parsed.themeMode),
       commitPushModel: typeof parsed.commitPushModel === "string" ? parsed.commitPushModel : undefined,

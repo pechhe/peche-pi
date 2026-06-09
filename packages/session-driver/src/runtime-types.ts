@@ -166,6 +166,25 @@ export interface RuntimeResourceDriver {
   login(workspace: WorkspaceRef, providerId: string, callbacks: RuntimeLoginCallbacks): Promise<RuntimeSnapshot>;
   logout(workspace: WorkspaceRef, providerId: string): Promise<RuntimeSnapshot>;
   setProviderApiKey(workspace: WorkspaceRef, providerId: string, apiKey: string): Promise<RuntimeSnapshot>;
+  addCustomProvider(
+    workspace: WorkspaceRef,
+    config: {
+      readonly providerId: string;
+      readonly displayName: string;
+      readonly baseUrl: string;
+      readonly api: "openai-completions" | "openai-responses" | "anthropic-messages";
+      readonly apiKey: string;
+      readonly models: ReadonlyArray<{
+        readonly id: string;
+        readonly name: string;
+        readonly reasoning: boolean;
+        readonly input: readonly ("text" | "image")[];
+        readonly contextWindow: number;
+        readonly maxTokens: number;
+      }>;
+    },
+  ): Promise<RuntimeSnapshot>;
+  removeCustomProvider(workspace: WorkspaceRef, providerId: string): Promise<RuntimeSnapshot>;
   setDefaultModel(
     workspace: WorkspaceRef,
     selection: {

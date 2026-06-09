@@ -157,6 +157,7 @@ export function UtilitySurface(props: UtilitySurfaceProps) {
           scope={globalSearch.scope}
           archiveFilter={globalSearch.archiveFilter}
           results={globalSearch.results}
+          currentProjectIds={globalSearch.currentProjectIds}
           activeIndex={globalSearch.activeIndex}
           onQueryChange={globalSearch.setQuery}
           onScopeChange={globalSearch.setScope}
@@ -234,8 +235,8 @@ export interface SettingsSurfaceProps {
   readonly notificationPermissionPending: boolean;
   readonly buttonSoundSettings: import("../button-click-sound").ButtonSoundSettings;
   readonly smartCompactSettings: SmartCompactSettings;
-  readonly cavemanOnLevel: import("../ipc").CavemanLevel;
-  readonly onSetCavemanOnLevel: (level: import("../ipc").CavemanLevel) => void;
+  readonly cavemanLevel: import("../ipc").CavemanLevel;
+  readonly onSetCavemanLevel: (level: import("../ipc").CavemanLevel) => void;
   readonly rootWorkspace: WorkspaceRecord | undefined;
   readonly api: PiDesktopApi;
   readonly setSnapshot: Dispatch<SetStateAction<DesktopAppState | null>>;
@@ -268,8 +269,8 @@ export function SettingsSurface(props: SettingsSurfaceProps) {
     notificationPermissionPending,
     buttonSoundSettings,
     smartCompactSettings,
-    cavemanOnLevel,
-    onSetCavemanOnLevel,
+    cavemanLevel,
+    onSetCavemanLevel,
     rootWorkspace,
     api,
     setSnapshot,
@@ -321,8 +322,9 @@ export function SettingsSurface(props: SettingsSurfaceProps) {
         integratedTerminalShell={snapshot.integratedTerminalShell}
         externalTerminalApp={snapshot.externalTerminalApp}
         themeMode={themeMode}
-        enableTransparency={snapshot.enableTransparency}
         composerDeviceMode={snapshot.composerDeviceMode}
+        streamReveal={snapshot.streamReveal}
+        streamRevealSpeed={snapshot.streamRevealSpeed}
         threadTransition={snapshot.threadTransition}
         buttonSoundSettings={buttonSoundSettings}
         retrySettings={snapshot.retrySettings}
@@ -337,6 +339,8 @@ export function SettingsSurface(props: SettingsSurfaceProps) {
         onLogoutProvider={settingsHandlers.handleLogoutProvider}
         onSetProviderApiKey={settingsHandlers.handleSetProviderApiKey}
         onRemoveProviderApiKey={settingsHandlers.handleRemoveProviderApiKey}
+        onAddCustomProvider={settingsHandlers.handleAddCustomProvider}
+        onRemoveCustomProvider={settingsHandlers.handleRemoveCustomProvider}
         onSetModelSettingsScopeMode={settingsHandlers.handleSetModelSettingsScopeMode}
         onSetDefaultModel={settingsHandlers.handleSetDefaultModel}
         onSetNotificationPreferences={settingsHandlers.handleSetNotificationPreferences}
@@ -349,11 +353,14 @@ export function SettingsSurface(props: SettingsSurfaceProps) {
         onSetThemeMode={settingsHandlers.handleSetThemeMode}
         onSetThinkingLevel={settingsHandlers.handleSetThinkingLevel}
         onToggleSkillCommands={settingsHandlers.handleToggleSkillCommands}
-        onSetEnableTransparency={(enabled) => {
-          void updateSnapshot(api, setSnapshot, () => api.setEnableTransparency(enabled));
-        }}
         onSetComposerDeviceMode={(enabled) => {
           void updateSnapshot(api, setSnapshot, () => api.setComposerDeviceMode(enabled));
+        }}
+        onSetStreamReveal={(mode) => {
+          void updateSnapshot(api, setSnapshot, () => api.setStreamReveal(mode));
+        }}
+        onSetStreamRevealSpeed={(speed) => {
+          void updateSnapshot(api, setSnapshot, () => api.setStreamRevealSpeed(speed));
         }}
         onSetThreadTransition={(settings) => {
           void updateSnapshot(api, setSnapshot, () => api.setThreadTransition(settings));
@@ -364,10 +371,10 @@ export function SettingsSurface(props: SettingsSurfaceProps) {
           void updateSnapshot(api, setSnapshot, () => api.setCommitPushModel(rootWorkspace?.id ?? "", model));
         }}
         smartCompactSettings={smartCompactSettings}
-        cavemanOnLevel={cavemanOnLevel}
+        cavemanLevel={cavemanLevel}
         activeView={activeView}
         queueMode={settingsQueueMode}
-        onSetCavemanOnLevel={onSetCavemanOnLevel}
+        onSetCavemanLevel={onSetCavemanLevel}
         onSetActiveView={onSetActiveView}
         onSetQueueMode={onSetQueueMode}
         onOpenKanban={onOpenKanban}

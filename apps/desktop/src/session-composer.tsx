@@ -86,6 +86,8 @@ interface SessionComposerProps {
   readonly onToggleOrchestrator?: () => void;
   /** True once a plan-mode run has produced a plan and the session is idle. */
   readonly planReady: boolean;
+  /** True once a plan-mode prompt has been submitted for this session (used to send full instructions only on first prompt). */
+  readonly planAwaiting: boolean;
   /** Approve the written plan: sends an execute message + flips to build. */
   readonly onExecutePlan: () => void;
   /** Notify the host that a plan-mode message was just submitted. */
@@ -125,6 +127,7 @@ interface SessionComposerProps {
   ) => boolean;
   readonly questionnaireRequest?: Extract<SessionExtensionDialogRecord, { readonly kind: "questionnaire" }>;
   readonly onRespondToQuestionnaire?: (response: import("@pi-gui/session-driver").HostUiResponse) => void;
+  readonly onUnarchiveSession?: (target: { workspaceId: string; sessionId: string }) => void;
 }
 
 function isNearBottom(element: HTMLDivElement): boolean {
@@ -158,6 +161,7 @@ const SessionComposerInner = forwardRef<SessionComposerHandle, SessionComposerPr
     orchestratorMode,
     onToggleOrchestrator,
     planReady,
+    planAwaiting,
     onExecutePlan,
     onPlanSubmitted,
     runningLabel,
@@ -183,6 +187,7 @@ const SessionComposerInner = forwardRef<SessionComposerHandle, SessionComposerPr
     handleClipboardImageShortcut,
     questionnaireRequest,
     onRespondToQuestionnaire,
+    onUnarchiveSession,
   },
   ref,
 ) {
@@ -392,8 +397,14 @@ const SessionComposerInner = forwardRef<SessionComposerHandle, SessionComposerPr
       return;
     }
 
+    // Unarchive the session if it's archived — bring it back to active threads.
+    if (selectedSession.archivedAt && onUnarchiveSession) {
+      onUnarchiveSession({ workspaceId: selectedWorkspace.id, sessionId: selectedSession.id });
+    }
+
     const previousDraft = composerDraft;
     const submitMode = composerMode;
+    const isFirstPlanPrompt = submitMode === "plan" && !planAwaiting;
     if (submitMode === "plan") {
       onPlanSubmitted();
     }
@@ -405,8 +416,8 @@ const SessionComposerInner = forwardRef<SessionComposerHandle, SessionComposerPr
         api.submitComposer(
           previousDraft,
           selectedSession.status === "running"
-            ? { deliverAs: options.deliverAs ?? "followUp", mode: submitMode }
-            : { mode: submitMode },
+            ? { deliverAs: options.deliverAs ?? "followUp", mode: submitMode, isFirstPlanPrompt }
+            : { mode: submitMode, isFirstPlanPrompt },
         ),
       );
       setComposerDraft(nextState.composerDraft);
@@ -527,6 +538,7 @@ const SessionComposerInner = forwardRef<SessionComposerHandle, SessionComposerPr
 
     event.preventDefault();
     if (!composerDraft.trim() && composerAttachments.length === 0) {
+      playClick("down");
       return;
     }
     if (modelOnboarding.requiresModelSelection) {
@@ -664,6 +676,7 @@ function sameSessionComposerProps(
     previous.composerMode === next.composerMode &&
     previous.onSetComposerMode === next.onSetComposerMode &&
     previous.planReady === next.planReady &&
+    previous.planAwaiting === next.planAwaiting &&
     previous.onExecutePlan === next.onExecutePlan &&
     previous.onPlanSubmitted === next.onPlanSubmitted &&
     previous.runningLabel === next.runningLabel &&
@@ -689,6 +702,7 @@ function sameSessionComposerProps(
     previous.handleClipboardImageShortcut === next.handleClipboardImageShortcut &&
     previous.questionnaireRequest === next.questionnaireRequest &&
     previous.onRespondToQuestionnaire === next.onRespondToQuestionnaire &&
+    previous.onUnarchiveSession === next.onUnarchiveSession &&
     previous.orchestratorMode === next.orchestratorMode &&
     previous.onToggleOrchestrator === next.onToggleOrchestrator
   );

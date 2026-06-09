@@ -12,6 +12,7 @@ import {
   type SessionStatus,
   type StartChatInput,
   type StartThreadInput,
+  STREAM_REVEAL_FX_TOKENS,
   type TranscriptMessage,
   type WorktreeRecord,
   type WorkspaceRecord,
@@ -35,6 +36,7 @@ import {
   getDesktopShortcutLabel,
   type DesktopNotificationPermissionStatus,
   type CavemanLevel,
+  type UndoEditOp,
 } from "./ipc";
 import { deriveModelOnboardingState } from "./model-onboarding";
 import { type ModelSelectorHandle } from "./model-selector";
@@ -74,6 +76,7 @@ import { useSidebarWidth } from "./hooks/use-sidebar-width";
 import { ExtensionDialog } from "./extension-session-ui";
 import { RalphLaunchDialog } from "./ralph-launch-dialog";
 import { SubagentLiveProvider } from "./subagent-live";
+import { FLEET_WIDGET_KEY, parseFleet } from "./subagent-fleet";
 import { TreeModal } from "./tree-modal";
 import { ShortcutsSheet } from "./shortcuts-sheet";
 import { ImageLightbox } from "./image-lightbox";
@@ -445,7 +448,6 @@ export default function App() {
   const prevPlanStatusRef = useRef<Map<string, SessionStatus>>(new Map());
   const [settingsSection, setSettingsSection] = useState<SettingsSection>("general");
   const [cavemanLevel, setCavemanLevel] = useState<CavemanLevel>("off");
-  const [cavemanOnLevel, setCavemanOnLevel] = useState<CavemanLevel>("ultra");
   const [settingsWorkspaceId, setSettingsWorkspaceId] = useState("");
   const [skillsWorkspaceId, setSkillsWorkspaceId] = useState("");
   const [skillsQuery, setSkillsQuery] = useState("");
@@ -564,8 +566,7 @@ export default function App() {
     if (!piApi) return;
 
     void piApi.getCavemanConfig().then((config) => {
-      setCavemanLevel(config.defaultLevel);
-      setCavemanOnLevel(config.onLevel);
+      setCavemanLevel(config.enabled ? config.defaultLevel : "off");
     });
 
     void piApi.getResolvedTheme().then((theme) => {
@@ -585,22 +586,31 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (snapshot) {
-      document.documentElement.classList.toggle("enable-transparency", snapshot.enableTransparency);
-    }
-  }, [snapshot, snapshot?.enableTransparency]);
-
-  useEffect(() => {
     if (!snapshot) return;
     const root = document.documentElement;
     const mode = snapshot.composerDeviceMode;
-    root.classList.toggle("composer-device", mode !== "off");
-    root.classList.toggle("composer-device--screen", mode === "screen" || mode === "screen-neon");
-    root.classList.toggle("composer-device--modular", mode === "modular" || mode === "modular-metal" || mode === "modular-cream");
+    root.classList.add("composer-device", "composer-device--modular");
     root.classList.toggle("composer-device--metal-keys", mode === "modular-metal");
     root.classList.toggle("composer-device--cream", mode === "modular-cream");
-    root.classList.toggle("composer-device--neon", mode === "screen-neon");
   }, [snapshot, snapshot?.composerDeviceMode]);
+
+  // Translate the streaming-reveal preset into the per-word effect tokens the
+  // .sw CSS reads. Applied at the root so every streamed message inherits it;
+  // a per-message localStorage `streamFx` override (devtools) stacks on top.
+  useEffect(() => {
+    if (!snapshot) return;
+    document.documentElement.setAttribute(
+      "data-stream-fx",
+      STREAM_REVEAL_FX_TOKENS[snapshot.streamReveal] ?? "blur",
+    );
+  }, [snapshot, snapshot?.streamReveal]);
+
+  // Reveal speed (low/medium/high) read by the typewriter in message-markdown
+  // off the document root. Orthogonal to the look preset above.
+  useEffect(() => {
+    if (!snapshot) return;
+    document.documentElement.setAttribute("data-stream-speed", snapshot.streamRevealSpeed ?? "medium");
+  }, [snapshot, snapshot?.streamRevealSpeed]);
 
   useEffect(() => {
     const piApi = window.piApp;
@@ -820,6 +830,7 @@ export default function App() {
   const selectedSessionComposerMode: ComposerMode = composerModeBySession[selectedSessionKey] ?? "build";
   const selectedPlanReady =
     selectedSessionComposerMode === "plan" && Boolean(planReadyBySession[selectedSessionKey]);
+  const selectedPlanAwaiting = Boolean(planAwaitingBySession[selectedSessionKey]);
   const setSessionComposerMode = useCallback(
     (mode: ComposerMode) => {
       if (!selectedSessionKey) {
@@ -927,6 +938,24 @@ export default function App() {
   useSelfHealTranscript(isTranscriptLoading, selectedWorkspace?.id, selectedSession?.id, setSelectedTranscript);
   const selectedSessionCommands = selectedSession ? snapshot?.sessionCommandsBySession[selectedSessionKey] ?? [] : [];
   const selectedExtensionUi = selectedSession ? snapshot?.sessionExtensionUiBySession[selectedSessionKey] : undefined;
+
+  // Session keys that have running sub-agents (from the fleet widget).
+  // Keeps the sidebar spinner visible while sub-agents are active even
+  // though the main agent turn has finished (session status = "idle").
+  const sessionsWithRunningSubagents = useMemo(() => {
+    const result = new Set<string>();
+    const extUi = snapshot?.sessionExtensionUiBySession;
+    if (!extUi) return result;
+    for (const [key, uiState] of Object.entries(extUi)) {
+      const fleetWidget = uiState.widgets.find((w) => w.key === FLEET_WIDGET_KEY);
+      if (!fleetWidget) continue;
+      const fleet = parseFleet(fleetWidget.lines);
+      if (fleet && fleet.count > 0) {
+        result.add(key);
+      }
+    }
+    return result;
+  }, [snapshot?.sessionExtensionUiBySession]);
   const selectedWorkspaceCommandCompatibility = selectedWorkspace
     ? snapshot?.extensionCommandCompatibilityByWorkspace[selectedWorkspace.id] ?? []
     : [];
@@ -1352,6 +1381,18 @@ export default function App() {
     selectedSession,
     setThemeMode,
   });
+
+  const allUndoOpsRef = useRef<readonly UndoEditOp[]>([]);
+  const handleAllUndoOpsChange = useCallback((ops: readonly UndoEditOp[]) => {
+    allUndoOpsRef.current = ops;
+  }, []);
+
+  const handleUndoAllEdits = useCallback(async () => {
+    const ops = allUndoOpsRef.current;
+    if (ops.length === 0) return { reverted: [], failed: [] };
+    return settingsHandlers.handleUndoEdits(ops);
+  }, [settingsHandlers.handleUndoEdits]);
+
   const skillsExtensionsHandlers = useSkillsExtensionsHandlers({
     api,
     setSnapshot,
@@ -1678,6 +1719,47 @@ export default function App() {
     if (!api) return;
     void updateSnapshot(api, setSnapshot, () => api.setActiveView(view));
   };
+
+  const openSkills = (workspaceId?: string) => {
+    const nextWorkspaceId =
+      workspaceId && rootWorkspaceOptions.some((workspace) => workspace.id === workspaceId)
+        ? workspaceId
+        : skillsWorkspace?.id || rootWorkspaceOptions[0]?.id || "";
+    if (nextWorkspaceId) {
+      setSkillsWorkspaceId(nextWorkspaceId);
+    }
+    setActiveView("skills");
+  };
+
+  const openExtensions = (workspaceId?: string) => {
+    const nextWorkspaceId =
+      workspaceId && rootWorkspaceOptions.some((workspace) => workspace.id === workspaceId)
+        ? workspaceId
+        : extensionsWorkspace?.id || rootWorkspaceOptions[0]?.id || "";
+    if (nextWorkspaceId) {
+      setExtensionsWorkspaceId(nextWorkspaceId);
+    }
+    setActiveView("extensions");
+  };
+
+  const openAutomations = (workspaceId?: string) => {
+    if (!api) return;
+    void updateSnapshot(api, setSnapshot, () => api.setActiveView("automations"));
+    // Apply workspace filter if provided
+    void updateSnapshot(api, setSnapshot, async () => {
+      const state = await api.getState();
+      return { ...state, automationFilterWorkspaceId: workspaceId || undefined };
+    });
+  };
+
+  const openContext = () => {
+    setActiveView("context");
+  };
+
+  const openAgents = () => {
+    setActiveView("agents");
+  };
+
   const openNewThreadSurface = nt.open;
   function handlePastedClipboardImage(clipboardImage: ComposerImageAttachment) {
     const activeElement = document.activeElement;
@@ -1703,6 +1785,7 @@ export default function App() {
   useKeyboardShortcuts({
     api,
     snapshot: snapshot!,
+    activeView: snapshot?.activeView ?? "threads",
     selectedWorkspace,
     selectedSession,
     threadGroups,
@@ -1728,6 +1811,11 @@ export default function App() {
     onSelectSession: handleSelectSession,
     onSelectChat: handleSelectChat,
     onPendingSidebarSelection: setPendingSidebarSelection,
+    onOpenAgents: openAgents,
+    onOpenSkills: openSkills,
+    onOpenExtensions: openExtensions,
+    onOpenAutomations: openAutomations,
+    onOpenContext: openContext,
   });
 
   const { loopControl, beginRalphLoop, runRalphLoop } = useRalphLoop(
@@ -1786,52 +1874,11 @@ export default function App() {
     />
   ) : null;
 
-  const openSkills = (workspaceId?: string) => {
-    const nextWorkspaceId =
-      workspaceId && rootWorkspaceOptions.some((workspace) => workspace.id === workspaceId)
-        ? workspaceId
-        : skillsWorkspace?.id || rootWorkspaceOptions[0]?.id || "";
-    if (nextWorkspaceId) {
-      setSkillsWorkspaceId(nextWorkspaceId);
-    }
-    setActiveView("skills");
-  };
-
-  const openExtensions = (workspaceId?: string) => {
-    const nextWorkspaceId =
-      workspaceId && rootWorkspaceOptions.some((workspace) => workspace.id === workspaceId)
-        ? workspaceId
-        : extensionsWorkspace?.id || rootWorkspaceOptions[0]?.id || "";
-    if (nextWorkspaceId) {
-      setExtensionsWorkspaceId(nextWorkspaceId);
-    }
-    setActiveView("extensions");
-  };
-
-  const openAutomations = (workspaceId?: string) => {
-    void updateSnapshot(api, setSnapshot, () => api.setActiveView("automations"));
-    // Apply workspace filter if provided
-    void updateSnapshot(api, setSnapshot, async () => {
-      const state = await api.getState();
-      return { ...state, automationFilterWorkspaceId: workspaceId || undefined };
-    });
-  };
-
-
-
-  const openContext = () => {
-    setActiveView("context");
-  };
-
   const setQueueMode = (enabled: boolean) => {
     void updateSnapshot(api, setSnapshot, () => api.setQueueMode(enabled));
   };
   const openKanbanView = () => {
     setActiveView("kanban");
-  };
-
-  const openAgents = () => {
-    setActiveView("agents");
   };
 
   const openNewChatSurface = nt.openChat;
@@ -2016,15 +2063,13 @@ export default function App() {
     setNewThreadModelId(undefined);
     setNewThreadThinkingLevel(undefined);
     setNewThreadComposerMode("build");
-    setNewThreadOrchestratorMode(false);
-    setNewThreadIsChat(false);
     const startedInPlanMode = newThreadComposerMode === "plan";
     const startWithOrchestrator = newThreadOrchestratorMode;
-    void updateSnapshot(api, setSnapshot, () => api.startChat(input))
-      .then((state) => {
-        if (startWithOrchestrator) {
-          void updateSnapshot(api, setSnapshot, () => api.setSubagentSettings({ orchestratorMode: true }));
-        }
+    setNewThreadOrchestratorMode(false);
+    setNewThreadIsChat(false);
+    const doStartChat = () => {
+      void updateSnapshot(api, setSnapshot, () => api.startChat(input))
+        .then((state) => {
         if (startedInPlanMode) {
           const newKey = `${state.selectedWorkspaceId}:${state.selectedSessionId}`;
           setComposerModeBySession((prev) => ({ ...prev, [newKey]: "plan" }));
@@ -2050,6 +2095,12 @@ export default function App() {
           autoDismissMs: 6000,
         });
       });
+    };
+    if (startWithOrchestrator) {
+      void updateSnapshot(api, setSnapshot, () => api.setSubagentSettings({ orchestratorMode: true })).then(doStartChat);
+    } else {
+      doStartChat();
+    }
   };
 
   const handleStartThread = (promptOverride?: string) => {
@@ -2113,16 +2164,14 @@ export default function App() {
     setNewThreadModelId(undefined);
     setNewThreadThinkingLevel(undefined);
     setNewThreadComposerMode("build");
-    setNewThreadOrchestratorMode(false);
-    setNewThreadEnvironment("local");
     const startedInPlanMode = newThreadComposerMode === "plan";
     const startWithOrchestrator = newThreadOrchestratorMode;
-    void updateSnapshot(api, setSnapshot, () =>
-      api.startThread(input),
-    ).then((state) => {
-      if (startWithOrchestrator) {
-        void updateSnapshot(api, setSnapshot, () => api.setSubagentSettings({ orchestratorMode: true }));
-      }
+    setNewThreadOrchestratorMode(false);
+    setNewThreadEnvironment("local");
+    const doStartThread = () => {
+      void updateSnapshot(api, setSnapshot, () =>
+        api.startThread(input),
+      ).then((state) => {
       if (startedInPlanMode) {
         const newKey = `${state.selectedWorkspaceId}:${state.selectedSessionId}`;
         setComposerModeBySession((prev) => ({ ...prev, [newKey]: "plan" }));
@@ -2157,6 +2206,12 @@ export default function App() {
         autoDismissMs: 6000,
       });
     });
+    };
+    if (startWithOrchestrator) {
+      void updateSnapshot(api, setSnapshot, () => api.setSubagentSettings({ orchestratorMode: true })).then(doStartThread);
+    } else {
+      doStartThread();
+    }
   };
 
   const handleNewThreadComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -2261,9 +2316,9 @@ export default function App() {
           notificationPermissionPending={notificationPermissionPending}
           buttonSoundSettings={buttonSoundSettings}
           smartCompactSettings={smartCompactSettings}
-          cavemanOnLevel={cavemanOnLevel}
-          onSetCavemanOnLevel={(level) => {
-            setCavemanOnLevel(level);
+          cavemanLevel={cavemanLevel}
+          onSetCavemanLevel={(level) => {
+            setCavemanLevel(level);
             void window.piApp?.setCavemanOnLevel(level);
           }}
           rootWorkspace={rootWorkspace}
@@ -2398,6 +2453,7 @@ export default function App() {
           scope={globalSearch.scope}
           archiveFilter={globalSearch.archiveFilter}
           results={globalSearch.results}
+          currentProjectIds={globalSearch.currentProjectIds}
           activeIndex={globalSearch.activeIndex}
           onQueryChange={globalSearch.setQuery}
           onScopeChange={globalSearch.setScope}
@@ -2420,6 +2476,7 @@ export default function App() {
           chats={chats}
           visibleWorkspaces={visibleWorkspaces}
           threadGroups={threadGroups}
+          sessionsWithRunningSubagents={sessionsWithRunningSubagents}
           linkedWorktreeByWorkspaceId={linkedWorktreeByWorkspaceId}
           wsMenu={wsMenu}
           api={api}
@@ -2446,6 +2503,7 @@ export default function App() {
           onOpenAutomations={openAutomations}
           onOpenAgents={openAgents}
           onOpenSearch={globalSearch.open}
+          threadTypeBySession={snapshot.threadTypeBySession}
         />
       )}
 
@@ -2477,6 +2535,7 @@ export default function App() {
             void updateSnapshot(api, setSnapshot, () => api.setTranscriptVerbose(enabled));
           }}
           onOpenGraph={() => setActiveView("graph")}
+          onUndoAllEdits={handleUndoAllEdits}
         />
 
         {showTerminalTakeover ? (
@@ -2576,6 +2635,7 @@ export default function App() {
                   onViewFileInDiff={handleViewFileInDiff}
                   onUndoEdits={settingsHandlers.handleUndoEdits}
                   onRedoEdits={settingsHandlers.handleRedoEdits}
+                  onAllUndoOpsChange={handleAllUndoOpsChange}
                   isRunning={threadViewIsRunning}
                   workingLabel={pendingThreadStart ? "Preparing your thread…" : undefined}
                   highlightedMessageId={highlightedMessageId}
@@ -2615,6 +2675,7 @@ export default function App() {
                 void updateSnapshot(api, setSnapshot, () => api.setSubagentSettings({orchestratorMode: !snapshot.subagentSettings.orchestratorMode}));
               }}
               planReady={selectedPlanReady}
+              planAwaiting={selectedPlanAwaiting}
               onExecutePlan={handleExecutePlan}
               onPlanSubmitted={handlePlanSubmitted}
               runningLabel={runningLabel}
@@ -2642,6 +2703,7 @@ export default function App() {
               handleClipboardImageShortcut={handleClipboardImageShortcut}
               questionnaireRequest={activeQuestionnaireRequest}
               onRespondToQuestionnaire={handleRespondToExtensionDialog}
+              onUnarchiveSession={handleUnarchiveSession}
             />
             ) : (
               <PendingComposer

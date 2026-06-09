@@ -80,22 +80,27 @@ test("global search filters by current project and active/past state", () => {
     archiveFilter: "active",
   });
 
-  assert.deepEqual(active.map((result) => result.id), ["chat:chat-active", "thread:w-root:s-active"]);
+  assert.deepEqual(active.results.map((result) => result.id), ["chat:chat-active", "thread:w-root:s-active"]);
 
-  const past = buildGlobalSearchResults({
+  // "past" filter removed; "all" includes both active and past
+  const all = buildGlobalSearchResults({
     state,
     selectedWorkspace,
     selectedSession: activeSession,
     query: "needle",
     scope: "project",
-    archiveFilter: "past",
+    archiveFilter: "all",
   });
 
-  assert.deepEqual(past.map((result) => result.id), ["thread:w-root:s-past"]);
+  assert.deepEqual(all.results.map((result) => result.id), [
+    "chat:chat-active",
+    "thread:w-root:s-active",
+    "thread:w-root:s-past",
+  ]);
 });
 
-test("global search can expand to all projects", () => {
-  const results = buildGlobalSearchResults({
+test("global search can expand to all projects with current project sorted first", () => {
+  const search = buildGlobalSearchResults({
     state,
     selectedWorkspace,
     selectedSession: activeSession,
@@ -104,10 +109,16 @@ test("global search can expand to all projects", () => {
     archiveFilter: "all",
   });
 
-  assert.deepEqual(results.map((result) => result.id), [
+  assert.deepEqual(search.results.map((result) => result.id), [
     "chat:chat-active",
     "thread:w-root:s-active",
     "thread:w-root:s-past",
     "thread:w-other:s-other",
   ]);
+
+  // Current project items are flagged
+  assert.ok(search.currentProjectIds.has("chat:chat-active"));
+  assert.ok(search.currentProjectIds.has("thread:w-root:s-active"));
+  assert.ok(search.currentProjectIds.has("thread:w-root:s-past"));
+  assert.ok(!search.currentProjectIds.has("thread:w-other:s-other"));
 });

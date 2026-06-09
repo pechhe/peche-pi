@@ -9,6 +9,15 @@
  *  - /sounds/key-off.mp3 - Alternative key sound (split into press/release)
  */
 
+// Bundle audio as inlined data: URIs. Packaged builds load the renderer over
+// file://, and Chromium blocks fetch() of file:// URLs — so resolving sounds to
+// file:// paths (the old behaviour) silently failed in the DMG. data: URIs are
+// fetchable under file:// and work in dev too.
+import clickMp3 from "./sounds/click.mp3?inline";
+import keyOnMp3 from "./sounds/key-on.mp3?inline";
+import keyOffMp3 from "./sounds/key-off.mp3?inline";
+import click01Mp3 from "./sounds/click_01.mp3?inline";
+
 export type ButtonClickVariant = "click" | "key" | "rotary" | "none";
 
 /** Button categories for per-category sound settings */
@@ -59,28 +68,11 @@ export function getButtonSoundSettings(): ButtonSoundSettings {
 type ClickKind = "down" | "up";
 type KeyPhase = "press" | "release";
 
-/** Resolve a public asset relative to the app base (works in dev and packaged file://). */
-function soundUrl(name: string): string {
-  // import.meta is only valid in ESM renderer builds; guard for main-process type-checking.
-  // @ts-ignore import.meta is valid in ESM renderer builds, flagged in CJS main-process type-check
-  const meta = typeof import.meta !== "undefined" ? import.meta : undefined;
-  const base = meta?.env?.BASE_URL ?? "/";
-  return new URL(`sounds/${name}`, new URL(base, document.baseURI)).toString();
-}
-
-let _urls:
-  | { click: string; keys: string[]; rotary: string[] }
-  | undefined;
-function getUrls() {
-  if (!_urls) {
-    _urls = {
-      click: soundUrl("click.mp3"),
-      keys: [soundUrl("key-on.mp3"), soundUrl("key-off.mp3")],
-      rotary: [soundUrl("click_01.mp3")],
-    };
-  }
-  return _urls;
-}
+const URLS: { click: string; keys: string[]; rotary: string[] } = {
+  click: clickMp3,
+  keys: [keyOnMp3, keyOffMp3],
+  rotary: [click01Mp3],
+};
 
 const CLICK_RATE: Record<ClickKind, number> = { down: 0.78, up: 1 };
 
@@ -288,7 +280,7 @@ function loadAll(): Promise<void> {
     return loadPromise;
   }
 
-  const urls = getUrls();
+  const urls = URLS;
   loadPromise = (async () => {
     const [rawClick, ...rawKeys] = await Promise.all([
       fetchBuffer(ctx, urls.click),

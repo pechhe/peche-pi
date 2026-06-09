@@ -54,6 +54,93 @@ export function automationScheduleLabel(schedule: AutomationSchedule): string {
       return schedule.expression;
   }
 }
+
+/** Returns the next scheduled run Date for a given automation schedule. */
+export function nextAutomationRun(schedule: AutomationSchedule): Date {
+  const now = new Date();
+  let cronExpr: string;
+  if (schedule.kind === "preset") {
+    cronExpr = AUTOMATION_PRESET_CRON[schedule.preset];
+  } else {
+    cronExpr = schedule.expression;
+  }
+  return nextCronRun(cronExpr, now);
+}
+
+/** Naive next-run for common cron patterns. Handles minute, hour, day-of-week fields. */
+function nextCronRun(expr: string, from: Date): Date {
+  const parts = expr.split(" ");
+  if (parts.length < 5) return new Date(from.getTime() + 3600_000); // fallback: 1h
+  const minField = parts[0]!;
+  const hourField = parts[1]!;
+  const dowField = parts[4]!;
+  const minute = minField === "*" ? -1 : parseInt(minField, 10);
+  const hour = hourField === "*" ? -1 : parseInt(hourField, 10);
+  const dows = dowField === "*" ? null : dowField.split(",").map((d) => {
+    if (d.includes("-")) {
+      const [a, b] = d.split("-").map(Number);
+      return { a: a!, b: b! };
+    }
+    const v = parseInt(d, 10);
+    return { a: v, b: v };
+  });
+
+  // Try up to 8 days ahead
+  for (let dayOffset = 0; dayOffset < 8; dayOffset++) {
+    const candidate = new Date(from);
+    candidate.setDate(candidate.getDate() + dayOffset);
+    candidate.setSeconds(0, 0);
+
+    // Check day-of-week
+    if (dows) {
+      const dow = candidate.getDay();
+      const matches = dows.some((r) => dow >= r.a && dow <= r.b);
+      if (!matches) continue;
+    }
+
+    if (hour === -1 && minute === -1) {
+      // Every minute — next run is next minute
+      if (dayOffset === 0) {
+        candidate.setMinutes(candidate.getMinutes() + 1);
+      } else {
+        candidate.setHours(0, 0);
+      }
+      return candidate;
+    }
+
+    if (hour === -1) {
+      // Every hour at specific minute
+      if (dayOffset === 0) {
+        candidate.setHours(from.getHours(), minute);
+        if (candidate <= from) candidate.setHours(candidate.getHours() + 1);
+      } else {
+        candidate.setHours(0, minute);
+      }
+      return candidate;
+    }
+
+    // Specific hour + minute
+    candidate.setHours(hour, minute);
+    if (dayOffset === 0 && candidate <= from) continue;
+    return candidate;
+  }
+  // Fallback
+  return new Date(from.getTime() + 86400_000);
+}
+
+/** Count how many enabled automations will fire within the next 24 hours. */
+export function countAutomationsNext24h(automations: readonly Automation[]): number {
+  const now = new Date();
+  const horizon = new Date(now.getTime() + 24 * 3600_000);
+  let count = 0;
+  for (const a of automations) {
+    if (!a.enabled) continue;
+    const next = nextAutomationRun(a.schedule);
+    if (next <= horizon) count++;
+  }
+  return count;
+}
+
 export type { TranscriptMessage } from "./timeline-types";
 import type { TranscriptMessage } from "./timeline-types";
 
@@ -63,7 +150,22 @@ export type WorktreeStatus = "ready" | "missing" | "error";
 export type NewThreadEnvironment = "local" | "worktree";
 export type ThemeMode = "system" | "light" | "dark" | "dracula";
 
-export type ComposerDeviceMode = "off" | "screen" | "modular" | "modular-metal" | "modular-cream" | "screen-neon";
+export type ComposerDeviceMode = "modular-cream" | "modular-metal";
+
+/** How freshly-streamed words animate in. Curated presets over the per-word reveal CSS vars. */
+export type StreamRevealMode = "plain" | "blur" | "blur-rise" | "warm" | "glow";
+
+/** Maps a reveal preset to the space-separated `data-stream-fx` tokens the .sw CSS reads. */
+export const STREAM_REVEAL_FX_TOKENS: Record<StreamRevealMode, string> = {
+  plain: "plain",
+  blur: "blur",
+  "blur-rise": "rise",
+  warm: "warm",
+  glow: "glow",
+};
+
+/** How fast streamed words are revealed by the typewriter. Orthogonal to the look preset. */
+export type StreamRevealSpeed = "low" | "medium" | "high";
 
 /** How the composer travels from the centered new-thread position into the docked footer when the first message is sent. */
 export type ThreadTransitionMotion = "off" | "curve" | "dock" | "spring";
@@ -227,6 +329,7 @@ export interface SessionRecord {
   readonly config?: SessionConfig;
   readonly contextUsage?: SessionContextUsage;
   readonly automationId?: string;
+  readonly threadType?: string;
 }
 
 export interface SelectedTranscriptRecord {
@@ -355,10 +458,11 @@ export interface DesktopAppState {
   /** Chromium zoom factor applied to the window. 0.9 == the labelled "100%". */
   readonly zoomFactor: number;
   readonly queueMode: boolean;
-  readonly enableTransparency: boolean;
   readonly transcriptVerbose: boolean;
   readonly autoAcceptVisionProxy: boolean;
   readonly composerDeviceMode: ComposerDeviceMode;
+  readonly streamReveal: StreamRevealMode;
+  readonly streamRevealSpeed: StreamRevealSpeed;
   readonly planModeIdeology: PlanModeIdeologySetting;
   readonly threadTransition: ThreadTransitionSettings;
   readonly themeMode: ThemeMode;
@@ -372,6 +476,7 @@ export interface DesktopAppState {
   // True when the selected chat is the one that wrote the workspace's Ralph
   // plan; scopes the "Begin Ralph loop" banner to the creating chat.
   readonly selectedSessionCreatedRalphPlan?: boolean;
+  readonly threadTypeBySession: Readonly<Record<string, string>>;
   readonly revision: number;
   readonly lastError?: string;
 }
@@ -384,6 +489,8 @@ export interface CreateSessionInput {
 export interface WorkspaceSessionTarget {
   readonly workspaceId: string;
   readonly sessionId: string;
+  /** When set, the backend selects this session after archiving instead of the default heuristic. */
+  readonly selectNextSessionId?: string;
 }
 
 export type ContextSectionKind =
@@ -404,6 +511,7 @@ export interface ContextSection {
   readonly path?: string;
   readonly content?: string;
   readonly detail?: string;
+  readonly tokenCount?: number;
 }
 
 export interface ContextSnapshot {
@@ -468,10 +576,11 @@ export function createEmptyDesktopAppState(): DesktopAppState {
     sidebarCollapsed: false,
     zoomFactor: ZOOM_BASELINE,
     queueMode: false,
-    enableTransparency: false,
     transcriptVerbose: false,
     autoAcceptVisionProxy: false,
-    composerDeviceMode: "off",
+    composerDeviceMode: "modular-cream",
+    streamReveal: "blur",
+    streamRevealSpeed: "medium",
     planModeIdeology: "default",
     threadTransition: { motion: "curve", heroExit: false, bubbleHandoff: false },
     themeMode: "system",
@@ -481,6 +590,7 @@ export function createEmptyDesktopAppState(): DesktopAppState {
     selectedChatId: "",
     automations: [],
     automationFilterWorkspaceId: undefined,
+    threadTypeBySession: {},
     revision: 0,
   };
 }

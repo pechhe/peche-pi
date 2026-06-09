@@ -167,20 +167,6 @@
   --shadow-xl: 0 32px 80px rgba(0, 0, 0, 0.6);
 }
 
-.enable-transparency {
-  --window: transparent !important;
-  --sidebar: transparent !important;
-  --main: transparent !important;
-  --surface: var(--surface-glass) !important;
-  --surface-muted: var(--surface-muted-glass) !important;
-  --line: var(--line-glass) !important;
-  --line-strong: var(--line-strong-glass) !important;
-}
-
-.enable-transparency body {
-  backdrop-filter: var(--glass-blur) var(--glass-saturation);
-}
-
 * {
   box-sizing: border-box;
 }
@@ -361,10 +347,6 @@ svg {
   color: var(--muted-strong);
   background: var(--surface-glass);
   border: 1px solid var(--line);
-}
-
-.enable-transparency .meta-chip {
-  backdrop-filter: var(--glass-blur) var(--glass-saturation);
 }
 
 .meta-chip--path {

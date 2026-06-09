@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { SessionCatalogEntry, WorkspaceCatalogEntry, WorktreeCatalogEntry } from "@pi-gui/catalogs";
 import { sessionKey } from "@pi-gui/pi-sdk-driver";
-import type { SessionAttachment, SessionConfig, SessionQueuedMessage, SessionRef } from "@pi-gui/session-driver";
+import type { SessionAttachment, SessionConfig, SessionContextUsage, SessionQueuedMessage, SessionRef } from "@pi-gui/session-driver";
 import type {
   ComposerAttachment,
   QueuedComposerMessage,
@@ -28,6 +28,7 @@ export function buildWorkspaceRecords(
   runningSinceBySession: Map<string, string>,
   sessionConfigBySession: Map<string, SessionConfig>,
   lastViewedAtBySession: Map<string, string>,
+  contextUsageBySession: Map<string, SessionContextUsage>,
 ): WorkspaceRecord[] {
   const workspaceRoots = resolveWorkspaceRoots(workspaces, worktrees);
 
@@ -56,6 +57,7 @@ export function buildWorkspaceRecords(
             runningSinceBySession,
             sessionConfigBySession,
             lastViewedAtBySession,
+            contextUsageBySession,
           ),
         ),
     };
@@ -207,6 +209,7 @@ function buildSessionRecord(
   runningSinceBySession: Map<string, string>,
   sessionConfigBySession: Map<string, SessionConfig>,
   lastViewedAtBySession: Map<string, string>,
+  contextUsageBySession: Map<string, SessionContextUsage>,
 ): SessionRecord {
   const key = sessionKey(session.sessionRef);
   const transcript = transcriptCache.get(key) ?? [];
@@ -224,6 +227,7 @@ function buildSessionRecord(
     hasUnseenUpdate: hasUnseenSessionUpdate(session.status, session.updatedAt, lastViewedAt, transcript),
     isAwaitingAssistantText: isAwaitingAssistantText(session.status, transcript),
     config: sessionConfigBySession.get(key),
+    contextUsage: contextUsageBySession.get(key),
   };
 }
 

@@ -7,10 +7,6 @@ const CAVEMAN_LABELS: Record<string, string> = {
   lite: "Caveman lite",
   full: "Caveman full",
   ultra: "Caveman ultra",
-  micro: "Caveman micro",
-  "wenyan-lite": "文言 lite",
-  wenyan: "文言",
-  "wenyan-ultra": "文言 ultra",
 };
 
 function cavemanLabel(level: CavemanLevel): string {
@@ -32,24 +28,17 @@ interface CavemanSelectorProps {
  */
 export function CavemanSelector({ level, disabled = false, onSetLevel }: CavemanSelectorProps) {
   const [visualLevel, setVisualLevel] = useState(level);
-  // What "on" means — configured in Settings, persisted in caveman config.
-  const [onLevel, setOnLevel] = useState<CavemanLevel>("ultra");
   const buttonSound = useButtonSound({ variant: "click", disabled });
 
   useEffect(() => {
     setVisualLevel(level);
   }, [level]);
 
-  useEffect(() => {
-    const api = window.piApp;
-    if (!api) return;
-    void api.getCavemanConfig().then((config) => setOnLevel(config.onLevel));
-  }, []);
-
   const active = visualLevel !== "off";
 
   const handleClick = () => {
-    const next: CavemanLevel = active ? "off" : onLevel;
+    // Toggle: if active turn off, if inactive restore last non-off level
+    const next: CavemanLevel = active ? "off" : "full";
     setVisualLevel(next);
     onSetLevel(next);
   };

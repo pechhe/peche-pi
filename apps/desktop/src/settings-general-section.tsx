@@ -21,10 +21,10 @@ interface SettingsGeneralSectionProps {
   readonly commitPushModel?: string;
   readonly planModeIdeology: PlanModeIdeologySetting;
   readonly smartCompactSettings: SmartCompactSettings;
-  readonly cavemanOnLevel: CavemanLevel;
+  readonly cavemanLevel: CavemanLevel;
   readonly activeView: string;
   readonly queueMode: boolean;
-  readonly onSetCavemanOnLevel: (level: CavemanLevel) => void;
+  readonly onSetCavemanLevel: (level: CavemanLevel) => void;
   readonly onSetPlanModeIdeology: (ideology: PlanModeIdeologySetting) => void;
   readonly onSetActiveView: (view: import("./desktop-state").AppView) => void;
   readonly onSetQueueMode: (enabled: boolean) => void;
@@ -76,10 +76,10 @@ export function SettingsGeneralSection({
   onSetPlanModeIdeology,
   smartCompactSettings,
   onSetSmartCompactSettings,
-  cavemanOnLevel,
+  cavemanLevel,
   activeView,
   queueMode,
-  onSetCavemanOnLevel,
+  onSetCavemanLevel,
   onSetActiveView,
   onSetQueueMode,
   onOpenKanban,
@@ -174,16 +174,15 @@ export function SettingsGeneralSection({
           </div>
         </SettingsRow>
         <SettingsRow
-          title="Caveman on level"
-          description="What the composer Caveman toggle switches on to."
+          title="Caveman level"
+          description="Active caveman compression intensity. Toggle with the composer button."
         >
           <select
-            aria-label="Caveman on level"
+            aria-label="Caveman level"
             className="settings-text-input"
-            value={cavemanOnLevel}
-            onChange={(event) => onSetCavemanOnLevel(event.target.value as CavemanLevel)}
+            value={cavemanLevel === "off" ? "full" : cavemanLevel}
+            onChange={(event) => onSetCavemanLevel(event.target.value as CavemanLevel)}
           >
-            <option value="micro">Micro</option>
             <option value="lite">Lite</option>
             <option value="full">Full</option>
             <option value="ultra">Ultra</option>

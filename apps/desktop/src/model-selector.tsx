@@ -118,11 +118,26 @@ export const ModelSelector = forwardRef<ModelSelectorHandle, ModelSelectorProps>
       return runtime.models.find((record) => record.providerId === p && record.modelId === m);
     }, [runtime, provider, modelId]);
 
-    const availableThinkingLevels = effectiveModelRecord?.availableThinkingLevels ?? ["off"];
+    // When the model is explicitly selected but not found in the registry (e.g.
+    // custom model not yet loaded), use the default model's levels instead of
+    // the old ["off"] fallback which showed a phantom "off" slot for models
+    // that don't support it.
+    const fallbackModelRecord = useMemo(() => {
+      if (!runtime) return undefined;
+      const dp = runtime.settings.defaultProvider;
+      const dm = runtime.settings.defaultModelId;
+      if (!dp || !dm) return undefined;
+      return runtime.models.find((record) => record.providerId === dp && record.modelId === dm);
+    }, [runtime]);
+
+    const availableThinkingLevels =
+      effectiveModelRecord?.availableThinkingLevels ??
+      fallbackModelRecord?.availableThinkingLevels ??
+      ["off"];
 
     // Provider-specific display names (e.g. xhigh shows as "MAX" for Opus,
     // "XHIGH" for GPT-5.5) so the dial matches the selected model.
-    const thinkingLevelLabels = effectiveModelRecord?.thinkingLevelLabels;
+    const thinkingLevelLabels = effectiveModelRecord?.thinkingLevelLabels ?? fallbackModelRecord?.thinkingLevelLabels;
 
     const visibleModelOptions = useMemo(() => {
       if (showHiddenModels || hiddenModelKeys.size === 0) return modelOptions;

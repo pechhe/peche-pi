@@ -1,5 +1,5 @@
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { access, readFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
 import type {
   ContextSection,
@@ -7,11 +7,102 @@ import type {
 } from "../src/desktop-state";
 
 /**
+ * Estimate token count for a text string.
+ * Uses ~4 chars per token as a rough approximation for English text.
+ * This is a simplification but gives a good ballpark for analysis.
+ */
+function estimateTokens(text: string): number {
+  if (!text) return 0;
+  return Math.ceil(text.length / 4);
+}
+
+/**
+ * Build the graphify append system prompt if graphify-out exists.
+ * Replicates logic from session-supervisor.ts.
+ */
+async function buildGraphifyAppendSystemPrompt(workspacePath: string): Promise<string | undefined> {
+  const graphPath = resolve(workspacePath, "graphify-out", "graph.json");
+  const reportPath = resolve(workspacePath, "graphify-out", "GRAPH_REPORT.md");
+  try {
+    await access(graphPath);
+  } catch {
+    return undefined;
+  }
+
+  const report = await readFile(reportPath, "utf8").catch(() => "");
+  const builtCommit = report.match(/Built from commit:\s*`?([a-f0-9]{7,40})`?/i)?.[1];
+  const communities = extractGraphifyCommunityNames(report).slice(0, 8);
+  return [
+    "# Graphify Project Map",
+    "",
+    "This workspace has `graphify-out/graph.json`. For natural-language questions about architecture, ownership, file relationships, codebase concepts, or where something fits, use Graphify before grep/search.",
+    "",
+    "Preferred routing:",
+    "- Use `graphify_query` for broad architecture/codebase questions.",
+    "- Use `graphify_explain` for a named concept or community.",
+    "- Use `graphify_path` to trace connections between two concepts.",
+    "- Use Cymbal for exact symbols, refs, impact, implementations, and targeted source reads.",
+    "- Use grep/rg for exact strings, config values, logs, or non-code text.",
+    "",
+    "Fast path: if the user asks how the codebase works and does not explicitly ask to rebuild/update, query the existing graph first. Do not redetect or rebuild before answering.",
+    "",
+    builtCommit ? `Graph built from commit: ${builtCommit}` : undefined,
+    communities.length ? `Top graph communities: ${communities.join(", ")}` : undefined,
+    "If current source changes matter, check graph freshness and run `graphify_update` before relying on the graph.",
+  ].filter(Boolean).join("\n");
+}
+
+function extractGraphifyCommunityNames(report: string): string[] {
+  const names: string[] = [];
+  for (const line of report.split(/\r?\n/)) {
+    const match = line.match(/^- \[\[_COMMUNITY_([^\]|]+)(?:\|([^\]]+))?\]\]/);
+    if (match?.[1]) {
+      names.push((match[2] || match[1]).trim());
+    }
+  }
+  return names;
+}
+
+/**
+ * Build the base system prompt content (without context files or skills).
+ * Context files and skills are shown separately for accurate token analysis.
+ */
+async function buildBaseSystemPromptContent(params: {
+  readonly workspacePath: string;
+  readonly runtime?: RuntimeSnapshot;
+}): Promise<string> {
+  const { workspacePath, runtime: _runtime } = params;
+  const promptCwd = workspacePath.replace(/\\/g, "/");
+  const now = new Date();
+  const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+
+  // Base system prompt (default pi prompt)
+  let prompt = `You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.
+
+Available tools:
+- read: Read file contents
+- bash: Execute bash commands (ls, grep, find, etc.)
+- edit: Make precise file edits with exact text replacement
+- write: Create or overwrite files
+
+Guidelines:
+- Use bash for file operations like ls, rg, find
+- Be concise in your responses
+- Show file paths clearly when working with files`;
+
+  // Date and working directory
+  prompt += `\nCurrent date: ${date}`;
+  prompt += `\nCurrent working directory: ${promptCwd}`;
+
+  return prompt;
+}
+
+/**
  * Build a ContextSnapshot from first-party runtime data and workspace files.
  *
  * This is a pure data transform — no side-effects, fully testable.
  */
-export function buildContextSnapshot(params: {
+export async function buildContextSnapshot(params: {
   readonly workspaceId: string;
   readonly workspacePath: string;
   readonly sessionId?: string;
@@ -22,34 +113,53 @@ export function buildContextSnapshot(params: {
   readonly sessionProvider?: string;
   readonly sessionModelId?: string;
   readonly sessionThinkingLevel?: string;
-}): ContextSnapshot {
+}): Promise<ContextSnapshot> {
   const sections: ContextSection[] = [];
 
-  // 1. System prompt
+  // Build graphify append prompt if available
+  const graphifyPrompt = params.workspacePath
+    ? await buildGraphifyAppendSystemPrompt(params.workspacePath)
+    : undefined;
+
+  // 1. System prompt - base prompt only (context files and skills shown separately)
+  const systemPromptContent = await buildBaseSystemPromptContent({
+    workspacePath: params.workspacePath,
+    runtime: params.runtime,
+  });
+  // Append graphify prompt to system prompt for display
+  const fullSystemPrompt = graphifyPrompt
+    ? `${systemPromptContent}\n\n${graphifyPrompt}`
+    : systemPromptContent;
+
   sections.push({
     kind: "system-prompt",
     label: "System prompt",
     origin: "pi runtime",
     scope: "global",
     enabled: true,
-    content: params.runtime
-      ? "The pi runtime assembles the system prompt from your workspace context, skills, extensions, and model settings."
-      : "No runtime loaded. Start a workspace to see the effective system prompt.",
+    content: fullSystemPrompt,
+    tokenCount: estimateTokens(fullSystemPrompt),
   });
 
   // 2. Context files (AGENTS.md, CLAUDE.md)
-  if (params.agentsMd) {
+  // Deduplicate - they're often the same file (CLAUDE.md -> AGENTS.md symlink)
+  const hasAgentsMd = !!params.agentsMd;
+  const hasClaudeMd = !!params.claudeMd;
+  const areSameContent = hasAgentsMd && hasClaudeMd && params.agentsMd === params.claudeMd;
+
+  if (hasAgentsMd) {
     sections.push({
       kind: "context-file",
-      label: "AGENTS.md",
+      label: areSameContent ? "AGENTS.md / CLAUDE.md" : "AGENTS.md",
       origin: "workspace",
       scope: "project",
       enabled: true,
       path: join(params.workspacePath, "AGENTS.md"),
       content: params.agentsMd,
+      tokenCount: estimateTokens(params.agentsMd),
     });
   }
-  if (params.claudeMd) {
+  if (hasClaudeMd && !areSameContent) {
     sections.push({
       kind: "context-file",
       label: "CLAUDE.md",
@@ -58,12 +168,14 @@ export function buildContextSnapshot(params: {
       enabled: true,
       path: join(params.workspacePath, "CLAUDE.md"),
       content: params.claudeMd,
+      tokenCount: estimateTokens(params.claudeMd),
     });
   }
 
   // 3. Skills
   const skills = params.runtime?.skills ?? [];
   for (const skill of skills) {
+    const skillContent = skill.description || "";
     sections.push({
       kind: "skill",
       label: skill.name,
@@ -72,6 +184,7 @@ export function buildContextSnapshot(params: {
       enabled: skill.enabled,
       path: skill.filePath,
       detail: skill.description,
+      tokenCount: estimateTokens(skillContent),
     });
   }
 
@@ -79,6 +192,7 @@ export function buildContextSnapshot(params: {
   const extensions = params.runtime?.extensions ?? [];
   for (const ext of extensions) {
     const toolNames = ext.tools.join(", ");
+    const extContent = toolNames ? `Tools: ${toolNames}` : ext.commands.join(", ");
     sections.push({
       kind: "extension",
       label: ext.displayName,
@@ -86,7 +200,8 @@ export function buildContextSnapshot(params: {
       scope: ext.sourceInfo.scope,
       enabled: ext.enabled,
       path: ext.path,
-      detail: toolNames ? `Tools: ${toolNames}` : ext.commands.join(", "),
+      detail: extContent,
+      tokenCount: estimateTokens(extContent),
     });
   }
 
@@ -99,6 +214,7 @@ export function buildContextSnapshot(params: {
       origin: cmd.source,
       scope: "session",
       enabled: true,
+      tokenCount: estimateTokens(cmd.name),
     });
   }
 
@@ -113,13 +229,15 @@ export function buildContextSnapshot(params: {
     if (settings.enabledModelPatterns.length > 0) {
       parts.push(`Model patterns: ${settings.enabledModelPatterns.join(", ")}`);
     }
+    const settingsContent = parts.join("\n") || "No settings configured.";
     sections.push({
       kind: "model-settings",
       label: "Runtime settings",
       origin: "settings",
       scope: "project",
       enabled: true,
-      content: parts.join("\n") || "No settings configured.",
+      content: settingsContent,
+      tokenCount: estimateTokens(settingsContent),
     });
   }
 
@@ -130,13 +248,15 @@ export function buildContextSnapshot(params: {
     if (params.sessionModelId) sessionParts.push(`Model: ${params.sessionModelId}`);
     if (params.sessionThinkingLevel) sessionParts.push(`Thinking: ${params.sessionThinkingLevel}`);
     if (sessionParts.length > 0) {
+      const sessionContent = sessionParts.join("\n");
       sections.push({
         kind: "model-settings",
         label: "Session overrides",
         origin: "session",
         scope: "session",
         enabled: true,
-        content: sessionParts.join("\n"),
+        content: sessionContent,
+        tokenCount: estimateTokens(sessionContent),
       });
     }
   }
@@ -150,6 +270,7 @@ export function buildContextSnapshot(params: {
     enabled: true,
     content: "{{USER_MESSAGE}}",
     detail: "Your next message will be inserted here in the prompt chain.",
+    tokenCount: 0, // Not counted until user types
   });
 
   return {

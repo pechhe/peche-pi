@@ -69,6 +69,7 @@ export function ContextView({
 
   const sections = snapshot?.sections ?? [];
   const grouped = groupSections(sections);
+  const tokenAnalysis = analyzeTokens(sections);
 
   return (
     <div className="context-view">
@@ -98,6 +99,71 @@ export function ContextView({
         </div>
       </header>
 
+      {/* Token Analysis Summary */}
+      {sections.length > 0 ? (
+        <div className="context-analysis">
+          <h2 className="context-analysis__title">Token Analysis</h2>
+          <div className="context-analysis__summary">
+            <div className="context-analysis__stat">
+              <span className="context-analysis__stat-label">Total estimated tokens</span>
+              <span className="context-analysis__stat-value">{tokenAnalysis.totalTokens.toLocaleString()}</span>
+            </div>
+            <div className="context-analysis__stat">
+              <span className="context-analysis__stat-label">Context window usage</span>
+              <span className="context-analysis__stat-value">{tokenAnalysis.percentage}%</span>
+            </div>
+            <div className="context-analysis__stat">
+              <span className="context-analysis__stat-label">Sections</span>
+              <span className="context-analysis__stat-value">{sections.length}</span>
+            </div>
+          </div>
+
+          {/* Token breakdown by section */}
+          <div className="context-analysis__breakdown">
+            <h3 className="context-analysis__subtitle">Breakdown by section</h3>
+            {tokenAnalysis.sectionBreakdown.map((item) => (
+              <div key={item.kind} className="context-analysis__bar-row">
+                <div className="context-analysis__bar-label">
+                  <span>{item.label}</span>
+                  <span className="context-analysis__bar-tokens">{item.tokens.toLocaleString()} tokens</span>
+                </div>
+                <div className="context-analysis__bar-track">
+                  <div
+                    className={`context-analysis__bar-fill context-analysis__bar-fill--${item.severity}`}
+                    style={{ width: `${item.percentage}%` }}
+                  />
+                </div>
+                <span className="context-analysis__bar-percentage">{item.percentage}%</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Bloat analysis */}
+          {tokenAnalysis.warnings.length > 0 ? (
+            <div className="context-analysis__warnings">
+              <h3 className="context-analysis__subtitle">⚠️ Potential issues</h3>
+              <ul className="context-analysis__warning-list">
+                {tokenAnalysis.warnings.map((warning, i) => (
+                  <li key={i} className="context-analysis__warning-item">{warning}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {/* Recommendations */}
+          {tokenAnalysis.recommendations.length > 0 ? (
+            <div className="context-analysis__recommendations">
+              <h3 className="context-analysis__subtitle">💡 Recommendations</h3>
+              <ul className="context-analysis__recommendation-list">
+                {tokenAnalysis.recommendations.map((rec, i) => (
+                  <li key={i} className="context-analysis__recommendation-item">{rec}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
       {loading && !snapshot ? (
         <div className="context-loading">
           <p>Loading context snapshot…</p>
@@ -111,6 +177,7 @@ export function ContextView({
         <div className="context-sections">
           {grouped.map((group) => {
             const isExpanded = expandedSections.has(group.kind);
+            const groupTokens = group.sections.reduce((sum, s) => sum + (s.tokenCount ?? 0), 0);
             return (
               <div className="context-group" key={group.kind}>
                 <button
@@ -122,6 +189,7 @@ export function ContextView({
                   {isExpanded ? <ChevronDownIcon /> : <ChevronRightIcon />}
                   <span className="context-group__label">{group.label}</span>
                   <span className="context-group__count">{group.sections.length}</span>
+                  <span className="context-group__tokens">{groupTokens.toLocaleString()} tokens</span>
                 </button>
                 {isExpanded ? (
                   <div className="context-group__items">
@@ -164,6 +232,9 @@ function ContextSectionRow({ section, onOpenFile, api: _api }: ContextSectionRow
           {section.scope ? <span className="context-tag context-tag--muted">{section.scope}</span> : null}
           {section.enabled === false ? (
             <span className="context-tag context-tag--disabled">disabled</span>
+          ) : null}
+          {section.tokenCount !== undefined ? (
+            <span className="context-tag context-tag--tokens">{section.tokenCount.toLocaleString()} tokens</span>
           ) : null}
         </span>
       </div>
@@ -259,4 +330,95 @@ function formatSnapshotAsText(snapshot: ContextSnapshot): string {
     }
   }
   return lines.join("\n");
+}
+
+/* ── Token Analysis ────────────────────────────────────── */
+
+interface TokenAnalysis {
+  readonly totalTokens: number;
+  readonly percentage: number;
+  readonly sectionBreakdown: readonly {
+    readonly kind: string;
+    readonly label: string;
+    readonly tokens: number;
+    readonly percentage: number;
+    readonly severity: "low" | "medium" | "high";
+  }[];
+  readonly warnings: readonly string[];
+  readonly recommendations: readonly string[];
+}
+
+/** Assume 200k context window for modern models */
+const ASSUMED_CONTEXT_WINDOW = 200_000;
+
+function analyzeTokens(sections: readonly ContextSection[]): TokenAnalysis {
+  const totalTokens = sections.reduce((sum, s) => sum + (s.tokenCount ?? 0), 0);
+  const percentage = Math.round((totalTokens / ASSUMED_CONTEXT_WINDOW) * 100);
+
+  // Group by kind
+  const byKind = new Map<string, number>();
+  for (const section of sections) {
+    const current = byKind.get(section.kind) ?? 0;
+    byKind.set(section.kind, current + (section.tokenCount ?? 0));
+  }
+
+  const sectionBreakdown = SECTION_ORDER
+    .filter((kind) => byKind.has(kind))
+    .map((kind) => {
+      const tokens = byKind.get(kind)!;
+      const pct = totalTokens > 0 ? Math.round((tokens / totalTokens) * 100) : 0;
+      const severity: "low" | "medium" | "high" = pct > 50 ? "high" : pct > 25 ? "medium" : "low";
+      return {
+        kind,
+        label: SECTION_LABELS[kind] ?? kind,
+        tokens,
+        percentage: pct,
+        severity,
+      };
+    });
+
+  const warnings: string[] = [];
+  const recommendations: string[] = [];
+
+  // Check for bloat
+  if (percentage > 50) {
+    warnings.push(`Context is using ${percentage}% of the estimated 200k context window. This is getting heavy.`);
+  }
+
+  // Check for large context files
+  const contextFileTokens = byKind.get("context-file") ?? 0;
+  if (contextFileTokens > 20_000) {
+    warnings.push(`Context files (AGENTS.md, CLAUDE.md) total ${contextFileTokens.toLocaleString()} tokens. Consider trimming.`);
+    recommendations.push("Review AGENTS.md for outdated or redundant instructions.");
+  }
+
+  // Check for too many skills
+  const skillTokens = byKind.get("skill") ?? 0;
+  const skillCount = sections.filter((s) => s.kind === "skill").length;
+  if (skillCount > 20) {
+    warnings.push(`${skillCount} skills registered. Each adds description tokens to the system prompt.`);
+    recommendations.push("Disable unused skills or consolidate related ones.");
+  }
+
+  // Check system prompt size
+  const systemPromptTokens = byKind.get("system-prompt") ?? 0;
+  if (systemPromptTokens > 10_000) {
+    warnings.push(`System prompt is ${systemPromptTokens.toLocaleString()} tokens. This includes base instructions + appended content.`);
+  }
+
+  // General recommendations
+  if (totalTokens > 30_000) {
+    recommendations.push("Use /compact to summarize older conversation history when context gets large.");
+  }
+  if (percentage > 30) {
+    recommendations.push("Consider using a model with a larger context window if you need more room.");
+  }
+
+  return {
+    totalTokens,
+    percentage,
+    sectionBreakdown,
+    warnings,
+    recommendations,
+  };
 }

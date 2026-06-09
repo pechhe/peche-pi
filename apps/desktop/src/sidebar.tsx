@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -14,6 +14,9 @@ import {
 import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { AppView, Automation, ChatRecord, SessionRecord, WorkspaceRecord, WorktreeRecord } from "./desktop-state";
+import { countAutomationsNext24h } from "./desktop-state";
+import { type ThreadType, threadTypeAccent, parseThreadType } from "./thread-types";
+import { BugIcon, FeatureIcon, RefactorIcon, InvestigateIcon, OtherIcon } from "./icons";
 import { ChatIcon, ChevronDownIcon, ComposeIcon, ContextIcon, DoneIcon, ExtensionIcon, AutomationIcon, AutomationRunIcon, FolderIcon, ProjectIcon, RestoreIcon, SearchIcon, SettingsIcon, SkillIcon, SparkIcon, WorktreeIcon } from "./icons";
 import { WorkingSpinner } from "./working-label";
 import { getDesktopShortcutLabel, type PiDesktopApi } from "./ipc";
@@ -255,7 +258,7 @@ interface SidebarProps {
   readonly onOpenContext: (workspaceId?: string) => void;
   readonly onOpenSettings: (workspaceId?: string) => void;
   readonly queueMode: boolean;
-  readonly onArchiveSession: (target: { workspaceId: string; sessionId: string }) => void;
+  readonly onArchiveSession: (target: { workspaceId: string; sessionId: string; selectNextSessionId?: string }) => void;
   readonly onArchiveAllNonRunningSessions: (workspaceId: string, olderThanMs?: number) => void;
   readonly onSelectSession: (target: { workspaceId: string; sessionId: string }) => void;
   readonly onUnarchiveSession: (target: { workspaceId: string; sessionId: string }) => void;
@@ -269,6 +272,8 @@ interface SidebarProps {
   readonly onOpenAutomations: (workspaceId?: string) => void;
   readonly onOpenAgents: () => void;
   readonly onOpenSearch: () => void;
+  readonly sessionsWithRunningSubagents?: ReadonlySet<string>;
+  readonly threadTypeBySession?: Readonly<Record<string, string>>;
 }
 
 export function Sidebar(props: SidebarProps) {
@@ -306,7 +311,12 @@ export function Sidebar(props: SidebarProps) {
     onOpenAutomations,
     onOpenAgents,
     onOpenSearch,
+    sessionsWithRunningSubagents,
+    threadTypeBySession,
   } = props;
+
+  const automationTotal = props.automations.length;
+  const automationUpcoming = useMemo(() => countAutomationsNext24h(props.automations), [props.automations]);
 
   const [activeId, setActiveId] = useState<string | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
@@ -383,6 +393,7 @@ export function Sidebar(props: SidebarProps) {
           >
             <SparkIcon />
             <span>Agents</span>
+            <kbd className="sidebar__nav-shortcut shortcut-hint">{getDesktopShortcutLabel(api.platform, "⇧1")}</kbd>
           </button>
           <button
             className={`sidebar__nav-item ${activeView === "skills" ? "sidebar__nav-item--active" : ""}`}
@@ -391,6 +402,7 @@ export function Sidebar(props: SidebarProps) {
           >
             <SkillIcon />
             <span>Skills</span>
+            <kbd className="sidebar__nav-shortcut shortcut-hint">{getDesktopShortcutLabel(api.platform, "⇧2")}</kbd>
           </button>
           <button
             className={`sidebar__nav-item ${activeView === "extensions" ? "sidebar__nav-item--active" : ""}`}
@@ -399,6 +411,7 @@ export function Sidebar(props: SidebarProps) {
           >
             <ExtensionIcon />
             <span>Extensions</span>
+            <kbd className="sidebar__nav-shortcut shortcut-hint">{getDesktopShortcutLabel(api.platform, "⇧3")}</kbd>
           </button>
           <button
             className={`sidebar__nav-item ${activeView === "automations" ? "sidebar__nav-item--active" : ""}`}
@@ -407,6 +420,21 @@ export function Sidebar(props: SidebarProps) {
           >
             <AutomationIcon />
             <span>Automations</span>
+            {automationTotal > 0 ? (
+              <span className="sidebar__nav-badges" aria-label={`${automationTotal} automations, ${automationUpcoming} in next 24h`}>
+                <span className="sidebar__nav-badge sidebar__nav-badge--muted">
+                  <AutomationIcon />
+                  {automationTotal}
+                </span>
+                {automationUpcoming > 0 ? (
+                  <span className="sidebar__nav-badge sidebar__nav-badge--accent">
+                    <AutomationRunIcon />
+                    {automationUpcoming}
+                  </span>
+                ) : null}
+              </span>
+            ) : null}
+            <kbd className="sidebar__nav-shortcut shortcut-hint">{getDesktopShortcutLabel(api.platform, "⇧4")}</kbd>
           </button>
           <button
             className={`sidebar__nav-item ${activeView === "context" ? "sidebar__nav-item--active" : ""}`}
@@ -415,6 +443,7 @@ export function Sidebar(props: SidebarProps) {
           >
             <ContextIcon />
             <span>Context</span>
+            <kbd className="sidebar__nav-shortcut shortcut-hint">{getDesktopShortcutLabel(api.platform, "⇧5")}</kbd>
           </button>
           <button
             className={`sidebar__nav-item ${activeView === "settings" ? "sidebar__nav-item--active" : ""}`}
@@ -423,6 +452,7 @@ export function Sidebar(props: SidebarProps) {
           >
             <SettingsIcon />
             <span>Settings</span>
+            <kbd className="sidebar__nav-shortcut shortcut-hint">{getDesktopShortcutLabel(api.platform, ",")}</kbd>
           </button>
         </MovingSidebarHighlight>
       </div>
@@ -482,6 +512,8 @@ export function Sidebar(props: SidebarProps) {
                     onNewThreadForWorkspace={onNewThreadForWorkspace}
                     pendingSidebarSelection={pendingSidebarSelection}
                     onOpenAutomations={onOpenAutomations}
+                    sessionsWithRunningSubagents={sessionsWithRunningSubagents}
+                    threadTypeBySession={threadTypeBySession}
                   />
                 ))}
                 {orphanGroups.map((group) => (
@@ -502,6 +534,8 @@ export function Sidebar(props: SidebarProps) {
                     onNewThreadForWorkspace={onNewThreadForWorkspace}
                     pendingSidebarSelection={pendingSidebarSelection}
                     onOpenAutomations={onOpenAutomations}
+                    sessionsWithRunningSubagents={sessionsWithRunningSubagents}
+                    threadTypeBySession={threadTypeBySession}
                   />
                 ))}
               </div>
@@ -525,12 +559,17 @@ export function Sidebar(props: SidebarProps) {
                     onNewThreadForWorkspace={onNewThreadForWorkspace}
                     pendingSidebarSelection={pendingSidebarSelection}
                     onOpenAutomations={onOpenAutomations}
+                    sessionsWithRunningSubagents={sessionsWithRunningSubagents}
+                    threadTypeBySession={threadTypeBySession}
                   />
                 </div>
               ) : null}
             </DragOverlay>
           </DndContext>
         )}
+      </div>
+      <div className="sidebar__thread-nav-hint shortcut-hint" aria-hidden="true">
+        {getDesktopShortcutLabel(api.platform, "⇧↑↓")} navigate threads
       </div>
       <div className="sidebar__section sidebar__chats">
         <div className="section__head">
@@ -587,13 +626,15 @@ interface WorkspaceGroupProps {
   readonly linkedWorktreeByWorkspaceId: Map<string, WorktreeRecord>;
   readonly wsMenu: WorkspaceMenuState;
   readonly api: PiDesktopApi;
-  readonly onArchiveSession: (target: { workspaceId: string; sessionId: string }) => void;
+  readonly onArchiveSession: (target: { workspaceId: string; sessionId: string; selectNextSessionId?: string }) => void;
   readonly onArchiveAllNonRunningSessions: (workspaceId: string, olderThanMs?: number) => void;
   readonly onSelectSession: (target: { workspaceId: string; sessionId: string }) => void;
   readonly onUnarchiveSession: (target: { workspaceId: string; sessionId: string }) => void;
   readonly onNewThreadForWorkspace: (rootWorkspaceId: string) => void;
   readonly pendingSidebarSelection: SidebarNavEntry | null;
   readonly onOpenAutomations: (workspaceId?: string) => void;
+  readonly sessionsWithRunningSubagents?: ReadonlySet<string>;
+  readonly threadTypeBySession?: Readonly<Record<string, string>>;
 }
 
 function SortableWorkspaceGroup(props: WorkspaceGroupProps) {
@@ -603,7 +644,6 @@ function SortableWorkspaceGroup(props: WorkspaceGroupProps) {
     id: group.rootWorkspace.id,
     disabled: isRenaming,
   });
-
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -650,6 +690,8 @@ function WorkspaceGroupContent(
     dragHandleProps,
     pendingSidebarSelection,
     onOpenAutomations,
+    sessionsWithRunningSubagents,
+    threadTypeBySession,
   } = props;
 
   const workspaceActive =
@@ -657,6 +699,7 @@ function WorkspaceGroupContent(
     rootWorkspace.id === selectedWorkspace?.rootWorkspaceId;
   const linkedWorktree = linkedWorktreeByWorkspaceId.get(rootWorkspace.id);
   const archivedSectionOpen = wsMenu.expandedArchivedByWorkspace[rootWorkspace.id] ?? false;
+  const [showAllArchived, setShowAllArchived] = useState(false);
   const isCollapsed = wsMenu.collapsedWorkspaces[rootWorkspace.id] ?? false;
 
   return (
@@ -827,7 +870,7 @@ function WorkspaceGroupContent(
       {!isCollapsed ? (
         <>
           <MovingSidebarHighlight className="session-list" itemSelector=".session-row">
-            {threads.map((thread) => {
+            {threads.map((thread, index) => {
               const active =
                 thread.session.id === PENDING_THREAD_SESSION_ID ||
                 (activeView === "threads" &&
@@ -837,16 +880,20 @@ function WorkspaceGroupContent(
                 pendingSidebarSelection?.kind === "thread" &&
                 pendingSidebarSelection.workspaceId === thread.workspaceId &&
                 pendingSidebarSelection.sessionId === thread.session.id;
+              const nextThread = threads[index + 1] ?? (index > 0 ? threads[index - 1] : undefined);
               return (
                 <ThreadSessionRow
                   key={`${thread.workspaceId}:${thread.session.id}`}
                   active={active}
                   pending={pending}
                   thread={thread}
+                  hasRunningSubagents={sessionsWithRunningSubagents?.has(`${thread.workspaceId}:${thread.session.id}`) ?? false}
+                  threadType={threadTypeBySession?.[thread.session.id]}
                   onAction={() =>
                     onArchiveSession({
                       workspaceId: thread.workspaceId,
                       sessionId: thread.session.id,
+                      selectNextSessionId: nextThread?.session.id,
                     })
                   }
                   onSelect={() => onSelectSession({ workspaceId: thread.workspaceId, sessionId: thread.session.id })}
@@ -872,34 +919,47 @@ function WorkspaceGroupContent(
                 <span className="archived-thread-group__count">{archivedThreads.length}</span>
               </button>
               {archivedSectionOpen ? (
-                <MovingSidebarHighlight className="session-list session-list--archived" itemSelector=".session-row">
-                  {archivedThreads.map((thread) => {
-                    const active =
-                      activeView === "threads" &&
-                      thread.workspaceId === selectedWorkspace?.id &&
-                      thread.session.id === selectedSession?.id;
-                    const pending =
-                      pendingSidebarSelection?.kind === "thread" &&
-                      pendingSidebarSelection.workspaceId === thread.workspaceId &&
-                      pendingSidebarSelection.sessionId === thread.session.id;
-                    return (
-                      <ThreadSessionRow
-                        key={`${thread.workspaceId}:${thread.session.id}`}
-                        active={active}
-                        pending={pending}
-                        archived
-                        thread={thread}
-                        onAction={() =>
-                          onUnarchiveSession({
-                            workspaceId: thread.workspaceId,
-                            sessionId: thread.session.id,
-                          })
-                        }
-                        onSelect={() => onSelectSession({ workspaceId: thread.workspaceId, sessionId: thread.session.id })}
-                      />
-                    );
-                  })}
-                </MovingSidebarHighlight>
+                <>
+                  <MovingSidebarHighlight className="session-list session-list--archived" itemSelector=".session-row">
+                    {(showAllArchived ? archivedThreads : archivedThreads.slice(0, 20)).map((thread) => {
+                      const active =
+                        activeView === "threads" &&
+                        thread.workspaceId === selectedWorkspace?.id &&
+                        thread.session.id === selectedSession?.id;
+                      const pending =
+                        pendingSidebarSelection?.kind === "thread" &&
+                        pendingSidebarSelection.workspaceId === thread.workspaceId &&
+                        pendingSidebarSelection.sessionId === thread.session.id;
+                      return (
+                        <ThreadSessionRow
+                          key={`${thread.workspaceId}:${thread.session.id}`}
+                          active={active}
+                          pending={pending}
+                          archived
+                          thread={thread}
+                          hasRunningSubagents={sessionsWithRunningSubagents?.has(`${thread.workspaceId}:${thread.session.id}`) ?? false}
+                          threadType={threadTypeBySession?.[thread.session.id]}
+                          onAction={() =>
+                            onUnarchiveSession({
+                              workspaceId: thread.workspaceId,
+                              sessionId: thread.session.id,
+                            })
+                          }
+                          onSelect={() => onSelectSession({ workspaceId: thread.workspaceId, sessionId: thread.session.id })}
+                        />
+                      );
+                    })}
+                  </MovingSidebarHighlight>
+                  {archivedThreads.length > 20 ? (
+                    <button
+                      className="archived-thread-group__show-all"
+                      type="button"
+                      onClick={() => setShowAllArchived(true)}
+                    >
+                      Show all {archivedThreads.length}
+                    </button>
+                  ) : null}
+                </>
               ) : null}
             </div>
           ) : null}
@@ -911,12 +971,13 @@ function WorkspaceGroupContent(
 
 /* ── Thread session row ────────────────────────────────── */
 
-function sessionIndicatorVariant(thread: ThreadListEntry): "running" | "unseen" | "none" {
+function sessionIndicatorVariant(thread: ThreadListEntry, hasRunningSubagents: boolean): "running" | "unseen" | "none" {
   // Show the braille spinner continuously on the sidebar while the session
   // is running, regardless of whether the assistant has started producing
-  // visible output. The spinner only stops when the task finishes (status
-  // transitions away from "running").
-  if (thread.session.status === "running") {
+  // visible output. The spinner also stays visible while sub-agents are
+  // active — the main turn may finish (status → "idle") while spawned
+  // sub-agents are still working.
+  if (thread.session.status === "running" || hasRunningSubagents) {
     return "running";
   }
   if (thread.session.hasUnseenUpdate) {
@@ -936,8 +997,20 @@ interface ThreadSessionRowProps {
   readonly pending?: boolean;
   readonly archived?: boolean;
   readonly thread: ThreadListEntry;
+  readonly hasRunningSubagents?: boolean;
+  readonly threadType?: string;
   readonly onAction: () => void;
   readonly onSelect: () => void;
+}
+
+function ThreadTypeIcon({ type }: { readonly type: ThreadType }) {
+  switch (type) {
+    case "bug": return <BugIcon />;
+    case "feature": return <FeatureIcon />;
+    case "refactor": return <RefactorIcon />;
+    case "investigate": return <InvestigateIcon />;
+    default: return <OtherIcon />;
+  }
 }
 
 const ThreadSessionRow = memo(function ThreadSessionRow({
@@ -945,10 +1018,15 @@ const ThreadSessionRow = memo(function ThreadSessionRow({
   pending = false,
   archived = false,
   thread,
+  hasRunningSubagents = false,
+  threadType,
   onAction,
   onSelect,
 }: ThreadSessionRowProps) {
-  const indicatorVariant = sessionIndicatorVariant(thread);
+  const resolvedType = parseThreadType(threadType ?? "");
+  const accentColor = threadTypeAccent(resolvedType);
+  const accentVars = { "--ws-accent": accentColor } as React.CSSProperties;
+  const indicatorVariant = sessionIndicatorVariant(thread, hasRunningSubagents);
   const [completing, setCompleting] = useState(false);
 
   const handleDone = (event: ReactMouseEvent) => {
@@ -974,6 +1052,7 @@ const ThreadSessionRow = memo(function ThreadSessionRow({
       className={`session-row ${active ? "session-row--active" : ""} ${pending ? "session-row--pending" : ""} ${completing ? "session-row--completing" : ""}`}
       data-sidebar-indicator={indicatorVariant}
       data-session-id={thread.session.id}
+      style={accentVars}
       onClick={onSelect}
     >
       <button className="session-row__select" onClick={onSelect} type="button">
@@ -985,6 +1064,11 @@ const ThreadSessionRow = memo(function ThreadSessionRow({
           {thread.session.automationId || thread.session.title.startsWith("⚡ ") ? (
             <span className="session-row__automation-indicator" aria-label="Automation" title="Created by automation">
               <AutomationRunIcon />
+            </span>
+          ) : null}
+          {indicatorVariant === "none" && !thread.session.automationId && !thread.session.title.startsWith("⚡ ") ? (
+            <span className="session-row__type-icon" aria-label={resolvedType}>
+              <ThreadTypeIcon type={resolvedType} />
             </span>
           ) : null}
         </span>
@@ -1019,6 +1103,8 @@ function sameThreadSessionRowProps(previous: ThreadSessionRowProps, next: Thread
     previous.active === next.active &&
     previous.pending === next.pending &&
     previous.archived === next.archived &&
+    previous.hasRunningSubagents === next.hasRunningSubagents &&
+    previous.threadType === next.threadType &&
     previous.thread.workspaceId === next.thread.workspaceId &&
     previous.thread.environment.kind === next.thread.environment.kind &&
     previous.thread.session.id === next.thread.session.id &&
@@ -1051,6 +1137,8 @@ function SidebarChatsList({
   const activeChats = chats.filter((c) => !c.archivedAt);
   const archivedChats = chats.filter((c) => c.archivedAt);
   const [showArchived, setShowArchived] = useState(false);
+  const [showAllArchived, setShowAllArchived] = useState(false);
+  const INITIAL_ARCHIVED_LIMIT = 20;
 
   return (
     <>
@@ -1088,24 +1176,35 @@ function SidebarChatsList({
             <span className="archived-thread-group__count">{archivedChats.length}</span>
           </button>
           {showArchived ? (
-            <MovingSidebarHighlight className="session-list session-list--archived" itemSelector=".session-row">
-              {archivedChats.map((chat) => {
-                const isActive = Boolean(chat.chatWorkspaceId) && chat.chatWorkspaceId === selectedWorkspaceId;
-                const pending = pendingSidebarSelection?.kind === "chat" && pendingSidebarSelection.sessionId === chat.id;
-                return (
-                  <ChatRow
-                    key={chat.id}
-                    chat={chat}
-                    isActive={isActive}
-                    pending={pending}
-                    archived
-                    onSelect={() => onSelectChat(chat.id)}
-                    onUnarchive={() => onUnarchiveChat(chat.id)}
-                    onRemove={() => onRemoveChat(chat.id)}
-                  />
-                );
-              })}
-            </MovingSidebarHighlight>
+            <>
+              <MovingSidebarHighlight className="session-list session-list--archived" itemSelector=".session-row">
+                {(showAllArchived ? archivedChats : archivedChats.slice(0, INITIAL_ARCHIVED_LIMIT)).map((chat) => {
+                  const isActive = Boolean(chat.chatWorkspaceId) && chat.chatWorkspaceId === selectedWorkspaceId;
+                  const pending = pendingSidebarSelection?.kind === "chat" && pendingSidebarSelection.sessionId === chat.id;
+                  return (
+                    <ChatRow
+                      key={chat.id}
+                      chat={chat}
+                      isActive={isActive}
+                      pending={pending}
+                      archived
+                      onSelect={() => onSelectChat(chat.id)}
+                      onUnarchive={() => onUnarchiveChat(chat.id)}
+                      onRemove={() => onRemoveChat(chat.id)}
+                    />
+                  );
+                })}
+              </MovingSidebarHighlight>
+              {!showAllArchived && archivedChats.length > INITIAL_ARCHIVED_LIMIT ? (
+                <button
+                  className="archived-thread-group__show-all"
+                  type="button"
+                  onClick={() => setShowAllArchived(true)}
+                >
+                  Show all {archivedChats.length}
+                </button>
+              ) : null}
+            </>
           ) : null}
         </div>
       ) : null}

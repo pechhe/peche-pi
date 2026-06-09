@@ -110,6 +110,7 @@ export const TimelineItem = memo(function TimelineItem({
   liveThinkingSectionId,
   highlightQuery,
   liveEditStats,
+  turnUndoOps,
 }: {
   readonly item: TimelineRow;
   readonly expandedToolCallIds?: ReadonlySet<string>;
@@ -128,13 +129,15 @@ export const TimelineItem = memo(function TimelineItem({
   /** When set, matching text in this item is highlighted (e.g. from search jump). */
   readonly highlightQuery?: string;
   readonly liveEditStats?: ReadonlyMap<string, LiveEditStats>;
+  /** Map from edited-files card/activity ID to combined turn undo ops. */
+  readonly turnUndoOps?: { byEditedFilesId: ReadonlyMap<string, readonly UndoEditOp[]>; byActivityId: ReadonlyMap<string, readonly UndoEditOp[]> };
 }) {
   const content = (() => {
   switch (item.kind) {
     case "message":
       return <TimelineMessage item={item} streamingAssistantId={streamingAssistantId} onStreamingCaughtUp={onStreamingCaughtUp} highlightQuery={highlightQuery} />;
     case "activity":
-      return <TimelineActivityItem item={item} />;
+      return <TimelineActivityItem item={item} onUndoEdits={onUndoEdits} turnUndoOps={turnUndoOps?.byActivityId.get(item.id)} />;
     case "thinkingSection":
       return (
         <TimelineThinkingSectionItem
@@ -184,7 +187,7 @@ export const TimelineItem = memo(function TimelineItem({
         />
       );
     case "editedFiles":
-      return <TimelineEditedFilesItem item={item} onViewFileInDiff={onViewFileInDiff} onUndoEdits={onUndoEdits} onRedoEdits={onRedoEdits} />;
+      return <TimelineEditedFilesItem item={item} onViewFileInDiff={onViewFileInDiff} onUndoEdits={onUndoEdits} onRedoEdits={onRedoEdits} turnUndoOps={turnUndoOps?.byEditedFilesId.get(item.id)} />;
     case "summary":
       return <TimelineSummaryItem item={item} />;
     default:
@@ -207,6 +210,7 @@ export const TimelineItem = memo(function TimelineItem({
   if (prev.onViewFileInDiff !== next.onViewFileInDiff) return false;
   if (prev.onUndoEdits !== next.onUndoEdits) return false;
   if (prev.onRedoEdits !== next.onRedoEdits) return false;
+  if (prev.turnUndoOps !== next.turnUndoOps) return false;
   if (prev.onStreamingCaughtUp !== next.onStreamingCaughtUp) return false;
   if (prev.highlightQuery !== next.highlightQuery) return false;
   if (prev.item.kind === "reasoning" && next.item.kind === "reasoning") {
@@ -601,16 +605,72 @@ function buildUndoOps(tools: TimelineEditedFiles["tools"]): UndoEditOp[] {
   return ops;
 }
 
+/**
+ * Collect all undo ops from every edited-files card in a grouped transcript.
+ * Used for thread-level "revert all" functionality.
+ */
+export function collectAllUndoOps(rows: readonly TimelineRow[]): UndoEditOp[] {
+  const allOps: UndoEditOp[] = [];
+  for (const row of rows) {
+    if (row.kind === "editedFiles") {
+      allOps.push(...buildUndoOps(row.tools));
+    }
+  }
+  return allOps;
+}
+
+/**
+ * Build maps from edited-files card IDs and activity item IDs to the
+ * combined undo ops for that entire "turn" (all edited-files since the
+ * last user message). Activity items get the same ops so the "Worked for
+ * X" bar can show an inline Undo button.
+ */
+export function buildTurnUndoOpsMap(rows: readonly TimelineRow[]): {
+  byEditedFilesId: Map<string, UndoEditOp[]>;
+  byActivityId: Map<string, UndoEditOp[]>;
+} {
+  const byEditedFilesId = new Map<string, UndoEditOp[]>();
+  const byActivityId = new Map<string, UndoEditOp[]>();
+  const pendingEdits: TimelineEditedFiles[] = [];
+  const pendingActivities: TimelineActivity[] = [];
+  const flush = () => {
+    if (pendingEdits.length === 0) {
+      pendingActivities.length = 0;
+      return;
+    }
+    const ops: UndoEditOp[] = [];
+    for (const item of pendingEdits) ops.push(...buildUndoOps(item.tools));
+    for (const item of pendingEdits) byEditedFilesId.set(item.id, ops);
+    for (const item of pendingActivities) byActivityId.set(item.id, ops);
+    pendingEdits.length = 0;
+    pendingActivities.length = 0;
+  };
+  for (const row of rows) {
+    if (row.kind === "message" && row.role === "user") {
+      flush();
+    } else if (row.kind === "editedFiles") {
+      pendingEdits.push(row);
+    } else if (row.kind === "activity") {
+      pendingActivities.push(row);
+    }
+  }
+  flush();
+  return { byEditedFilesId, byActivityId };
+}
+
 function TimelineEditedFilesItem({
   item,
   onViewFileInDiff,
   onUndoEdits,
   onRedoEdits,
+  turnUndoOps,
 }: {
   readonly item: TimelineEditedFiles;
   readonly onViewFileInDiff?: (path: string) => void;
   readonly onUndoEdits?: (ops: readonly UndoEditOp[]) => Promise<UndoEditsResult>;
   readonly onRedoEdits?: (ops: readonly UndoEditOp[]) => Promise<UndoEditsResult>;
+  /** Combined undo ops for this entire turn (all edited-files cards since the last user message). */
+  readonly turnUndoOps?: readonly UndoEditOp[];
 }) {
   const [undoState, setUndoState] = useState<"idle" | "undoing" | "undone" | "redoing" | "error">("idle");
   const [undoNote, setUndoNote] = useState<string | null>(null);
@@ -624,12 +684,16 @@ function TimelineEditedFilesItem({
   const reviewPath = files[0]!.path;
   const undone = undoState === "undone" || undoState === "redoing";
 
+  // Use turn-level ops when available (reverts all cards in this turn),
+  // otherwise fall back to just this card's ops.
+  const effectiveOps = turnUndoOps && turnUndoOps.length > 0 ? turnUndoOps : buildUndoOps(item.tools);
+
   const handleUndo = async () => {
     if (!onUndoEdits || undoState === "undoing" || undoState === "redoing") return;
     setUndoState("undoing");
     setUndoNote(null);
     try {
-      const result = await onUndoEdits(buildUndoOps(item.tools));
+      const result = await onUndoEdits(effectiveOps);
       if (result.reverted.length === 0) {
         setUndoState("error");
         setUndoNote(result.failed[0]?.reason ?? "Nothing could be undone.");
@@ -648,7 +712,7 @@ function TimelineEditedFilesItem({
     setUndoState("redoing");
     setUndoNote(null);
     try {
-      const result = await onRedoEdits(buildUndoOps(item.tools));
+      const result = await onRedoEdits(effectiveOps);
       if (result.reverted.length === 0) {
         setUndoState("undone");
         setUndoNote(result.failed[0]?.reason ?? "Nothing could be redone.");
@@ -690,7 +754,7 @@ function TimelineEditedFilesItem({
           {undoNote ? <span className="timeline-edited-files__note">{undoNote}</span> : null}
           {onUndoEdits && !undone ? (
             <button
-              aria-label="Undo edits"
+              aria-label="Undo turn"
               className="timeline-edited-files__undo"
               data-testid="timeline-edited-files-undo"
               type="button"
@@ -702,7 +766,7 @@ function TimelineEditedFilesItem({
           ) : null}
           {onRedoEdits && undone ? (
             <button
-              aria-label="Redo edits"
+              aria-label="Redo turn"
               className="timeline-edited-files__undo"
               data-testid="timeline-edited-files-redo"
               type="button"
@@ -883,15 +947,50 @@ function UserTimelineMessage({ item, highlightQuery }: { readonly item: SessionT
   );
 }
 
-function TimelineActivityItem({ item }: { readonly item: TimelineActivity }) {
+function TimelineActivityItem({
+  item,
+  onUndoEdits,
+  turnUndoOps,
+}: {
+  readonly item: TimelineActivity;
+  readonly onUndoEdits?: (ops: readonly UndoEditOp[]) => Promise<UndoEditsResult>;
+  readonly turnUndoOps?: readonly UndoEditOp[];
+}) {
+  const [undoState, setUndoState] = useState<"idle" | "undoing" | "undone" | "redoing">("idle");
   if (item.retry) {
     return <TimelineRetryItem label={item.label} retry={item.retry} />;
   }
+  const hasUndo = turnUndoOps && turnUndoOps.length > 0 && onUndoEdits;
+
+  const handleUndo = async () => {
+    if (!onUndoEdits || undoState !== "idle") return;
+    setUndoState("undoing");
+    try {
+      await onUndoEdits(turnUndoOps!);
+      setUndoState("undone");
+    } catch {
+      setUndoState("idle");
+    }
+  };
+
   return (
-    <div className={`timeline-activity timeline-activity--${item.tone ?? "neutral"}`}>
-      <span className="timeline-activity__label">{item.label}</span>
+    <div className={`timeline-activity timeline-activity--${item.tone ?? "neutral"}${undoState === "undone" ? " timeline-activity--undone" : ""}`}>
+      <span className="timeline-activity__label">
+        {undoState === "undone" ? "Reverted" : item.label}
+      </span>
       {item.detail ? <span className="timeline-activity__detail">{item.detail}</span> : null}
       {item.metadata ? <span className="timeline-activity__meta">{item.metadata}</span> : null}
+      {hasUndo && undoState !== "undone" ? (
+        <button
+          className="timeline-activity__undo"
+          data-testid="timeline-activity-undo"
+          type="button"
+          disabled={undoState === "undoing"}
+          onClick={handleUndo}
+        >
+          {undoState === "undoing" ? "Undoing…" : "Undo"}
+        </button>
+      ) : null}
     </div>
   );
 }

@@ -77,8 +77,9 @@ export function SettingsGroup({
   readonly description?: string;
   readonly children: ReactNode;
 }) {
+  const searchable = [title, description].filter(Boolean).join(" ");
   return (
-    <div className="settings-section">
+    <div className="settings-section" data-searchable={searchable || undefined}>
       {title ? <h3 className="settings-section__title">{title}</h3> : null}
       {description ? <p className="settings-section__description">{description}</p> : null}
       <div className="settings-group">{children}</div>
@@ -95,8 +96,9 @@ export function SettingsRow({
   readonly description?: string;
   readonly children?: ReactNode;
 }) {
+  const searchable = [title, description].filter(Boolean).join(" ");
   return (
-    <div className="settings-row">
+    <div className="settings-row" data-searchable={searchable || undefined}>
       <div className="settings-row__label">
         <div className="settings-row__title">{title}</div>
         {description ? <div className="settings-row__description">{description}</div> : null}
@@ -108,7 +110,7 @@ export function SettingsRow({
 
 export function SettingsInfoRow({ label, value }: { readonly label: string; readonly value: string }) {
   return (
-    <div className="settings-row">
+    <div className="settings-row" data-searchable={`${label} ${value}`}>
       <div className="settings-row__label">
         <div className="settings-row__title">{label}</div>
       </div>

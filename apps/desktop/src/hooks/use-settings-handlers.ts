@@ -31,6 +31,8 @@ export interface SettingsHandlers {
   readonly handleLogoutProvider: (providerId: string) => void;
   readonly handleSetProviderApiKey: (providerId: string, apiKey: string) => Promise<string | undefined>;
   readonly handleRemoveProviderApiKey: (providerId: string) => Promise<string | undefined>;
+  readonly handleAddCustomProvider: (config: import("../ipc").CustomProviderConfig) => Promise<string | undefined>;
+  readonly handleRemoveCustomProvider: (providerId: string) => Promise<string | undefined>;
   readonly handleSetThemeMode: (mode: "system" | "light" | "dark" | "dracula") => void;
   readonly handleSetNotificationPreferences: (preferences: Partial<DesktopAppState["notificationPreferences"]>) => void;
   readonly handleSetIntegratedTerminalShell: (shellPath: string) => void;
@@ -108,6 +110,22 @@ export function useSettingsHandlers({
     if (!api || !settingsWorkspace) return "Select a workspace first.";
     const state = await updateSnapshot(api, setSnapshot, () =>
       api.logoutProvider(settingsWorkspace.id, providerId),
+    );
+    return state.lastError;
+  };
+
+  const handleAddCustomProvider = async (config: import("../ipc").CustomProviderConfig): Promise<string | undefined> => {
+    if (!api || !settingsWorkspace) return "Select a workspace first.";
+    const state = await updateSnapshot(api, setSnapshot, () =>
+      api.addCustomProvider(settingsWorkspace.id, config),
+    );
+    return state.lastError;
+  };
+
+  const handleRemoveCustomProvider = async (providerId: string): Promise<string | undefined> => {
+    if (!api || !settingsWorkspace) return "Select a workspace first.";
+    const state = await updateSnapshot(api, setSnapshot, () =>
+      api.removeCustomProvider(settingsWorkspace.id, providerId),
     );
     return state.lastError;
   };
@@ -209,6 +227,8 @@ export function useSettingsHandlers({
     handleLogoutProvider,
     handleSetProviderApiKey,
     handleRemoveProviderApiKey,
+    handleAddCustomProvider,
+    handleRemoveCustomProvider,
     handleSetThemeMode,
     handleSetNotificationPreferences,
     handleSetIntegratedTerminalShell,

@@ -53,8 +53,19 @@ export function ShortcutsSheet({ platform, onClose }: ShortcutsSheetProps) {
       rows: [
         { keys: [`${mod}F`], label: "Find in thread" },
         { keys: [`${mod}[`, `${mod}]`], label: "Back / forward" },
-        { keys: [`${mod}${shift}O`], label: "New thread" },
+        { keys: [`${mod}N`, `${mod}${shift}O`], label: "New thread" },
         { keys: [`${mod}${shift}↑`, `${mod}${shift}↓`], label: "Navigate sidebar threads" },
+      ],
+    },
+    {
+      title: "Sidebar",
+      rows: [
+        { keys: [`${mod}${shift}1`], label: "Agents" },
+        { keys: [`${mod}${shift}2`], label: "Skills" },
+        { keys: [`${mod}${shift}3`], label: "Extensions" },
+        { keys: [`${mod}${shift}4`], label: "Automations" },
+        { keys: [`${mod}${shift}5`], label: "Context" },
+        { keys: [`${mod},`], label: "Settings" },
       ],
     },
     {

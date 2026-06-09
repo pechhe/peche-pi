@@ -373,12 +373,14 @@ export async function submitComposer(
   options: {
     readonly deliverAs?: "steer" | "followUp";
     readonly mode?: ComposerMode;
+    readonly isFirstPlanPrompt?: boolean;
   } = {},
 ): Promise<DesktopAppState> {
   await store.initialize();
   const planIdeology = resolvePlanModeIdeology(textInput, store.state.planModeIdeology);
+  const isFirst = options.isFirstPlanPrompt !== false; // default true for safety
   const submittedText = options.mode === "plan"
-    ? buildPlanModePrompt(stripPlanModeIdeologyPrefix(textInput, planIdeology), planIdeology)
+    ? buildPlanModePrompt(stripPlanModeIdeologyPrefix(textInput, planIdeology), planIdeology, isFirst)
     : textInput;
   const text = submittedText.trim();
   const sessionRef = store.selectedSessionRef();

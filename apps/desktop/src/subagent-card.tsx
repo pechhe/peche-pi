@@ -1,5 +1,5 @@
 import type { ComponentType } from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { TimelineToolCall } from "./timeline-types";
 import {
   CompassIcon,
@@ -7,6 +7,7 @@ import {
   FileIcon,
   ShieldCheckIcon,
   SparkIcon,
+  TelescopeIcon,
   WrenchIcon,
 } from "./icons";
 import { useSubagentLive } from "./subagent-live";
@@ -135,6 +136,43 @@ function formatElapsed(seconds: number | undefined): string | undefined {
   return m > 0 ? `${m}m ${s % 60}s` : `${s}s`;
 }
 
+// The subagent extension never reports a runtime, and async launches never
+// update their tool row after `status: "started"`. The only finish signal a row
+// gets is dropping out of the live fleet widget. So we time agents client-side:
+// start a stopwatch the first time a row goes live, and freeze it the moment it
+// stops being live. Kept in a module map (keyed by agent name) so the value
+// survives card remounts (scroll / re-render) within a session.
+const elapsedStore = new Map<string, { start: number; frozen?: number }>();
+
+function useAgentElapsed(name: string, isLive: boolean): number | undefined {
+  const [, force] = useState(0);
+
+  useEffect(() => {
+    if (isLive) {
+      const entry = elapsedStore.get(name);
+      if (!entry) {
+        elapsedStore.set(name, { start: Date.now() });
+      } else {
+        entry.frozen = undefined;
+      }
+      const id = window.setInterval(() => force((n) => n + 1), 1000);
+      return () => window.clearInterval(id);
+    }
+    const entry = elapsedStore.get(name);
+    if (entry && entry.frozen === undefined) {
+      entry.frozen = Date.now() - entry.start;
+      force((n) => n + 1);
+    }
+    return undefined;
+  }, [name, isLive]);
+
+  const entry = elapsedStore.get(name);
+  if (!entry) {
+    return undefined;
+  }
+  return (entry.frozen ?? Date.now() - entry.start) / 1000;
+}
+
 const STATUS_LABEL: Record<SubagentStatus, string> = {
   started: "started",
   running: "running",
@@ -157,6 +195,7 @@ const AGENT_KINDS: Record<string, AgentKind> = {
   scout: { kind: "scout", label: "Scout", Icon: CompassIcon },
   verifier: { kind: "verifier", label: "Verifier", Icon: ShieldCheckIcon },
   implementer: { kind: "implementer", label: "Implementer", Icon: WrenchIcon },
+  researcher: { kind: "researcher", label: "Researcher", Icon: TelescopeIcon },
 };
 
 function agentKind(agent: string | undefined): AgentKind {
@@ -175,12 +214,15 @@ function SubagentRowView({ row, verb }: { readonly row: SubagentRow; readonly ve
   const live = useSubagentLive(row.name);
   const openSession = useOpenSubagentSession();
   const isLive = (row.status === "running" || row.status === "started") && live !== undefined;
-  const elapsed = formatElapsed(row.elapsed);
+  const trackedElapsed = useAgentElapsed(row.name, isLive);
+  const elapsed = formatElapsed(row.elapsed ?? trackedElapsed);
 
   const { kind, label, Icon } = agentKind(row.agent);
-  // Second line = what the agent is doing now, not its name. Prefer the live
-  // activity, then the launch summary (when done), then the task brief.
-  const objective = (isLive ? live?.activity : undefined) ?? row.summary ?? row.task ?? row.title;
+  // Second line = what the agent is doing *now*. While live, show the current
+  // activity (or its title until the first activity lands). Once finished, only
+  // surface a real completion summary — never the full task brief, which lives
+  // behind "View instructions".
+  const objective = isLive ? (live?.activity ?? row.title) : row.summary;
   const canViewSession = Boolean(row.sessionFile && openSession);
 
   return (
@@ -201,11 +243,15 @@ function SubagentRowView({ row, verb }: { readonly row: SubagentRow; readonly ve
           {objective ? <p className="subagent-card__objective">{objective}</p> : null}
         </div>
         <div className="subagent-card__meta">
-          {isLive ? <WorkingSpinner className="subagent-card__spinner" /> : null}
-          <span className={`subagent-card__status subagent-card__status--${row.status}`}>
-            {STATUS_LABEL[row.status]}
-          </span>
-          {elapsed ? <span className="subagent-card__elapsed">{elapsed}</span> : null}
+          {isLive ? (
+            <WorkingSpinner className="subagent-card__spinner" title="Working" />
+          ) : row.status === "failed" || row.status === "cancelled" ? (
+            <span className={`subagent-card__status subagent-card__status--${row.status}`}>
+              {STATUS_LABEL[row.status]}
+            </span>
+          ) : elapsed ? (
+            <span className="subagent-card__elapsed">{elapsed}</span>
+          ) : null}
         </div>
       </div>
       {isLive && (live?.stats?.length ?? 0) > 0 ? (

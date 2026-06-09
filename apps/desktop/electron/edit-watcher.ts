@@ -111,6 +111,7 @@ export class EditWatcher {
     }
 
     const stats = computeLineDiff(snapshot, current);
+    console.log("[edit-watcher] change detected", absolutePath, "+" + stats.added, "-" + stats.removed);
     this.emit({ callId, filePath: absolutePath, ...stats });
   }
 

@@ -283,16 +283,14 @@ function readClipboardImageAttachment(): ComposerImageAttachment | null {
 
 function createWindow(): BrowserWindow {
   const backgroundTestMode = windowTestMode === "background";
-  const enableTransparency = store ? store.state.enableTransparency : false;
   const window = new BrowserWindow({
     width: 1480,
     height: 980,
     minWidth: 1200,
     minHeight: 760,
-    transparent: enableTransparency,
-    vibrancy: process.platform === "darwin" && enableTransparency ? "under-window" : undefined,
+    transparent: false,
     titleBarStyle: "hiddenInset",
-    backgroundColor: enableTransparency ? "#00000000" : "#f3f4f8",
+    backgroundColor: "#f3f4f8",
     trafficLightPosition: { x: 18, y: 18 },
     show: false,
     icon: appIcon,
@@ -939,14 +937,13 @@ app.whenReady().then(async () => {
         store.setDefaultThinkingLevel(workspaceId, thinkingLevel as never),
       getCavemanConfig: () => readCavemanConfig(),
       setCavemanDefaultLevel: async (_event: unknown, level: CavemanLevel) => {
-        const current = await readCavemanConfig();
-        const next = { ...current, defaultLevel: normalizeCavemanLevel(level) };
+        const next: CavemanConfigSnapshot = { defaultLevel: normalizeCavemanLevel(level), enabled: true };
         await writeCavemanConfig(next);
         return next;
       },
       setCavemanOnLevel: async (_event: unknown, level: CavemanLevel) => {
         const current = await readCavemanConfig();
-        const next = { ...current, onLevel: normalizeCavemanLevel(level) };
+        const next: CavemanConfigSnapshot = { ...current, enabled: level !== "off", defaultLevel: level === "off" ? current.defaultLevel : normalizeCavemanLevel(level) };
         await writeCavemanConfig(next);
         return next;
       },
@@ -1039,15 +1036,10 @@ app.whenReady().then(async () => {
         store.deleteSubagentAgent(workspaceId, name, scope as never),
 
       // -- Store (UI prefs) --
-      setEnableTransparency: async (_event: unknown, enabled: boolean) => {
-        const nextState = await store.setEnableTransparency(enabled);
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          if (process.platform === "darwin") { mainWindow.setVibrancy(enabled ? "under-window" : null); }
-        }
-        return nextState;
-      },
       setTranscriptVerbose: async (_event: unknown, enabled: boolean) => store.setTranscriptVerbose(enabled),
       setComposerDeviceMode: async (_event: unknown, mode: string) => store.setComposerDeviceMode(mode as never),
+      setStreamReveal: async (_event: unknown, mode: string) => store.setStreamReveal(mode as never),
+      setStreamRevealSpeed: async (_event: unknown, speed: string) => store.setStreamRevealSpeed(speed as never),
       setPlanModeIdeology: async (_event: unknown, ideology: string) => store.setPlanModeIdeology(ideology as never),
       setThreadTransition: async (_event: unknown, preferences: unknown) => store.setThreadTransition(preferences as never),
 
@@ -1079,7 +1071,7 @@ app.whenReady().then(async () => {
         store.steerQueuedComposerMessage(messageId),
       updateComposerDraft: (_event: unknown, composerDraft: string) =>
         store.updateComposerDraft(composerDraft),
-      submitComposer: (_event: unknown, text: string, options?: { readonly deliverAs?: "steer" | "followUp"; readonly mode?: ComposerMode }) =>
+      submitComposer: (_event: unknown, text: string, options?: { readonly deliverAs?: "steer" | "followUp"; readonly mode?: ComposerMode; readonly isFirstPlanPrompt?: boolean }) =>
         store.submitComposer(text, options),
 
       // -- Git / review --
@@ -1621,9 +1613,9 @@ function createRuntimeLoginCallbacks() {
   };
 }
 
-const CAVEMAN_LEVELS: readonly CavemanLevel[] = ["off", "lite", "full", "ultra", "wenyan-lite", "wenyan", "wenyan-ultra", "micro"];
-const CAVEMAN_CONFIG_PATH = path.join(homedir(), ".pi", "agent", "caveman.json");
-const DEFAULT_CAVEMAN_CONFIG: CavemanConfigSnapshot = { defaultLevel: "full", onLevel: "ultra", showStatus: true };
+const CAVEMAN_LEVELS: readonly CavemanLevel[] = ["off", "lite", "full", "ultra"];
+const CAVEMAN_STATE_PATH = path.join(homedir(), ".pi", "agent", "caveman", "state.json");
+const DEFAULT_CAVEMAN_CONFIG: CavemanConfigSnapshot = { defaultLevel: "full", enabled: true };
 
 function normalizeCavemanLevel(value: unknown): CavemanLevel {
   return CAVEMAN_LEVELS.includes(value as CavemanLevel) ? (value as CavemanLevel) : DEFAULT_CAVEMAN_CONFIG.defaultLevel;
@@ -1631,11 +1623,10 @@ function normalizeCavemanLevel(value: unknown): CavemanLevel {
 
 async function readCavemanConfig(): Promise<CavemanConfigSnapshot> {
   try {
-    const parsed = JSON.parse(await readFile(CAVEMAN_CONFIG_PATH, "utf8")) as Partial<CavemanConfigSnapshot>;
+    const parsed = JSON.parse(await readFile(CAVEMAN_STATE_PATH, "utf8")) as { enabled?: boolean; level?: string };
     return {
-      defaultLevel: normalizeCavemanLevel(parsed.defaultLevel),
-      onLevel: parsed.onLevel ? normalizeCavemanLevel(parsed.onLevel) : DEFAULT_CAVEMAN_CONFIG.onLevel,
-      showStatus: typeof parsed.showStatus === "boolean" ? parsed.showStatus : DEFAULT_CAVEMAN_CONFIG.showStatus,
+      defaultLevel: normalizeCavemanLevel(parsed.level),
+      enabled: parsed.enabled !== false,
     };
   } catch {
     return DEFAULT_CAVEMAN_CONFIG;
@@ -1643,8 +1634,9 @@ async function readCavemanConfig(): Promise<CavemanConfigSnapshot> {
 }
 
 async function writeCavemanConfig(config: CavemanConfigSnapshot): Promise<void> {
-  await mkdir(path.dirname(CAVEMAN_CONFIG_PATH), { recursive: true });
-  await writeFile(CAVEMAN_CONFIG_PATH, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+  await mkdir(path.dirname(CAVEMAN_STATE_PATH), { recursive: true });
+  const state = { enabled: config.enabled, level: config.defaultLevel };
+  await writeFile(CAVEMAN_STATE_PATH, `${JSON.stringify(state, null, 2)}\n`, "utf8");
 }
 
 async function promptForText(message: string, placeholder = ""): Promise<string> {

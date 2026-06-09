@@ -395,6 +395,7 @@ function NewThreadComposerFooter({
                 className="button button--primary button--cta-icon composer__send"
                 type="button"
                 disabled={!hasContent || modelOnboarding.requiresModelSelection}
+                data-has-input={hasContent ? "" : undefined}
                 {...submitButtonSound}
                 onClick={onSubmit}
               >

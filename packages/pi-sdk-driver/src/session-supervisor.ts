@@ -90,7 +90,7 @@ export interface PiSdkDriverOptions {
   readonly generateThreadTitleOverride?: (
     workspace: WorkspaceRef,
     options: import("./thread-title-generator.js").GenerateThreadTitleOptions,
-  ) => Promise<string | null | undefined>;
+  ) => Promise<import("./thread-title-generator.js").GeneratedThreadTitle | string | null | undefined>;
 }
 
 async function buildGraphifyAppendSystemPrompt(workspacePath: string): Promise<string | undefined> {

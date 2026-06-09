@@ -1,7 +1,7 @@
 export type ComposerMode = "build" | "plan";
 export type PlanModeIdeology = "default" | "grill";
 
-const PLAN_MODE_INSTRUCTIONS = `Run this as pi-gui Plan mode: read-only exploration first, implementation later only after user approval.
+const PLAN_MODE_FULL_INSTRUCTIONS = `Run this as pi-gui Plan mode: read-only exploration first, implementation later only after user approval.
 
 Plan mode mechanics:
 - You are currently restricted to read-only tools: read, grep, find, ls, and questionnaire.
@@ -11,6 +11,8 @@ Plan mode mechanics:
 - When enough is known, produce a numbered plan under an exact "Plan:" header.
 - Include validation steps and risks in the plan.
 - End by asking whether to execute, refine, or stop.`;
+
+const PLAN_MODE_SLIM_REMINDER = `Plan mode active. Read-only: do not edit files, write files, install packages, or run non-readonly tools. Continue gathering context and asking clarifying questions until requirements are clear, then write the plan.`;
 
 const DEFAULT_PLAN_IDEOLOGY = `Planning ideology: default product/engineering plan.
 
@@ -38,10 +40,21 @@ const PLAN_IDEOLOGY_PROMPTS: Record<PlanModeIdeology, string> = {
 
 export const PLAN_MODE_PROMPT_SEPARATOR = "<!--pi-plan-mode-prompt-->";
 
-export function buildPlanModePrompt(userPrompt: string, ideology: PlanModeIdeology = "default"): string {
+/**
+ * Build a plan-mode prompt.
+ * @param isFirst If true (default), includes the full plan-mode instructions.
+ *   If false, uses a slim reminder — the harness already enforces read-only
+ *   via tool restrictions, so we only need to steer behavior, not restate rules.
+ */
+export function buildPlanModePrompt(
+  userPrompt: string,
+  ideology: PlanModeIdeology = "default",
+  isFirst: boolean = true,
+): string {
   const trimmed = userPrompt.trim();
+  const instructions = isFirst ? PLAN_MODE_FULL_INSTRUCTIONS : PLAN_MODE_SLIM_REMINDER;
   return [
-    PLAN_MODE_INSTRUCTIONS,
+    instructions,
     PLAN_IDEOLOGY_PROMPTS[ideology],
     PLAN_MODE_PROMPT_SEPARATOR,
     "User planning request:",

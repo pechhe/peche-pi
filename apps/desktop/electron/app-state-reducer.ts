@@ -3,6 +3,8 @@ import type {
   ChatRecord,
   ComposerAttachment,
   ComposerDeviceMode,
+  StreamRevealMode,
+  StreamRevealSpeed,
   ComposerDraftSyncSource,
   DesktopAppState,
   ModelSettingsScopeMode,
@@ -38,9 +40,10 @@ export type DesktopAction =
   | { readonly type: "settings/setSidebarCollapsed"; readonly sidebarCollapsed: boolean }
   | { readonly type: "settings/setZoomFactor"; readonly zoomFactor: number }
   | { readonly type: "settings/setQueueMode"; readonly queueMode: boolean }
-  | { readonly type: "settings/setEnableTransparency"; readonly enableTransparency: boolean }
   | { readonly type: "settings/setTranscriptVerbose"; readonly transcriptVerbose: boolean }
   | { readonly type: "settings/setComposerDeviceMode"; readonly composerDeviceMode: ComposerDeviceMode }
+  | { readonly type: "settings/setStreamReveal"; readonly streamReveal: StreamRevealMode }
+  | { readonly type: "settings/setStreamRevealSpeed"; readonly streamRevealSpeed: StreamRevealSpeed }
   | { readonly type: "settings/setPlanModeIdeology"; readonly planModeIdeology: PlanModeIdeologySetting }
   | { readonly type: "settings/mergeThreadTransition"; readonly preferences: Partial<ThreadTransitionSettings> }
   | { readonly type: "settings/setThemeMode"; readonly themeMode: ThemeMode }
@@ -91,12 +94,6 @@ export function reduce(state: DesktopAppState, action: DesktopAction): DesktopAp
       }
       return bump({ ...state, queueMode: action.queueMode });
     }
-    case "settings/setEnableTransparency": {
-      if (state.enableTransparency === action.enableTransparency) {
-        return state;
-      }
-      return bump({ ...state, enableTransparency: action.enableTransparency });
-    }
     case "settings/setTranscriptVerbose": {
       if (state.transcriptVerbose === action.transcriptVerbose) {
         return state;
@@ -108,6 +105,18 @@ export function reduce(state: DesktopAppState, action: DesktopAction): DesktopAp
         return state;
       }
       return bump({ ...state, composerDeviceMode: action.composerDeviceMode });
+    }
+    case "settings/setStreamReveal": {
+      if (state.streamReveal === action.streamReveal) {
+        return state;
+      }
+      return bump({ ...state, streamReveal: action.streamReveal });
+    }
+    case "settings/setStreamRevealSpeed": {
+      if (state.streamRevealSpeed === action.streamRevealSpeed) {
+        return state;
+      }
+      return bump({ ...state, streamRevealSpeed: action.streamRevealSpeed });
     }
     case "settings/setPlanModeIdeology": {
       if (state.planModeIdeology === action.planModeIdeology) {

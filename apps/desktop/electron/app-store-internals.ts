@@ -66,6 +66,7 @@ export interface AppStoreInternals {
   setPendingAutoTitle(sessionRef: SessionRef, pending: PendingAutoTitle): void;
   getPendingAutoTitle(sessionRef: SessionRef): PendingAutoTitle | undefined;
   clearPendingAutoTitle(sessionRef: SessionRef): void;
+  setThreadType(sessionId: string, type: string): void;
   updateQueuedComposerMessages(
     sessionRef: SessionRef,
     queuedMessages: readonly import("@pi-gui/session-driver").SessionQueuedMessage[] | undefined,

@@ -156,6 +156,8 @@ const desktopIpc = {
   loginProvider: "pi-gui:login-provider",
   logoutProvider: "pi-gui:logout-provider",
   setProviderApiKey: "pi-gui:set-provider-api-key",
+  addCustomProvider: "pi-gui:add-custom-provider",
+  removeCustomProvider: "pi-gui:remove-custom-provider",
   setEnableSkillCommands: "pi-gui:set-enable-skill-commands",
   setRetrySettings: "pi-gui:set-retry-settings",
   getRetrySettings: "pi-gui:get-retry-settings",
@@ -170,9 +172,10 @@ const desktopIpc = {
   refreshSubagentAgents: "pi-gui:refresh-subagent-agents",
   saveSubagentAgent: "pi-gui:save-subagent-agent",
   deleteSubagentAgent: "pi-gui:delete-subagent-agent",
-  setEnableTransparency: "pi-gui:set-enable-transparency",
   setTranscriptVerbose: "pi-gui:set-transcript-verbose",
   setComposerDeviceMode: "pi-gui:set-composer-device-mode",
+  setStreamReveal: "pi-gui:set-stream-reveal",
+  setStreamRevealSpeed: "pi-gui:set-stream-reveal-speed",
   setPlanModeIdeology: "pi-gui:set-plan-mode-ideology",
   setThreadTransition: "pi-gui:set-thread-transition",
   terminalEnsurePanel: "pi-gui:terminal-ensure-panel",
@@ -357,6 +360,8 @@ export const desktopIpcContracts: readonly IpcContractEntry[] = [
   { methodName: "loginProvider", channel: desktopIpc.loginProvider, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
   { methodName: "logoutProvider", channel: desktopIpc.logoutProvider, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
   { methodName: "setProviderApiKey", channel: desktopIpc.setProviderApiKey, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
+  { methodName: "addCustomProvider", channel: desktopIpc.addCustomProvider, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
+  { methodName: "removeCustomProvider", channel: desktopIpc.removeCustomProvider, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
 
   // -- Skills / extensions --
   { methodName: "setEnableSkillCommands", channel: desktopIpc.setEnableSkillCommands, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
@@ -407,9 +412,10 @@ export const desktopIpcContracts: readonly IpcContractEntry[] = [
   { methodName: "deleteSubagentAgent", channel: desktopIpc.deleteSubagentAgent, direction: "renderer-to-main", kind: "invoke", adapter: "subagent" },
 
   // -- UI prefs --
-  { methodName: "setEnableTransparency", channel: desktopIpc.setEnableTransparency, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
   { methodName: "setTranscriptVerbose", channel: desktopIpc.setTranscriptVerbose, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
   { methodName: "setComposerDeviceMode", channel: desktopIpc.setComposerDeviceMode, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
+  { methodName: "setStreamReveal", channel: desktopIpc.setStreamReveal, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
+  { methodName: "setStreamRevealSpeed", channel: desktopIpc.setStreamRevealSpeed, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
   { methodName: "setPlanModeIdeology", channel: desktopIpc.setPlanModeIdeology, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
   { methodName: "setThreadTransition", channel: desktopIpc.setThreadTransition, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
 

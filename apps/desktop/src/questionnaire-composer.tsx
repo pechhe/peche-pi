@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import type { HostUiResponse } from "@pi-gui/session-driver";
 import type { SessionExtensionDialogRecord } from "./desktop-state";
 
@@ -28,23 +28,24 @@ export function QuestionnaireComposer({
 
   const current = request.questions[step];
   const optionCount = current ? current.options.length + (current.allowOther ? 1 : 0) : 0;
-  const recommendedIndex = useMemo(
-    () => current?.options.findIndex((option) => option.recommended) ?? -1,
-    [current],
-  );
 
   useEffect(() => {
     shellRef.current?.focus();
   }, [request.requestId]);
 
+  // Restore the saved selection only when navigating between questions (or a
+  // new request arrives). Depending on `answers`/`request.questions` here made
+  // the effect re-run on every parent re-render (e.g. streaming context-usage
+  // updates), snapping the highlight back to the recommended option mid-nav.
   useEffect(() => {
     const next = request.questions[step];
     const saved = next ? answers[next.id] : undefined;
-    const nextSelected = saved?.index ?? (recommendedIndex >= 0 ? recommendedIndex : 0);
-    setSelectedIndex(nextSelected);
+    const recommended = next?.options.findIndex((option) => option.recommended) ?? -1;
+    setSelectedIndex(saved?.index ?? (recommended >= 0 ? recommended : 0));
     setOtherDraft(saved?.wasCustom ? saved.value : "");
     setIsOtherActive(Boolean(saved?.wasCustom));
-  }, [answers, recommendedIndex, request.questions, step]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, request.requestId]);
 
   if (!current) {
     return null;
@@ -69,6 +70,7 @@ export function QuestionnaireComposer({
 
   const pickOption = (index: number) => {
     if (index >= current.options.length) {
+      setSelectedIndex(current.options.length);
       setIsOtherActive(true);
       return;
     }
@@ -123,7 +125,9 @@ export function QuestionnaireComposer({
     }
   };
 
-  const progressPercent = total > 0 ? ((step + 1) / total) * 100 : 0;
+  const sectionLabel = current.label ?? request.title;
+  const otherIndex = current.options.length;
+  const otherSelected = selectedIndex === otherIndex || isOtherActive;
 
   return (
     <div
@@ -136,76 +140,90 @@ export function QuestionnaireComposer({
     >
       <div className="questionnaire-composer__screen">
         <div className="questionnaire-composer__header">
-          <div>
-            {request.title ? (
-              <div className="questionnaire-composer__title">
-                {request.title} ({step + 1}/{total})
-              </div>
+          <div className="questionnaire-composer__heading">
+            {sectionLabel ? (
+              <div className="questionnaire-composer__eyebrow">{sectionLabel}</div>
             ) : null}
-            <div className="questionnaire-composer__prompt">{current.prompt}</div>
+            <h2 className="questionnaire-composer__prompt">{current.prompt}</h2>
+            {step === 0 && request.intro ? (
+              <div className="questionnaire-composer__intro">{request.intro}</div>
+            ) : null}
           </div>
           <div
-            className="composer__context questionnaire-composer__progress"
+            className="questionnaire-composer__progress"
             aria-label={`Question ${step + 1} of ${total}`}
           >
-            <span className="composer__context-label questionnaire-composer__progress-label">
+            <div className="questionnaire-composer__steps" aria-hidden="true">
+              {request.questions.map((question, index) => (
+                <span
+                  key={question.id}
+                  className={`questionnaire-composer__step${index === step ? " questionnaire-composer__step--active" : ""}`}
+                />
+              ))}
+            </div>
+            <span className="questionnaire-composer__count">
               {step + 1} / {total}
             </span>
-            <div className="composer__context-track questionnaire-composer__progress-track">
-              <div className="composer__context-fill" style={{ width: `${progressPercent}%` }} />
-            </div>
           </div>
         </div>
 
-        {step === 0 && request.intro ? (
-          <div className="questionnaire-composer__intro">{request.intro}</div>
-        ) : null}
-        {current.label ? <div className="questionnaire-composer__label">{current.label}</div> : null}
-
-        <div className="questionnaire-composer__options">
-            {current.options.map((option, index) => (
+        <div className="questionnaire-composer__options" role="radiogroup">
+          {current.options.map((option, index) => {
+            const selected = index === selectedIndex && !isOtherActive;
+            return (
               <button
                 key={`${option.value}:${index}`}
                 type="button"
-                className={`questionnaire-composer__option${index === selectedIndex && !isOtherActive ? " questionnaire-composer__option--selected" : ""}`}
+                role="radio"
+                aria-checked={selected}
+                className={`questionnaire-composer__option${selected ? " questionnaire-composer__option--selected" : ""}`}
                 onClick={() => pickOption(index)}
               >
-                <span className="questionnaire-composer__cursor">{index === selectedIndex && !isOtherActive ? ">" : ""}</span>
-                <span>{option.label}</span>
+                <span className="questionnaire-composer__cursor" aria-hidden="true">
+                  {selected ? ">" : ""}
+                </span>
+                <span className="questionnaire-composer__option-label">{option.label}</span>
               </button>
-            ))}
-            {current.allowOther ? (
-              <button
-                type="button"
-                className={`questionnaire-composer__option${selectedIndex === current.options.length || isOtherActive ? " questionnaire-composer__option--selected" : ""}`}
-                onClick={() => {
-                  setSelectedIndex(current.options.length);
-                  setIsOtherActive(true);
-                }}
-              >
-                <span className="questionnaire-composer__cursor">{selectedIndex === current.options.length || isOtherActive ? ">" : ""}</span>
-                <span>Other (please specify)</span>
-              </button>
-            ) : null}
-          </div>
+            );
+          })}
+
+          {current.allowOther ? (
+            <button
+              type="button"
+              role="radio"
+              aria-checked={otherSelected}
+              className={`questionnaire-composer__option${otherSelected ? " questionnaire-composer__option--selected" : ""}`}
+              onClick={() => {
+                setSelectedIndex(otherIndex);
+                setIsOtherActive(true);
+              }}
+            >
+              <span className="questionnaire-composer__cursor" aria-hidden="true">
+                {otherSelected ? ">" : ""}
+              </span>
+              <span className="questionnaire-composer__option-label">Other…</span>
+            </button>
+          ) : null}
+        </div>
 
         {isOtherActive ? (
           <form
-              className="questionnaire-composer__other"
-              onSubmit={(event) => {
-                event.preventDefault();
-                submitOther();
-              }}
-            >
-              <span className="questionnaire-composer__cursor">&gt;</span>
-              <input
-                autoFocus
-                value={otherDraft}
-                placeholder={current.otherPlaceholder ?? "Type another answer"}
-                onChange={(event) => setOtherDraft(event.target.value)}
-              />
-              <button type="submit" disabled={!otherDraft.trim()}>Use</button>
-            </form>
+            className="questionnaire-composer__other"
+            onSubmit={(event) => {
+              event.preventDefault();
+              submitOther();
+            }}
+          >
+            <input
+              autoFocus
+              value={otherDraft}
+              placeholder={current.otherPlaceholder ?? "Type another answer"}
+              onChange={(event) => setOtherDraft(event.target.value)}
+            />
+            <button type="submit" disabled={!otherDraft.trim()}>
+              Use
+            </button>
+          </form>
         ) : null}
       </div>
     </div>

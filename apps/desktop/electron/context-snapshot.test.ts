@@ -42,8 +42,8 @@ function makeRuntime(overrides?: Partial<RuntimeSnapshot>): RuntimeSnapshot {
 }
 
 describe("buildContextSnapshot", () => {
-  it("returns basic sections with no runtime", () => {
-    const snapshot = buildContextSnapshot({
+  it("returns basic sections with no runtime", async () => {
+    const snapshot = await buildContextSnapshot({
       workspaceId: "ws-1",
       workspacePath: "/tmp/test",
     });
@@ -55,14 +55,17 @@ describe("buildContextSnapshot", () => {
     const systemPrompt = snapshot.sections.find((s) => s.kind === "system-prompt");
     expect(systemPrompt).toBeDefined();
     expect(systemPrompt!.label).toBe("System prompt");
+    // Should have actual content, not placeholder
+    expect(systemPrompt!.content).toContain("You are an expert coding assistant");
+    expect(systemPrompt!.tokenCount).toBeGreaterThanOrEqual(1);
 
     const userMessage = snapshot.sections.find((s) => s.kind === "user-message");
     expect(userMessage).toBeDefined();
     expect(userMessage!.content).toBe("{{USER_MESSAGE}}");
   });
 
-  it("includes AGENTS.md when provided", () => {
-    const snapshot = buildContextSnapshot({
+  it("includes AGENTS.md when provided", async () => {
+    const snapshot = await buildContextSnapshot({
       workspaceId: "ws-1",
       workspacePath: "/tmp/test",
       agentsMd: "# AGENTS\nBe helpful.",
@@ -74,10 +77,11 @@ describe("buildContextSnapshot", () => {
     expect(agentsSection).toBeDefined();
     expect(agentsSection!.content).toBe("# AGENTS\nBe helpful.");
     expect(agentsSection!.path).toContain("AGENTS.md");
+    expect(agentsSection!.tokenCount).toBeGreaterThanOrEqual(1);
   });
 
-  it("includes CLAUDE.md when provided", () => {
-    const snapshot = buildContextSnapshot({
+  it("includes CLAUDE.md when provided", async () => {
+    const snapshot = await buildContextSnapshot({
       workspaceId: "ws-1",
       workspacePath: "/tmp/test",
       claudeMd: "# CLAUDE\nRules here.",
@@ -88,9 +92,10 @@ describe("buildContextSnapshot", () => {
     );
     expect(claudeSection).toBeDefined();
     expect(claudeSection!.content).toBe("# CLAUDE\nRules here.");
+    expect(claudeSection!.tokenCount).toBeGreaterThanOrEqual(1);
   });
 
-  it("includes skills from runtime", () => {
+  it("includes skills from runtime", async () => {
     const runtime = makeRuntime({
       skills: [
         {
@@ -106,7 +111,7 @@ describe("buildContextSnapshot", () => {
       ],
     });
 
-    const snapshot = buildContextSnapshot({
+    const snapshot = await buildContextSnapshot({
       workspaceId: "ws-1",
       workspacePath: "/tmp/test",
       runtime,
@@ -119,9 +124,10 @@ describe("buildContextSnapshot", () => {
     expect(skillSection!.enabled).toBe(true);
     expect(skillSection!.origin).toBe("project");
     expect(skillSection!.detail).toBe("A test skill");
+    expect(skillSection!.tokenCount).toBeGreaterThanOrEqual(1);
   });
 
-  it("includes extensions from runtime", () => {
+  it("includes extensions from runtime", async () => {
     const runtime = makeRuntime({
       extensions: [
         {
@@ -143,7 +149,7 @@ describe("buildContextSnapshot", () => {
       ],
     });
 
-    const snapshot = buildContextSnapshot({
+    const snapshot = await buildContextSnapshot({
       workspaceId: "ws-1",
       workspacePath: "/tmp/test",
       runtime,
@@ -156,7 +162,7 @@ describe("buildContextSnapshot", () => {
     expect(extSection!.detail).toBe("Tools: tool1, tool2");
   });
 
-  it("includes model settings from runtime", () => {
+  it("includes model settings from runtime", async () => {
     const runtime = makeRuntime({
       settings: {
         defaultProvider: "openai",
@@ -167,7 +173,7 @@ describe("buildContextSnapshot", () => {
       },
     });
 
-    const snapshot = buildContextSnapshot({
+    const snapshot = await buildContextSnapshot({
       workspaceId: "ws-1",
       workspacePath: "/tmp/test",
       runtime,
@@ -182,8 +188,8 @@ describe("buildContextSnapshot", () => {
     expect(settingsSection!.content).toContain("Thinking: medium");
   });
 
-  it("includes session overrides when sessionId provided", () => {
-    const snapshot = buildContextSnapshot({
+  it("includes session overrides when sessionId provided", async () => {
+    const snapshot = await buildContextSnapshot({
       workspaceId: "ws-1",
       workspacePath: "/tmp/test",
       sessionId: "sess-1",
@@ -202,8 +208,8 @@ describe("buildContextSnapshot", () => {
     expect(snapshot.sessionId).toBe("sess-1");
   });
 
-  it("includes session commands", () => {
-    const snapshot = buildContextSnapshot({
+  it("includes session commands", async () => {
+    const snapshot = await buildContextSnapshot({
       workspaceId: "ws-1",
       workspacePath: "/tmp/test",
       sessionCommands: [
@@ -218,5 +224,31 @@ describe("buildContextSnapshot", () => {
     expect(cmdSections[0]!.origin).toBe("extension");
     expect(cmdSections[1]!.label).toBe("/prompt-cmd");
     expect(cmdSections[1]!.origin).toBe("prompt");
+  });
+
+  it("includes system prompt with actual content", async () => {
+    const snapshot = await buildContextSnapshot({
+      workspaceId: "ws-1",
+      workspacePath: "/tmp/test",
+      agentsMd: "# My AGENTS file\nBe concise.",
+    });
+
+    const systemPrompt = snapshot.sections.find((s) => s.kind === "system-prompt");
+    expect(systemPrompt).toBeDefined();
+    // Should contain the base prompt (without context files - those are shown separately)
+    expect(systemPrompt!.content).toContain("You are an expert coding assistant");
+    expect(systemPrompt!.content).toContain("Available tools:");
+    expect(systemPrompt!.content).toContain("Guidelines:");
+    // Should NOT contain AGENTS.md content (shown in separate context-file section)
+    // expect(systemPrompt!.content).toContain("My AGENTS file");
+    // Should have token count
+    expect(systemPrompt!.tokenCount).toBeGreaterThanOrEqual(50);
+    
+    // Context files should be separate
+    const agentsSection = snapshot.sections.find(
+      (s) => s.kind === "context-file" && s.label === "AGENTS.md",
+    );
+    expect(agentsSection).toBeDefined();
+    expect(agentsSection!.content).toBe("# My AGENTS file\nBe concise.");
   });
 });

@@ -9,6 +9,8 @@ import type {
   ContextSnapshot,
   ComposerAttachment,
   ComposerDeviceMode,
+  StreamRevealMode,
+  StreamRevealSpeed,
   ComposerImageAttachment,
   CreateSessionInput,
   CreateWorktreeInput,
@@ -33,12 +35,11 @@ export type DesktopNotificationPermissionStatus =
   | "unsupported"
   | "unknown";
 
-export type CavemanLevel = "off" | "lite" | "full" | "ultra" | "wenyan-lite" | "wenyan" | "wenyan-ultra" | "micro";
+export type CavemanLevel = "off" | "lite" | "full" | "ultra";
 
 export interface CavemanConfigSnapshot {
   readonly defaultLevel: CavemanLevel;
-  readonly onLevel: CavemanLevel;
-  readonly showStatus: boolean;
+  readonly enabled: boolean;
 }
 
 export const desktopIpc = {
@@ -88,6 +89,8 @@ export const desktopIpc = {
   loginProvider: "pi-gui:login-provider",
   logoutProvider: "pi-gui:logout-provider",
   setProviderApiKey: "pi-gui:set-provider-api-key",
+  addCustomProvider: "pi-gui:add-custom-provider",
+  removeCustomProvider: "pi-gui:remove-custom-provider",
   setEnableSkillCommands: "pi-gui:set-enable-skill-commands",
   setScopedModelPatterns: "pi-gui:set-scoped-model-patterns",
   setSkillEnabled: "pi-gui:set-skill-enabled",
@@ -102,9 +105,10 @@ export const desktopIpc = {
   refreshSubagentAgents: "pi-gui:refresh-subagent-agents",
   saveSubagentAgent: "pi-gui:save-subagent-agent",
   deleteSubagentAgent: "pi-gui:delete-subagent-agent",
-  setEnableTransparency: "pi-gui:set-enable-transparency",
   setTranscriptVerbose: "pi-gui:set-transcript-verbose",
   setComposerDeviceMode: "pi-gui:set-composer-device-mode",
+  setStreamReveal: "pi-gui:set-stream-reveal",
+  setStreamRevealSpeed: "pi-gui:set-stream-reveal-speed",
   setPlanModeIdeology: "pi-gui:set-plan-mode-ideology",
   setThreadTransition: "pi-gui:set-thread-transition",
   terminalEnsurePanel: "pi-gui:terminal-ensure-panel",
@@ -267,6 +271,8 @@ export const piDesktopApiIpcBridge = {
   loginProvider: { kind: "invoke", channel: desktopIpc.loginProvider },
   logoutProvider: { kind: "invoke", channel: desktopIpc.logoutProvider },
   setProviderApiKey: { kind: "invoke", channel: desktopIpc.setProviderApiKey },
+  addCustomProvider: { kind: "invoke", channel: desktopIpc.addCustomProvider },
+  removeCustomProvider: { kind: "invoke", channel: desktopIpc.removeCustomProvider },
   setEnableSkillCommands: { kind: "invoke", channel: desktopIpc.setEnableSkillCommands },
   setScopedModelPatterns: { kind: "invoke", channel: desktopIpc.setScopedModelPatterns },
   setSkillEnabled: { kind: "invoke", channel: desktopIpc.setSkillEnabled },
@@ -281,9 +287,10 @@ export const piDesktopApiIpcBridge = {
   refreshSubagentAgents: { kind: "invoke", channel: desktopIpc.refreshSubagentAgents },
   saveSubagentAgent: { kind: "invoke", channel: desktopIpc.saveSubagentAgent },
   deleteSubagentAgent: { kind: "invoke", channel: desktopIpc.deleteSubagentAgent },
-  setEnableTransparency: { kind: "invoke", channel: desktopIpc.setEnableTransparency },
   setTranscriptVerbose: { kind: "invoke", channel: desktopIpc.setTranscriptVerbose },
   setComposerDeviceMode: { kind: "invoke", channel: desktopIpc.setComposerDeviceMode },
+  setStreamReveal: { kind: "invoke", channel: desktopIpc.setStreamReveal },
+  setStreamRevealSpeed: { kind: "invoke", channel: desktopIpc.setStreamRevealSpeed },
   setPlanModeIdeology: { kind: "invoke", channel: desktopIpc.setPlanModeIdeology },
   setThreadTransition: { kind: "invoke", channel: desktopIpc.setThreadTransition },
   ensureTerminalPanel: { kind: "invoke", channel: desktopIpc.terminalEnsurePanel },
@@ -438,6 +445,7 @@ export function getDesktopCommandFromShortcut(input: DesktopShortcutInput): PiDe
   const isComma = input.key === "," || input.code === "Comma";
   const isS = lowerKey === "s" || input.code === "KeyS";
   const isJ = lowerKey === "j" || input.code === "KeyJ";
+  const isN = lowerKey === "n" || input.code === "KeyN";
   const isShiftO = input.shift && (lowerKey === "o" || input.code === "KeyO");
   const isShiftK = input.shift && (lowerKey === "k" || input.code === "KeyK");
 
@@ -451,6 +459,10 @@ export function getDesktopCommandFromShortcut(input: DesktopShortcutInput): PiDe
 
   if (!input.shift && isS) {
     return desktopCommands.toggleSidebar;
+  }
+
+  if (!input.shift && isN) {
+    return desktopCommands.openNewThread;
   }
 
   if (isShiftO) {
@@ -687,6 +699,22 @@ export interface GraphifyWatchStatus {
   readonly pid?: number;
 }
 
+export interface CustomProviderConfig {
+  readonly providerId: string;
+  readonly displayName: string;
+  readonly baseUrl: string;
+  readonly api: "openai-completions" | "openai-responses" | "anthropic-messages";
+  readonly apiKey: string;
+  readonly models: ReadonlyArray<{
+    readonly id: string;
+    readonly name: string;
+    readonly reasoning: boolean;
+    readonly input: readonly ("text" | "image")[];
+    readonly contextWindow: number;
+    readonly maxTokens: number;
+  }>;
+}
+
 export interface PiDesktopApi {
   platform: NodeJS.Platform;
   versions: NodeJS.ProcessVersions;
@@ -751,6 +779,8 @@ export interface PiDesktopApi {
   loginProvider(workspaceId: string, providerId: string): Promise<DesktopAppState>;
   logoutProvider(workspaceId: string, providerId: string): Promise<DesktopAppState>;
   setProviderApiKey(workspaceId: string, providerId: string, apiKey: string): Promise<DesktopAppState>;
+  addCustomProvider(workspaceId: string, config: CustomProviderConfig): Promise<DesktopAppState>;
+  removeCustomProvider(workspaceId: string, providerId: string): Promise<DesktopAppState>;
   setEnableSkillCommands(workspaceId: string, enabled: boolean): Promise<DesktopAppState>;
   setScopedModelPatterns(workspaceId: string, patterns: readonly string[]): Promise<DesktopAppState>;
   setSkillEnabled(workspaceId: string, filePath: string, enabled: boolean): Promise<DesktopAppState>;
@@ -773,9 +803,10 @@ export interface PiDesktopApi {
   refreshSubagentAgents(workspaceId: string): Promise<DesktopAppState>;
   saveSubagentAgent(workspaceId: string, input: { readonly name: string; readonly raw: string; readonly scope?: "project" | "global" }): Promise<DesktopAppState>;
   deleteSubagentAgent(workspaceId: string, name: string, scope?: "project" | "global"): Promise<DesktopAppState>;
-  setEnableTransparency(enabled: boolean): Promise<DesktopAppState>;
   setTranscriptVerbose(enabled: boolean): Promise<DesktopAppState>;
   setComposerDeviceMode(mode: ComposerDeviceMode): Promise<DesktopAppState>;
+  setStreamReveal(mode: StreamRevealMode): Promise<DesktopAppState>;
+  setStreamRevealSpeed(speed: StreamRevealSpeed): Promise<DesktopAppState>;
   setPlanModeIdeology(ideology: import("./desktop-state").PlanModeIdeologySetting): Promise<DesktopAppState>;
   setThreadTransition(settings: Partial<ThreadTransitionSettings>): Promise<DesktopAppState>;
   ensureTerminalPanel(
@@ -817,7 +848,7 @@ export interface PiDesktopApi {
   removeQueuedComposerMessage(messageId: string): Promise<DesktopAppState>;
   steerQueuedComposerMessage(messageId: string): Promise<DesktopAppState>;
   updateComposerDraft(composerDraft: string): Promise<DesktopAppState>;
-  submitComposer(text: string, options?: { readonly deliverAs?: "steer" | "followUp"; readonly mode?: ComposerMode }): Promise<DesktopAppState>;
+  submitComposer(text: string, options?: { readonly deliverAs?: "steer" | "followUp"; readonly mode?: ComposerMode; readonly isFirstPlanPrompt?: boolean }): Promise<DesktopAppState>;
   getSessionTree(target: WorkspaceSessionTarget): Promise<SessionTreeSnapshot>;
   navigateSessionTree(
     target: WorkspaceSessionTarget,

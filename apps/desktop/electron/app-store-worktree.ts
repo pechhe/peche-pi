@@ -403,13 +403,14 @@ async function generateAndApplyAutoTitle(
   };
 
   try {
-    const generatedTitle = await store.driver.generateThreadTitle(workspace, {
+    const result = await store.driver.generateThreadTitle(workspace, {
       prompt: options.prompt,
       signal: options.signal,
       ...(options.model ? { model: options.model } : {}),
       ...(options.thinkingLevel ? { thinkingLevel: options.thinkingLevel } : {}),
     });
-    if (!generatedTitle) {
+    console.log("[autoTitle] generateThreadTitle result:", JSON.stringify(result));
+    if (!result) {
       clearMatchingPendingTitle();
       return;
     }
@@ -424,8 +425,13 @@ async function generateAndApplyAutoTitle(
     }
 
     store.clearPendingAutoTitle(sessionRef);
-    await store.driver.renameSession(sessionRef, generatedTitle);
-    options.onTitleApplied?.(generatedTitle);
+    // result may be a plain string (legacy override) or { type, title }.
+    const title = typeof result === "string" ? result : result.title;
+    const threadType = typeof result === "string" ? "other" : result.type;
+    console.log("[autoTitle] about to rename + setThreadType", { title, threadType, sessionId: sessionRef.sessionId });
+    await store.driver.renameSession(sessionRef, title);
+    store.setThreadType(sessionRef.sessionId, threadType);
+    options.onTitleApplied?.(title);
   } catch {
     clearMatchingPendingTitle();
   }

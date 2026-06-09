@@ -187,7 +187,8 @@ test("renders extension dialogs in the Electron surface and routes responses bac
     await composer.press("Enter");
     const questionnaire = window.getByTestId("questionnaire-composer");
     await expect(questionnaire).toBeVisible();
-    await expect(questionnaire).toContainText("Planner needs more info (1/1)");
+    await expect(questionnaire).toContainText("Planner needs more info");
+    await expect(questionnaire).toContainText("1 / 1");
     await expect(questionnaire).toContainText("What is the primary goal of this plan?");
     await expect(window.getByRole("button", { name: /Composer mode:/ })).toBeVisible();
     await questionnaire.getByRole("button", { name: /Refactor \/ Cleanup/ }).click();

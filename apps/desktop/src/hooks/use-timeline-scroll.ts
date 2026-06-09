@@ -337,9 +337,13 @@ export function useTimelineScroll({
 
     window.requestAnimationFrame(() => {
       if (!pinnedToBottomRef.current && !preserveBottomOnNextPaneResizeRef.current) return;
-      requestPinnedBottomAlignment("auto", { preferExactRestore: true });
+      // When already pinned, just scroll — don't enter the exact-restore
+      // path (which toggles virtualization). That toggle changes the DOM
+      // height, re-triggers this callback, and creates a scroll oscillation
+      // loop visible as high-frequency screen shaking.
+      scrollTimelineToBottom();
     });
-  }, [requestPinnedBottomAlignment]);
+  }, [scrollTimelineToBottom]);
 
   // -- layout effects ------------------------------------------------------
 
@@ -364,7 +368,6 @@ export function useTimelineScroll({
     scrollTimelineToBottom();
   }, [
     activeTranscript,
-    disableTimelineVirtualization,
     scrollTimelineToBottom,
     activeView,
     selectedSessionKey,
