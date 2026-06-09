@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
-import { launchDesktop, makeUserDataDir, type PiAppWindow } from "../helpers/electron-app";
+import { join } from "node:path";
+import { launchDesktop, makeUserDataDir, makeWorkspace, createNamedThread, seedAgentDir, type PiAppWindow } from "../helpers/electron-app";
 import {
   computeOverlayBounds,
   type OverlayRect,
@@ -57,7 +58,7 @@ test("overlay opens always-on-top at bottom-centre, is single-instance, and clos
       .windows()
       .find((p) => p.url().includes("#overlay"));
     expect(overlayPage, "overlay page exists").toBeTruthy();
-    await expect(overlayPage!.getByTestId("overlay-root")).toHaveText("Overlay");
+    await expect(overlayPage!.getByTestId("overlay-root")).toContainText("No active thread");
 
     // Single-instance: a second open does not create another window.
     await window.evaluate(() => (window as PiAppWindow).piApp!.openOverlay());
@@ -65,6 +66,55 @@ test("overlay opens always-on-top at bottom-centre, is single-instance, and clos
     expect(await overlayWindowCount(harness.electronApp)).toBe(2);
 
     // Close via IPC returns to a single window.
+    await window.evaluate(() => (window as PiAppWindow).piApp!.closeOverlay());
+    await expect.poll(() => overlayWindowCount(harness.electronApp), { timeout: 10_000 }).toBe(1);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("overlay renders the SessionComposer when a session exists (#22)", async () => {
+  const userDataDir = await makeUserDataDir();
+  const workspacePath = await makeWorkspace("overlay-ws");
+  const agentDir = join(userDataDir, "agent");
+  await seedAgentDir(agentDir);
+  const harness = await launchDesktop(userDataDir, {
+    agentDir,
+    initialWorkspaces: [workspacePath],
+    testMode: "background",
+  });
+
+  try {
+    const window = await harness.firstWindow();
+
+    // Seed a session via the shared IPC bridge.
+    await createNamedThread(window, "overlay-thread");
+
+    // Open the overlay.
+    await window.evaluate(() => (window as PiAppWindow).piApp!.openOverlay());
+    await expect.poll(() => overlayWindowCount(harness.electronApp), { timeout: 10_000 }).toBe(2);
+
+    // Wait for the overlay page to appear.
+    let overlayPage = undefined as import("@playwright/test").Page | undefined;
+    await expect
+      .poll(
+        () => {
+          overlayPage = harness.electronApp
+            .windows()
+            .find((p) => p.url().includes("#overlay"));
+          return overlayPage !== undefined;
+        },
+        { timeout: 10_000 },
+      )
+      .toBe(true);
+    expect(overlayPage, "overlay page exists").toBeTruthy();
+
+    // The overlay should render the composer, not the empty state.
+    await expect(overlayPage!.getByTestId("overlay-root")).toBeVisible({ timeout: 10_000 });
+    await expect(overlayPage!.getByTestId("overlay-thread-title")).toHaveText("overlay-thread", { timeout: 10_000 });
+    await expect(overlayPage!.getByTestId("composer")).toBeVisible({ timeout: 10_000 });
+
+    // Clean up.
     await window.evaluate(() => (window as PiAppWindow).piApp!.closeOverlay());
     await expect.poll(() => overlayWindowCount(harness.electronApp), { timeout: 10_000 }).toBe(1);
   } finally {

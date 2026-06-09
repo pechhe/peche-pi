@@ -1,0 +1,62 @@
+/* Overlay route: minimal chrome around the shared SessionComposer. */
+.overlay-root {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  background: var(--surface, #1c1c1e);
+  color: var(--text, #f5f5f7);
+}
+
+.overlay-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  flex: 0 0 auto;
+  -webkit-app-region: drag;
+}
+
+.overlay-title {
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overlay-close {
+  -webkit-app-region: no-drag;
+  flex: 0 0 auto;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+
+.overlay-close:hover {
+  background: var(--surface-hover, rgba(255, 255, 255, 0.08));
+}
+
+.overlay-root--empty {
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.overlay-root--empty .overlay-close {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+}
+
+.overlay-empty {
+  opacity: 0.6;
+  font-size: 13px;
+}

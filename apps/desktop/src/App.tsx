@@ -110,7 +110,7 @@ function deriveThreadTitle(prompt: string): string {
   return firstLine.length > 60 ? `${firstLine.slice(0, 57)}\u2026` : firstLine;
 }
 
-function useDesktopAppState() {
+export function useDesktopAppState() {
   const [snapshot, setSnapshot] = useState<DesktopAppState | null>(null);
   const [selectedTranscript, setSelectedTranscript] = useState<SelectedTranscriptRecord | null>(null);
 
@@ -348,7 +348,7 @@ function useLiveEditStats(): ReadonlyMap<string, import("./ipc").LiveEditStats> 
   return stats;
 }
 
-function updateSnapshot(
+export function updateSnapshot(
   api: NonNullable<typeof window.piApp>,
   setSnapshot: Dispatch<SetStateAction<DesktopAppState | null>>,
   action: () => Promise<DesktopAppState>,
@@ -396,7 +396,7 @@ function canTogglePrimarySidebar(_view: AppView | undefined): boolean {
   return true;
 }
 
-function useRunningLabel(startedAt: string | undefined) {
+export function useRunningLabel(startedAt: string | undefined) {
   const [label, setLabel] = useState(() => formatRunningLabel(startedAt));
 
   useEffect(() => {
@@ -641,7 +641,7 @@ export default function App() {
 
   useEffect(() => {
     if (!api || !snapshot?.selectedWorkspaceId) return;
-    void api.listGhMilestones(snapshot.selectedWorkspaceId);
+    void api.listGhLoops(snapshot.selectedWorkspaceId);
   }, [api, snapshot?.selectedWorkspaceId]);
 
   const selectedWorkspace = snapshot ? (getSelectedWorkspace(snapshot) ?? snapshot.workspaces[0]) : undefined;
@@ -2505,9 +2505,9 @@ export default function App() {
           onOpenSearch={globalSearch.open}
           threadTypeBySession={snapshot.threadTypeBySession}
           runtime={rootRuntime}
-          ghMilestones={snapshot.ghMilestones}
+          ghLoops={snapshot.ghLoops}
           ghRunnerState={snapshot.ghRunnerState}
-          onRunMilestone={(workspaceId, milestoneNumber) => void api.runGhMilestone(workspaceId, milestoneNumber)}
+          onRunLoop={(workspaceId, loopNumber) => void api.runGhLoop(workspaceId, loopNumber)}
           onCancelGhRun={() => void api.cancelGhRun()}
         />
       )}
