@@ -521,6 +521,10 @@ export function SettingsSurface(props: SettingsSurfaceProps) {
         onSetCommitPushModel={(model) => {
           void updateSnapshot(api, setSnapshot, () => api.setCommitPushModel(rootWorkspace?.id ?? "", model));
         }}
+        autoShip={snapshot.autoShip}
+        onSetAutoShip={(value) => {
+          void updateSnapshot(api, setSnapshot, () => api.setAutoShip(value));
+        }}
         smartCompactSettings={smartCompactSettings}
         cavemanLevel={cavemanLevel}
         activeView={activeView}

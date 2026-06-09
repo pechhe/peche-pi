@@ -60,6 +60,8 @@ interface SettingsViewProps {
   readonly onSetPlanModeIdeology: (ideology: import("./desktop-state").PlanModeIdeologySetting) => void;
   readonly commitPushModel?: string;
   readonly onSetCommitPushModel: (model: string) => void;
+  readonly autoShip?: boolean;
+  readonly onSetAutoShip: (value: boolean) => void;
   readonly smartCompactSettings: import("./ipc").SmartCompactSettings;
   readonly onSetSmartCompactSettings: (settings: Partial<import("./ipc").SmartCompactSettings>) => void;
   readonly cavemanLevel: CavemanLevel;
@@ -118,6 +120,8 @@ export function SettingsView({
   onSetPlanModeIdeology,
   commitPushModel,
   onSetCommitPushModel,
+  autoShip,
+  onSetAutoShip,
   smartCompactSettings,
   onSetSmartCompactSettings,
   cavemanLevel,
@@ -262,6 +266,8 @@ export function SettingsView({
                     retrySettings={retrySettings}
                     commitPushModel={commitPushModel}
                     onSetCommitPushModel={onSetCommitPushModel}
+                    autoShip={autoShip}
+                    onSetAutoShip={onSetAutoShip}
                     onSetModelSettingsScopeMode={onSetModelSettingsScopeMode}
                     onSetIntegratedTerminalShell={onSetIntegratedTerminalShell}
                     onChooseExternalTerminalApp={onChooseExternalTerminalApp}
@@ -361,6 +367,8 @@ export function SettingsView({
                   retrySettings={retrySettings}
                   commitPushModel={commitPushModel}
                   onSetCommitPushModel={onSetCommitPushModel}
+                  autoShip={autoShip}
+                  onSetAutoShip={onSetAutoShip}
                   onSetModelSettingsScopeMode={onSetModelSettingsScopeMode}
                   onSetIntegratedTerminalShell={onSetIntegratedTerminalShell}
                   onChooseExternalTerminalApp={onChooseExternalTerminalApp}

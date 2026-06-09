@@ -272,7 +272,7 @@ export function useDesktopAppState() {
       if (!active) {
         return;
       }
-      setSnapshot((current) => applyDesktopLiveUpdate(current, { type: "workspace-session", workspaceId: patch.workspaceId, session: patch.session }));
+      setSnapshot((current) => applyDesktopLiveUpdate(current, { type: "workspace-session", workspaceId: patch.workspaceId, session: patch.session, extensionUi: patch.extensionUi }));
     });
 
     // Transcript delta streaming: for the selected session, the main process
@@ -533,6 +533,7 @@ export default function App() {
   const [showDiffPanel, setShowDiffPanel] = useState(false);
   const [showContextPanel, setShowContextPanel] = useState(false);
   const [featureDoneState, setFeatureDoneState] = useState<"idle" | "working" | "done" | "error">("idle");
+  const [autoShipOverrides, setAutoShipOverrides] = useState<Map<string, boolean>>(new Map());
   const [pendingScrollToMessageId, setPendingScrollToMessageId] = useState<string | null>(null);
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   // Query that produced the jump, captured before the search palette clears it.
@@ -1461,6 +1462,23 @@ export default function App() {
       showToast({ variant: "error", message: `Ship failed — ${String(err)}` });
     }
   }, [api, rootWorkspace, selectedSession, snapshot?.commitPushModel]);
+
+  // Auto-ship: per-thread override (session-scoped, not persisted)
+  const autoShipGlobal = snapshot?.autoShip ?? false;
+  const autoShipOverride = selectedSession ? autoShipOverrides.get(selectedSession.id) : undefined;
+  const autoShipEffective = autoShipOverride ?? autoShipGlobal;
+  const handleSetAutoShipOverride = useCallback((value: boolean | undefined) => {
+    if (!selectedSession) return;
+    setAutoShipOverrides((prev) => {
+      const next = new Map(prev);
+      if (value === undefined) {
+        next.delete(selectedSession.id);
+      } else {
+        next.set(selectedSession.id, value);
+      }
+      return next;
+    });
+  }, [selectedSession]);
 
   const skillsExtensionsHandlers = useSkillsExtensionsHandlers({
     api,
@@ -2670,6 +2688,10 @@ export default function App() {
           onOpenGraph={() => setActiveView("graph")}
           onFeatureDone={handleFeatureDone}
           featureDoneState={featureDoneState}
+          autoShipEffective={autoShipEffective}
+          autoShipGlobal={autoShipGlobal}
+          autoShipOverride={autoShipOverride}
+          onSetAutoShipOverride={handleSetAutoShipOverride}
         />
 
         {showTerminalTakeover ? (

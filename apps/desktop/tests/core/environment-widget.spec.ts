@@ -185,6 +185,62 @@ test("local branch picker checks out a branch on select", async () => {
   }
 });
 
+test("auto-ship override swaps Commit & Push row for Ship button", async () => {
+  test.setTimeout(90_000);
+  const userDataDir = await makeUserDataDir();
+  const workspacePath = await makeGitWorkspace("env-autoship-override");
+  const harness = await launchDesktop(userDataDir, {
+    initialWorkspaces: [workspacePath],
+    testMode: "background",
+  });
+
+  try {
+    const window = await harness.firstWindow();
+    await waitForWorkspaceByPath(window, workspacePath);
+
+    // Create a local thread
+    await startThreadViaIpc(window, { environment: "local", prompt: "autoship probe" });
+
+    // Open the environment widget popover
+    const readout = window.getByTestId("environment-widget-readout");
+    await readout.click();
+    const popover = window.getByTestId("environment-widget-popover");
+    await expect(popover).toBeVisible();
+
+    // By default (auto-ship OFF), the commit-push row should contain
+    // the CommitPushButton (text "Commit & Push") and NOT the Ship button.
+    const commitPushRow = window.getByTestId("env-row-commit-push");
+    await expect(commitPushRow).toBeVisible();
+    await expect(commitPushRow).toContainText("Commit");
+    await expect(window.getByTestId("env-row-ship-button")).toHaveCount(0);
+
+    // The auto-ship override row should be visible
+    const overrideRow = window.getByTestId("env-row-autoship-override");
+    await expect(overrideRow).toBeVisible();
+
+    // Click "On" to set per-thread override
+    await overrideRow.getByRole("button", { name: "On" }).click();
+
+    // Now the commit-push row should show the Ship button instead
+    const shipButton = window.getByTestId("env-row-ship-button");
+    await expect(shipButton).toBeVisible();
+    await expect(shipButton).toContainText("Ship");
+
+    // Click "Off" to revert
+    await overrideRow.getByRole("button", { name: "Off", exact: true }).click();
+
+    // Ship button should disappear, CommitPushButton should be back
+    await expect(window.getByTestId("env-row-ship-button")).toHaveCount(0);
+    await expect(commitPushRow).toContainText("Commit");
+
+    // Click "Default" to inherit global (off)
+    await overrideRow.getByRole("button", { name: /Default/ }).click();
+    await expect(window.getByTestId("env-row-ship-button")).toHaveCount(0);
+  } finally {
+    await harness.close();
+  }
+});
+
 test("dirty working tree blocks branch switch with clear message", async () => {
   test.setTimeout(90_000);
   const userDataDir = await makeUserDataDir();

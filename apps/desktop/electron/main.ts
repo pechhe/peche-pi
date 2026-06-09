@@ -61,10 +61,17 @@ import type {
 import { ZOOM_BASELINE, ZOOM_FACTOR_LADDER } from "../src/desktop-state";
 import type { SessionDriverEvent } from "@pi-gui/session-driver";
 import type { GenerateThreadTitleOptions } from "@pi-gui/pi-sdk-driver";
+import { installHttpIdleTimeout } from "@pi-gui/pi-sdk-driver";
 import type { WorkspaceRef } from "@pi-gui/session-driver";
 import { buildHandoffPayload, summarizeTranscript } from "./handoff-core";
 import type { BuildHandoffPayloadInput, CreateSeededSessionInput } from "./handoff-core";
 import { OverlayWindowManager, type OverlayBrowserWindow } from "./overlay-window-manager";
+
+// Install the undici idle-timeout dispatcher before any agent/network activity
+// (parity with the pi CLI). Without it, a half-open socket after a dropped
+// connection hangs forever and wedges the session: the run never settles, so
+// new prompts and `continue` fail with "Agent is already processing".
+installHttpIdleTimeout();
 
 const isDev = Boolean(process.env.ELECTRON_RENDERER_URL);
 const windowTestMode = resolveWindowTestMode();
@@ -1147,6 +1154,8 @@ app.whenReady().then(async () => {
       },
       setCommitPushModel: (_event: unknown, workspaceId: string, model: string) =>
         store.setCommitPushModel(workspaceId, model),
+      setAutoShip: (_event: unknown, value: boolean) =>
+        store.setAutoShip(value),
       getSmartCompactSettings: () => store.getSmartCompactSettings(),
       setSmartCompactSettings: (_event: unknown, settings: Record<string, unknown>) =>
         store.setSmartCompactSettings(settings),

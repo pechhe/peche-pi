@@ -484,6 +484,7 @@ export interface DesktopAppState {
   readonly themeMode: ThemeMode;
   readonly buttonSoundSettings: ButtonSoundSettings;
   readonly commitPushModel?: string;
+  readonly autoShip?: boolean;
   readonly chats: readonly ChatRecord[];
   readonly selectedChatId: string;
   readonly automations: readonly Automation[];
@@ -600,6 +601,7 @@ export function createEmptyDesktopAppState(): DesktopAppState {
     themeMode: "system",
     buttonSoundSettings: { primary: "click", navigation: "none", toggle: "key", secondary: "none", destructive: "click" },
     commitPushModel: undefined,
+    autoShip: false,
     chats: [],
     selectedChatId: "",
     automations: [],

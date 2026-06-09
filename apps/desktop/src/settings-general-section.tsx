@@ -30,6 +30,8 @@ interface SettingsGeneralSectionProps {
   readonly onSetQueueMode: (enabled: boolean) => void;
   readonly onOpenKanban: () => void;
   readonly onSetCommitPushModel: (model: string) => void;
+  readonly autoShip?: boolean;
+  readonly onSetAutoShip: (value: boolean) => void;
   readonly onSetModelSettingsScopeMode: (mode: ModelSettingsScopeMode) => void;
   readonly onSetIntegratedTerminalShell: (shellPath: string) => void;
   readonly onChooseExternalTerminalApp: () => void;
@@ -66,6 +68,8 @@ export function SettingsGeneralSection({
   retrySettings,
   commitPushModel,
   onSetCommitPushModel,
+  autoShip,
+  onSetAutoShip,
   onSetModelSettingsScopeMode,
   onSetIntegratedTerminalShell,
   onChooseExternalTerminalApp,
@@ -254,6 +258,17 @@ export function SettingsGeneralSection({
               })}
             </div>
           )}
+        </SettingsRow>
+      </SettingsGroup>
+
+      <SettingsGroup title="Auto-ship" description="When on, completed threads can be shipped (commit → push → PR → merge) in one click.">
+        <SettingsRow title="Enable auto-ship" description="Show a single Ship button instead of Commit & Push when a thread is done.">
+          <input
+            aria-label="Enable auto-ship"
+            checked={autoShip ?? false}
+            type="checkbox"
+            onChange={(event) => onSetAutoShip(event.target.checked)}
+          />
         </SettingsRow>
       </SettingsGroup>
 

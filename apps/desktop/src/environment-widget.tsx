@@ -19,6 +19,10 @@ interface EnvironmentWidgetProps {
   readonly onFeatureDone?: () => void;
   readonly featureDoneState?: "idle" | "working" | "done" | "error";
   readonly commitPushModel?: string;
+  readonly autoShipEffective?: boolean;
+  readonly autoShipGlobal?: boolean;
+  readonly autoShipOverride?: boolean;
+  readonly onSetAutoShipOverride?: (value: boolean | undefined) => void;
   readonly selectedRuntime?: RuntimeSnapshot;
   readonly api: PiDesktopApi;
   readonly sessionStatus?: string;
@@ -36,6 +40,10 @@ export function EnvironmentWidget(props: EnvironmentWidgetProps) {
     onFeatureDone,
     featureDoneState,
     commitPushModel,
+    autoShipEffective,
+    autoShipGlobal,
+    autoShipOverride,
+    onSetAutoShipOverride,
     selectedRuntime,
     api,
     sessionStatus,
@@ -250,34 +258,72 @@ export function EnvironmentWidget(props: EnvironmentWidgetProps) {
             </div>
           )}
 
-          <div className="environment-widget__commit-row" data-testid="env-row-commit-push">
-            <CommitPushButton
-              workspaceId={rootWorkspace?.id ?? ""}
-              runtime={selectedRuntime}
-              commitPushModel={commitPushModel}
-              api={api}
-              sessionStatus={sessionStatus}
-              shortcutLabel={commitShortcut}
-              branchHint={selectedWorktree?.name}
-            />
-          </div>
-
-          {onFeatureDone ? (
-            <button
-              className="workspace-menu__item environment-widget__ship-row"
-              data-testid="env-row-ship"
-              type="button"
-              role="menuitem"
-              disabled={featureDoneState === "working"}
-              onClick={() => {
-                playButtonClick();
-                onFeatureDone();
-                setOpen(false);
-              }}
-            >
-              {featureDoneState === "working" ? "Shipping…" : featureDoneState === "done" ? "Shipped ✓" : "⚙ Ship feature"}
-            </button>
+          {onSetAutoShipOverride ? (
+            <div className="environment-widget__autoship-row" data-testid="env-row-autoship-override">
+              <span className="environment-widget__row-label">Auto-ship</span>
+              <div className="environment-widget__location-picker">
+                <button
+                  className={`environment-widget__loc-btn${autoShipOverride === undefined ? " environment-widget__loc-btn--active" : ""}`}
+                  type="button"
+                  onClick={() => {
+                    playButtonClick();
+                    onSetAutoShipOverride(undefined);
+                  }}
+                >
+                  Default{autoShipGlobal ? " (on)" : " (off)"}
+                </button>
+                <button
+                  className={`environment-widget__loc-btn${autoShipOverride === true ? " environment-widget__loc-btn--active" : ""}`}
+                  type="button"
+                  onClick={() => {
+                    playButtonClick();
+                    onSetAutoShipOverride(true);
+                  }}
+                >
+                  On
+                </button>
+                <button
+                  className={`environment-widget__loc-btn${autoShipOverride === false ? " environment-widget__loc-btn--active" : ""}`}
+                  type="button"
+                  onClick={() => {
+                    playButtonClick();
+                    onSetAutoShipOverride(false);
+                  }}
+                >
+                  Off
+                </button>
+              </div>
+            </div>
           ) : null}
+
+          <div className="environment-widget__commit-row" data-testid="env-row-commit-push">
+            {autoShipEffective && onFeatureDone ? (
+              <button
+                className="workspace-menu__item environment-widget__ship-row"
+                data-testid="env-row-ship-button"
+                type="button"
+                role="menuitem"
+                disabled={featureDoneState === "working"}
+                onClick={() => {
+                  playButtonClick();
+                  onFeatureDone();
+                  setOpen(false);
+                }}
+              >
+                {featureDoneState === "working" ? "Shipping…" : featureDoneState === "done" ? "Shipped ✓" : "⚙ Ship"}
+              </button>
+            ) : (
+              <CommitPushButton
+                workspaceId={rootWorkspace?.id ?? ""}
+                runtime={selectedRuntime}
+                commitPushModel={commitPushModel}
+                api={api}
+                sessionStatus={sessionStatus}
+                shortcutLabel={commitShortcut}
+                branchHint={selectedWorktree?.name}
+              />
+            )}
+          </div>
         </div>
       ) : null}
     </div>

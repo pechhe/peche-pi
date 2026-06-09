@@ -38,6 +38,10 @@ interface TopbarProps {
   readonly onOpenGraph?: () => void;
   readonly onFeatureDone?: () => void;
   readonly featureDoneState?: "idle" | "working" | "done" | "error";
+  readonly autoShipEffective?: boolean;
+  readonly autoShipGlobal?: boolean;
+  readonly autoShipOverride?: boolean;
+  readonly onSetAutoShipOverride?: (value: boolean | undefined) => void;
 }
 
 export function Topbar(props: TopbarProps) {
@@ -69,6 +73,10 @@ export function Topbar(props: TopbarProps) {
     onSetTranscriptVerbose,
     onFeatureDone,
     featureDoneState,
+    autoShipEffective,
+    autoShipGlobal,
+    autoShipOverride,
+    onSetAutoShipOverride,
   } = props;
   const terminalShortcut = getDesktopShortcutLabel(api.platform, "J");
   const diffShortcut = getDesktopShortcutLabel(api.platform, "D");
@@ -121,6 +129,10 @@ export function Topbar(props: TopbarProps) {
             onFeatureDone={onFeatureDone}
             featureDoneState={featureDoneState}
             commitPushModel={commitPushModel}
+            autoShipEffective={autoShipEffective}
+            autoShipGlobal={autoShipGlobal}
+            autoShipOverride={autoShipOverride}
+            onSetAutoShipOverride={onSetAutoShipOverride}
             selectedRuntime={selectedRuntime}
             api={api}
             sessionStatus={selectedSession?.status}

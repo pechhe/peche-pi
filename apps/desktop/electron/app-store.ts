@@ -60,6 +60,7 @@ import {
   type RemoveWorktreeInput,
   type SelectedTranscriptRecord,
   type SessionRecord,
+  type SessionExtensionUiStateRecord,
   type StartChatInput,
   type StartAutomationThreadInput,
   type StartThreadInput,
@@ -128,7 +129,7 @@ This chat has no associated coding project or workspace.
 type StateListener = (state: DesktopAppState) => void;
 type SelectedTranscriptListener = (payload: SelectedTranscriptRecord | null) => void;
 type SessionEventListener = (event: SessionDriverEvent, state: DesktopAppState) => void | Promise<void>;
-type StatePatchListener = (patch: { readonly workspaceId: string; readonly session: SessionRecord | null }) => void;
+type StatePatchListener = (patch: { readonly workspaceId: string; readonly session: SessionRecord | null; readonly extensionUi?: SessionExtensionUiStateRecord }) => void;
 type TranscriptDeltaPayload = { readonly sessionId: string; readonly workspaceId: string; readonly initial: boolean; readonly messages: readonly TranscriptMessage[] };
 type TranscriptDeltaListener = (delta: TranscriptDeltaPayload) => void;
 type TranscriptMessageRow = Extract<TranscriptMessage, { kind: "message" }>;
@@ -811,6 +812,16 @@ export class DesktopAppStore implements AppStoreInternals {
     return this.emit();
   }
 
+  async setAutoShip(value: boolean): Promise<DesktopAppState> {
+    const next = reduce(this.state, { type: "settings/setAutoShip", autoShip: value });
+    if (next === this.state) {
+      return this.emit();
+    }
+    this.state = next;
+    await this.persistUiState();
+    return this.emit();
+  }
+
   private agentSettingsPath(): string {
     return join(homedir(), ".pi", "agent", "settings.json");
   }
@@ -1388,6 +1399,7 @@ Return ONLY a JSON array of configuration fields, no explanation.`;
     workspaceId: string,
     settings: { enabled: boolean; maxRetries: number; baseDelayMs: number },
   ): Promise<DesktopAppState> {
+    this.state = { ...this.state, retrySettings: settings };
     return this.withRuntimeUpdate(workspaceId, (ws) =>
       this.driver.runtimeSupervisor.setRetrySettings(ws, settings),
     );
@@ -1548,6 +1560,7 @@ Return ONLY a JSON array of configuration fields, no explanation.`;
         : this.state.threadTransition,
       themeMode: persisted.themeMode ?? this.state.themeMode,
       commitPushModel: persisted.commitPushModel ?? this.state.commitPushModel,
+      autoShip: persisted.autoShip ?? this.state.autoShip,
       chats: persisted.chats ?? [],
       selectedChatId: persisted.selectedChatId ?? "",
     };
@@ -1587,6 +1600,7 @@ Return ONLY a JSON array of configuration fields, no explanation.`;
       themeMode: persisted.themeMode ?? "system",
       lastError: error instanceof Error ? error.message : String(error),
       commitPushModel: persisted.commitPushModel,
+      autoShip: persisted.autoShip ?? false,
       chats: persisted.chats ?? [],
       selectedChatId: persisted.selectedChatId ?? "",
       revision: 1,
@@ -2936,9 +2950,12 @@ Return ONLY a JSON array of configuration fields, no explanation.`;
 
   publishStatePatchFor(sessionRef: SessionRef): void {
     const session = this.sessionFromState(sessionRef);
+    const key = sessionKey(sessionRef);
+    const extUi = this.sessionState.extensionUiBySession.get(key);
     const patch = {
       workspaceId: sessionRef.workspaceId,
       session: session ?? null,
+      extensionUi: extUi ? serializeExtensionUiState(extUi) : undefined,
     };
     for (const listener of this.statePatchListeners) {
       listener(patch);

@@ -41,6 +41,7 @@ export interface PersistedUiState {
   readonly threadTransition?: ThreadTransitionSettings;
   readonly themeMode?: ThemeMode;
   readonly commitPushModel?: string;
+  readonly autoShip?: boolean;
   readonly chats?: readonly ChatRecord[];
   readonly selectedChatId?: string;
   readonly threadTypeBySession?: Record<string, string>;
@@ -115,6 +116,7 @@ export async function readPersistedUiState(uiStateFilePath: string): Promise<Leg
       threadTransition: normalizeThreadTransition(parsed.threadTransition),
       themeMode: normalizeThemeMode(parsed.themeMode),
       commitPushModel: typeof parsed.commitPushModel === "string" ? parsed.commitPushModel : undefined,
+      autoShip: typeof parsed.autoShip === "boolean" ? parsed.autoShip : undefined,
       chats: Array.isArray(parsed.chats) ? (parsed.chats as readonly ChatRecord[]) : undefined,
       selectedChatId: typeof parsed.selectedChatId === "string" ? parsed.selectedChatId : undefined,
       composerAttachmentsBySession: parsed.composerAttachmentsBySession,

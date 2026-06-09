@@ -20,6 +20,7 @@ import type {
   RemoveWorktreeInput,
   SelectedTranscriptRecord,
   SessionRecord,
+  SessionExtensionUiStateRecord,
   StartChatInput,
   StartThreadInput,
   ThreadTransitionSettings,
@@ -156,6 +157,7 @@ export const desktopIpc = {
   redoEdits: "pi-gui:redo-edits",
   commitPushExecute: "pi-gui:commit-push-execute",
   setCommitPushModel: "pi-gui:set-commit-push-model",
+  setAutoShip: "pi-gui:set-auto-ship",
   getSmartCompactSettings: "pi-gui:get-smart-compact-settings",
   setSmartCompactSettings: "pi-gui:set-smart-compact-settings",
   analyzeExtensionConfig: "pi-gui:analyze-extension-config",
@@ -350,6 +352,7 @@ export const piDesktopApiIpcBridge = {
   redoEdits: { kind: "invoke", channel: desktopIpc.redoEdits },
   commitPushExecute: { kind: "invoke", channel: desktopIpc.commitPushExecute },
   setCommitPushModel: { kind: "invoke", channel: desktopIpc.setCommitPushModel },
+  setAutoShip: { kind: "invoke", channel: desktopIpc.setAutoShip },
   getSmartCompactSettings: { kind: "invoke", channel: desktopIpc.getSmartCompactSettings },
   setSmartCompactSettings: { kind: "invoke", channel: desktopIpc.setSmartCompactSettings },
   analyzeExtensionConfig: { kind: "invoke", channel: desktopIpc.analyzeExtensionConfig },
@@ -576,6 +579,7 @@ export interface FeatureDoneResult {
 export interface DesktopLivePatch {
   readonly workspaceId: string;
   readonly session: SessionRecord | null;
+  readonly extensionUi?: SessionExtensionUiStateRecord;
 }
 
 export interface TranscriptSearchMatch {
@@ -897,6 +901,7 @@ export interface PiDesktopApi {
   redoEdits(workspaceId: string, ops: readonly UndoEditOp[]): Promise<UndoEditsResult>;
   commitPushExecute(workspaceId: string, branchHint?: string): Promise<{ readonly success: boolean; readonly message: string; readonly commitMessage?: string }>;
   setCommitPushModel(workspaceId: string, model: string): Promise<DesktopAppState>;
+  setAutoShip(value: boolean): Promise<DesktopAppState>;
   getSmartCompactSettings(): Promise<SmartCompactSettings>;
   setSmartCompactSettings(settings: Partial<SmartCompactSettings>): Promise<SmartCompactSettings>;
   analyzeExtensionConfig(extensionPath: string, model?: string): Promise<ExtensionConfigSchema>;
