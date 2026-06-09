@@ -830,7 +830,8 @@ export interface PiDesktopApi {
       | { readonly requestId: string; readonly value: string }
       | { readonly requestId: string; readonly confirmed: boolean }
       | { readonly requestId: string; readonly answers: readonly { readonly id: string; readonly value: string; readonly label: string; readonly wasCustom: boolean; readonly index?: number }[] }
-      | { readonly requestId: string; readonly cancelled: true },
+      | { readonly requestId: string; readonly cancelled: true }
+      | { readonly requestId: string; readonly terminalInput: string },
   ): Promise<DesktopAppState>;
   setNotificationPreferences(preferences: Partial<NotificationPreferences>): Promise<DesktopAppState>;
   setIntegratedTerminalShell(shell: string): Promise<DesktopAppState>;
@@ -923,6 +924,7 @@ export interface PiDesktopApi {
   prCreate(workspaceId: string, input: CreatePrInput): Promise<CreatePrResult>;
   listBranches(workspaceId: string): Promise<BranchListResult>;
   checkoutBranch(workspaceId: string, branchName: string): Promise<{ readonly success: boolean; readonly message: string }>;
+  createBranch(workspaceId: string, branchName: string): Promise<{ readonly success: boolean; readonly message: string }>;
   featureDone(input: FeatureDoneInput): Promise<FeatureDoneResult>;
   getContextSnapshot(workspaceId: string, sessionId?: string): Promise<ContextSnapshot>;
   getGraphifyProjectMapStatus(workspaceId: string): Promise<GraphifyProjectMapStatus>;

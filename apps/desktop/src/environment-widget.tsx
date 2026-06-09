@@ -54,6 +54,8 @@ export function EnvironmentWidget(props: EnvironmentWidgetProps) {
   const [branchList, setBranchList] = useState<readonly BranchInfo[]>([]);
   const [branchLoading, setBranchLoading] = useState(false);
   const [checkoutInProgress, setCheckoutInProgress] = useState(false);
+  const [branchCreateOpen, setBranchCreateOpen] = useState(false);
+  const [branchCreateName, setBranchCreateName] = useState("");
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -252,6 +254,85 @@ export function EnvironmentWidget(props: EnvironmentWidgetProps) {
                         {branch.isCurrent ? "✓ " : ""}{branch.name}
                       </button>
                     ))
+                  )}
+                  {!branchLoading && !isWorktree && (
+                    branchCreateOpen ? (
+                      <div style={{ display: "flex", gap: "4px", padding: "4px" }}>
+                        <input
+                          className="environment-widget__branch-option"
+                          data-testid="env-branch-create-input"
+                          type="text"
+                          placeholder="new-branch-name"
+                          autoFocus
+                          value={branchCreateName}
+                          onChange={(e) => setBranchCreateName(e.target.value)}
+                          onKeyDown={async (e) => {
+                            if (e.key !== "Enter") return;
+                            const name = branchCreateName.trim();
+                            if (!name || !rootWorkspace) return;
+                            setCheckoutInProgress(true);
+                            playButtonClick();
+                            try {
+                              const result = await api.createBranch(rootWorkspace.id, name);
+                              if (result.success) {
+                                setBranchPickerOpen(false);
+                                setOpen(false);
+                              } else {
+                                showToast({ variant: "error", message: result.message });
+                              }
+                            } catch (err) {
+                              showToast({ variant: "error", message: `Create failed: ${err instanceof Error ? err.message : String(err)}` });
+                            } finally {
+                              setCheckoutInProgress(false);
+                              setBranchCreateOpen(false);
+                              setBranchCreateName("");
+                            }
+                          }}
+                          style={{ flex: 1, minWidth: 0 }}
+                        />
+                        <button
+                          className="environment-widget__branch-option"
+                          data-testid="env-branch-create-confirm"
+                          type="button"
+                          disabled={checkoutInProgress}
+                          onClick={async () => {
+                            const name = branchCreateName.trim();
+                            if (!name || !rootWorkspace) return;
+                            setCheckoutInProgress(true);
+                            playButtonClick();
+                            try {
+                              const result = await api.createBranch(rootWorkspace.id, name);
+                              if (result.success) {
+                                setBranchPickerOpen(false);
+                                setOpen(false);
+                              } else {
+                                showToast({ variant: "error", message: result.message });
+                              }
+                            } catch (err) {
+                              showToast({ variant: "error", message: `Create failed: ${err instanceof Error ? err.message : String(err)}` });
+                            } finally {
+                              setCheckoutInProgress(false);
+                              setBranchCreateOpen(false);
+                              setBranchCreateName("");
+                            }
+                          }}
+                        >
+                          Create
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        className="environment-widget__branch-option"
+                        data-testid="env-branch-create-toggle"
+                        type="button"
+                        onClick={() => {
+                          playButtonClick();
+                          setBranchCreateOpen(true);
+                        }}
+                      >
+                        ➕ Create and checkout new branch…
+                      </button>
+                    )
                   )}
                 </div>
               ) : null}

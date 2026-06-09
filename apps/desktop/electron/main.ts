@@ -1236,6 +1236,19 @@ app.whenReady().then(async () => {
         await store.refreshState();
         return { success: true, message: result.stdout || `Switched to branch '${branchName}'` };
       },
+      createBranch: async (_event: unknown, workspaceId: string, branchName: string) => {
+        const workspacePath = store.getWorkspacePath(workspaceId);
+        if (!workspacePath) return { success: false, message: `Unknown workspace: ${workspaceId}` };
+        const name = branchName.trim();
+        if (!name) return { success: false, message: "Branch name required." };
+        const { execGit } = await import("./git-runner.js");
+        const result = await execGit(["checkout", "-b", name], workspacePath);
+        if (result.code !== 0) {
+          return { success: false, message: result.stderr || result.stdout || `git checkout -b failed (code ${result.code})` };
+        }
+        await store.refreshState();
+        return { success: true, message: result.stdout || `Created and switched to branch '${name}'` };
+      },
       getWorkspacePrInfo: async (_event: unknown, workspaceId: string) => {
         const workspacePath = store.getWorkspacePath(workspaceId);
         if (!workspacePath) throw new Error(`Unknown workspace: ${workspaceId}`);

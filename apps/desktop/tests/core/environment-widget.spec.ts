@@ -283,3 +283,44 @@ test("dirty working tree blocks branch switch with clear message", async () => {
     await harness.close();
   }
 });
+
+test("createBranch IPC creates and switches to new branch, carries dirty tree", async () => {
+  test.setTimeout(90_000);
+  const userDataDir = await makeUserDataDir();
+  const workspacePath = await makeGitWorkspace("branch-create");
+  const harness = await launchDesktop(userDataDir, {
+    initialWorkspaces: [workspacePath],
+    testMode: "background",
+  });
+
+  try {
+    const window = await harness.firstWindow();
+    const rootWorkspace = await waitForWorkspaceByPath(window, workspacePath);
+    const wsId = rootWorkspace.id;
+
+    // Write an uncommitted file (dirty tree)
+    const { writeFile } = await import("node:fs/promises");
+    const { join } = await import("node:path");
+    await writeFile(join(workspacePath, "dirty.txt"), "uncommitted", "utf8");
+
+    // createBranch should succeed despite dirty tree
+    const result = await window.evaluate(async (id: string) => {
+      const api = (window as PiAppWindow).piApp as PiDesktopApi;
+      return api.createBranch(id, "feature/new-thing");
+    }, wsId);
+    expect(result.success).toBe(true);
+
+    // Branch should now be feature/new-thing
+    const afterState = await window.evaluate(async (id: string) => {
+      const api = (window as PiAppWindow).piApp as PiDesktopApi;
+      return api.listBranches(id);
+    }, wsId);
+    expect(afterState.currentBranch).toBe("feature/new-thing");
+
+    // Dirty file should still exist (carried onto new branch)
+    const { stat } = await import("node:fs/promises");
+    await expect(stat(join(workspacePath, "dirty.txt"))).resolves.toBeDefined();
+  } finally {
+    await harness.close();
+  }
+});
