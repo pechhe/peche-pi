@@ -5,11 +5,10 @@ import { playButtonClick } from "./button-click-sound";
 import { getDesktopShortcutLabel, type PiDesktopApi } from "./ipc";
 import { ProjectMapPopover } from "./project-map-popover";
 import type { WorkspaceMenuState } from "./hooks/use-workspace-menu";
-import { CommitPushButton } from "./commit-push-button";
+import { EnvironmentWidget } from "./environment-widget";
 import { UpdatePill } from "./update-pill";
 import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
 import { showToast } from "./toast";
-import type { UndoEditsResult } from "./ipc";
 
 interface TopbarProps {
   readonly activeView: AppView;
@@ -19,7 +18,6 @@ interface TopbarProps {
   readonly selectedSessionTitle: string | undefined;
   readonly selectedWorktree: WorktreeRecord | undefined;
   readonly activeWorktrees: readonly WorktreeRecord[];
-  readonly workspaces: readonly WorkspaceRecord[];
   readonly wsMenu: WorkspaceMenuState;
   readonly api: PiDesktopApi;
   readonly terminalAvailable: boolean;
@@ -38,7 +36,6 @@ interface TopbarProps {
   readonly transcriptVerbose: boolean;
   readonly onSetTranscriptVerbose: (enabled: boolean) => void;
   readonly onOpenGraph?: () => void;
-  readonly onUndoAllEdits?: () => Promise<UndoEditsResult>;
   readonly onFeatureDone?: () => void;
   readonly featureDoneState?: "idle" | "working" | "done" | "error";
 }
@@ -52,7 +49,6 @@ export function Topbar(props: TopbarProps) {
     selectedSessionTitle,
     selectedWorktree,
     activeWorktrees,
-    workspaces,
     wsMenu,
     api,
 
@@ -71,15 +67,12 @@ export function Topbar(props: TopbarProps) {
     commitPushModel,
     transcriptVerbose,
     onSetTranscriptVerbose,
-    onUndoAllEdits,
     onFeatureDone,
     featureDoneState,
   } = props;
-  const [undoAllState, setUndoAllState] = useState<"idle" | "undoing" | "done" | "error">("idle");
   const terminalShortcut = getDesktopShortcutLabel(api.platform, "J");
   const diffShortcut = getDesktopShortcutLabel(api.platform, "D");
   const contextShortcut = getDesktopShortcutLabel(api.platform, "⇧5");
-  const commitShortcut = api.platform === "darwin" ? "⌘⇧K" : "Ctrl+Shift+K";
   const [viewSettingsOpen, setViewSettingsOpen] = useState(false);
   const viewSettingsRef = useRef<HTMLDivElement | null>(null);
 
@@ -116,54 +109,22 @@ export function Topbar(props: TopbarProps) {
         <span className="topbar__workspace">
           {rootWorkspace ? rootWorkspace.name : "Open a folder to begin"}
         </span>
-        {selectedWorkspace && activeView === "threads" && selectedWorkspace.kind === "worktree" ? (
-          <>
-            <span className="topbar__separator">/</span>
-            <div className="environment-picker" ref={wsMenu.environmentMenuRef}>
-              <button
-                aria-expanded={wsMenu.environmentMenuOpen}
-                aria-haspopup="menu"
-                className="environment-picker__button"
-                type="button"
-                onClick={() => wsMenu.setEnvironmentMenuOpen((current) => !current)}
-              >
-                {selectedWorktree?.name ?? selectedWorkspace.name}
-              </button>
-              {wsMenu.environmentMenuOpen && rootWorkspace ? (
-                <div className="workspace-menu environment-picker__menu">
-                  <button
-                    className="workspace-menu__item"
-                    type="button"
-                    onClick={() => wsMenu.selectWorkspace(rootWorkspace.id)}
-                  >
-                    Local
-                  </button>
-                  {activeWorktrees.map((worktree) => {
-                    const linkedWorkspace = workspaces.find(
-                      (workspace) => workspace.id === worktree.linkedWorkspaceId,
-                    );
-                    const worktreeSelectable = Boolean(linkedWorkspace) && worktree.status === "ready";
-                    return (
-                      <button
-                        className="workspace-menu__item"
-                        key={worktree.id}
-                        type="button"
-                        disabled={!worktreeSelectable}
-                        onClick={() => {
-                          if (worktreeSelectable && linkedWorkspace) {
-                            wsMenu.selectWorkspace(linkedWorkspace.id);
-                          }
-                        }}
-                      >
-                        {worktree.name}
-                        {!worktreeSelectable ? ` (${worktree.status !== "ready" ? worktree.status : "unavailable"})` : ""}
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : null}
-            </div>
-          </>
+        {selectedWorkspace && activeView === "threads" ? (
+          <EnvironmentWidget
+            selectedWorkspace={selectedWorkspace}
+            selectedWorktree={selectedWorktree}
+            rootWorkspace={rootWorkspace}
+            activeWorktrees={activeWorktrees}
+            wsMenu={wsMenu}
+            showDiffPanel={showDiffPanel}
+            onToggleDiffPanel={onToggleDiffPanel}
+            onFeatureDone={onFeatureDone}
+            featureDoneState={featureDoneState}
+            commitPushModel={commitPushModel}
+            selectedRuntime={selectedRuntime}
+            api={api}
+            sessionStatus={selectedSession?.status}
+          />
         ) : null}
         {selectedWorkspace && activeView === "threads" && selectedSession ? (
           <>
@@ -188,63 +149,6 @@ export function Topbar(props: TopbarProps) {
 
       <div className="topbar__actions">
         <UpdatePill api={api} />
-        <CommitPushButton
-          workspaceId={rootWorkspace?.id ?? ""}
-          runtime={selectedRuntime}
-          commitPushModel={commitPushModel}
-          api={api}
-          sessionStatus={selectedSession?.status}
-          shortcutLabel={commitShortcut}
-        />
-        {onFeatureDone && selectedWorktree && activeView === "threads" && selectedSession && selectedSession.status !== "running" ? (
-          <div className="shortcut-tooltip-wrap topbar__tooltip-wrap">
-            <button
-              aria-label="Ship feature: commit, push, create PR, and merge to main"
-              className="topbar__feature-done"
-              data-testid="topbar-feature-done"
-              type="button"
-              disabled={featureDoneState === "working"}
-              onClick={() => {
-                playButtonClick();
-                onFeatureDone();
-              }}
-            >
-              {featureDoneState === "working" ? "Shipping…" : featureDoneState === "done" ? "Shipped" : "Ship feature"}
-            </button>
-          </div>
-        ) : null}
-        {onUndoAllEdits && activeView === "threads" && selectedSession && selectedSession.status !== "running" ? (
-          <div className="shortcut-tooltip-wrap topbar__tooltip-wrap">
-            <button
-              aria-label="Revert all changes in this thread"
-              className="topbar__revert-all"
-              data-testid="topbar-revert-all"
-              type="button"
-              disabled={undoAllState === "undoing"}
-              onClick={() => {
-                playButtonClick();
-                setUndoAllState("undoing");
-                void onUndoAllEdits().then(
-                  (result) => {
-                    if (result.reverted.length === 0) {
-                      setUndoAllState("error");
-                      showToast({ variant: "success", message: "Nothing to revert", autoDismissMs: 2000 });
-                    } else {
-                      setUndoAllState("done");
-                      showToast({ variant: "success", message: `Reverted ${result.reverted.length} file${result.reverted.length === 1 ? "" : "s"}`, autoDismissMs: 3000 });
-                    }
-                  },
-                  () => setUndoAllState("error"),
-                );
-              }}
-            >
-              {undoAllState === "undoing" ? "Reverting…" : "Revert All"}
-            </button>
-            <span className="shortcut-tooltip topbar__tooltip" role="tooltip">
-              <span>Revert all thread changes</span>
-            </span>
-          </div>
-        ) : null}
         <ProjectMapPopover rootWorkspace={rootWorkspace} api={api} onOpenGraph={props.onOpenGraph} />
         <div className="view-settings" ref={viewSettingsRef}>
           <button

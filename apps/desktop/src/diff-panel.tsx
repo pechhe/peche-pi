@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { PiDesktopApi } from "./ipc";
+import type { PiDesktopApi, UndoEditsResult } from "./ipc";
 import { InlineDiff } from "./diff-inline";
 import { RefreshIcon } from "./icons";
 import { extensionToLanguage } from "./syntax-highlight";
 import { loadReviewed, pruneReviewed, saveReviewed } from "./reviewed-files-store";
+import { showToast } from "./toast";
 
 interface ChangedFile {
   readonly path: string;
@@ -23,6 +24,7 @@ interface DiffPanelProps {
   readonly sessionStatus: string | undefined;
   readonly fileRequest?: DiffPanelFileRequest | null;
   readonly refreshNonce?: number;
+  readonly onUndoAllEdits?: () => Promise<UndoEditsResult>;
 }
 
 export function DiffPanel({
@@ -32,6 +34,7 @@ export function DiffPanel({
   sessionStatus,
   fileRequest,
   refreshNonce,
+  onUndoAllEdits,
 }: DiffPanelProps) {
   const [files, setFiles] = useState<readonly ChangedFile[]>([]);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
@@ -123,10 +126,29 @@ export function DiffPanel({
     [workspaceId, sessionId],
   );
 
+  const [undoAllState, setUndoAllState] = useState<"idle" | "undoing" | "done" | "error">("idle");
   const reviewedCount = useMemo(
     () => files.reduce((acc, f) => acc + (reviewed.has(f.path) ? 1 : 0), 0),
     [files, reviewed],
   );
+
+  const handleRevertAll = useCallback(() => {
+    if (!onUndoAllEdits) return;
+    setUndoAllState("undoing");
+    void onUndoAllEdits().then(
+      (result) => {
+        if (result.reverted.length === 0) {
+          setUndoAllState("error");
+          showToast({ variant: "success", message: "Nothing to revert", autoDismissMs: 2000 });
+        } else {
+          setUndoAllState("done");
+          showToast({ variant: "success", message: `Reverted ${result.reverted.length} file${result.reverted.length === 1 ? "" : "s"}`, autoDismissMs: 3000 });
+          refresh();
+        }
+      },
+      () => setUndoAllState("error"),
+    );
+  }, [onUndoAllEdits, refresh]);
 
   return (
     <aside className="diff-panel">
@@ -146,6 +168,17 @@ export function DiffPanel({
         >
           <RefreshIcon />
         </button>
+        {onUndoAllEdits ? (
+          <button
+            className="diff-panel__revert-all"
+            data-testid="diff-panel-revert-all"
+            type="button"
+            disabled={undoAllState === "undoing"}
+            onClick={handleRevertAll}
+          >
+            {undoAllState === "undoing" ? "Reverting…" : "Revert All"}
+          </button>
+        ) : null}
       </div>
 
       {files.length === 0 ? (

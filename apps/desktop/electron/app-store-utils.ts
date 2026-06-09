@@ -46,7 +46,9 @@ export function buildWorkspaceRecords(
             rootWorkspaceId,
             branchName: linkedWorktreeBranchName(workspace, worktrees, rootWorkspaceId),
           }
-        : {}),
+        : {
+            branchName: primaryBranchName(workspace, worktrees),
+          }),
 
       sessions: sessions
         .filter((session) => session.workspaceId === workspace.workspaceId)
@@ -200,6 +202,18 @@ function linkedWorktreeBranchName(
       worktree.kind === "linked" &&
       worktree.path === workspace.path &&
       worktree.workspaceId === rootWorkspaceId,
+  )?.branchName;
+}
+
+function primaryBranchName(
+  workspace: WorkspaceCatalogEntry,
+  worktrees: readonly WorktreeCatalogEntry[],
+): string | undefined {
+  return worktrees.find(
+    (worktree) =>
+      worktree.kind === "primary" &&
+      worktree.path === workspace.path &&
+      worktree.workspaceId === workspace.workspaceId,
   )?.branchName;
 }
 

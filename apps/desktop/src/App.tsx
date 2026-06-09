@@ -2648,7 +2648,6 @@ export default function App() {
           selectedSessionTitle={displayedSessionTitle || selectedSession?.title}
           selectedWorktree={selectedWorktree}
           activeWorktrees={activeWorktrees}
-          workspaces={snapshot.workspaces}
           wsMenu={wsMenu}
           api={api}
           terminalAvailable={Boolean(selectedSessionKey)}
@@ -2669,7 +2668,6 @@ export default function App() {
             void updateSnapshot(api, setSnapshot, () => api.setTranscriptVerbose(enabled));
           }}
           onOpenGraph={() => setActiveView("graph")}
-          onUndoAllEdits={handleUndoAllEdits}
           onFeatureDone={handleFeatureDone}
           featureDoneState={featureDoneState}
         />
@@ -2914,6 +2912,7 @@ export default function App() {
             sessionStatus={selectedSession.status}
             fileRequest={diffFileRequest}
             refreshNonce={diffRefreshNonce}
+            onUndoAllEdits={handleUndoAllEdits}
           />
         ) : null}
         {showContextPanel ? (
