@@ -17,7 +17,7 @@ import type { AppView, Automation, ChatRecord, SessionRecord, WorkspaceRecord, W
 import { countAutomationsNext24h } from "./desktop-state";
 import { type ThreadType, threadTypeAccent, parseThreadType } from "./thread-types";
 import { BugIcon, FeatureIcon, RefactorIcon, InvestigateIcon, OtherIcon } from "./icons";
-import { ChatIcon, ChevronDownIcon, ComposeIcon, ContextIcon, DoneIcon, ExtensionIcon, AutomationIcon, AutomationRunIcon, FolderIcon, ProjectIcon, RestoreIcon, SearchIcon, SettingsIcon, SkillIcon, SparkIcon, WorktreeIcon } from "./icons";
+import { ChatIcon, ChevronDownIcon, ComposeIcon, ContextIcon, DoneIcon, EyeIcon, ExtensionIcon, AutomationIcon, AutomationRunIcon, FolderIcon, ProjectIcon, RestoreIcon, SearchIcon, SettingsIcon, SkillIcon, SparkIcon, WorktreeIcon, ClockIcon as SnoozeIcon } from "./icons";
 import { WorkingSpinner } from "./working-label";
 import { getDesktopShortcutLabel, type PiDesktopApi } from "./ipc";
 import { formatRelativeTime } from "./string-utils";
@@ -33,6 +33,17 @@ import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
 import type { SidebarResize } from "./hooks/use-sidebar-width";
 import type { SidebarNavEntry } from "./hooks/build-sidebar-nav-list";
 import { GhLoopSection } from "./gh-loop-section";
+
+function formatSnoozeTimeLeft(end: Date): string {
+  const ms = end.getTime() - Date.now();
+  if (ms <= 0) return "";
+  const hours = Math.floor(ms / 3_600_000);
+  if (hours < 24) return `${hours}h left`;
+  const days = Math.floor(hours / 24);
+  const remainingHours = hours % 24;
+  if (remainingHours === 0) return `${days}d left`;
+  return `${days}d ${remainingHours}h left`;
+}
 
 interface MovingHighlightState {
   readonly left: number;
@@ -265,6 +276,10 @@ interface SidebarProps {
   readonly onArchiveAllNonRunningSessions: (workspaceId: string, olderThanMs?: number) => void;
   readonly onSelectSession: (target: { workspaceId: string; sessionId: string }) => void;
   readonly onUnarchiveSession: (target: { workspaceId: string; sessionId: string }) => void;
+  readonly onSnoozeSession: (target: { workspaceId: string; sessionId: string }, until: string) => void;
+  readonly onUnsnoozeSession: (target: { workspaceId: string; sessionId: string }) => void;
+  readonly onMarkToTestSession: (target: { workspaceId: string; sessionId: string }) => void;
+  readonly onUnmarkToTestSession: (target: { workspaceId: string; sessionId: string }) => void;
   readonly onCreateChat: () => void;
   readonly onSelectChat: (chatId: string) => void;
   readonly onArchiveChat: (chatId: string) => void;
@@ -274,6 +289,8 @@ interface SidebarProps {
   readonly automations: readonly Automation[];
   readonly onOpenAutomations: (workspaceId?: string) => void;
   readonly onOpenAgents: () => void;
+  readonly testingCount: number;
+  readonly onOpenTesting: () => void;
   readonly onOpenSearch: () => void;
   readonly sessionsWithRunningSubagents?: ReadonlySet<string>;
   readonly threadTypeBySession?: Readonly<Record<string, string>>;
@@ -311,6 +328,10 @@ export function Sidebar(props: SidebarProps) {
     onArchiveAllNonRunningSessions,
     onSelectSession,
     onUnarchiveSession,
+    onSnoozeSession,
+    onUnsnoozeSession,
+    onMarkToTestSession,
+    onUnmarkToTestSession,
     onCreateChat,
     onSelectChat,
     onArchiveChat,
@@ -319,6 +340,7 @@ export function Sidebar(props: SidebarProps) {
     pendingSidebarSelection,
     onOpenAutomations,
     onOpenAgents,
+    onOpenTesting,
     onOpenSearch,
     sessionsWithRunningSubagents,
     threadTypeBySession,
@@ -459,6 +481,22 @@ export function Sidebar(props: SidebarProps) {
             <kbd className="sidebar__nav-shortcut shortcut-hint">{getDesktopShortcutLabel(api.platform, "⇧5")}</kbd>
           </button>
           <button
+            className={`sidebar__nav-item ${activeView === "testing" ? "sidebar__nav-item--active" : ""}`}
+            type="button"
+            onClick={() => { playButtonClick(); onOpenTesting(); }}
+          >
+            <EyeIcon />
+            <span>Testing</span>
+            {props.testingCount > 0 ? (
+              <span className="sidebar__nav-badges" aria-label={`${props.testingCount} threads to test`}>
+                <span className="sidebar__nav-badge sidebar__nav-badge--accent">
+                  {props.testingCount}
+                </span>
+              </span>
+            ) : null}
+            <kbd className="sidebar__nav-shortcut shortcut-hint">{getDesktopShortcutLabel(api.platform, "⇧6")}</kbd>
+          </button>
+          <button
             className={`sidebar__nav-item ${activeView === "settings" ? "sidebar__nav-item--active" : ""}`}
             type="button"
             onClick={() => { playButtonClick(); onOpenSettings(selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id); }}
@@ -529,6 +567,10 @@ export function Sidebar(props: SidebarProps) {
                     onArchiveAllNonRunningSessions={onArchiveAllNonRunningSessions}
                     onSelectSession={onSelectSession}
                     onUnarchiveSession={onUnarchiveSession}
+                    onSnoozeSession={onSnoozeSession}
+                    onUnsnoozeSession={onUnsnoozeSession}
+                    onMarkToTestSession={onMarkToTestSession}
+                    onUnmarkToTestSession={onUnmarkToTestSession}
                     onNewThreadForWorkspace={onNewThreadForWorkspace}
                     pendingSidebarSelection={pendingSidebarSelection}
                     onOpenAutomations={onOpenAutomations}
@@ -551,6 +593,10 @@ export function Sidebar(props: SidebarProps) {
                     onArchiveAllNonRunningSessions={onArchiveAllNonRunningSessions}
                     onSelectSession={onSelectSession}
                     onUnarchiveSession={onUnarchiveSession}
+                    onSnoozeSession={onSnoozeSession}
+                    onUnsnoozeSession={onUnsnoozeSession}
+                    onMarkToTestSession={onMarkToTestSession}
+                    onUnmarkToTestSession={onUnmarkToTestSession}
                     onNewThreadForWorkspace={onNewThreadForWorkspace}
                     pendingSidebarSelection={pendingSidebarSelection}
                     onOpenAutomations={onOpenAutomations}
@@ -576,6 +622,10 @@ export function Sidebar(props: SidebarProps) {
                     onArchiveAllNonRunningSessions={onArchiveAllNonRunningSessions}
                     onSelectSession={onSelectSession}
                     onUnarchiveSession={onUnarchiveSession}
+                    onSnoozeSession={onSnoozeSession}
+                    onUnsnoozeSession={onUnsnoozeSession}
+                    onMarkToTestSession={onMarkToTestSession}
+                    onUnmarkToTestSession={onUnmarkToTestSession}
                     onNewThreadForWorkspace={onNewThreadForWorkspace}
                     pendingSidebarSelection={pendingSidebarSelection}
                     onOpenAutomations={onOpenAutomations}
@@ -650,6 +700,10 @@ interface WorkspaceGroupProps {
   readonly onArchiveAllNonRunningSessions: (workspaceId: string, olderThanMs?: number) => void;
   readonly onSelectSession: (target: { workspaceId: string; sessionId: string }) => void;
   readonly onUnarchiveSession: (target: { workspaceId: string; sessionId: string }) => void;
+  readonly onSnoozeSession: (target: { workspaceId: string; sessionId: string }, until: string) => void;
+  readonly onUnsnoozeSession: (target: { workspaceId: string; sessionId: string }) => void;
+  readonly onMarkToTestSession: (target: { workspaceId: string; sessionId: string }) => void;
+  readonly onUnmarkToTestSession: (target: { workspaceId: string; sessionId: string }) => void;
   readonly onNewThreadForWorkspace: (rootWorkspaceId: string) => void;
   readonly pendingSidebarSelection: SidebarNavEntry | null;
   readonly onOpenAutomations: (workspaceId?: string) => void;
@@ -695,7 +749,7 @@ function WorkspaceGroupContent(
   props: WorkspaceGroupProps & { readonly dragHandleProps?: DragHandleProps },
 ) {
   const {
-    group: { rootWorkspace, threads, archivedThreads },
+    group: { rootWorkspace, threads, snoozedThreads, archivedThreads },
     activeView,
     selectedWorkspace,
     selectedSession,
@@ -706,6 +760,10 @@ function WorkspaceGroupContent(
     onArchiveAllNonRunningSessions,
     onSelectSession,
     onUnarchiveSession,
+    onSnoozeSession,
+    onUnsnoozeSession,
+    onMarkToTestSession,
+    onUnmarkToTestSession,
     onNewThreadForWorkspace,
     dragHandleProps,
     pendingSidebarSelection,
@@ -719,8 +777,59 @@ function WorkspaceGroupContent(
     rootWorkspace.id === selectedWorkspace?.rootWorkspaceId;
   const linkedWorktree = linkedWorktreeByWorkspaceId.get(rootWorkspace.id);
   const archivedSectionOpen = wsMenu.expandedArchivedByWorkspace[rootWorkspace.id] ?? false;
+  const snoozedSectionOpen = wsMenu.expandedSnoozedByWorkspace[rootWorkspace.id] ?? false;
   const [showAllArchived, setShowAllArchived] = useState(false);
+  const [showAllSnoozed, setShowAllSnoozed] = useState(false);
   const isCollapsed = wsMenu.collapsedWorkspaces[rootWorkspace.id] ?? false;
+
+  // Track newly appeared sessions so they play an entry animation.
+  const knownSessionIdsRef = useRef<Set<string>>(new Set());
+  const [enteringSessions, setEnteringSessions] = useState<Set<string>>(new Set());
+  const enteringTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  useEffect(() => {
+    const prev = knownSessionIdsRef.current;
+    const current = new Set(threads.map((t) => t.session.id));
+    const added = new Set<string>();
+    for (const id of current) {
+      if (!prev.has(id)) added.add(id);
+    }
+    knownSessionIdsRef.current = current;
+    if (added.size > 0) {
+      setEnteringSessions((cur) => {
+        const next = new Set(cur);
+        for (const id of added) next.add(id);
+        return next;
+      });
+      for (const id of added) {
+        const timer = enteringTimersRef.current.get(id);
+        if (timer) clearTimeout(timer);
+        enteringTimersRef.current.set(id, setTimeout(() => {
+          setEnteringSessions((cur) => {
+            const next = new Set(cur);
+            next.delete(id);
+            return next;
+          });
+          enteringTimersRef.current.delete(id);
+        }, ENTERING_ANIMATION_MS));
+      }
+    }
+    // Clean up timers for sessions that left the list.
+    for (const id of prev) {
+      if (!current.has(id)) {
+        const timer = enteringTimersRef.current.get(id);
+        if (timer) {
+          clearTimeout(timer);
+          enteringTimersRef.current.delete(id);
+        }
+        setEnteringSessions((cur) => {
+          if (!cur.has(id)) return cur;
+          const next = new Set(cur);
+          next.delete(id);
+          return next;
+        });
+      }
+    }
+  }, [threads]);
 
   return (
     <>
@@ -906,6 +1015,7 @@ function WorkspaceGroupContent(
                   key={`${thread.workspaceId}:${thread.session.id}`}
                   active={active}
                   pending={pending}
+                  entering={enteringSessions.has(thread.session.id)}
                   thread={thread}
                   hasRunningSubagents={sessionsWithRunningSubagents?.has(`${thread.workspaceId}:${thread.session.id}`) ?? false}
                   threadType={threadTypeBySession?.[thread.session.id]}
@@ -917,10 +1027,77 @@ function WorkspaceGroupContent(
                     })
                   }
                   onSelect={() => onSelectSession({ workspaceId: thread.workspaceId, sessionId: thread.session.id })}
+                  onSnooze={(until) => onSnoozeSession({ workspaceId: thread.workspaceId, sessionId: thread.session.id }, until)}
+                  onMarkToTest={() => onMarkToTestSession({ workspaceId: thread.workspaceId, sessionId: thread.session.id })}
                 />
               );
             })}
           </MovingSidebarHighlight>
+          {snoozedThreads.length > 0 ? (
+            <div className="snoozed-thread-group">
+              <button
+                aria-expanded={snoozedSectionOpen}
+                className="snoozed-thread-group__toggle"
+                type="button"
+                onClick={() => wsMenu.toggleSnoozed(rootWorkspace.id, !snoozedSectionOpen)}
+              >
+                <span
+                  aria-hidden="true"
+                  className={`snoozed-thread-group__chevron ${snoozedSectionOpen ? "snoozed-thread-group__chevron--open" : ""}`}
+                >
+                  <ChevronDownIcon />
+                </span>
+                <span>Snoozed</span>
+                <span className="snoozed-thread-group__count">{snoozedThreads.length}</span>
+              </button>
+              {snoozedSectionOpen ? (
+                <>
+                  <MovingSidebarHighlight className="session-list session-list--snoozed" itemSelector=".session-row">
+                    {(showAllSnoozed ? snoozedThreads : snoozedThreads.slice(0, 20)).map((thread) => {
+                      const active =
+                        activeView === "threads" &&
+                        thread.workspaceId === selectedWorkspace?.id &&
+                        thread.session.id === selectedSession?.id;
+                      const pending =
+                        pendingSidebarSelection?.kind === "thread" &&
+                        pendingSidebarSelection.workspaceId === thread.workspaceId &&
+                        pendingSidebarSelection.sessionId === thread.session.id;
+                      const snoozeEnd = thread.session.snoozedUntil ? new Date(thread.session.snoozedUntil) : null;
+                      const timeLeft = snoozeEnd ? formatSnoozeTimeLeft(snoozeEnd) : "";
+                      return (
+                        <ThreadSessionRow
+                          key={`${thread.workspaceId}:${thread.session.id}`}
+                          active={active}
+                          pending={pending}
+                          snoozed
+                          snoozeTimeLeft={timeLeft}
+                          thread={thread}
+                          hasRunningSubagents={sessionsWithRunningSubagents?.has(`${thread.workspaceId}:${thread.session.id}`) ?? false}
+                          threadType={threadTypeBySession?.[thread.session.id]}
+                          onAction={() =>
+                            onUnsnoozeSession({
+                              workspaceId: thread.workspaceId,
+                              sessionId: thread.session.id,
+                            })
+                          }
+                          onSelect={() => onSelectSession({ workspaceId: thread.workspaceId, sessionId: thread.session.id })}
+                        />
+                      );
+                    })}
+                  </MovingSidebarHighlight>
+                  {snoozedThreads.length > 20 ? (
+                    <button
+                      className="snoozed-thread-group__show-all"
+                      type="button"
+                      onClick={() => setShowAllSnoozed(true)}
+                    >
+                      Show all {snoozedThreads.length}
+                    </button>
+                  ) : null}
+                </>
+              ) : null}
+            </div>
+          ) : null}
           {archivedThreads.length > 0 ? (
             <div className="archived-thread-group">
               <button
@@ -1011,16 +1188,94 @@ function sessionIndicatorVariant(thread: ThreadListEntry, hasRunningSubagents: b
 // Total time the row animates before it leaves the active list. Keep in sync
 // with the .session-row--completing animation in sidebar.css.
 const DONE_ANIMATION_MS = 500;
+// Duration of the .session-row--entering animation (reverse of done).
+const ENTERING_ANIMATION_MS = 500;
 
 interface ThreadSessionRowProps {
   readonly active: boolean;
   readonly pending?: boolean;
+  readonly entering?: boolean;
   readonly archived?: boolean;
+  readonly snoozed?: boolean;
+  readonly snoozeTimeLeft?: string;
+  readonly toTest?: boolean;
   readonly thread: ThreadListEntry;
   readonly hasRunningSubagents?: boolean;
   readonly threadType?: string;
   readonly onAction: () => void;
   readonly onSelect: () => void;
+  readonly onSnooze?: (until: string) => void;
+  readonly onMarkToTest?: () => void;
+}
+
+function SnoozePicker({ onSnooze }: { readonly onSnooze: (until: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [unit, setUnit] = useState<"hours" | "days">("hours");
+  const [amount, setAmount] = useState(1);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handlePointerDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [open]);
+
+  const handleConfirm = () => {
+    const ms = unit === "hours" ? amount * 3_600_000 : amount * 86_400_000;
+    onSnooze(new Date(Date.now() + ms).toISOString());
+    setOpen(false);
+  };
+
+  return (
+    <div className="snooze-picker" ref={ref}>
+      <button
+        aria-label="Snooze"
+        className="icon-button session-row__action session-row__action--snooze"
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen(!open);
+        }}
+      >
+        <SnoozeIcon />
+      </button>
+      {open ? (
+        <div className="snooze-picker__popover" onClick={(e) => e.stopPropagation()}>
+          <div className="snooze-picker__row">
+            <input
+              className="snooze-picker__input"
+              type="number"
+              min={1}
+              max={unit === "hours" ? 72 : 30}
+              value={amount}
+              onChange={(e) => setAmount(Math.max(1, Number(e.target.value)))}
+            />
+            <select
+              className="snooze-picker__select"
+              value={unit}
+              onChange={(e) => setUnit(e.target.value as "hours" | "days")}
+            >
+              <option value="hours">hours</option>
+              <option value="days">days</option>
+            </select>
+          </div>
+          <button className="snooze-picker__confirm button button--primary" type="button" onClick={handleConfirm}>
+            Snooze
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function ThreadTypeIcon({ type }: { readonly type: ThreadType }) {
@@ -1036,12 +1291,18 @@ function ThreadTypeIcon({ type }: { readonly type: ThreadType }) {
 const ThreadSessionRow = memo(function ThreadSessionRow({
   active,
   pending = false,
+  entering = false,
   archived = false,
+  snoozed = false,
+  snoozeTimeLeft,
+  toTest = false,
   thread,
   hasRunningSubagents = false,
   threadType,
   onAction,
   onSelect,
+  onSnooze,
+  onMarkToTest,
 }: ThreadSessionRowProps) {
   const resolvedType = parseThreadType(threadType ?? "");
   const accentColor = threadTypeAccent(resolvedType);
@@ -1051,8 +1312,8 @@ const ThreadSessionRow = memo(function ThreadSessionRow({
 
   const handleDone = (event: ReactMouseEvent) => {
     event.stopPropagation();
-    if (archived) {
-      // Restore is instant; no celebratory moment needed.
+    if (archived || snoozed || toTest) {
+      // Restore/unsnooze/unmark-to-test is instant; no celebratory moment needed.
       onAction();
       return;
     }
@@ -1069,7 +1330,7 @@ const ThreadSessionRow = memo(function ThreadSessionRow({
 
   return (
     <div
-      className={`session-row ${active ? "session-row--active" : ""} ${pending ? "session-row--pending" : ""} ${completing ? "session-row--completing" : ""}`}
+      className={`session-row ${active ? "session-row--active" : ""} ${pending ? "session-row--pending" : ""} ${entering ? "session-row--entering" : ""} ${completing ? "session-row--completing" : ""}`}
       data-sidebar-indicator={indicatorVariant}
       data-session-id={thread.session.id}
       style={accentVars}
@@ -1104,15 +1365,28 @@ const ThreadSessionRow = memo(function ThreadSessionRow({
             <WorktreeIcon />
           </span>
         ) : null}
-        <span className="session-row__time">{formatRelativeTime(thread.session.updatedAt)}</span>
-        <button
-          aria-label={`${archived ? "Restore" : "Mark done"} ${thread.session.title}`}
-          className={`icon-button session-row__action ${archived ? "" : "session-row__action--done"}`}
-          type="button"
-          onClick={handleDone}
-        >
-          {archived ? <RestoreIcon /> : <DoneIcon />}
-        </button>
+        <span className="session-row__time">{snoozed && snoozeTimeLeft ? snoozeTimeLeft : formatRelativeTime(thread.session.updatedAt)}</span>
+        <span className="session-row__actions">
+          {!archived && !snoozed && !toTest && onMarkToTest ? (
+            <button
+              aria-label="Mark for testing"
+              className="icon-button session-row__action session-row__action--to-test"
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onMarkToTest(); }}
+            >
+              <EyeIcon />
+            </button>
+          ) : null}
+          {!archived && !snoozed && !toTest && onSnooze ? <SnoozePicker onSnooze={onSnooze} /> : null}
+          <button
+            aria-label={`${archived ? "Restore" : snoozed ? "Unsnooze" : toTest ? "Unmark testing" : "Mark done"} ${thread.session.title}`}
+            className={`icon-button session-row__action ${archived || snoozed || toTest ? "" : "session-row__action--done"}`}
+            type="button"
+            onClick={handleDone}
+          >
+            {archived || snoozed ? <RestoreIcon /> : toTest ? <EyeIcon /> : <DoneIcon />}
+          </button>
+        </span>
       </span>
     </div>
   );
@@ -1122,7 +1396,11 @@ function sameThreadSessionRowProps(previous: ThreadSessionRowProps, next: Thread
   return (
     previous.active === next.active &&
     previous.pending === next.pending &&
+    previous.entering === next.entering &&
     previous.archived === next.archived &&
+    previous.snoozed === next.snoozed &&
+    previous.snoozeTimeLeft === next.snoozeTimeLeft &&
+    previous.toTest === next.toTest &&
     previous.hasRunningSubagents === next.hasRunningSubagents &&
     previous.threadType === next.threadType &&
     previous.thread.workspaceId === next.thread.workspaceId &&

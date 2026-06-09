@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { basename, join } from "node:path";
-import { homedir } from "node:os";
+import { basename, dirname, join } from "node:path";
 import { sessionKey } from "@pi-gui/pi-sdk-driver";
 import type { WorktreeCatalogEntry } from "@pi-gui/catalogs";
 import type { WorkspaceRef } from "@pi-gui/session-driver";
@@ -90,11 +89,51 @@ export async function startThread(store: WorktreeStore, input: StartThreadInput)
 
   return store.withErrorHandling(async () => {
     let targetWorkspace = rootWorkspace;
+    if (input.environment === "local" && input.startBranch) {
+      // Local mode: checkout the selected branch in the repo before starting.
+      // Only switch when the target differs from the current branch. If the
+      // working tree is dirty, refuse (throw) so the renderer surfaces a toast
+      // instead of silently hanging the new-thread placeholder.
+      const { execGit } = await import("./git-runner.js");
+      const current = await execGit(["rev-parse", "--abbrev-ref", "HEAD"], rootWorkspace.path);
+      const currentBranch = current.code === 0 ? current.stdout.trim() : "";
+      const target = input.startBranch.replace(/^origin\//, "");
+      if (target && target !== currentBranch) {
+        const status = await execGit(["status", "--porcelain"], rootWorkspace.path);
+        if (status.code === 0 && status.stdout.trim().length > 0) {
+          throw new Error(
+            `Can't switch to \"${target}\": you have uncommitted local changes. Commit or stash them first, or pick \"${currentBranch || "current"}\" to keep working on the current branch.`,
+          );
+        }
+        const checkout = await execGit(["checkout", target], rootWorkspace.path);
+        if (checkout.code !== 0) {
+          throw new Error(`Failed to checkout branch ${target}: ${checkout.stderr.trim()}`);
+        }
+      }
+    }
     if (input.environment === "worktree") {
-      const worktreeOptions = buildWorktreeOptions(store, rootWorkspace, undefined, undefined, input.prompt);
-      const created = await store.worktreeManager.createWorktree(rootWorkspace, worktreeOptions);
-      const synced = await store.driver.syncWorkspace(created.path, created.displayName);
-      targetWorkspace = synced.workspace;
+      if (input.existingWorktreeId) {
+        // Reuse an existing worktree
+        const existingWt = store.state.worktreesByWorkspace[input.rootWorkspaceId]?.find(
+          (wt) => wt.id === input.existingWorktreeId,
+        );
+        if (existingWt?.linkedWorkspaceId) {
+          const synced = await store.driver.syncWorkspace(existingWt.path, existingWt.name);
+          targetWorkspace = synced.workspace;
+        } else {
+          return store.withError(`Worktree not found: ${input.existingWorktreeId}`);
+        }
+      } else {
+        // Create new worktree — detached HEAD at the selected branch (or current HEAD)
+        const baseOptions = buildWorktreeOptions(store, rootWorkspace, undefined, undefined, input.prompt);
+        // If user selected a branch, use it as the start point (still detached HEAD — no branchName)
+        const worktreeOptions = input.startBranch
+          ? { ...baseOptions, startPoint: input.startBranch, branchName: undefined }
+          : baseOptions;
+        const created = await store.worktreeManager.createWorktree(rootWorkspace, worktreeOptions);
+        const synced = await store.driver.syncWorkspace(created.path, created.displayName);
+        targetWorkspace = synced.workspace;
+      }
     }
 
     const prompt = input.prompt?.trim() ?? "";
@@ -226,8 +265,23 @@ export async function startAutomationThread(
     autoTitle = { requestToken, signal: controller.signal };
   }
 
-  // Surface the new session without touching selection/active view.
-  await store.refreshState({ refreshWorktrees: input.environment === "worktree" });
+  // Surface the new session. When `select` is true (manual fire from UI),
+  // navigate to the new session so the user sees it immediately.
+  if (input.select) {
+    store.state = {
+      ...store.state,
+      selectedWorkspaceId: session.ref.workspaceId,
+      selectedSessionId: session.ref.sessionId,
+    };
+    await store.refreshState({
+      refreshWorktrees: input.environment === "worktree",
+      selectedWorkspaceId: session.ref.workspaceId,
+      selectedSessionId: session.ref.sessionId,
+      activeView: "threads",
+    });
+  } else {
+    await store.refreshState({ refreshWorktrees: input.environment === "worktree" });
+  }
 
   if (prompt) {
     void sendMessageToSession(store, session.ref, prompt, [], {
@@ -449,13 +503,12 @@ function buildWorktreeOptions(
   const baseLabel = preferredTitle
     ? clampSlug(slugify(preferredTitle), 18)
     : "wt";
-  const folderName = `${baseLabel}-${suffix}`;
-  const repoName = clampSlug(slugify(basename(workspace.path) || "repo"), 20);
+  const repoName = basename(workspace.path) || "repo";
   const displayName = preferredTitle || `Worktree ${suffix}`;
   return {
-    path: join(homedir(), ".pi", "worktrees", repoName, folderName),
+    path: join(dirname(workspace.path), `${repoName}-${baseLabel}`),
     displayName,
-    branchName: `pi/${folderName}`,
+    branchName: baseLabel,
     startPoint: "HEAD",
   };
 }

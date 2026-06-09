@@ -167,7 +167,7 @@ export type { TranscriptMessage } from "./timeline-types";
 import type { TranscriptMessage } from "./timeline-types";
 
 
-export type AppView = "threads" | "new-thread" | "skills" | "extensions" | "settings" | "context" | "queue" | "kanban" | "automations" | "agents" | "graph";
+export type AppView = "threads" | "new-thread" | "skills" | "extensions" | "settings" | "context" | "queue" | "kanban" | "automations" | "agents" | "graph" | "testing";
 export type WorkspaceKind = "primary" | "worktree";
 export type WorktreeStatus = "ready" | "missing" | "error";
 export type NewThreadEnvironment = "local" | "worktree";
@@ -316,6 +316,9 @@ export interface SessionRecord {
   readonly updatedAt: string;
   readonly lastViewedAt?: string;
   readonly archivedAt?: string;
+  readonly snoozedUntil?: string;
+  readonly toTestAt?: string;
+  readonly toTestNote?: string;
   readonly preview: string;
   readonly status: SessionStatus;
   readonly runningSince?: string;
@@ -405,6 +408,8 @@ export type StartThreadInput = {
   readonly provider?: string;
   readonly modelId?: string;
   readonly thinkingLevel?: string;
+  readonly startBranch?: string;
+  readonly existingWorktreeId?: string;
 };
 
 export type StartAutomationThreadInput = {
@@ -415,6 +420,8 @@ export type StartAutomationThreadInput = {
   readonly provider?: string;
   readonly modelId?: string;
   readonly thinkingLevel?: string;
+  /** If true, navigate to the new session after creation (for manual fire). */
+  readonly select?: boolean;
 };
 
 export type StartChatInput = {

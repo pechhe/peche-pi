@@ -71,5 +71,9 @@ test("WorkspaceManager can be constructed with a fake store", async () => {
   assert.equal(typeof mgr.createSession, "function");
   assert.equal(typeof mgr.archiveSession, "function");
   assert.equal(typeof mgr.unarchiveSession, "function");
+  assert.equal(typeof mgr.snoozeSession, "function");
+  assert.equal(typeof mgr.unsnoozeSession, "function");
+  assert.equal(typeof mgr.markToTestSession, "function");
+  assert.equal(typeof mgr.unmarkToTestSession, "function");
   assert.equal(typeof mgr.syncCurrentWorkspace, "function");
 });

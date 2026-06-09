@@ -45,6 +45,7 @@ test("buildKanbanColumns groups threads by existing session state", () => {
       thread(session("idle")),
     ],
     archivedThreads: [thread(session("done", { archivedAt: "2026-01-02T00:00:00.000Z" }))],
+    snoozedThreads: [],
   };
 
   const columns = buildKanbanColumns([group]);

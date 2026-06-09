@@ -56,6 +56,7 @@ import {
   deriveSessionConfig,
   deriveWorkspaceTitle,
   determineRunOutcome,
+  extractLastAssistantText,
   extractPreview,
   forcePersistSession,
   nowIso,
@@ -157,6 +158,8 @@ interface PromptTemplateAdapter {
 }
 
 const NEW_THREAD_PLACEHOLDER_TITLE = "New thread";
+const PARK_FOR_TESTING_PROMPT =
+  "Summarize for a test queue. Reply with ONLY a markdown table, no preamble. Two columns: | Feature | Test |. One row. Feature cell: max two sentences on what we built. Test cell: max two sentences on the quickest way to test it.";
 
 interface SkillAdapter {
   readonly name: string;
@@ -437,6 +440,42 @@ export class SessionSupervisor {
 
   async unarchiveSession(sessionRef: SessionRef): Promise<void> {
     await this.updateArchivedState(sessionRef, undefined);
+  }
+
+  async snoozeSession(sessionRef: SessionRef, until: string): Promise<void> {
+    await this.updateSnoozedState(sessionRef, until);
+  }
+
+  async unsnoozeSession(sessionRef: SessionRef): Promise<void> {
+    await this.updateSnoozedState(sessionRef, undefined);
+  }
+
+  async markToTest(sessionRef: SessionRef): Promise<void> {
+    // "Park for testing": move the thread to Done, arm response capture, and
+    // ask the session for a terse runthrough + quickest way to test. The
+    // captured assistant reply becomes the task note shown in the Testing view.
+    const record = await this.ensureRecord(sessionRef);
+    record.toTestAt = nowIso();
+    record.toTestNote = undefined;
+    record.awaitingTestCapture = true;
+    record.archivedAt = nowIso();
+    await this.persistSnapshot(record);
+    await this.emit(record, sessionUpdatedEvent(record, this.registry));
+
+    const session = this.requireSession(record);
+    const deliverAs = session.isStreaming ? ("followUp" as const) : undefined;
+    void this.sendUserMessage(
+      sessionRef,
+      deliverAs
+        ? { text: PARK_FOR_TESTING_PROMPT, deliverAs }
+        : { text: PARK_FOR_TESTING_PROMPT },
+    ).catch(() => {
+      // Delivery failures surface through the session's own runFailed event.
+    });
+  }
+
+  async unmarkToTest(sessionRef: SessionRef): Promise<void> {
+    await this.updateToTestState(sessionRef, undefined);
   }
 
   async sendUserMessage(sessionRef: SessionRef, input: SessionMessageInput): Promise<void> {
@@ -1388,6 +1427,19 @@ export class SessionSupervisor {
         record.runningRunId = undefined;
         record.status = outcome.success ? "idle" : "failed";
         record.updatedAt = timestamp;
+        // Capture the runthrough reply for a parked-for-testing thread. The
+        // queue guard ensures we wait until our prompt's run completes (a
+        // parked busy thread still has its followUp queued at the prior
+        // run's agent_end).
+        if (record.awaitingTestCapture && record.queuedMessages.length === 0) {
+          if (outcome.success) {
+            const note = extractLastAssistantText(event.messages);
+            if (note) {
+              record.toTestNote = note;
+            }
+          }
+          record.awaitingTestCapture = false;
+        }
         if (!outcome.success && outcome.error) {
           record.preview = outcome.error.message;
         }
@@ -1471,6 +1523,9 @@ export class SessionSupervisor {
       updatedAt: snapshot.updatedAt,
       status: snapshot.status,
       ...(snapshot.archivedAt !== undefined ? { archivedAt: snapshot.archivedAt } : {}),
+      ...(snapshot.snoozedUntil !== undefined ? { snoozedUntil: snapshot.snoozedUntil } : {}),
+      ...(snapshot.toTestAt !== undefined ? { toTestAt: snapshot.toTestAt } : {}),
+      ...(snapshot.toTestNote !== undefined ? { toTestNote: snapshot.toTestNote } : {}),
       ...(snapshot.preview !== undefined ? { previewSnippet: snapshot.preview } : {}),
       ...(record.sessionFile ? { sessionFilePath: record.sessionFile } : {}),
     });
@@ -1551,6 +1606,9 @@ export class SessionSupervisor {
       runtimeRecord && runtimeRecord.session && !runtimeRecord.closed ? buildSnapshot(runtimeRecord) : undefined;
     const previewSnippet = runtimeSnapshot?.preview ?? previewFromSessionInfo(info);
     const archivedAt = runtimeSnapshot?.archivedAt ?? existingEntry?.archivedAt;
+    const snoozedUntil = runtimeSnapshot?.snoozedUntil ?? existingEntry?.snoozedUntil;
+    const toTestAt = runtimeSnapshot?.toTestAt ?? existingEntry?.toTestAt;
+    const toTestNote = runtimeSnapshot?.toTestNote ?? existingEntry?.toTestNote;
     const titleFromInfo = titleFromSessionInfo(info);
     const entry: SessionCatalogSnapshot["sessions"][number] = {
       sessionRef: {
@@ -1565,6 +1623,15 @@ export class SessionSupervisor {
     };
     if (archivedAt) {
       entry.archivedAt = archivedAt;
+    }
+    if (snoozedUntil) {
+      entry.snoozedUntil = snoozedUntil;
+    }
+    if (toTestAt) {
+      entry.toTestAt = toTestAt;
+    }
+    if (toTestNote) {
+      entry.toTestNote = toTestNote;
     }
     if (previewSnippet !== undefined) {
       entry.previewSnippet = previewSnippet;
@@ -1605,6 +1672,84 @@ export class SessionSupervisor {
             ...(sessionEntry.sessionFilePath !== undefined ? { sessionFilePath: sessionEntry.sessionFilePath } : {}),
             status: sessionEntry.status,
           };
+
+    await this.catalogs.sessions.upsertSession(nextEntry);
+  }
+
+  private async updateSnoozedState(sessionRef: SessionRef, snoozedUntil: string | undefined): Promise<void> {
+    const key = sessionKey(sessionRef);
+    const record = this.registry.getRecord(sessionRef);
+    if (record) {
+      if (record.snoozedUntil === snoozedUntil) {
+        return;
+      }
+      record.snoozedUntil = snoozedUntil;
+      await this.persistSnapshot(record);
+      await this.emit(record, sessionUpdatedEvent(record, this.registry));
+      return;
+    }
+
+    const sessionEntry = await this.catalogs.sessions.getSession(sessionRef);
+    if (!sessionEntry) {
+      throw new Error(`Session ${key} is not in the catalog.`);
+    }
+    if (sessionEntry.snoozedUntil === snoozedUntil) {
+      return;
+    }
+
+    const nextEntry: import("@pi-gui/catalogs").SessionCatalogEntry = {
+      sessionRef: sessionEntry.sessionRef,
+      workspaceId: sessionEntry.workspaceId,
+      title: sessionEntry.title,
+      updatedAt: sessionEntry.updatedAt,
+      status: sessionEntry.status,
+      ...(sessionEntry.archivedAt !== undefined ? { archivedAt: sessionEntry.archivedAt } : {}),
+      ...(snoozedUntil !== undefined ? { snoozedUntil } : {}),
+      ...(sessionEntry.previewSnippet !== undefined ? { previewSnippet: sessionEntry.previewSnippet } : {}),
+      ...(sessionEntry.sessionFilePath !== undefined ? { sessionFilePath: sessionEntry.sessionFilePath } : {}),
+    };
+
+    await this.catalogs.sessions.upsertSession(nextEntry);
+  }
+
+  private async updateToTestState(sessionRef: SessionRef, toTestAt: string | undefined): Promise<void> {
+    const key = sessionKey(sessionRef);
+    const record = this.registry.getRecord(sessionRef);
+    if (record) {
+      if (record.toTestAt === toTestAt) {
+        return;
+      }
+      record.toTestAt = toTestAt;
+      if (toTestAt === undefined) {
+        record.toTestNote = undefined;
+        record.awaitingTestCapture = false;
+      }
+      await this.persistSnapshot(record);
+      await this.emit(record, sessionUpdatedEvent(record, this.registry));
+      return;
+    }
+
+    const sessionEntry = await this.catalogs.sessions.getSession(sessionRef);
+    if (!sessionEntry) {
+      throw new Error(`Session ${key} is not in the catalog.`);
+    }
+    if (sessionEntry.toTestAt === toTestAt) {
+      return;
+    }
+
+    const nextEntry: import("@pi-gui/catalogs").SessionCatalogEntry = {
+      sessionRef: sessionEntry.sessionRef,
+      workspaceId: sessionEntry.workspaceId,
+      title: sessionEntry.title,
+      updatedAt: sessionEntry.updatedAt,
+      status: sessionEntry.status,
+      ...(sessionEntry.archivedAt !== undefined ? { archivedAt: sessionEntry.archivedAt } : {}),
+      ...(sessionEntry.snoozedUntil !== undefined ? { snoozedUntil: sessionEntry.snoozedUntil } : {}),
+      ...(toTestAt !== undefined ? { toTestAt } : {}),
+      ...(toTestAt !== undefined && sessionEntry.toTestNote !== undefined ? { toTestNote: sessionEntry.toTestNote } : {}),
+      ...(sessionEntry.previewSnippet !== undefined ? { previewSnippet: sessionEntry.previewSnippet } : {}),
+      ...(sessionEntry.sessionFilePath !== undefined ? { sessionFilePath: sessionEntry.sessionFilePath } : {}),
+    };
 
     await this.catalogs.sessions.upsertSession(nextEntry);
   }

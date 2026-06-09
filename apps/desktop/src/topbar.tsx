@@ -37,6 +37,8 @@ interface TopbarProps {
   readonly onSetTranscriptVerbose: (enabled: boolean) => void;
   readonly onOpenGraph?: () => void;
   readonly onUndoAllEdits?: () => Promise<UndoEditsResult>;
+  readonly onFeatureDone?: () => void;
+  readonly featureDoneState?: "idle" | "working" | "done" | "error";
 }
 
 export function Topbar(props: TopbarProps) {
@@ -66,6 +68,8 @@ export function Topbar(props: TopbarProps) {
     transcriptVerbose,
     onSetTranscriptVerbose,
     onUndoAllEdits,
+    onFeatureDone,
+    featureDoneState,
   } = props;
   const [undoAllState, setUndoAllState] = useState<"idle" | "undoing" | "done" | "error">("idle");
   const terminalShortcut = getDesktopShortcutLabel(api.platform, "J");
@@ -187,6 +191,23 @@ export function Topbar(props: TopbarProps) {
           sessionStatus={selectedSession?.status}
           shortcutLabel={commitShortcut}
         />
+        {onFeatureDone && selectedWorktree && activeView === "threads" && selectedSession && selectedSession.status !== "running" ? (
+          <div className="shortcut-tooltip-wrap topbar__tooltip-wrap">
+            <button
+              aria-label="Ship feature: commit, push, create PR, and merge to main"
+              className="topbar__feature-done"
+              data-testid="topbar-feature-done"
+              type="button"
+              disabled={featureDoneState === "working"}
+              onClick={() => {
+                playButtonClick();
+                onFeatureDone();
+              }}
+            >
+              {featureDoneState === "working" ? "Shipping…" : featureDoneState === "done" ? "Shipped" : "Ship feature"}
+            </button>
+          </div>
+        ) : null}
         {onUndoAllEdits && activeView === "threads" && selectedSession && selectedSession.status !== "running" ? (
           <div className="shortcut-tooltip-wrap topbar__tooltip-wrap">
             <button

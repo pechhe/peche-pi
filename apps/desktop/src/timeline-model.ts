@@ -82,6 +82,7 @@ export function appendQueuedUserMessageToTimeline(
     role: "user" as const,
     text: message.text,
     createdAt: message.createdAt,
+    ...(message.mode === "steer" ? { deliveryMode: "steer" as const } : {}),
     ...(message.attachments?.length
       ? {
           attachments: message.attachments.map((attachment) => ({ ...attachment })),

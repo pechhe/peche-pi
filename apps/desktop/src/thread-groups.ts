@@ -23,6 +23,7 @@ export interface ThreadListEntry {
 export interface ThreadGroup {
   readonly rootWorkspace: WorkspaceRecord;
   readonly threads: readonly ThreadListEntry[];
+  readonly snoozedThreads: readonly ThreadListEntry[];
   readonly archivedThreads: readonly ThreadListEntry[];
 }
 
@@ -124,9 +125,11 @@ function buildOrphanGroup(workspace: WorkspaceRecord): ThreadGroup {
 }
 
 function partitionThreads(rootWorkspace: WorkspaceRecord, entries: readonly ThreadListEntry[]): ThreadGroup {
+  const now = Date.now();
   return {
     rootWorkspace,
-    threads: entries.filter((entry) => !entry.session.archivedAt),
+    threads: entries.filter((entry) => !entry.session.archivedAt && (!entry.session.snoozedUntil || new Date(entry.session.snoozedUntil).getTime() <= now)),
+    snoozedThreads: entries.filter((entry) => !entry.session.archivedAt && entry.session.snoozedUntil && new Date(entry.session.snoozedUntil).getTime() > now),
     archivedThreads: entries.filter((entry) => Boolean(entry.session.archivedAt)),
   };
 }

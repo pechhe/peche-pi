@@ -1,7 +1,9 @@
 import type { ComponentType } from "react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { TimelineToolCall } from "./timeline-types";
 import {
+  CheckIcon,
+  CloseIcon,
   CompassIcon,
   EyeIcon,
   FileIcon,
@@ -13,177 +15,20 @@ import {
 import { useSubagentLive } from "./subagent-live";
 import { useOpenSubagentSession } from "./subagent-session-panel";
 import { WorkingSpinner } from "./working-label";
+import { formatRelativeTime } from "./string-utils";
+import {
+  buildRows,
+  isSubagentTool,
+  useAgentJourney,
+  useCallEntities,
+  type AgentEntity,
+  type NodeTone,
+} from "./subagent-timeline";
 
-// Inline rendering for the pi-subagents `subagent` / `subagent_resume` tool
-// calls. Reads the launch params from `input` and the launch/completion result
-// from `output.details` (the AgentToolResult.details emitted by the extension).
-//
-// Async launches return `status: "started"` and never update this row (their
-// final result arrives as a separate custom message, not surfaced inline yet).
-// Blocking launches return a completion status with a summary.
-
-type SubagentStatus = "started" | "running" | "completed" | "failed" | "cancelled" | "batch";
-
-interface SubagentChildInput {
-  readonly name?: string;
-  readonly agent?: string;
-  readonly title?: string;
-  readonly task?: string;
-}
-
-interface SubagentInput extends SubagentChildInput {
-  readonly children?: readonly SubagentChildInput[];
-}
-
-interface SubagentDetails {
-  readonly status?: string;
-  readonly name?: string;
-  readonly agent?: string;
-  readonly title?: string;
-  readonly task?: string;
-  readonly summary?: string;
-  readonly elapsed?: number;
-  readonly exitCode?: number;
-  readonly errorMessage?: string;
-  readonly sessionFile?: string;
-  readonly children?: readonly SubagentDetails[];
-}
-
-interface SubagentRow {
-  readonly name: string;
-  readonly agent?: string;
-  readonly title?: string;
-  readonly task?: string;
-  readonly summary?: string;
-  readonly status: SubagentStatus;
-  readonly elapsed?: number;
-  readonly sessionFile?: string;
-}
-
-export function isSubagentTool(toolName: string): boolean {
-  return toolName === "subagent" || toolName === "subagent_resume";
-}
-
-function getResultDetails(output: unknown): SubagentDetails | undefined {
-  if (typeof output !== "object" || output === null) {
-    return undefined;
-  }
-  const details = (output as { details?: unknown }).details;
-  return typeof details === "object" && details !== null ? (details as SubagentDetails) : undefined;
-}
-
-function normaliseStatus(raw: string | undefined, exitCode: number | undefined, errorMessage: string | undefined): SubagentStatus {
-  if (raw === "started" || raw === "batch") {
-    return raw;
-  }
-  if (raw === "completed" || raw === "failed" || raw === "cancelled" || raw === "running") {
-    return raw;
-  }
-  if (errorMessage) {
-    return "failed";
-  }
-  if (typeof exitCode === "number") {
-    return exitCode === 0 ? "completed" : "failed";
-  }
-  return "running";
-}
-
-function rowFromDetails(
-  details: SubagentDetails | undefined,
-  fallback: SubagentChildInput | undefined,
-): SubagentRow {
-  const name = details?.name ?? fallback?.name ?? "subagent";
-  return {
-    name,
-    agent: details?.agent ?? fallback?.agent,
-    title: details?.title ?? fallback?.title,
-    task: details?.task ?? fallback?.task,
-    summary: details?.summary ?? details?.errorMessage,
-    status: normaliseStatus(details?.status, details?.exitCode, details?.errorMessage),
-    elapsed: details?.elapsed,
-    sessionFile: details?.sessionFile,
-  };
-}
-
-function buildRows(item: TimelineToolCall): SubagentRow[] {
-  const input = (item.input ?? {}) as SubagentInput;
-  const details = getResultDetails(item.output);
-
-  // Batch launch: children carry their own details, paired by index with input.
-  if (details?.children?.length) {
-    const childInputs = Array.isArray(input.children) ? input.children : [];
-    return details.children.map((child, index) => rowFromDetails(child, childInputs[index]));
-  }
-  if (Array.isArray(input.children) && input.children.length) {
-    return input.children.map((child) => rowFromDetails(undefined, child));
-  }
-
-  // Single launch.
-  const row = rowFromDetails(details, input);
-  // When the tool call is still running (no result yet), reflect that.
-  if (!details && item.status === "running") {
-    return [{ ...row, status: "running" }];
-  }
-  return [row];
-}
-
-function formatElapsed(seconds: number | undefined): string | undefined {
-  if (seconds == null) {
-    return undefined;
-  }
-  const s = Math.round(seconds);
-  const m = Math.floor(s / 60);
-  return m > 0 ? `${m}m ${s % 60}s` : `${s}s`;
-}
-
-// The subagent extension never reports a runtime, and async launches never
-// update their tool row after `status: "started"`. The only finish signal a row
-// gets is dropping out of the live fleet widget. So we time agents client-side:
-// start a stopwatch the first time a row goes live, and freeze it the moment it
-// stops being live. Kept in a module map (keyed by agent name) so the value
-// survives card remounts (scroll / re-render) within a session.
-const elapsedStore = new Map<string, { start: number; frozen?: number }>();
-
-function useAgentElapsed(name: string, isLive: boolean): number | undefined {
-  const [, force] = useState(0);
-
-  useEffect(() => {
-    if (isLive) {
-      const entry = elapsedStore.get(name);
-      if (!entry) {
-        elapsedStore.set(name, { start: Date.now() });
-      } else {
-        entry.frozen = undefined;
-      }
-      const id = window.setInterval(() => force((n) => n + 1), 1000);
-      return () => window.clearInterval(id);
-    }
-    const entry = elapsedStore.get(name);
-    if (entry && entry.frozen === undefined) {
-      entry.frozen = Date.now() - entry.start;
-      force((n) => n + 1);
-    }
-    return undefined;
-  }, [name, isLive]);
-
-  const entry = elapsedStore.get(name);
-  if (!entry) {
-    return undefined;
-  }
-  return (entry.frozen ?? Date.now() - entry.start) / 1000;
-}
-
-const STATUS_LABEL: Record<SubagentStatus, string> = {
-  started: "started",
-  running: "running",
-  completed: "done",
-  failed: "failed",
-  cancelled: "cancelled",
-  batch: "batch",
-};
+export { isSubagentTool };
 
 // Per-agent-type visual identity. The `kind` keys a CSS theme (colour ramp)
-// applied via `data-agent-kind`; the icon and label give each card a
+// applied via `data-agent-kind`; the icon and label give each entity a
 // glanceable identity when several agents run at once.
 interface AgentKind {
   readonly kind: string;
@@ -200,115 +45,143 @@ const AGENT_KINDS: Record<string, AgentKind> = {
 
 function agentKind(agent: string | undefined): AgentKind {
   const key = agent?.trim().toLowerCase();
-  if (key && AGENT_KINDS[key]) {
-    return AGENT_KINDS[key];
-  }
+  if (key && AGENT_KINDS[key]) return AGENT_KINDS[key];
   const label = key ? key.charAt(0).toUpperCase() + key.slice(1) : "Agent";
   return { kind: "default", label, Icon: SparkIcon };
 }
 
-function SubagentRowView({ row, verb }: { readonly row: SubagentRow; readonly verb: string }) {
-  const [showInstructions, setShowInstructions] = useState(false);
-  // While the launch is still running, this row becomes the live agent view:
-  // surface the spinner, current activity and live stats from the widget feed.
-  const live = useSubagentLive(row.name);
-  const openSession = useOpenSubagentSession();
-  const isLive = (row.status === "running" || row.status === "started") && live !== undefined;
-  const trackedElapsed = useAgentElapsed(row.name, isLive);
-  const elapsed = formatElapsed(row.elapsed ?? trackedElapsed);
+function NodeMarker({ tone }: { readonly tone: NodeTone }) {
+  return (
+    <span className={`agent-entity__marker agent-entity__marker--${tone}`} aria-hidden="true">
+      {tone === "done" ? <CheckIcon /> : tone === "failed" || tone === "cancelled" ? <CloseIcon /> : null}
+    </span>
+  );
+}
 
-  const { kind, label, Icon } = agentKind(row.agent);
-  // Second line = what the agent is doing *now*. While live, show the current
-  // activity (or its title until the first activity lands). Once finished, only
-  // surface a real completion summary — never the full task brief, which lives
-  // behind "View instructions".
-  const objective = isLive ? (live?.activity ?? row.title) : row.summary;
-  const canViewSession = Boolean(row.sessionFile && openSession);
+/**
+ * The single persistent agent entity. Renders one header plus a vertical
+ * execution journey built from every spawn / resume on this agent name. New
+ * nodes animate in as the journey advances.
+ */
+function AgentEntityCard({ entity }: { readonly entity: AgentEntity }) {
+  const [showInstructions, setShowInstructions] = useState(false);
+  const live = useSubagentLive(entity.name);
+  const openSession = useOpenSubagentSession();
+  const { nodes, isLive, latest } = useAgentJourney(entity, live);
+
+  const { kind, label, Icon } = agentKind(entity.agent);
+  const startedRel = formatRelativeTime(entity.events[0]!.createdAt);
+  const stats = isLive ? live?.stats ?? [] : [];
+  const task = latest.task ?? entity.events[0]!.task;
+  const canViewSession = Boolean(latest.sessionFile && openSession);
+
+  const headState = isLive
+    ? "Active"
+    : latest.status === "failed"
+      ? "Failed"
+      : latest.status === "cancelled"
+        ? "Cancelled"
+        : latest.status === "completed"
+          ? "Completed"
+          : "Idle";
 
   return (
-    <article className="subagent-card" data-agent-kind={kind} data-testid="subagent-card">
-      <div className="subagent-card__top">
-        <span className="subagent-card__badge" aria-hidden="true">
+    <article className="agent-entity" data-agent-kind={kind} data-testid="subagent-card">
+      <header className="agent-entity__header">
+        <span className="agent-entity__badge" aria-hidden="true">
           <Icon />
         </span>
-        <div className="subagent-card__head">
-          <div className="subagent-card__title-line">
-            <span className="subagent-card__verb">{verb}</span>{" "}
-            <span className="subagent-card__type">{label}</span>
-            <span className="subagent-card__dot" aria-hidden="true">
-              •
-            </span>
-            <span className="subagent-card__name">{row.name}</span>
+        <div className="agent-entity__id">
+          <div className="agent-entity__title-line">
+            <span className="agent-entity__type">{label}</span>
+            <span className="agent-entity__name">{entity.name}</span>
           </div>
-          {objective ? <p className="subagent-card__objective">{objective}</p> : null}
-        </div>
-        <div className="subagent-card__meta">
-          {isLive ? (
-            <WorkingSpinner className="subagent-card__spinner" title="Working" />
-          ) : row.status === "failed" || row.status === "cancelled" ? (
-            <span className={`subagent-card__status subagent-card__status--${row.status}`}>
-              {STATUS_LABEL[row.status]}
+          <div className="agent-entity__sub">
+            <span className={`agent-entity__state agent-entity__state--${headState.toLowerCase()}`}>
+              {isLive ? <WorkingSpinner className="agent-entity__spinner" title="Working" /> : null}
+              {headState}
             </span>
-          ) : elapsed ? (
-            <span className="subagent-card__elapsed">{elapsed}</span>
-          ) : null}
+            {stats.length > 0 ? <span className="agent-entity__stats">{stats.join(" · ")}</span> : null}
+            {startedRel ? <span className="agent-entity__started">started {startedRel} ago</span> : null}
+          </div>
         </div>
-      </div>
-      {isLive && (live?.stats?.length ?? 0) > 0 ? (
-        <div className="subagent-card__live">
-          {(live?.stats ?? []).map((stat, index) => (
-            <span className="subagent-card__stat" key={index}>
-              {stat}
-            </span>
-          ))}
-        </div>
-      ) : null}
-      {showInstructions && row.task ? (
-        <div className="subagent-card__instructions">
-          <div className="subagent-card__section-label">Instructions</div>
-          <pre className="subagent-card__pre">{row.task}</pre>
-        </div>
-      ) : null}
-      <div className="subagent-card__actions">
-        {row.task ? (
-          <button
-            className="subagent-card__action"
-            type="button"
-            aria-expanded={showInstructions}
-            onClick={() => setShowInstructions((value) => !value)}
-          >
-            <span className="subagent-card__action-icon" aria-hidden="true">
-              <FileIcon />
-            </span>
-            View instructions
-          </button>
-        ) : (
-          <span />
-        )}
         {canViewSession ? (
           <button
-            className="subagent-card__icon-action"
+            className="agent-entity__eye"
             type="button"
-            onClick={() => openSession!(row.sessionFile!, row.name)}
+            onClick={() => openSession!(latest.sessionFile!, entity.name)}
             title="Open this subagent's session in a read-only side panel"
             aria-label="View session"
           >
             <EyeIcon />
           </button>
         ) : null}
-      </div>
+      </header>
+
+      <ol className="agent-entity__journey">
+        {nodes.map((node) => (
+          <li className={`agent-entity__node agent-entity__node--${node.tone}`} key={node.id}>
+            <span className="agent-entity__time">{node.at}</span>
+            <NodeMarker tone={node.tone} />
+            <div className="agent-entity__body">
+              <span className="agent-entity__node-title">{node.title}</span>
+              {node.subtitle ? <p className="agent-entity__node-sub">{node.subtitle}</p> : null}
+            </div>
+          </li>
+        ))}
+      </ol>
+
+      {(task || canViewSession) && (
+        <footer className="agent-entity__footer">
+          {task ? (
+            <button
+              className="agent-entity__action"
+              type="button"
+              aria-expanded={showInstructions}
+              onClick={() => setShowInstructions((v) => !v)}
+            >
+              <span className="agent-entity__action-icon" aria-hidden="true">
+                <FileIcon />
+              </span>
+              View instructions
+            </button>
+          ) : (
+            <span />
+          )}
+        </footer>
+      )}
+      {showInstructions && task ? (
+        <div className="agent-entity__instructions">
+          <div className="agent-entity__section-label">Instructions</div>
+          <pre className="agent-entity__pre">{task}</pre>
+        </div>
+      ) : null}
     </article>
   );
 }
 
 export function SubagentToolCard({ item }: { readonly item: TimelineToolCall }) {
-  const rows = buildRows(item);
-  const verb = item.toolName === "subagent_resume" ? "Resume" : "Spawn";
+  // When the provider is mounted (main thread), one entity is reconstructed
+  // across the whole transcript: this call renders the entities it introduces,
+  // and renders nothing for a folded resume / re-spawn of an existing name.
+  const fromContext = useCallEntities(item.callId);
+  // Fallback (e.g. the read-only subagent session panel): no provider, so build
+  // a transient single-call entity from this row alone.
+  const entities: AgentEntity[] =
+    fromContext ??
+    buildRows(item).map((row) => ({
+      name: row.name,
+      agent: row.agent,
+      primaryCallId: item.callId,
+      events: [{ ...row, callId: item.callId, createdAt: item.createdAt, verb: item.toolName === "subagent_resume" ? "Resume" : "Spawn" }],
+    }));
+
+  if (entities.length === 0) return null;
 
   return (
-    <div className="subagent-card-group">
-      {rows.map((row, index) => (
-        <SubagentRowView key={`${row.name}-${index}`} row={row} verb={verb} />
+    <div className="agent-entity-group">
+      {entities.map((entity) => (
+        <AgentEntityCard key={entity.name} entity={entity} />
       ))}
     </div>
   );

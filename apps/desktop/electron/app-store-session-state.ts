@@ -286,7 +286,7 @@ export function updateSessionRecord(
   session: SessionRecord,
   options: {
     readonly snapshot?: Partial<
-      Pick<SessionSnapshot, "title" | "updatedAt" | "archivedAt" | "preview" | "status" | "config" | "contextUsage">
+      Pick<SessionSnapshot, "title" | "updatedAt" | "archivedAt" | "snoozedUntil" | "toTestAt" | "toTestNote" | "preview" | "status" | "config" | "contextUsage">
     >;
     readonly status?: SessionRecord["status"];
     readonly transcript: readonly TranscriptMessage[];
@@ -303,6 +303,9 @@ export function updateSessionRecord(
     updatedAt,
     lastViewedAt: options.lastViewedAt,
     archivedAt: options.snapshot?.archivedAt ?? session.archivedAt,
+    snoozedUntil: options.snapshot?.snoozedUntil ?? session.snoozedUntil,
+    toTestAt: options.snapshot?.toTestAt ?? session.toTestAt,
+    toTestNote: options.snapshot?.toTestNote ?? session.toTestNote,
     preview: options.preview ?? options.snapshot?.preview ?? session.preview,
     status: nextStatus,
     runningSince: options.runningSince,

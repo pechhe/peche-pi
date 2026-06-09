@@ -23,6 +23,9 @@ export interface SnapshotSource {
   readonly status: SessionStatus;
   readonly updatedAt: string;
   readonly archivedAt: string | undefined;
+  readonly snoozedUntil: string | undefined;
+  readonly toTestAt: string | undefined;
+  readonly toTestNote: string | undefined;
   readonly preview: string | undefined;
   readonly config: SessionConfig | undefined;
   readonly runningRunId: string | undefined;
@@ -38,6 +41,9 @@ export function buildSnapshot(source: SnapshotSource): SessionSnapshot {
     status: source.status,
     updatedAt: source.updatedAt,
     ...(source.archivedAt !== undefined ? { archivedAt: source.archivedAt } : {}),
+    ...(source.snoozedUntil !== undefined ? { snoozedUntil: source.snoozedUntil } : {}),
+    ...(source.toTestAt !== undefined ? { toTestAt: source.toTestAt } : {}),
+    ...(source.toTestNote !== undefined ? { toTestNote: source.toTestNote } : {}),
     ...(source.preview !== undefined ? { preview: source.preview } : {}),
     ...(source.config ? { config: source.config } : {}),
     ...(source.runningRunId !== undefined ? { runningRunId: source.runningRunId } : {}),
@@ -135,6 +141,19 @@ export function extractPreview(message: unknown): string | undefined {
     return truncate(message.errorMessage);
   }
 
+  return undefined;
+}
+
+export function extractLastAssistantText(messages: readonly unknown[]): string | undefined {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i];
+    if (isRecord(message) && message.role === "assistant") {
+      const text = messageText(message);
+      if (text) {
+        return text;
+      }
+    }
+  }
   return undefined;
 }
 

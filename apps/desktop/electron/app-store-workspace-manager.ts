@@ -51,6 +51,22 @@ export class WorkspaceManager {
     return workspace.unarchiveSession(this.store, target);
   }
 
+  async snoozeSession(target: WorkspaceSessionTarget, until: string): Promise<DesktopAppState> {
+    return workspace.snoozeSession(this.store, target, until);
+  }
+
+  async unsnoozeSession(target: WorkspaceSessionTarget): Promise<DesktopAppState> {
+    return workspace.unsnoozeSession(this.store, target);
+  }
+
+  async markToTestSession(target: WorkspaceSessionTarget): Promise<DesktopAppState> {
+    return workspace.toTestSession(this.store, target);
+  }
+
+  async unmarkToTestSession(target: WorkspaceSessionTarget): Promise<DesktopAppState> {
+    return workspace.unmarkToTestSession(this.store, target);
+  }
+
   async archiveAllNonRunningSessions(workspaceId: string, olderThanMs?: number): Promise<DesktopAppState> {
     return workspace.archiveAllNonRunningSessions(this.store, workspaceId, olderThanMs);
   }

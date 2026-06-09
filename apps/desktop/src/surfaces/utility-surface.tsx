@@ -1,4 +1,4 @@
-import { Dispatch, SetStateAction, type ReactNode } from "react";
+import { Dispatch, SetStateAction, useMemo, type ReactNode } from "react";
 
 import type {
   AppView,
@@ -74,11 +74,17 @@ export interface UtilitySurfaceProps {
   readonly onOpenKanban: () => void;
   readonly onOpenAutomations: (workspaceId?: string) => void;
   readonly onOpenAgents: () => void;
+  readonly testingCount: number;
+  readonly onOpenTesting: () => void;
   readonly onSetQueueMode: (enabled: boolean) => void;
   readonly onArchiveSession: (target: { workspaceId: string; sessionId: string }) => void;
   readonly onArchiveAllNonRunningSessions: (workspaceId: string, olderThanMs?: number) => void;
   readonly onSelectSession: (target: { workspaceId: string; sessionId: string }) => void;
   readonly onUnarchiveSession: (target: { workspaceId: string; sessionId: string }) => void;
+  readonly onSnoozeSession: (target: { workspaceId: string; sessionId: string }, until: string) => void;
+  readonly onUnsnoozeSession: (target: { workspaceId: string; sessionId: string }) => void;
+  readonly onMarkToTestSession: (target: { workspaceId: string; sessionId: string }) => void;
+  readonly onUnmarkToTestSession: (target: { workspaceId: string; sessionId: string }) => void;
   readonly onCreateChat: () => void;
   readonly onSelectChat: (chatId: string) => void;
   readonly onArchiveChat: (chatId: string) => void;
@@ -126,11 +132,17 @@ export function UtilitySurface(props: UtilitySurfaceProps) {
     onOpenKanban: _onOpenKanban,
     onOpenAutomations,
     onOpenAgents,
+    testingCount,
+    onOpenTesting,
     onSetQueueMode: _onSetQueueMode,
     onArchiveSession,
     onArchiveAllNonRunningSessions,
     onSelectSession,
     onUnarchiveSession,
+    onSnoozeSession,
+    onUnsnoozeSession,
+    onMarkToTestSession,
+    onUnmarkToTestSession,
     onCreateChat,
     onSelectChat,
     onArchiveChat,
@@ -207,6 +219,10 @@ export function UtilitySurface(props: UtilitySurfaceProps) {
           onArchiveAllNonRunningSessions={onArchiveAllNonRunningSessions}
           onSelectSession={onSelectSession}
           onUnarchiveSession={onUnarchiveSession}
+          onSnoozeSession={onSnoozeSession}
+          onUnsnoozeSession={onUnsnoozeSession}
+          onMarkToTestSession={onMarkToTestSession}
+          onUnmarkToTestSession={onUnmarkToTestSession}
           onCreateChat={onCreateChat}
           onSelectChat={onSelectChat}
           onArchiveChat={onArchiveChat}
@@ -216,11 +232,145 @@ export function UtilitySurface(props: UtilitySurfaceProps) {
           automations={automations}
           onOpenAutomations={onOpenAutomations}
           onOpenAgents={onOpenAgents}
+          testingCount={testingCount}
+          onOpenTesting={onOpenTesting}
           onOpenSearch={globalSearch.open}
         />
       )}
       <main className="main main--skills">{content}</main>
       {import.meta.env.DEV && <Agentation />}
+    </div>
+  );
+}
+
+// ── Testing surface ────────────────────────────────────────────────────────────
+
+export interface TestingSurfaceProps {
+  readonly snapshot: DesktopAppState;
+  readonly onSelectSession: (target: { workspaceId: string; sessionId: string }) => void;
+  readonly onSetActiveView: (view: AppView) => void;
+  readonly onUnmarkToTestSession: (target: { workspaceId: string; sessionId: string }) => void;
+}
+
+interface TestingItem {
+  readonly workspaceId: string;
+  readonly sessionId: string;
+  readonly workspaceName: string;
+  readonly title: string;
+  readonly note: string | undefined;
+  readonly createdAt: string;
+}
+
+// The park-for-testing prompt asks the session to reply with a one-row markdown
+// table: | Feature | Test |. Pull out the two data cells so we can render them
+// as labelled columns instead of dumping raw markdown.
+function parseRunthrough(note: string | undefined): { feature: string; test: string } | undefined {
+  if (!note) {
+    return undefined;
+  }
+  // The model often emits the whole table on one line, so split on every pipe
+  // rather than per-line, then drop empty cells, the header labels, and the
+  // |---|---| separator dashes. What remains is the single data row.
+  const cells = note
+    .split("|")
+    .map((cell) => cell.trim())
+    .filter((cell) => {
+      if (!cell) return false;
+      if (/^:?-+:?$/.test(cell)) return false; // separator dashes
+      if (/^(feature|test)$/i.test(cell)) return false; // header labels
+      return true;
+    });
+  if (cells.length < 2) {
+    return undefined;
+  }
+  return { feature: cells[0] ?? "", test: cells[1] ?? "" };
+}
+
+export function TestingSurface({ snapshot, onSelectSession, onSetActiveView, onUnmarkToTestSession }: TestingSurfaceProps) {
+  const items = useMemo<TestingItem[]>(() => {
+    const out: TestingItem[] = [];
+    for (const workspace of snapshot.workspaces) {
+      for (const session of workspace.sessions) {
+        if (!session.toTestAt) {
+          continue;
+        }
+        out.push({
+          workspaceId: workspace.id,
+          sessionId: session.id,
+          workspaceName: workspace.name,
+          title: session.title,
+          note: session.toTestNote,
+          createdAt: session.toTestAt,
+        });
+      }
+    }
+    out.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+    return out;
+  }, [snapshot.workspaces]);
+
+  const openThread = (item: TestingItem) => {
+    onSelectSession({ workspaceId: item.workspaceId, sessionId: item.sessionId });
+    onSetActiveView("threads");
+  };
+
+  return (
+    <div className="testing-surface">
+      <header className="testing-surface__header">
+        <h1 className="testing-surface__title">Testing</h1>
+        <p className="testing-surface__subtitle">
+          {items.length === 0
+            ? "Nothing to test. Park a thread with the eye button to queue a runthrough here."
+            : `${items.length} ${items.length === 1 ? "thread" : "threads"} waiting to be checked.`}
+        </p>
+      </header>
+      {items.length > 0 ? (
+        <ul className="testing-list">
+          {items.map((item) => (
+            <li key={`${item.workspaceId}:${item.sessionId}`} className="testing-item">
+              <button
+                type="button"
+                className="testing-item__check"
+                aria-label="Mark checked"
+                title="Mark checked"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onUnmarkToTestSession({ workspaceId: item.workspaceId, sessionId: item.sessionId });
+                }}
+              >
+                <span className="testing-item__checkbox" aria-hidden="true" />
+              </button>
+              <button type="button" className="testing-item__body" onClick={() => openThread(item)}>
+                <span className="testing-item__heading">
+                  <span className="testing-item__name">{item.title || "Untitled thread"}</span>
+                  <span className="testing-item__workspace">{item.workspaceName}</span>
+                </span>
+                {(() => {
+                  const parsed = parseRunthrough(item.note);
+                  if (parsed) {
+                    return (
+                      <span className="testing-item__columns">
+                        <span className="testing-item__col">
+                          <span className="testing-item__col-label">Feature</span>
+                          <span className="testing-item__col-text">{parsed.feature}</span>
+                        </span>
+                        <span className="testing-item__col">
+                          <span className="testing-item__col-label">How to test</span>
+                          <span className="testing-item__col-text">{parsed.test}</span>
+                        </span>
+                      </span>
+                    );
+                  }
+                  return (
+                    <span className="testing-item__note">
+                      {item.note ? item.note : <em className="testing-item__pending">Waiting for runthrough…</em>}
+                    </span>
+                  );
+                })()}
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </div>
   );
 }
@@ -580,10 +730,11 @@ export interface AutomationsSurfaceProps {
   readonly api: PiDesktopApi;
   readonly setSnapshot: Dispatch<SetStateAction<DesktopAppState | null>>;
   readonly updateSnapshot: UpdateSnapshotFn;
+  readonly onFireNow: (automationId: string, automationName: string, workspaceId: string, prompt: string) => void;
 }
 
 export function AutomationsSurface(props: AutomationsSurfaceProps) {
-  const { snapshot, selectedWorkspace, rootWorkspaceOptions, api, setSnapshot, updateSnapshot } = props;
+  const { snapshot, selectedWorkspace, rootWorkspaceOptions, api, setSnapshot, updateSnapshot, onFireNow } = props;
 
   const automationsWorkspaceId = snapshot.automationFilterWorkspaceId ?? selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id;
   const automationsRuntime = automationsWorkspaceId ? snapshot?.runtimeByWorkspace[automationsWorkspaceId] : undefined;
@@ -605,7 +756,10 @@ export function AutomationsSurface(props: AutomationsSurfaceProps) {
         void updateSnapshot(api, setSnapshot, () => api.automationDelete(id));
       }}
       onFireNow={(id) => {
-        void updateSnapshot(api, setSnapshot, () => api.automationFireNow(id));
+        const automation = (snapshot.automations ?? []).find((a) => a.id === id);
+        if (automation) {
+          onFireNow(id, automation.name, automation.workspaceId, automation.prompt);
+        }
       }}
       onClearFilter={() => {
         void updateSnapshot(api, setSnapshot, async () => {

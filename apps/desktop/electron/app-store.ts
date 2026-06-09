@@ -457,6 +457,22 @@ export class DesktopAppStore implements AppStoreInternals {
     return workspace.unarchiveSession(this, target);
   }
 
+  async snoozeSession(target: WorkspaceSessionTarget, until: string): Promise<DesktopAppState> {
+    return workspace.snoozeSession(this, target, until);
+  }
+
+  async unsnoozeSession(target: WorkspaceSessionTarget): Promise<DesktopAppState> {
+    return workspace.unsnoozeSession(this, target);
+  }
+
+  async markToTestSession(target: WorkspaceSessionTarget): Promise<DesktopAppState> {
+    return workspace.toTestSession(this, target);
+  }
+
+  async unmarkToTestSession(target: WorkspaceSessionTarget): Promise<DesktopAppState> {
+    return workspace.unmarkToTestSession(this, target);
+  }
+
   async archiveAllNonRunningSessions(workspaceId: string, olderThanMs?: number): Promise<DesktopAppState> {
     return workspace.archiveAllNonRunningSessions(this, workspaceId, olderThanMs);
   }
@@ -2981,7 +2997,15 @@ Return ONLY a JSON array of configuration fields, no explanation.`;
 
   private applyFastSessionSelection(sessionRef: SessionRef): DesktopAppState {
     this.restoredSelectedSessionKeysAwaitingSelection.delete(sessionKey(sessionRef));
-    this.transcriptLastSentCount.delete(sessionKey(sessionRef));
+    // Only clear transcriptLastSentCount when the transcript is NOT already
+    // loaded. If it is loaded, hydration publishes via the selectedTranscript
+    // channel and we must not reset the counter — otherwise the next
+    // publishTranscriptDeltaFor sees lastSent=0 and re-sends every message as
+    // an initial delta, which causes the renderer to re-type all thinking
+    // blocks via the typewriter effect.
+    if (!this.sessionState.loadedTranscriptKeys.has(sessionKey(sessionRef))) {
+      this.transcriptLastSentCount.delete(sessionKey(sessionRef));
+    }
     const nextState = reduce(this.state, {
       type: "selection/selectSession",
       workspaceId: sessionRef.workspaceId,
