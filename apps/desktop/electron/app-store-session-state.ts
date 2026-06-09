@@ -61,6 +61,13 @@ export class DesktopSessionState {
         break;
       case "hostUiRequest":
         state = this.applyHostUiRequest(state, event);
+        if (event.request.kind === "status" && event.request.text) {
+          const activity = this.sessionState.compactionActivityBySession.get(key);
+          if (activity?.running) {
+            activity.phaseLog.push(event.request.text);
+            activity.lastPhase = event.request.text;
+          }
+        }
         break;
       case "sessionClosed":
         this.sessionState.extensionUiBySession.delete(key);
@@ -92,6 +99,22 @@ export class DesktopSessionState {
       this.sessionState.lastViewedAtBySession,
     );
 
+    // Set isCompacting on the session record from the compaction activity map.
+    const isCompacting = this.sessionState.compactionActivityBySession.get(key)?.running ?? false;
+    state = {
+      ...state,
+      workspaces: state.workspaces.map((w) =>
+        w.id === event.sessionRef.workspaceId
+          ? {
+              ...w,
+              sessions: w.sessions.map((s) =>
+                s.id === event.sessionRef.sessionId ? { ...s, isCompacting } : s,
+              ),
+            }
+          : w,
+      ),
+    };
+
     if (options.sessionActivelyViewed) {
       state = this.markSessionViewed(state, event.sessionRef);
     }
@@ -111,11 +134,49 @@ export class DesktopSessionState {
   }
 
   buildSelectedTranscriptRecord(sessionRef: SessionRef): SelectedTranscriptRecord {
-    return {
-      workspaceId: sessionRef.workspaceId,
-      sessionId: sessionRef.sessionId,
-      transcript: this.sessionState.transcriptCache.get(sessionKey(sessionRef)) ?? [],
-    };
+    const key = sessionKey(sessionRef);
+    const baseTranscript = this.sessionState.transcriptCache.get(key) ?? [];
+    const activity = this.sessionState.compactionActivityBySession.get(key);
+    if (!activity) {
+      return { workspaceId: sessionRef.workspaceId, sessionId: sessionRef.sessionId, transcript: baseTranscript };
+    }
+    const transcript = [...baseTranscript];
+    const summaryIdx = transcript.findIndex(
+      (m) => m.kind === "message" && m.role === "compactionSummary",
+    );
+    if (activity.running) {
+      transcript.push({
+        kind: "compactionActivity",
+        id: activity.id,
+        createdAt: activity.createdAt,
+        origin: activity.origin,
+        running: true,
+        phaseLog: activity.phaseLog,
+        lastPhase: activity.lastPhase || undefined,
+      });
+    } else if (summaryIdx >= 0) {
+      const summaryMsg = transcript[summaryIdx]!;
+      transcript[summaryIdx] = {
+        kind: "compactionActivity",
+        id: activity.id,
+        createdAt: activity.createdAt,
+        origin: activity.origin,
+        running: false,
+        phaseLog: activity.phaseLog,
+        summaryText: summaryMsg.kind === "message" ? summaryMsg.text : activity.summaryText,
+      };
+    } else {
+      transcript.push({
+        kind: "compactionActivity",
+        id: activity.id,
+        createdAt: activity.createdAt,
+        origin: activity.origin,
+        running: false,
+        phaseLog: activity.phaseLog,
+        summaryText: activity.summaryText,
+      });
+    }
+    return { workspaceId: sessionRef.workspaceId, sessionId: sessionRef.sessionId, transcript };
   }
 
   private getOrCreateExtensionUiState(sessionRef: SessionRef) {
@@ -161,6 +222,16 @@ export class DesktopSessionState {
         ...uiState.pendingDialogs.filter((entry) => entry.requestId !== event.request.requestId),
         event.request,
       ];
+    }
+
+    if (event.request.kind === "terminalCustom") {
+      uiState.pendingTerminalCustom = event.request.closed
+        ? undefined
+        : {
+            requestId: event.request.requestId,
+            ...(event.request.title ? { title: event.request.title } : {}),
+            lines: [...event.request.lines],
+          };
     }
 
     return state;

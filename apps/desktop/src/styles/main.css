@@ -912,6 +912,65 @@
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.timeline-item__compaction-spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(140, 91, 12, 0.3);
+  border-top-color: #8c5b0c;
+  border-radius: 50%;
+  animation: compaction-spin 0.8s linear infinite;
+}
+
+@keyframes compaction-spin {
+  to { transform: rotate(360deg); }
+}
+
+.timeline-item__compaction-phase {
+  color: #a16207;
+  font-size: 13px;
+  margin-bottom: 8px;
+  font-style: italic;
+}
+
+.timeline-item__compaction-expand {
+  background: none;
+  border: none;
+  color: #8c5b0c;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 0;
+  margin-top: 4px;
+}
+
+.timeline-item__compaction-expand:hover {
+  text-decoration: underline;
+}
+
+.timeline-item__compaction-log {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: rgba(255, 247, 226, 0.6);
+  border-radius: 8px;
+  font-size: 12px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.timeline-item__compaction-log-line {
+  color: #92400e;
+  padding: 2px 0;
+  border-bottom: 1px solid rgba(140, 91, 12, 0.1);
+}
+
+.timeline-item__compaction-log-line:last-child {
+  border-bottom: none;
 }
 
 .timeline-item--user {
@@ -3048,6 +3107,31 @@ body.pi-thread-handoff .timeline-item--just-sent .timeline-item__bubble {
 
 .composer__context-compact-label {
   color: #d97706;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+  position: relative;
+  display: inline;
+}
+
+.composer__context-compact-label:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.compact-label__hover {
+  display: none;
+  font-weight: 700;
+}
+
+.composer__context-compact-label:hover:not(:disabled) .compact-label__default {
+  display: none;
+}
+
+.composer__context-compact-label:hover:not(:disabled) .compact-label__hover {
+  display: inline;
 }
 
 .composer__context {

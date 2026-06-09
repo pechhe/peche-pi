@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { SessionTranscriptMessage } from "@pi-gui/pi-sdk-driver";
-import type { TimelineActivity, TimelineReasoning, TimelineToolCall, TimelineSummary } from "./timeline-types";
+import type { TimelineActivity, TimelineCompactionActivity, TimelineReasoning, TimelineToolCall, TimelineSummary } from "./timeline-types";
 import type { TimelineEditedFiles, TimelineThinkingSection } from "./timeline-model";
 import type { LiveEditStats, UndoEditOp, UndoEditReplacement, UndoEditsResult } from "./ipc";
 import type { TimelineRow, TimelineToolBurst } from "./timeline-model";
@@ -196,6 +196,8 @@ export const TimelineItem = memo(function TimelineItem({
       return <TimelineEditedFilesItem item={item} onViewFileInDiff={onViewFileInDiff} onRevealInFinder={onRevealInFinder} onUndoEdits={onUndoEdits} onRedoEdits={onRedoEdits} turnUndoOps={turnUndoOps?.byEditedFilesId.get(item.id)} />;
     case "summary":
       return <TimelineSummaryItem item={item} />;
+    case "compactionActivity":
+      return <TimelineCompactionActivityItem item={item} />;
     default:
       return null;
   }
@@ -324,6 +326,11 @@ const timelineItemEquality: {
     a.label === b.label && a.detail === b.detail && a.metadata === b.metadata && a.tone === b.tone,
   summary: (a, b) =>
     a.label === b.label && a.metadata === b.metadata && a.presentation === b.presentation,
+  compactionActivity: (a, b) =>
+    a.running === b.running &&
+    a.phaseLog.length === b.phaseLog.length &&
+    a.lastPhase === b.lastPhase &&
+    a.summaryText === b.summaryText,
   reasoning: (a, b) => a.text === b.text,
   toolBurst: (a, b) => {
     if (a.tools.length !== b.tools.length) return false;
@@ -1343,5 +1350,44 @@ function TimelineSummaryItem({ item }: { readonly item: TimelineSummary }) {
       <span className="timeline-activity__label">{item.label}</span>
       {item.metadata ? <span className="timeline-activity__meta">{item.metadata}</span> : null}
     </div>
+  );
+}
+
+function TimelineCompactionActivityItem({ item }: { readonly item: TimelineCompactionActivity }) {
+  const [expanded, setExpanded] = useState(false);
+  const eyebrow = item.running
+    ? item.origin === "auto" ? "Auto-compacting…" : "Compacting…"
+    : "Compaction summary";
+  const hasPhases = item.phaseLog.length > 0;
+  return (
+    <article className="timeline-item timeline-item--summary-card timeline-item--compaction-activity">
+      <div className="timeline-item__summary-eyebrow">
+        {item.running ? <span className="timeline-item__compaction-spinner" /> : null}
+        {eyebrow}
+      </div>
+      {item.running ? (
+        <div className="timeline-item__compaction-phase">
+          {item.lastPhase ?? "Preparing…"}
+        </div>
+      ) : item.summaryText ? (
+        <MessageMarkdown text={item.summaryText} />
+      ) : null}
+      {hasPhases ? (
+        <button
+          type="button"
+          className="timeline-item__compaction-expand"
+          onClick={() => setExpanded(!expanded)}
+        >
+          {expanded ? "Hide phase log" : `Show phase log (${item.phaseLog.length})`}
+        </button>
+      ) : null}
+      {expanded && hasPhases ? (
+        <div className="timeline-item__compaction-log">
+          {item.phaseLog.map((phase, i) => (
+            <div key={i} className="timeline-item__compaction-log-line">{phase}</div>
+          ))}
+        </div>
+      ) : null}
+    </article>
   );
 }

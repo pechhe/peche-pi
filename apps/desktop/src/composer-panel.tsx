@@ -76,6 +76,7 @@ interface ComposerPanelProps {
   readonly onSelectMention: (filePath: string) => void;
   readonly questionnaireRequest?: Extract<SessionExtensionDialogRecord, { readonly kind: "questionnaire" }>;
   readonly onRespondToQuestionnaire?: (response: import("@pi-gui/session-driver").HostUiResponse) => void;
+  readonly onCompactNow?: () => void;
 }
 
 function resolveFallbackContextWindow(
@@ -156,6 +157,7 @@ export function ComposerPanel({
   onSelectMention,
   questionnaireRequest,
   onRespondToQuestionnaire,
+  onCompactNow,
 }: ComposerPanelProps) {
   const questionnaireContent = questionnaireRequest && onRespondToQuestionnaire
     ? <QuestionnaireComposer request={questionnaireRequest} onRespond={onRespondToQuestionnaire} />
@@ -270,11 +272,22 @@ export function ComposerPanel({
                   ? `${formatTokenCount(contextUsage.usedTokens)} / ${formatTokenCount(contextUsage.contextWindow)}`
                   : "Context —"}
                 {contextUsage && compactTokensRemaining !== undefined ? (
-                  <span className="composer__context-compact-label">
-                    {compactTokensRemaining > 0
-                      ? `Auto-compact in ${formatTokenCount(compactTokensRemaining)}`
-                      : "Auto-compact ready"}
-                  </span>
+                  <button
+                    type="button"
+                    className="composer__context-compact-label"
+                    aria-label={selectedSession.isCompacting ? "Compacting" : "Compact now"}
+                    disabled={selectedSession.isCompacting}
+                    onClick={() => onCompactNow?.()}
+                  >
+                    <span className="compact-label__default">
+                      {selectedSession.isCompacting
+                        ? "Compacting…"
+                        : compactTokensRemaining > 0
+                          ? `Auto-compact in ${formatTokenCount(compactTokensRemaining)}`
+                          : "Auto-compact ready"}
+                    </span>
+                    <span className="compact-label__hover">Compact now</span>
+                  </button>
                 ) : null}
 
               </span>

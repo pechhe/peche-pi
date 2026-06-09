@@ -55,9 +55,21 @@ export interface TimelineReasoning {
   readonly text: string;
 }
 
+export interface TimelineCompactionActivity {
+  readonly kind: "compactionActivity";
+  readonly id: string;
+  readonly createdAt: string;
+  readonly origin: "auto" | "manual";
+  readonly running: boolean;
+  readonly phaseLog: readonly string[];
+  readonly lastPhase?: string;
+  readonly summaryText?: string;
+}
+
 export type TranscriptMessage =
   | SessionTranscriptMessage
   | TimelineActivity
   | TimelineToolCall
   | TimelineSummary
-  | TimelineReasoning;
+  | TimelineReasoning
+  | TimelineCompactionActivity;

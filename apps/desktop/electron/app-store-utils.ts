@@ -11,6 +11,7 @@ import type {
   WorkspaceRecord,
   WorkspaceSessionTarget,
 } from "../src/desktop-state.ts";
+import type { CompactionActivity } from "./session-state-map.ts";
 import { isMetaActivity } from "../src/timeline-model.ts";
 
 
@@ -574,6 +575,20 @@ export function makeToolItem(
     label,
     createdAt: new Date().toISOString(),
     ...options,
+  };
+}
+
+export function makeCompactionActivityItem(
+  origin: "auto" | "manual",
+): CompactionActivity {
+  return {
+    id: randomUUID(),
+    running: true,
+    origin,
+    phaseLog: [],
+    lastPhase: "",
+    summaryText: "",
+    createdAt: new Date().toISOString(),
   };
 }
 

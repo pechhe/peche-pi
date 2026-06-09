@@ -333,6 +333,7 @@ export interface SessionRecord {
   readonly contextUsage?: SessionContextUsage;
   readonly automationId?: string;
   readonly threadType?: string;
+  readonly isCompacting?: boolean;
 }
 
 export interface SelectedTranscriptRecord {
@@ -368,10 +369,17 @@ export type SessionExtensionDialogRecord = Extract<
   { readonly kind: "confirm" | "select" | "input" | "editor" | "questionnaire" }
 >;
 
+export interface SessionExtensionTerminalCustomRecord {
+  readonly requestId: string;
+  readonly title?: string;
+  readonly lines: readonly string[];
+}
+
 export interface SessionExtensionUiStateRecord {
   readonly statuses: readonly SessionExtensionStatusRecord[];
   readonly widgets: readonly SessionExtensionWidgetRecord[];
   readonly pendingDialogs: readonly SessionExtensionDialogRecord[];
+  readonly pendingTerminalCustom?: SessionExtensionTerminalCustomRecord;
   readonly title?: string;
   readonly editorText?: string;
 }

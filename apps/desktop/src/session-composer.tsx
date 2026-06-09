@@ -604,6 +604,7 @@ const SessionComposerInner = forwardRef<SessionComposerHandle, SessionComposerPr
       onSelectMention={mentionMenu.insertMention}
       questionnaireRequest={questionnaireRequest}
       onRespondToQuestionnaire={onRespondToQuestionnaire}
+      onCompactNow={api ? () => { void updateSnapshot(api, setSnapshot, () => api.submitComposer("/compact")); } : undefined}
     />
   );
 });

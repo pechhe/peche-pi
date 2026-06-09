@@ -5,6 +5,7 @@ import type {
   ComposerAttachment,
   QueuedComposerMessage,
   SessionExtensionDialogRecord,
+  SessionExtensionTerminalCustomRecord,
   SessionExtensionUiStateRecord,
   TranscriptMessage,
 } from "../src/desktop-state";
@@ -12,6 +13,7 @@ import type { RunMetrics } from "./app-store-timeline";
 
 export interface MutableSessionExtensionUiState extends ExtensionUiState {
   pendingDialogs: SessionExtensionDialogRecord[];
+  pendingTerminalCustom: SessionExtensionTerminalCustomRecord | undefined;
 }
 
 export interface PendingAutoTitle {
@@ -23,6 +25,16 @@ export interface QueuedComposerEditState {
   readonly messageId: string;
   readonly restoreDraft: string;
   readonly restoreAttachments: readonly ComposerAttachment[];
+}
+
+export interface CompactionActivity {
+  readonly id: string;
+  running: boolean;
+  readonly origin: "auto" | "manual";
+  readonly phaseLog: string[];
+  lastPhase: string;
+  summaryText: string;
+  readonly createdAt: string;
 }
 
 /**
@@ -49,6 +61,7 @@ export class SessionStateMap {
   readonly sessionCommandsBySession = new Map<string, RuntimeCommandRecord[]>();
   readonly extensionUiBySession = new Map<string, MutableSessionExtensionUiState>();
   readonly pendingAutoTitleBySession = new Map<string, PendingAutoTitle>();
+  readonly compactionActivityBySession = new Map<string, CompactionActivity>();
   readonly loadedTranscriptKeys = new Set<string>();
 
   /**
@@ -84,6 +97,7 @@ export class SessionStateMap {
     this.extensionUiBySession.delete(key);
     this.pendingAutoTitleBySession.delete(key);
     pendingAutoTitle?.cancel();
+    this.compactionActivityBySession.delete(key);
     this.loadedTranscriptKeys.delete(key);
     this.transcriptCache.delete(key);
   }
@@ -93,6 +107,7 @@ export function createEmptyExtensionUiState(): MutableSessionExtensionUiState {
   return {
     ...createBaseExtensionUiState(),
     pendingDialogs: [],
+    pendingTerminalCustom: undefined,
   };
 }
 
@@ -101,6 +116,7 @@ export function serializeExtensionUiState(state: MutableSessionExtensionUiState)
     statuses: [...state.statuses.entries()].map(([key, text]) => ({ key, text })),
     widgets: [...state.widgets.values()],
     pendingDialogs: [...state.pendingDialogs],
+    ...(state.pendingTerminalCustom ? { pendingTerminalCustom: state.pendingTerminalCustom } : {}),
     ...(state.title ? { title: state.title } : {}),
     ...(state.editorText ? { editorText: state.editorText } : {}),
   };

@@ -95,6 +95,7 @@ import {
   cloneComposerAttachments,
   cloneTranscriptMessage,
   latestSessionActivityAt,
+  makeCompactionActivityItem,
   mergeQueuedComposerMessages,
   mapToRecord,
   previewFromTranscript,
@@ -2233,13 +2234,22 @@ Return ONLY a JSON array of configuration fields, no explanation.`;
       return;
     }
     this.autoCompactInFlight.add(key);
+    this.sessionState.compactionActivityBySession.set(key, makeCompactionActivityItem("auto"));
     try {
       await this.driver.compactSession(sessionRef);
+      await this.reloadTranscriptFromDriver(sessionRef);
+      const activity = this.sessionState.compactionActivityBySession.get(key);
+      if (activity) {
+        activity.running = false;
+      }
     } catch (error) {
       console.error(`[smart-compact] auto-compact failed for ${key}:`, error);
+      this.sessionState.compactionActivityBySession.delete(key);
     } finally {
       this.autoCompactInFlight.delete(key);
     }
+    this.publishSelectedTranscriptFor(sessionRef);
+    this.emit();
   }
 
   /** Hydrate the state patch, persist, and publish all relevant channels. */

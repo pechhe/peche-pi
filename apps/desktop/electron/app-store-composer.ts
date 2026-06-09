@@ -15,6 +15,7 @@ import { appendQueuedUserMessage, appendUserMessage, clearActiveAssistantMessage
 import {
   cloneComposerAttachments,
   makeActivityItem,
+  makeCompactionActivityItem,
   previewFromTranscript,
   toSessionAttachments,
   toSessionQueuedMessages,
@@ -679,8 +680,19 @@ async function runComposerCommand(
   }
 
   if (parsed.type === "compact") {
-    await store.driver.compactSession(sessionRef, parsed.customInstructions);
-    await store.reloadTranscriptFromDriver(sessionRef);
+    store.sessionState.compactionActivityBySession.set(key, makeCompactionActivityItem("manual"));
+    try {
+      await store.driver.compactSession(sessionRef, parsed.customInstructions);
+      await store.reloadTranscriptFromDriver(sessionRef);
+      const activity = store.sessionState.compactionActivityBySession.get(key);
+      if (activity) {
+        activity.running = false;
+      }
+    } catch (error) {
+      store.sessionState.compactionActivityBySession.delete(key);
+      throw error;
+    }
+    store.publishSelectedTranscriptFor(sessionRef);
     return finishComposerCommand(store, sessionRef, key, "Compacted session context");
   }
 
