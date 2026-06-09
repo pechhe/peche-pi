@@ -32,6 +32,7 @@ import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
 
 import type { SidebarResize } from "./hooks/use-sidebar-width";
 import type { SidebarNavEntry } from "./hooks/build-sidebar-nav-list";
+import { GhMilestoneSection } from "./gh-milestone-section";
 
 interface MovingHighlightState {
   readonly left: number;
@@ -278,6 +279,10 @@ interface SidebarProps {
   readonly threadTypeBySession?: Readonly<Record<string, string>>;
   /** Runtime snapshot for model selection. */
   readonly runtime?: RuntimeSnapshot;
+  readonly ghMilestones?: readonly import("./gh-types").GhMilestoneRecord[];
+  readonly ghRunnerState?: import("./gh-types").GhRunnerState;
+  readonly onRunMilestone?: (workspaceId: string, milestoneNumber: number) => void;
+  readonly onCancelGhRun?: () => void;
 }
 
 export function Sidebar(props: SidebarProps) {
@@ -317,6 +322,10 @@ export function Sidebar(props: SidebarProps) {
     onOpenSearch,
     sessionsWithRunningSubagents,
     threadTypeBySession,
+    ghMilestones,
+    ghRunnerState,
+    onRunMilestone,
+    onCancelGhRun,
   } = props;
 
   const automationTotal = props.automations.length;
@@ -498,6 +507,13 @@ export function Sidebar(props: SidebarProps) {
           <DndContext sensors={sensors} collisionDetection={headerCollision} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
             <SortableContext items={rootGroupIds} strategy={verticalListSortingStrategy}>
               <div className="workspace-list" data-testid="workspace-list">
+                <GhMilestoneSection
+                  milestones={ghMilestones}
+                  runnerState={ghRunnerState}
+                  selectedWorkspaceId={selectedWorkspace?.id}
+                  onRun={onRunMilestone ?? (() => {})}
+                  onCancel={onCancelGhRun ?? (() => {})}
+                />
                 {rootGroups.map((group) => (
                   <SortableWorkspaceGroup
                     key={group.rootWorkspace.id}

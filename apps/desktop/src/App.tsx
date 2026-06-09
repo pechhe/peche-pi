@@ -639,6 +639,11 @@ export default function App() {
     return undefined;
   }, [refreshNotificationPermissionStatus, settingsSection, snapshot?.activeView]);
 
+  useEffect(() => {
+    if (!api || !snapshot?.selectedWorkspaceId) return;
+    void api.listGhMilestones(snapshot.selectedWorkspaceId);
+  }, [api, snapshot?.selectedWorkspaceId]);
+
   const selectedWorkspace = snapshot ? (getSelectedWorkspace(snapshot) ?? snapshot.workspaces[0]) : undefined;
   const selectedSession = snapshot ? getSelectedSession(snapshot) : undefined;
   const globalSearch = useGlobalSearch({ state: snapshot, selectedWorkspace, selectedSession });
@@ -2500,6 +2505,10 @@ export default function App() {
           onOpenSearch={globalSearch.open}
           threadTypeBySession={snapshot.threadTypeBySession}
           runtime={rootRuntime}
+          ghMilestones={snapshot.ghMilestones}
+          ghRunnerState={snapshot.ghRunnerState}
+          onRunMilestone={(workspaceId, milestoneNumber) => void api.runGhMilestone(workspaceId, milestoneNumber)}
+          onCancelGhRun={() => void api.cancelGhRun()}
         />
       )}
 

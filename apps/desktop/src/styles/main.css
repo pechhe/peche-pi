@@ -2338,7 +2338,7 @@ body.pi-thread-handoff .timeline-item--just-sent .timeline-item__bubble {
 @keyframes stream-word-fx {
   from {
     opacity: 0;
-    filter: blur(var(--sw-blur, 5px));
+    filter: blur(var(--sw-blur, 3px));
     transform: translateY(var(--sw-rise, 0)) scale(var(--sw-scale, 1));
     color: var(--sw-color-from, inherit);
     text-shadow: var(--sw-glow, 0 0 0 transparent);
@@ -2370,11 +2370,11 @@ body.pi-thread-handoff .timeline-item--just-sent .timeline-item__bubble {
 }
 
 [data-stream-fx~="rise"] .sw {
-  --sw-rise: 6px;
+  --sw-rise: 4px;
 }
 
 [data-stream-fx~="scale"] .sw {
-  --sw-scale: 0.94;
+  --sw-scale: 0.97;
   transform-origin: 0 80%;
 }
 
@@ -2383,7 +2383,7 @@ body.pi-thread-handoff .timeline-item--just-sent .timeline-item__bubble {
 }
 
 [data-stream-fx~="glow"] .sw {
-  --sw-glow: 0 0 9px color-mix(in srgb, var(--accent) 55%, transparent);
+  --sw-glow: 0 0 6px color-mix(in srgb, var(--accent) 40%, transparent);
 }
 
 [data-stream-fx~="long"] .sw {
@@ -12705,3 +12705,26 @@ mark.thread-find-active {
   font-size: 16px;
   padding: 2px;
 }
+
+/* ── GH milestone sidebar section ────────────────────── */
+
+.gh-milestones { display: flex; flex-direction: column; gap: 2px; padding: 4px 8px 8px; }
+.gh-milestones__header { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.6; padding: 4px 4px; }
+.gh-milestone { display: flex; flex-direction: column; }
+.gh-milestone__row { display: flex; align-items: center; gap: 6px; padding: 4px 6px; border-radius: 6px; }
+.gh-milestone__row:hover { background: var(--color-surface-hover, rgba(127,127,127,0.12)); }
+.gh-milestone__title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.gh-milestone__count { font-size: 11px; opacity: 0.6; font-variant-numeric: tabular-nums; }
+.gh-milestone__btn { border: none; background: transparent; cursor: pointer; font-size: 12px; line-height: 1; padding: 2px 4px; border-radius: 4px; color: inherit; }
+.gh-milestone__btn:hover:not(:disabled) { background: var(--color-surface-hover, rgba(127,127,127,0.18)); }
+.gh-milestone__btn:disabled { opacity: 0.35; cursor: default; }
+.gh-milestone__issues { list-style: none; margin: 0; padding: 2px 0 4px 14px; display: flex; flex-direction: column; gap: 1px; }
+.gh-issue { display: flex; align-items: center; gap: 6px; font-size: 12px; opacity: 0.85; }
+.gh-issue__dot { width: 7px; height: 7px; border-radius: 50%; background: var(--color-border, #888); flex: none; }
+.gh-issue--running .gh-issue__dot { background: #f5a623; animation: gh-pulse 1s ease-in-out infinite; }
+.gh-issue--completed .gh-issue__dot { background: #2ecc71; }
+.gh-issue--failed .gh-issue__dot { background: #e74c3c; }
+.gh-issue--blocked .gh-issue__dot { background: #e67e22; }
+.gh-issue--skipped .gh-issue__dot { background: var(--color-border, #888); opacity: 0.5; }
+.gh-issue__title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@keyframes gh-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
