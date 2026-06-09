@@ -2,7 +2,9 @@ import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import type { SubagentAgentRecord, SubagentSettingsRecord, DesktopAppState } from "../src/desktop-state";
-import type { AppStoreInternals } from "./app-store-internals";
+import type { PersistenceOps, StateAccess, StoreHelpers } from "./app-store-internals";
+
+type SubagentStore = StateAccess & StoreHelpers & PersistenceOps;
 
 /* ── Private helpers ─────────────────────────────────────────────── */
 
@@ -124,7 +126,7 @@ async function readSubagentAgentsFromDir(
 }
 
 export async function reloadSubagentAgentsForWorkspace(
-  store: AppStoreInternals,
+  store: SubagentStore,
   workspaceId: string,
   workspacePath?: string,
 ): Promise<void> {
@@ -146,7 +148,7 @@ export async function reloadSubagentAgentsForWorkspace(
 /* ── Store-dependent methods ─────────────────────────────────────── */
 
 export async function setSubagentSettings(
-  store: AppStoreInternals,
+  store: SubagentStore,
   settings: Partial<SubagentSettingsRecord>,
 ): Promise<DesktopAppState> {
   await store.initialize();
@@ -164,7 +166,7 @@ export async function setSubagentSettings(
 }
 
 export async function refreshSubagentAgents(
-  store: AppStoreInternals,
+  store: SubagentStore,
   workspaceId: string,
 ): Promise<DesktopAppState> {
   await store.initialize();
@@ -173,7 +175,7 @@ export async function refreshSubagentAgents(
 }
 
 export async function saveSubagentAgent(
-  store: AppStoreInternals,
+  store: SubagentStore,
   workspaceId: string,
   input: { readonly name: string; readonly raw: string; readonly scope?: "project" | "global" },
 ): Promise<DesktopAppState> {
@@ -201,7 +203,7 @@ export async function saveSubagentAgent(
 }
 
 export async function deleteSubagentAgent(
-  store: AppStoreInternals,
+  store: SubagentStore,
   workspaceId: string,
   name: string,
   scope: "project" | "global" = "project",

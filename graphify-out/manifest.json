@@ -70,8 +70,8 @@
     "semantic_hash": ""
   },
   "apps/desktop/electron/app-store.ts": {
-    "mtime": 1780997814.825236,
-    "ast_hash": "16e37f7458d45b305c1478dbb6843925",
+    "mtime": 1780997945.111379,
+    "ast_hash": "46088b12d1cd6b2bfcf3197976380382",
     "semantic_hash": ""
   },
   "apps/desktop/electron/commit-push-service.ts": {
@@ -95,8 +95,8 @@
     "semantic_hash": "4edaee449f6b0adfbe584b1c53d7d002"
   },
   "apps/desktop/electron/desktop-ipc-seam.ts": {
-    "mtime": 1780975911.253477,
-    "ast_hash": "60250b29413299eecb17d4bb26006fa1",
+    "mtime": 1780997962.9832494,
+    "ast_hash": "71f7ac49840492c0e9a746cf1a5167b6",
     "semantic_hash": ""
   },
   "apps/desktop/electron/dev-reload-main-probe.ts": {
@@ -165,8 +165,8 @@
     "semantic_hash": "fa1a895f10da0461dd23b500537150a3"
   },
   "apps/desktop/electron/main.ts": {
-    "mtime": 1780997793.994095,
-    "ast_hash": "5097ab9a88ad0be422e2b14c42c86ddb",
+    "mtime": 1780997951.469679,
+    "ast_hash": "2523fed87d8ef1b533a368e8578a2d8e",
     "semantic_hash": ""
   },
   "apps/desktop/electron/notification-manager.ts": {
@@ -295,8 +295,8 @@
     "semantic_hash": "5f7bf1cb13e598db6b14520c59bbd404"
   },
   "apps/desktop/src/App.tsx": {
-    "mtime": 1780997708.8308856,
-    "ast_hash": "b691bb8005a8e4246f0d74faaa368a8e",
+    "mtime": 1780998043.6616228,
+    "ast_hash": "41f9a00b38939580a233a88f5272de30",
     "semantic_hash": ""
   },
   "apps/desktop/src/advisor-handoff-controller.test.ts": {
@@ -385,8 +385,8 @@
     "semantic_hash": ""
   },
   "apps/desktop/src/desktop-state.ts": {
-    "mtime": 1780997757.45108,
-    "ast_hash": "f8c4f3602fc43636e84a7d672abb82ff",
+    "mtime": 1780997926.2829366,
+    "ast_hash": "7f9cecf1bf5a00e7bef6a6e619124146",
     "semantic_hash": ""
   },
   "apps/desktop/src/desktop-surface-controller.test.ts": {
@@ -525,8 +525,8 @@
     "semantic_hash": "2758c19249dcd0a6748a3dfc641911eb"
   },
   "apps/desktop/src/ipc.ts": {
-    "mtime": 1780997805.6610649,
-    "ast_hash": "86875f156366bcba98e676c0ce230684",
+    "mtime": 1780997974.7245393,
+    "ast_hash": "dac35abfb61f32c0d61d059fb79baad8",
     "semantic_hash": ""
   },
   "apps/desktop/src/kanban-board.test.ts": {
@@ -710,8 +710,8 @@
     "semantic_hash": "16db9fa088a116f3e6ceff1681660093"
   },
   "apps/desktop/src/sidebar.tsx": {
-    "mtime": 1780975799.1798766,
-    "ast_hash": "bb6d24f104dc0544774fe97ea1a7b2f9",
+    "mtime": 1780998033.0246425,
+    "ast_hash": "108b21106603f7897808b0e0f8a8e909",
     "semantic_hash": ""
   },
   "apps/desktop/src/skills-view-model.test.ts": {
@@ -770,8 +770,8 @@
     "semantic_hash": "d99ba5a4e8a4a0c938cf08d29b66b68d"
   },
   "apps/desktop/src/thread-groups.ts": {
-    "mtime": 1780973991.6633248,
-    "ast_hash": "bd439e7b5e88e50cd243194222a3979b",
+    "mtime": 1780998125.2430482,
+    "ast_hash": "28112e839026c163ff4625cff8c66087",
     "semantic_hash": ""
   },
   "apps/desktop/src/thread-search.tsx": {
@@ -1595,8 +1595,8 @@
     "semantic_hash": ""
   },
   "apps/desktop/src/automations-view.tsx": {
-    "mtime": 1780997888.5280063,
-    "ast_hash": "26e6030b24d7f3267890abe7ae60afb8",
+    "mtime": 1780997948.0609548,
+    "ast_hash": "9e1245c7720d11f5795e98602100b023",
     "semantic_hash": ""
   },
   "apps/desktop/src/hooks/build-sidebar-nav-list.ts": {
@@ -1750,8 +1750,8 @@
     "semantic_hash": ""
   },
   "apps/desktop/src/surfaces/utility-surface.tsx": {
-    "mtime": 1780973774.6417344,
-    "ast_hash": "95cff51b177ce6b41b926a26e97cc363",
+    "mtime": 1780997955.2271686,
+    "ast_hash": "eb6de087045ef15ad0748e1086fb6dc8",
     "semantic_hash": ""
   },
   "apps/desktop/src/update-pill.tsx": {
@@ -1824,21 +1824,6 @@
     "ast_hash": "e5ab0bfdcef5e4ef7f21d0a9a4922946",
     "semantic_hash": ""
   },
-  "apps/desktop/electron/plan-orchestrator.ts": {
-    "mtime": 1780993277.073959,
-    "ast_hash": "e20af54c584a6e4d4c4c5b755afd2356",
-    "semantic_hash": ""
-  },
-  "apps/desktop/electron/plan-parser.ts": {
-    "mtime": 1780993277.0869818,
-    "ast_hash": "109d778066f48d4a321a9317826512e0",
-    "semantic_hash": ""
-  },
-  "apps/desktop/src/plan-types.ts": {
-    "mtime": 1780974605.5317438,
-    "ast_hash": "c51c77591207b4bc9566b266fc169323",
-    "semantic_hash": ""
-  },
   "apps/desktop/electron/automation-scheduler.test.ts": {
     "mtime": 1780994270.7089262,
     "ast_hash": "7d67bbbc34898de9000526e036093da8",
@@ -1854,24 +1839,9 @@
     "ast_hash": "1ea91c90b4b64c9b57fd04f9e0753f27",
     "semantic_hash": ""
   },
-  "apps/desktop/scripts/generate-issues.ts": {
-    "mtime": 1780974655.3125257,
-    "ast_hash": "bdd26ed5e6588e1c8d793b94a2ccee45",
-    "semantic_hash": ""
-  },
-  "apps/desktop/scripts/import-issues.ts": {
-    "mtime": 1780974800.9611907,
-    "ast_hash": "e25f8f9f623c71abf81fb86cbff951a7",
-    "semantic_hash": ""
-  },
   "apps/desktop/src/hooks/use-keyboard-shortcuts.test.ts": {
     "mtime": 1780994808.209037,
     "ast_hash": "46a4d4ffbe7dfacf52a95ab834c7f22b",
-    "semantic_hash": ""
-  },
-  "apps/desktop/src/plan-launch-dialog.tsx": {
-    "mtime": 1780975006.81448,
-    "ast_hash": "ce28ad860987866f676f2a31037bf860",
     "semantic_hash": ""
   },
   "scripts/dedupe-automation-chats.py": {

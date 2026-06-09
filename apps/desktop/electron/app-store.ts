@@ -105,6 +105,7 @@ import { GitWorktreeManager } from "./worktree-manager";
 import * as workspace from "./app-store-workspace";
 import * as worktree from "./app-store-worktree";
 import * as composer from "./app-store-composer";
+import * as ghRunner from "./gh-runner";
 import { isSessionActivelyViewed } from "./session-visibility";
 import { applySubagentEnvironment } from "./app-store-subagent";
 import * as subagent from "./app-store-subagent";
@@ -656,6 +657,27 @@ export class DesktopAppStore implements AppStoreInternals {
     await this.refreshState({});
 
     return { sessionId: snapshot.ref.sessionId };
+  }
+
+  /* ── GitHub issue runner ────────────────────────────────── */
+
+  async listGhMilestones(workspaceId?: string): Promise<DesktopAppState> {
+    await this.initialize();
+    const wsId = workspaceId ?? this.state.selectedWorkspaceId;
+    if (!wsId) return this.emit();
+    return ghRunner.refreshMilestones(this, wsId);
+  }
+
+  async runGhMilestone(workspaceId: string, milestoneNumber: number): Promise<DesktopAppState> {
+    await this.initialize();
+    void ghRunner.runMilestone(this, workspaceId, milestoneNumber);
+    return this.emit();
+  }
+
+  async cancelGhRun(): Promise<DesktopAppState> {
+    await this.initialize();
+    ghRunner.cancelRun(this);
+    return this.emit();
   }
 
   /* ── View / UI state ───────────────────────────────────── */

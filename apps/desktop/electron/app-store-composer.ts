@@ -21,12 +21,14 @@ import {
   toTranscriptAttachments,
 } from "./app-store-utils";
 import { reduce } from "./app-state-reducer";
-import type { AppStoreInternals } from "./app-store-internals";
+import type { ComposerOps, Infrastructure, PersistenceOps, SessionLifecycle, StateAccess, StoreHelpers } from "./app-store-internals";
+
+type ComposerStore = StateAccess & Infrastructure & StoreHelpers & SessionLifecycle & ComposerOps & PersistenceOps;
 
 /* ── Public methods ─────────────────────────────────────── */
 
 export async function updateComposerDraft(
-  store: AppStoreInternals,
+  store: ComposerStore,
   composerDraft: string,
 ): Promise<DesktopAppState> {
   await store.initialize();
@@ -53,7 +55,7 @@ export async function updateComposerDraft(
 }
 
 export async function addComposerAttachments(
-  store: AppStoreInternals,
+  store: ComposerStore,
   attachments: readonly ComposerAttachment[],
 ): Promise<DesktopAppState> {
   await store.initialize();
@@ -75,7 +77,7 @@ export async function addComposerAttachments(
 }
 
 export async function removeComposerAttachment(
-  store: AppStoreInternals,
+  store: ComposerStore,
   attachmentId: string,
 ): Promise<DesktopAppState> {
   await store.initialize();
@@ -105,7 +107,7 @@ export async function removeComposerAttachment(
 }
 
 export async function editQueuedComposerMessage(
-  store: AppStoreInternals,
+  store: ComposerStore,
   messageId: string,
   currentDraft = "",
 ): Promise<DesktopAppState> {
@@ -139,7 +141,7 @@ export async function editQueuedComposerMessage(
 }
 
 export async function cancelQueuedComposerEdit(
-  store: AppStoreInternals,
+  store: ComposerStore,
 ): Promise<DesktopAppState> {
   await store.initialize();
   const sessionRef = store.selectedSessionRef();
@@ -175,7 +177,7 @@ export async function cancelQueuedComposerEdit(
 }
 
 export async function removeQueuedComposerMessage(
-  store: AppStoreInternals,
+  store: ComposerStore,
   messageId: string,
 ): Promise<DesktopAppState> {
   await store.initialize();
@@ -218,7 +220,7 @@ export async function removeQueuedComposerMessage(
 }
 
 export async function steerQueuedComposerMessage(
-  store: AppStoreInternals,
+  store: ComposerStore,
   messageId: string,
 ): Promise<DesktopAppState> {
   await store.initialize();
@@ -267,7 +269,7 @@ export async function steerQueuedComposerMessage(
  * Used when a slash command is only available in the terminal surface.
  */
 async function saveDraftAndRejectTerminalCommand(
-  store: AppStoreInternals,
+  store: ComposerStore,
   sessionRef: SessionRef,
   key: string,
   textInput: string,
@@ -295,12 +297,12 @@ async function saveDraftAndRejectTerminalCommand(
  * Handles editing state, optimistic transcript updates, and persistence.
  */
 async function submitQueuedMessage(
-  store: AppStoreInternals,
+  store: ComposerStore,
   sessionRef: SessionRef,
   key: string,
   text: string,
   attachments: readonly ComposerAttachment[],
-  editingState: ReturnType<AppStoreInternals["getQueuedComposerEditState"]>,
+  editingState: ReturnType<ComposerOps["getQueuedComposerEditState"]>,
   options: { deliverAs: "steer" | "followUp" },
 ): Promise<DesktopAppState> {
   const nextMessage = buildQueuedComposerMessage({
@@ -344,11 +346,11 @@ async function submitQueuedMessage(
 
 /** Restore composer state after a failed submit. */
 function recoverFromSubmitError(
-  store: AppStoreInternals,
+  store: ComposerStore,
   key: string,
   textInput: string,
   attachments: readonly ComposerAttachment[],
-  editingState: ReturnType<AppStoreInternals["getQueuedComposerEditState"]>,
+  editingState: ReturnType<ComposerOps["getQueuedComposerEditState"]>,
   resolvedRuntimeSlashCommand: RuntimeCommandRecord | undefined,
   sessionRef: SessionRef,
 ): void {
@@ -368,7 +370,7 @@ function recoverFromSubmitError(
 }
 
 export async function submitComposer(
-  store: AppStoreInternals,
+  store: ComposerStore,
   textInput: string,
   options: {
     readonly deliverAs?: "steer" | "followUp";
@@ -458,7 +460,7 @@ export async function submitComposer(
 }
 
 export async function setSessionModel(
-  store: AppStoreInternals,
+  store: ComposerStore,
   target: WorkspaceSessionTarget,
   provider: string,
   modelId: string,
@@ -475,7 +477,7 @@ export async function setSessionModel(
 }
 
 export async function setSessionThinkingLevel(
-  store: AppStoreInternals,
+  store: ComposerStore,
   sessionRef: SessionRef,
   thinkingLevel: string,
 ): Promise<DesktopAppState> {
@@ -488,7 +490,7 @@ export async function setSessionThinkingLevel(
   });
 }
 
-export async function cancelCurrentRun(store: AppStoreInternals): Promise<DesktopAppState> {
+export async function cancelCurrentRun(store: ComposerStore): Promise<DesktopAppState> {
   await store.initialize();
   const sessionRef = store.selectedSessionRef();
   if (!sessionRef) {
@@ -525,7 +527,7 @@ function stripPlanModeIdeologyPrefix(text: string, ideology: PlanModeIdeology): 
 
 
 export async function sendMessageToSession(
-  store: AppStoreInternals,
+  store: ComposerStore,
   sessionRef: SessionRef,
   text: string,
   attachments: readonly ComposerAttachment[],
@@ -598,7 +600,7 @@ function replaceQueuedComposerMessage(
 }
 
 function removeOptimisticQueuedUserMessage(
-  store: AppStoreInternals,
+  store: ComposerStore,
   sessionRef: SessionRef,
   messageId: string,
 ): void {
@@ -613,13 +615,13 @@ function removeOptimisticQueuedUserMessage(
 }
 
 /** Eagerly merge config fields so finishComposerCommand sees them before the async sessionUpdated event arrives. */
-function syncSessionConfig(store: AppStoreInternals, key: string, patch: Partial<SessionConfig>): void {
+function syncSessionConfig(store: ComposerStore, key: string, patch: Partial<SessionConfig>): void {
   const current = store.sessionState.sessionConfigBySession.get(key) ?? {};
   store.sessionState.sessionConfigBySession.set(key, { ...current, ...patch });
 }
 
 async function runComposerCommand(
-  store: AppStoreInternals,
+  store: ComposerStore,
   sessionRef: SessionRef,
   commandText: string,
 ): Promise<DesktopAppState | undefined> {
@@ -692,7 +694,7 @@ async function runComposerCommand(
   return store.withError(`Unsupported slash command: ${commandText}`);
 }
 
-function appendLocalActivity(store: AppStoreInternals, sessionRef: SessionRef, label: string): void {
+function appendLocalActivity(store: ComposerStore, sessionRef: SessionRef, label: string): void {
   const key = sessionKey(sessionRef);
   const transcript = [...(store.sessionState.transcriptCache.get(key) ?? [])];
   transcript.push(makeActivityItem(label));
@@ -701,7 +703,7 @@ function appendLocalActivity(store: AppStoreInternals, sessionRef: SessionRef, l
 }
 
 function finishComposerCommand(
-  store: AppStoreInternals,
+  store: ComposerStore,
   sessionRef: SessionRef,
   key: string,
   label: string,

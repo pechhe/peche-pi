@@ -1,7 +1,9 @@
 import { sessionKey } from "@pi-gui/pi-sdk-driver";
 import type { CreateSessionInput, DesktopAppState, WorkspaceSessionTarget } from "../src/desktop-state";
 import { toSessionRef } from "./app-store-utils";
-import type { AppStoreInternals, RefreshStateOptions } from "./app-store-internals";
+import type { Infrastructure, RefreshStateOptions, SessionLifecycle, StateAccess, StoreHelpers } from "./app-store-internals";
+
+type WorkspaceStore = StateAccess & Infrastructure & StoreHelpers & SessionLifecycle;
 import { NEW_THREAD_PLACEHOLDER_TITLE } from "./thread-title-constants";
 
 function fallbackSelectionAfterWorkspaceRemoval(
@@ -18,7 +20,7 @@ function fallbackSelectionAfterWorkspaceRemoval(
   };
 }
 
-export async function addWorkspace(store: AppStoreInternals, path: string): Promise<DesktopAppState> {
+export async function addWorkspace(store: WorkspaceStore, path: string): Promise<DesktopAppState> {
   await store.initialize();
   const normalizedPath = path.trim();
   if (!normalizedPath) {
@@ -58,7 +60,7 @@ export async function addWorkspace(store: AppStoreInternals, path: string): Prom
 }
 
 export async function renameWorkspace(
-  store: AppStoreInternals,
+  store: WorkspaceStore,
   workspaceId: string,
   displayName: string,
 ): Promise<DesktopAppState> {
@@ -78,7 +80,7 @@ export async function renameWorkspace(
   });
 }
 
-export async function removeWorkspace(store: AppStoreInternals, workspaceId: string): Promise<DesktopAppState> {
+export async function removeWorkspace(store: WorkspaceStore, workspaceId: string): Promise<DesktopAppState> {
   await store.initialize();
 
   return store.withErrorHandling(async () => {
@@ -87,7 +89,7 @@ export async function removeWorkspace(store: AppStoreInternals, workspaceId: str
   });
 }
 
-export async function selectWorkspace(store: AppStoreInternals, workspaceId: string): Promise<DesktopAppState> {
+export async function selectWorkspace(store: WorkspaceStore, workspaceId: string): Promise<DesktopAppState> {
   await store.initialize();
   const workspace = store.state.workspaces.find((entry) => entry.id === workspaceId);
   if (!workspace) {
@@ -108,7 +110,7 @@ export async function selectWorkspace(store: AppStoreInternals, workspaceId: str
   });
 }
 
-export async function selectSession(store: AppStoreInternals, target: WorkspaceSessionTarget): Promise<DesktopAppState> {
+export async function selectSession(store: WorkspaceStore, target: WorkspaceSessionTarget): Promise<DesktopAppState> {
   await store.initialize();
   const currentSessionRef = store.selectedSessionRef();
   if (
@@ -122,7 +124,7 @@ export async function selectSession(store: AppStoreInternals, target: WorkspaceS
 }
 
 export async function archiveSession(
-  store: AppStoreInternals,
+  store: WorkspaceStore,
   target: WorkspaceSessionTarget,
 ): Promise<DesktopAppState> {
   await store.initialize();
@@ -199,7 +201,7 @@ function selectionAfterArchiving(state: DesktopAppState, target: WorkspaceSessio
 }
 
 export async function unarchiveSession(
-  store: AppStoreInternals,
+  store: WorkspaceStore,
   target: WorkspaceSessionTarget,
 ): Promise<DesktopAppState> {
   await store.initialize();
@@ -220,7 +222,7 @@ export async function unarchiveSession(
   });
 }
 
-export async function createSession(store: AppStoreInternals, input: CreateSessionInput): Promise<DesktopAppState> {
+export async function createSession(store: WorkspaceStore, input: CreateSessionInput): Promise<DesktopAppState> {
   await store.initialize();
   const ws = store.workspaceRefFromState(input.workspaceId);
   if (!ws) {
@@ -253,7 +255,7 @@ export async function createSession(store: AppStoreInternals, input: CreateSessi
 }
 
 export async function archiveAllNonRunningSessions(
-  store: AppStoreInternals,
+  store: WorkspaceStore,
   workspaceId: string,
   olderThanMs?: number,
 ): Promise<DesktopAppState> {
@@ -297,7 +299,7 @@ export async function archiveAllNonRunningSessions(
   });
 }
 
-export async function syncCurrentWorkspace(store: AppStoreInternals): Promise<DesktopAppState> {
+export async function syncCurrentWorkspace(store: WorkspaceStore): Promise<DesktopAppState> {
   await store.initialize();
   if (!store.state.selectedWorkspaceId) {
     return store.refreshState({ clearLastError: true, refreshWorktrees: true });
@@ -312,7 +314,7 @@ export async function syncCurrentWorkspace(store: AppStoreInternals): Promise<De
 }
 
 export async function syncWorkspace(
-  store: AppStoreInternals,
+  store: WorkspaceStore,
   workspaceId: string,
   refreshOptions: RefreshStateOptions,
 ): Promise<DesktopAppState> {

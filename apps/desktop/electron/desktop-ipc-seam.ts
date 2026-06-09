@@ -271,6 +271,11 @@ const desktopIpc = {
   checkForUpdate: "pi-gui:check-for-update",
   downloadUpdate: "pi-gui:download-update",
   restartToInstall: "pi-gui:restart-to-install",
+
+  // -- GitHub issue runner --
+  listGhMilestones: "pi-gui:gh-list-milestones",
+  runGhMilestone: "pi-gui:gh-run-milestone",
+  cancelGhRun: "pi-gui:gh-cancel-run",
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -488,6 +493,11 @@ export const desktopIpcContracts: readonly IpcContractEntry[] = [
   { methodName: "triggerCheckForUpdate", channel: desktopIpc.checkForUpdate, direction: "renderer-to-main", kind: "invoke", adapter: "system" },
   { methodName: "triggerDownloadUpdate", channel: desktopIpc.downloadUpdate, direction: "renderer-to-main", kind: "invoke", adapter: "system" },
   { methodName: "triggerRestartToInstall", channel: desktopIpc.restartToInstall, direction: "renderer-to-main", kind: "invoke", adapter: "system" },
+
+  // -- GitHub issue runner --
+  { methodName: "listGhMilestones", channel: desktopIpc.listGhMilestones, direction: "renderer-to-main", kind: "invoke", adapter: "chat" },
+  { methodName: "runGhMilestone", channel: desktopIpc.runGhMilestone, direction: "renderer-to-main", kind: "invoke", adapter: "chat" },
+  { methodName: "cancelGhRun", channel: desktopIpc.cancelGhRun, direction: "renderer-to-main", kind: "invoke", adapter: "chat" },
 ] as const;
 
 // ---------------------------------------------------------------------------

@@ -1433,6 +1433,11 @@ app.whenReady().then(async () => {
         return store.getState();
       },
 
+      // -- GitHub issue runner --
+      listGhMilestones: async (_event: unknown, workspaceId?: string) => store.listGhMilestones(workspaceId),
+      runGhMilestone: async (_event: unknown, workspaceId: string, milestoneNumber: number) => store.runGhMilestone(workspaceId, milestoneNumber),
+      cancelGhRun: async () => store.cancelGhRun(),
+
       // -- Update --
       triggerCheckForUpdate: async () => {
         const result = await checkForUpdate();

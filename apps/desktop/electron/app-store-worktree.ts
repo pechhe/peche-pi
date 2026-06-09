@@ -8,12 +8,14 @@ import type { CreateWorktreeInput, DesktopAppState, RemoveWorktreeInput, StartAu
 import { sendMessageToSession } from "./app-store-composer";
 import { reduce } from "./app-state-reducer";
 import type { CreateWorktreeOptions } from "./worktree-manager";
-import type { AppStoreInternals } from "./app-store-internals";
+import type { ComposerOps, Infrastructure, PersistenceOps, SessionLifecycle, StateAccess, StoreHelpers } from "./app-store-internals";
+
+type WorktreeStore = StateAccess & Infrastructure & StoreHelpers & SessionLifecycle & PersistenceOps & ComposerOps;
 import { NEW_THREAD_PLACEHOLDER_TITLE } from "./thread-title-constants";
 
 /* ── Public methods ─────────────────────────────────────── */
 
-export async function createWorktree(store: AppStoreInternals, input: CreateWorktreeInput): Promise<DesktopAppState> {
+export async function createWorktree(store: WorktreeStore, input: CreateWorktreeInput): Promise<DesktopAppState> {
   await store.initialize();
   const rootWorkspace = store.workspaceRefFromState(input.workspaceId);
   if (!rootWorkspace) {
@@ -46,7 +48,7 @@ export async function createWorktree(store: AppStoreInternals, input: CreateWork
   });
 }
 
-export async function removeWorktree(store: AppStoreInternals, input: RemoveWorktreeInput): Promise<DesktopAppState> {
+export async function removeWorktree(store: WorktreeStore, input: RemoveWorktreeInput): Promise<DesktopAppState> {
   await store.initialize();
   const rootWorkspace = store.workspaceRefFromState(input.workspaceId);
   if (!rootWorkspace) {
@@ -74,7 +76,7 @@ export async function removeWorktree(store: AppStoreInternals, input: RemoveWork
   });
 }
 
-export async function startThread(store: AppStoreInternals, input: StartThreadInput): Promise<DesktopAppState> {
+export async function startThread(store: WorktreeStore, input: StartThreadInput): Promise<DesktopAppState> {
   const __dbg = (step: string) => {
     try { require("node:fs").appendFileSync("/tmp/pi-startthread.log", `[${new Date().toISOString()}] ${step}\n`); } catch { /* ignore */ }
   };
@@ -177,7 +179,7 @@ export async function startThread(store: AppStoreInternals, input: StartThreadIn
  * user's current view. Returns the created session id.
  */
 export async function startAutomationThread(
-  store: AppStoreInternals,
+  store: WorktreeStore,
   input: StartAutomationThreadInput,
 ): Promise<string | undefined> {
   await store.initialize();
@@ -247,7 +249,7 @@ export async function startAutomationThread(
   return session.ref.sessionId;
 }
 
-export async function startChat(store: AppStoreInternals, input: StartChatInput): Promise<DesktopAppState> {
+export async function startChat(store: WorktreeStore, input: StartChatInput): Promise<DesktopAppState> {
   await store.initialize();
 
   return store.withErrorHandling(async () => {
@@ -340,7 +342,7 @@ export async function startChat(store: AppStoreInternals, input: StartChatInput)
 }
 
 export async function syncAndListWorktrees(
-  store: AppStoreInternals,
+  store: WorktreeStore,
   workspaces: readonly {
     workspaceId: string;
     path: string;
@@ -432,7 +434,7 @@ export async function syncAndListWorktrees(
  * (which lives in the main store).
  */
 function buildWorktreeOptions(
-  store: AppStoreInternals,
+  store: WorktreeStore,
   workspace: WorkspaceRef,
   fromSessionWorkspaceId?: string,
   fromSessionId?: string,
@@ -461,7 +463,7 @@ function buildWorktreeOptions(
 /* ── Private helpers ─────────────────────────────────────── */
 
 async function generateAndApplyAutoTitle(
-  store: AppStoreInternals,
+  store: WorktreeStore,
   sessionRef: { workspaceId: string; sessionId: string },
   workspace: WorkspaceRef,
   options: {
@@ -515,7 +517,7 @@ async function generateAndApplyAutoTitle(
   }
 }
 
-function sessionTitleForWorktree(store: AppStoreInternals, workspaceId: string, sessionId: string): string | undefined {
+function sessionTitleForWorktree(store: WorktreeStore, workspaceId: string, sessionId: string): string | undefined {
   return store.state.workspaces
     .find((workspace) => workspace.id === workspaceId)
     ?.sessions.find((session) => session.id === sessionId)

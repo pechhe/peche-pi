@@ -1,4 +1,5 @@
 import type { HostUiRequest, SessionConfig } from "@pi-gui/session-driver";
+import type { GhMilestoneRecord, GhRunnerState } from "./gh-types";
 import type { ModelSettingsSnapshot, RuntimeCommandRecord, RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
 import type { ButtonSoundSettings } from "./button-click-sound";
 export type SessionStatus = "idle" | "running" | "failed";
@@ -476,6 +477,8 @@ export interface DesktopAppState {
   readonly automations: readonly Automation[];
   readonly automationFilterWorkspaceId?: string;
   readonly threadTypeBySession: Readonly<Record<string, string>>;
+  readonly ghMilestones?: readonly GhMilestoneRecord[];
+  readonly ghRunnerState?: GhRunnerState;
   readonly revision: number;
   readonly lastError?: string;
 }

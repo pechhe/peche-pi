@@ -202,6 +202,11 @@ export const desktopIpc = {
   checkForUpdate: "pi-gui:check-for-update",
   downloadUpdate: "pi-gui:download-update",
   restartToInstall: "pi-gui:restart-to-install",
+
+  // -- GitHub issue runner --
+  listGhMilestones: "pi-gui:gh-list-milestones",
+  runGhMilestone: "pi-gui:gh-run-milestone",
+  cancelGhRun: "pi-gui:gh-cancel-run",
 } as const;
 
 export const desktopCommands = {
@@ -378,6 +383,9 @@ export const piDesktopApiIpcBridge = {
   setThemeMode: { kind: "invoke", channel: desktopIpc.setThemeMode },
   onThemeChanged: { kind: "event", channel: desktopIpc.themeChanged },
   onLiveEditStats: { kind: "event", channel: desktopIpc.liveEditStats },
+  listGhMilestones: { kind: "invoke", channel: desktopIpc.listGhMilestones },
+  runGhMilestone: { kind: "invoke", channel: desktopIpc.runGhMilestone },
+  cancelGhRun: { kind: "invoke", channel: desktopIpc.cancelGhRun },
 } as const;
 
 export function getDesktopShortcutLabel(platform: NodeJS.Platform, key: string): string {
@@ -891,4 +899,8 @@ export interface PiDesktopApi {
   getResolvedTheme(): Promise<"light" | "dark">;
   setThemeMode(mode: "system" | "light" | "dark" | "dracula"): Promise<string>;
   onThemeChanged(callback: (theme: "light" | "dark") => void): () => void;
+
+  listGhMilestones(workspaceId?: string): Promise<DesktopAppState>;
+  runGhMilestone(workspaceId: string, milestoneNumber: number): Promise<DesktopAppState>;
+  cancelGhRun(): Promise<DesktopAppState>;
 }
