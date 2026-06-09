@@ -119,6 +119,7 @@ export interface SessionMessageInput {
   readonly text: string;
   readonly attachments?: readonly SessionAttachment[];
   readonly deliverAs?: SessionMessageDeliveryMode;
+  readonly mode?: "build" | "plan";
 }
 
 export interface CreateSessionOptions {
@@ -202,6 +203,20 @@ export interface ExtensionCompatibilityIssue {
 export interface RunFailedEvent extends SessionEventBase {
   readonly type: "runFailed";
   readonly error: SessionErrorInfo;
+}
+
+/**
+ * Emitted when a transient run failure (connection drop, rate limit, server
+ * error) is about to be auto-retried. Carries everything the UI needs to show a
+ * single live "retrying" line: the attempt counter and the delay until the next
+ * attempt. A subsequent successful attempt or a final `runFailed` supersedes it.
+ */
+export interface RunRetryingEvent extends SessionEventBase {
+  readonly type: "runRetrying";
+  readonly attempt: number;
+  readonly maxAttempts: number;
+  readonly delayMs: number;
+  readonly message: string;
 }
 
 export interface HostUiQuestionnaireAnswer {
@@ -345,6 +360,7 @@ export type SessionDriverEvent =
   | ToolFinishedEvent
   | RunCompletedEvent
   | RunFailedEvent
+  | RunRetryingEvent
   | HostUiRequestEvent
   | ExtensionCompatibilityIssueEvent
   | SessionClosedEvent;

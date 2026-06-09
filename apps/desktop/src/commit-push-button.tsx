@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
 import { CommitPushPrDialog } from "./commit-push-pr-dialog";
-import { buildModelOptions, type ComposerModelOption } from "./composer-commands";
 import type { PiDesktopApi, WorkspacePrInfo } from "./ipc";
-import { SettingsIcon } from "./icons";
 import { showToast } from "./toast";
+import { playButtonClick } from "./button-click-sound";
 
 function GitCommitIcon() {
   return (
@@ -38,33 +37,18 @@ const SHORTCUT_EVENT = "pi:commit-and-push";
 
 export function CommitPushButton({
   workspaceId,
-  runtime,
+  runtime: _runtime,
   commitPushModel,
   api,
   disabled,
   sessionStatus,
   shortcutLabel,
 }: CommitPushButtonProps) {
-  const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [gitInfo, setGitInfo] = useState<GitInfo>({ isGitRepo: false, changedCount: 0 });
   const [prInfo, setPrInfo] = useState<WorkspacePrInfo | undefined>(undefined);
   const [prDialogOpen, setPrDialogOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
-
-  const modelOptions = useMemo(() => buildModelOptions(runtime), [runtime]);
-
-  const selectedLabel = useMemo(() => {
-    if (!commitPushModel) return "Pick model";
-    const colonIndex = commitPushModel.indexOf(":");
-    if (colonIndex === -1) return commitPushModel;
-    const providerId = commitPushModel.slice(0, colonIndex);
-    const modelId = commitPushModel.slice(colonIndex + 1);
-    const match = modelOptions.find(
-      (m) => m.providerId === providerId && m.modelId === modelId,
-    );
-    return match ? `${match.providerId}:${match.modelId}` : commitPushModel;
-  }, [commitPushModel, modelOptions]);
 
   const refreshGitInfo = useCallback(() => {
     if (!workspaceId) {
@@ -110,27 +94,7 @@ export function CommitPushButton({
     }
   }, [sessionStatus, refreshGitInfo, refreshPrInfo]);
 
-  // Close dropdown on click outside
-  useEffect(() => {
-    if (!open) return undefined;
-    const handle = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handle);
-    return () => document.removeEventListener("mousedown", handle);
-  }, [open]);
 
-  // Close on Escape
-  useEffect(() => {
-    if (!open) return undefined;
-    const handle = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("keydown", handle);
-    return () => document.removeEventListener("keydown", handle);
-  }, [open]);
 
   const handleCommitPush = useCallback(async () => {
     if (busy || !workspaceId) return;
@@ -171,12 +135,6 @@ export function CommitPushButton({
     window.addEventListener(SHORTCUT_EVENT, handler);
     return () => window.removeEventListener(SHORTCUT_EVENT, handler);
   }, [handleCommitPush]);
-
-  const handleSelectModel = async (option: ComposerModelOption) => {
-    const modelString = `${option.providerId}:${option.modelId}`;
-    await api.setCommitPushModel(workspaceId, modelString);
-    setOpen(false);
-  };
 
   if (!workspaceId) return null;
   // Hide entirely when the workspace isn't a git repo.
@@ -239,7 +197,7 @@ export function CommitPushButton({
           className={`commit-push__button${busy ? " commit-push__button--busy" : ""}${isPill ? " commit-push__button--pill" : " icon-button topbar__icon"}`}
           type="button"
           disabled={disabled || busy}
-          onClick={handlePrimaryClick}
+          onClick={() => { playButtonClick(); handlePrimaryClick(); }}
         >
           {busy ? (
             <span className="commit-push__spinner" />
@@ -264,19 +222,6 @@ export function CommitPushButton({
           {mode === "commit-push" ? <kbd>{shortcutLabel}</kbd> : null}
         </span>
       </div>
-      <div className="shortcut-tooltip-wrap topbar__tooltip-wrap">
-        <button
-          className="icon-button topbar__icon commit-push__gear"
-          type="button"
-          disabled={disabled || busy}
-          onClick={() => setOpen((v) => !v)}
-        >
-          <SettingsIcon />
-        </button>
-        <span className="shortcut-tooltip topbar__tooltip" role="tooltip">
-          <span>Commit model: {selectedLabel}</span>
-        </span>
-      </div>
       {prDialogOpen && prInfo ? (
         <CommitPushPrDialog
           api={api}
@@ -293,36 +238,7 @@ export function CommitPushButton({
           }}
         />
       ) : null}
-      {open ? (
-        <div className="model-selector__dropdown commit-push__dropdown">
-          <div className="model-selector__group-title">
-            Commit message model
-          </div>
-          {modelOptions.length === 0 ? (
-            <div className="model-selector__empty">
-              No models available. Connect a provider in Settings.
-            </div>
-          ) : (
-            modelOptions.map((option) => {
-              const modelString = `${option.providerId}:${option.modelId}`;
-              const isActive = commitPushModel === modelString;
-              return (
-                <button
-                  className={`model-selector__item${isActive ? " model-selector__item--active" : ""}`}
-                  key={modelString}
-                  type="button"
-                  onClick={() => handleSelectModel(option)}
-                >
-                  <span className="model-selector__item-label">{option.label}</span>
-                  {isActive ? (
-                    <span className="model-selector__item-meta">active</span>
-                  ) : null}
-                </button>
-              );
-            })
-          )}
-        </div>
-      ) : null}
+
     </div>
   );
 }

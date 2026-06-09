@@ -1,6 +1,7 @@
-import { execFile } from "node:child_process";
 import { appendFile, mkdir } from "node:fs/promises";
 import path from "node:path";
+import { execGh, execGit, isGitRepo } from "./git-runner";
+import { PROVIDER_CONFIGS, parseProviderAndModel } from "./llm-helpers";
 
 export type PrState = "none" | "open" | "closed" | "merged";
 
@@ -61,39 +62,6 @@ function logError(step: string, err: unknown, payload: Record<string, unknown> =
   log(step, { ...payload, error: message, stack });
 }
 
-interface ExecResult {
-  stdout: string;
-  stderr: string;
-  code: number;
-}
-
-function execCmd(cmd: string, args: string[], cwd: string): Promise<ExecResult> {
-  return new Promise((resolve) => {
-    execFile(cmd, args, { cwd, maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
-      if (!error) {
-        resolve({ stdout: stdout?.trim() ?? "", stderr: stderr?.trim() ?? "", code: 0 });
-        return;
-      }
-      const errnoCode = (error as NodeJS.ErrnoException).code;
-      if (errnoCode === "ENOENT") {
-        resolve({ stdout: "", stderr: `${cmd} not found`, code: 127 });
-        return;
-      }
-      const exitCode = typeof (error as { code?: number }).code === "number"
-        ? ((error as { code: number }).code)
-        : 1;
-      resolve({ stdout: stdout?.trim() ?? "", stderr: stderr?.trim() ?? "", code: exitCode });
-    });
-  });
-}
-
-const execGit = (args: string[], cwd: string) => execCmd("git", args, cwd);
-const execGh = (args: string[], cwd: string) => execCmd("gh", args, cwd);
-
-async function isGitRepo(cwd: string): Promise<boolean> {
-  const { code } = await execGit(["rev-parse", "--git-dir"], cwd);
-  return code === 0;
-}
 
 async function ghAvailable(cwd: string): Promise<boolean> {
   const { code } = await execGh(["--version"], cwd);
@@ -232,33 +200,6 @@ const PR_SYSTEM_PROMPT = [
   "- The JSON must be parseable. Body is a single JSON string with \\n line breaks.",
 ].join("\n");
 
-interface ProviderConfig {
-  apiBase: string;
-  apiKeyEnv: string;
-}
-
-const PROVIDER_CONFIGS: Record<string, ProviderConfig> = {
-  "openai-codex": { apiBase: "https://api.openai.com/v1", apiKeyEnv: "OPENAI_API_KEY" },
-  openai: { apiBase: "https://api.openai.com/v1", apiKeyEnv: "OPENAI_API_KEY" },
-  anthropic: { apiBase: "https://api.anthropic.com/v1", apiKeyEnv: "ANTHROPIC_API_KEY" },
-  deepseek: { apiBase: "https://api.deepseek.com/v1", apiKeyEnv: "DEEPSEEK_API_KEY" },
-  groq: { apiBase: "https://api.groq.com/v1", apiKeyEnv: "GROQ_API_KEY" },
-  "google-genai": {
-    apiBase: "https://generativelanguage.googleapis.com/v1beta",
-    apiKeyEnv: "GOOGLE_API_KEY",
-  },
-};
-
-function parseProviderAndModel(modelString: string): { providerId: string; modelId: string } {
-  const colonIndex = modelString.indexOf(":");
-  if (colonIndex === -1) {
-    return { providerId: "openai-codex", modelId: modelString };
-  }
-  return {
-    providerId: modelString.slice(0, colonIndex),
-    modelId: modelString.slice(colonIndex + 1),
-  };
-}
 
 function fallbackDraft(headBranch: string, commits: string): { title: string; body: string } {
   const firstSubject = commits.split("\n").find((line) => line.trim())?.replace(/^\w+\s+/, "") ?? headBranch;

@@ -3,11 +3,15 @@ import type {
   ChatRecord,
   ComposerAttachment,
   ComposerDeviceMode,
+  StreamRevealMode,
+  StreamRevealSpeed,
   ComposerDraftSyncSource,
   DesktopAppState,
   ModelSettingsScopeMode,
   NotificationPreferences,
+  PlanModeIdeologySetting,
   ThemeMode,
+  ThreadTransitionSettings,
 } from "../src/desktop-state";
 
 /**
@@ -34,9 +38,14 @@ import type {
 
 export type DesktopAction =
   | { readonly type: "settings/setSidebarCollapsed"; readonly sidebarCollapsed: boolean }
-  | { readonly type: "settings/setEnableTransparency"; readonly enableTransparency: boolean }
+  | { readonly type: "settings/setZoomFactor"; readonly zoomFactor: number }
+  | { readonly type: "settings/setQueueMode"; readonly queueMode: boolean }
   | { readonly type: "settings/setTranscriptVerbose"; readonly transcriptVerbose: boolean }
   | { readonly type: "settings/setComposerDeviceMode"; readonly composerDeviceMode: ComposerDeviceMode }
+  | { readonly type: "settings/setStreamReveal"; readonly streamReveal: StreamRevealMode }
+  | { readonly type: "settings/setStreamRevealSpeed"; readonly streamRevealSpeed: StreamRevealSpeed }
+  | { readonly type: "settings/setPlanModeIdeology"; readonly planModeIdeology: PlanModeIdeologySetting }
+  | { readonly type: "settings/mergeThreadTransition"; readonly preferences: Partial<ThreadTransitionSettings> }
   | { readonly type: "settings/setThemeMode"; readonly themeMode: ThemeMode }
   | { readonly type: "settings/setIntegratedTerminalShell"; readonly integratedTerminalShell: string }
   | { readonly type: "settings/setExternalTerminalApp"; readonly externalTerminalApp: string }
@@ -67,54 +76,36 @@ export type DesktopAction =
 
 export function reduce(state: DesktopAppState, action: DesktopAction): DesktopAppState {
   switch (action.type) {
-    case "settings/setSidebarCollapsed": {
-      if (state.sidebarCollapsed === action.sidebarCollapsed) {
-        return state;
-      }
-      return bump({ ...state, sidebarCollapsed: action.sidebarCollapsed });
+    case "settings/setSidebarCollapsed":
+      return setPropIfChanged(state, "sidebarCollapsed", action.sidebarCollapsed);
+    case "settings/setZoomFactor":
+      return setPropIfChanged(state, "zoomFactor", action.zoomFactor);
+    case "settings/setQueueMode":
+      return setPropIfChanged(state, "queueMode", action.queueMode);
+    case "settings/setTranscriptVerbose":
+      return setPropIfChanged(state, "transcriptVerbose", action.transcriptVerbose);
+    case "settings/setComposerDeviceMode":
+      return setPropIfChanged(state, "composerDeviceMode", action.composerDeviceMode);
+    case "settings/setStreamReveal":
+      return setPropIfChanged(state, "streamReveal", action.streamReveal);
+    case "settings/setStreamRevealSpeed":
+      return setPropIfChanged(state, "streamRevealSpeed", action.streamRevealSpeed);
+    case "settings/setPlanModeIdeology":
+      return setPropIfChanged(state, "planModeIdeology", action.planModeIdeology);
+    case "settings/mergeThreadTransition": {
+      return bump({
+        ...state,
+        threadTransition: { ...state.threadTransition, ...action.preferences },
+      });
     }
-    case "settings/setEnableTransparency": {
-      if (state.enableTransparency === action.enableTransparency) {
-        return state;
-      }
-      return bump({ ...state, enableTransparency: action.enableTransparency });
-    }
-    case "settings/setTranscriptVerbose": {
-      if (state.transcriptVerbose === action.transcriptVerbose) {
-        return state;
-      }
-      return bump({ ...state, transcriptVerbose: action.transcriptVerbose });
-    }
-    case "settings/setComposerDeviceMode": {
-      if (state.composerDeviceMode === action.composerDeviceMode) {
-        return state;
-      }
-      return bump({ ...state, composerDeviceMode: action.composerDeviceMode });
-    }
-    case "settings/setThemeMode": {
-      if (state.themeMode === action.themeMode) {
-        return state;
-      }
-      return bump({ ...state, themeMode: action.themeMode });
-    }
-    case "settings/setIntegratedTerminalShell": {
-      if (state.integratedTerminalShell === action.integratedTerminalShell) {
-        return state;
-      }
-      return bump({ ...state, integratedTerminalShell: action.integratedTerminalShell });
-    }
-    case "settings/setExternalTerminalApp": {
-      if (state.externalTerminalApp === action.externalTerminalApp) {
-        return state;
-      }
-      return bump({ ...state, externalTerminalApp: action.externalTerminalApp });
-    }
-    case "settings/setCommitPushModel": {
-      if (state.commitPushModel === action.commitPushModel) {
-        return state;
-      }
-      return bump({ ...state, commitPushModel: action.commitPushModel });
-    }
+    case "settings/setThemeMode":
+      return setPropIfChanged(state, "themeMode", action.themeMode);
+    case "settings/setIntegratedTerminalShell":
+      return setPropIfChanged(state, "integratedTerminalShell", action.integratedTerminalShell);
+    case "settings/setExternalTerminalApp":
+      return setPropIfChanged(state, "externalTerminalApp", action.externalTerminalApp);
+    case "settings/setCommitPushModel":
+      return setPropIfChanged(state, "commitPushModel", action.commitPushModel);
     case "settings/mergeNotificationPreferences": {
       return bump({
         ...state,
@@ -124,12 +115,8 @@ export function reduce(state: DesktopAppState, action: DesktopAction): DesktopAp
     case "view/setActiveView": {
       return bump({ ...state, activeView: action.activeView });
     }
-    case "settings/setModelSettingsScopeMode": {
-      if (state.modelSettingsScopeMode === action.modelSettingsScopeMode) {
-        return state;
-      }
-      return bump({ ...state, modelSettingsScopeMode: action.modelSettingsScopeMode });
-    }
+    case "settings/setModelSettingsScopeMode":
+      return setPropIfChanged(state, "modelSettingsScopeMode", action.modelSettingsScopeMode);
     case "composer/setDraft": {
       if (state.composerDraft === action.composerDraft && state.composerDraftSyncSource === action.syncSource) {
         return state;
@@ -237,6 +224,18 @@ export function reduce(state: DesktopAppState, action: DesktopAction): DesktopAp
 
 function bump(state: DesktopAppState): DesktopAppState {
   return { ...state, lastError: undefined, revision: state.revision + 1 };
+}
+
+/** If the new value equals the current state value, return state unchanged (identity). */
+function setPropIfChanged<K extends keyof DesktopAppState>(
+  state: DesktopAppState,
+  key: K,
+  value: DesktopAppState[K],
+): DesktopAppState {
+  if (state[key] === value) {
+    return state;
+  }
+  return bump({ ...state, [key]: value });
 }
 
 function composerAttachmentsEqual(

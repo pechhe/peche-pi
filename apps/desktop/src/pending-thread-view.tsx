@@ -1,12 +1,10 @@
 import { useRef } from "react";
 import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
-import { CavemanSelector } from "./caveman-selector";
-import { ComposerModeSelector } from "./composer-mode-selector";
+import { ComposerControlRow } from "./composer-control-row";
 import type { ComposerMode } from "./composer-mode";
 import { ArrowUpIcon } from "./icons";
 import type { CavemanLevel } from "./ipc";
-import { ModelFeatureBadges } from "./model-feature-badges";
-import { ModelSelector, type ModelSelectorHandle } from "./model-selector";
+import { type ModelSelectorHandle } from "./model-selector";
 
 function resolveContextWindow(
   runtime: RuntimeSnapshot | undefined,
@@ -67,7 +65,7 @@ export function PendingComposer({
             <textarea
               aria-label="Composer"
               disabled
-              placeholder="message the clanker"
+              placeholder=" message the clanker"
               readOnly
               rows={1}
               value=""
@@ -85,24 +83,20 @@ export function PendingComposer({
                 <div className="composer__footer-row">
                   <div className="composer__hint">
                     <span className="composer__hint-prose">Enter to send · Shift+Enter for newline</span>
-                    <span className="composer__controls">
-                      <span className="composer__controls-sep">{" \u00b7 "}</span>
-                      <ComposerModeSelector mode={composerMode} disabled onSetMode={() => undefined} />
-                      <span className="composer__controls-sep">{" \u00b7 "}</span>
-                      <ModelSelector
-                        ref={modelSelectorRef}
-                        runtime={runtime}
-                        provider={provider}
-                        modelId={modelId}
-                        thinkingLevel={thinkingLevel}
-                        disabled
-                        onSetModel={() => undefined}
-                        onSetThinking={() => undefined}
-                      />
-                      <span className="composer__controls-sep">{" \u00b7 "}</span>
-                      <CavemanSelector level={cavemanLevel} disabled onSetLevel={() => undefined} />
-                      <ModelFeatureBadges runtime={runtime} provider={provider} modelId={modelId} />
-                    </span>
+                    <ComposerControlRow
+                      runtime={runtime}
+                      provider={provider}
+                      modelId={modelId}
+                      thinkingLevel={thinkingLevel}
+                      cavemanLevel={cavemanLevel}
+                      composerMode={composerMode}
+                      disabled
+                      modelSelectorRef={modelSelectorRef}
+                      onSetComposerMode={() => undefined}
+                      onSetModel={() => undefined}
+                      onSetThinking={() => undefined}
+                      onSetCavemanLevel={() => undefined}
+                    />
                   </div>
                   <div className="composer__actions">
                     <span className="composer__key-mount composer__key-mount--send">

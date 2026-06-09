@@ -1,21 +1,110 @@
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { SKIP, visit } from "unist-util-visit";
+import { CheckIcon, CopyIcon } from "./icons";
 
 const REMARK_PLUGINS = [remarkGfm];
 
-const MARKDOWN_COMPONENTS = {
-  code: ({ className, children }: { className?: string; children?: React.ReactNode }) => {
-    const language = className?.replace(/^language-/, "");
-    const code = String(children).replace(/\n$/, "");
-    if (!className) {
-      return <code>{code}</code>;
-    }
-    return (
+// rehype plugin: wrap every word of a streamed message in <span class="sw">
+// so newly revealed words fade in via CSS (opacity 0→1) as they mount. Skips
+// code/pre so inline code and code blocks stay untouched (copyable, monospace).
+//
+// Why this survives re-parse: ReactMarkdown rebuilds the tree on every delta,
+// but React reconciliation reuses the existing DOM node for word spans whose
+// position is unchanged (the stable prefix), so their fade animation plays
+// once on mount and never restarts. Only the new tail word mounts fresh and
+// animates. Markdown structural shifts (e.g. a closing **) remount a small
+// tail subtree — a tail-local re-fade, which is acceptable.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const rehypeStreamWords = () => (tree: any) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  visit(tree, "text", (node: any, index: number | undefined, parent: any) => {
+    if (index === undefined || index === null || !parent) return;
+    const tag = parent.tagName;
+    if (tag === "code" || tag === "pre") return;
+    const value: string = node.value ?? "";
+    if (!value.trim()) return;
+    const parts = value.split(/(\s+)/).filter((part) => part.length > 0);
+    const replacement = parts.map((part) =>
+      /^\s+$/.test(part)
+        ? { type: "text", value: part }
+        : {
+            type: "element",
+            tagName: "span",
+            properties: { className: ["sw"] },
+            children: [{ type: "text", value: part }],
+          },
+    );
+    parent.children.splice(index, 1, ...replacement);
+    return [SKIP, index + replacement.length];
+  });
+};
+
+const STREAM_REHYPE_PLUGINS = [rehypeStreamWords];
+
+// During streaming the revealed slice often ends mid-token — e.g. an inline
+// `code span before its closing backtick. The parser then shows the raw
+// backtick + plain text ("variable names don't render properly") until the
+// closer arrives, and at slow reveal speeds that broken state lingers. Close a
+// dangling inline-code span so it renders as styled code immediately and keeps
+// revealing char-by-char; the real closer replaces ours on the next frame.
+// Skips when inside a fenced ``` block (that content is code anyway).
+function closeDanglingInlineCode(text: string): string {
+  const fences = text.match(/```/g);
+  if (fences && fences.length % 2 === 1) return text; // inside an open code fence
+  const singleTicks = (text.replace(/```/g, "").match(/`/g) ?? []).length;
+  return singleTicks % 2 === 1 ? `${text}\`` : text;
+}
+
+// Opt-in reveal effects, read once per stream from localStorage so they can be
+// toggled live in devtools without a rebuild (see the .sw CSS for tokens):
+//   localStorage.streamFx = "rise glow"   /   delete localStorage.streamFx
+// Empty => baseline blur-to-sharp only. Returns undefined so the attribute is
+// omitted entirely when unset.
+function readStreamFx(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  try {
+    return window.localStorage.getItem("streamFx") ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function CodeBlock({ className, children }: { className?: string; children?: React.ReactNode }) {
+  const language = className?.replace(/^language-/, "");
+  const code = String(children).replace(/\n$/, "");
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(() => {
+    void navigator.clipboard.writeText(code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, [code]);
+
+  return (
+    <div className="code-block">
       <pre data-language={language}>
         <code className={className}>{code}</code>
       </pre>
-    );
+      <button
+        className="code-block__copy"
+        type="button"
+        aria-label={copied ? "Copied" : "Copy code"}
+        onClick={handleCopy}
+      >
+        {copied ? <CheckIcon /> : <CopyIcon />}
+      </button>
+    </div>
+  );
+}
+
+const MARKDOWN_COMPONENTS = {
+  code: ({ className, children }: { className?: string; children?: React.ReactNode }) => {
+    if (!className) {
+      return <code>{String(children).replace(/\n$/, "")}</code>;
+    }
+    return <CodeBlock className={className}>{children}</CodeBlock>;
   },
   a: ({ href, children }: { href?: string; children?: React.ReactNode }) => (
     <a href={href} rel="noreferrer" target="_blank">
@@ -41,11 +130,43 @@ export const MessageMarkdown = memo(function MessageMarkdown({ text }: { readonl
 // animation frame, so the user sees a smooth typewriter regardless of how the
 // model chunked its output.
 //
-// Fast fixed-rate reveal. We intentionally do NOT snap or flush mid-stream:
-// snapping is what makes the rest of a sentence appear as a burst. This is
-// closer to the terminal `pi` feel: very fast streaming, but still painted at
-// a consistent frame cadence instead of provider-sized chunks.
-const TYPEWRITER_BASE_CHARS_PER_FRAME = 9; // ~540 chars/sec at 60 Hz
+// Steady-rate reveal at character boundaries. Each active frame advances a
+// fixed number of chars (step), chosen by the user via Settings. Lower speeds
+// reveal fewer chars per frame and/or skip frames entirely, so the animation
+// is always visible. No adaptive catch-up — the rate is constant regardless
+// of how fast the model delivers text.
+type TypewriterRate = { readonly step: number; readonly tickEvery: number };
+const TYPEWRITER_SPEED_TABLE: Record<"low" | "medium" | "high", TypewriterRate> = {
+  low: { step: 1, tickEvery: 4 },    // ~15 chars/sec at 60 fps
+  medium: { step: 1, tickEvery: 2 },  // ~30 chars/sec
+  high: { step: 1, tickEvery: 1 },    // ~60 chars/sec
+};
+const DEFAULT_TYPEWRITER_RATE = TYPEWRITER_SPEED_TABLE.medium;
+
+// When the buffer runs this far ahead of what's revealed, the provider is
+// dumping text faster than we can trickle it. Char-by-char then looks wrong:
+// each word's .sw span appears partial, fades, then snap-grows as more chars
+// land inside the already-faded span (the growth isn't animated). Past this
+// threshold we advance to whole-word boundaries instead, so every word span
+// appears complete and fades as one unit — a clean wave even at speed. Below
+// it (genuine slow trickle) we keep the visible char-by-char cadence.
+const WORD_SNAP_BACKLOG = 16;
+
+// Reveal index of the end of the word at/after `from`: skip the current
+// non-space run, then the trailing whitespace, so the next reveal lands on a
+// word boundary rather than mid-word.
+function nextWordBoundary(text: string, from: number): number {
+  let i = from;
+  while (i < text.length && !/\s/.test(text[i]!)) i += 1;
+  while (i < text.length && /\s/.test(text[i]!)) i += 1;
+  return i;
+}
+
+function resolveTypewriterRate(): TypewriterRate {
+  if (typeof document === "undefined") return DEFAULT_TYPEWRITER_RATE;
+  const raw = document.documentElement.getAttribute("data-stream-speed");
+  return TYPEWRITER_SPEED_TABLE[raw as keyof typeof TYPEWRITER_SPEED_TABLE] ?? DEFAULT_TYPEWRITER_RATE;
+}
 
 function prefersReducedMotion(): boolean {
   if (typeof window === "undefined" || !window.matchMedia) return false;
@@ -64,7 +185,14 @@ function useTypewriter(targetText: string, onCaughtUp?: () => void): string {
   const [displayedLength, setDisplayedLength] = useState<number>(() =>
     reducedMotionRef.current ? targetText.length : 0,
   );
+  // Resolve reveal speed once per mount (like reduced-motion); in-flight
+  // streams keep their speed if the setting changes — new messages pick it up.
+  const rateRef = useRef<TypewriterRate | null>(null);
+  if (rateRef.current === null) {
+    rateRef.current = resolveTypewriterRate();
+  }
   const rafRef = useRef<number | null>(null);
+  const frameCountRef = useRef(0);
   const targetRef = useRef(targetText);
   targetRef.current = targetText;
 
@@ -74,10 +202,26 @@ function useTypewriter(targetText: string, onCaughtUp?: () => void): string {
   const tickRef = useRef<() => void>(() => {});
   tickRef.current = () => {
     rafRef.current = null;
+    const rate = rateRef.current ?? DEFAULT_TYPEWRITER_RATE;
+    frameCountRef.current += 1;
+    if (frameCountRef.current % rate.tickEvery !== 0) {
+      rafRef.current = requestAnimationFrame(() => tickRef.current());
+      return;
+    }
     setDisplayedLength((current) => {
-      const target = targetRef.current.length;
+      const text = targetRef.current;
+      const target = text.length;
       if (current >= target) return current;
-      const next = Math.min(target, current + TYPEWRITER_BASE_CHARS_PER_FRAME);
+      const backlog = target - current;
+      let next: number;
+      if (backlog > WORD_SNAP_BACKLOG) {
+        // Behind: reveal a whole word so its span fades as a complete unit.
+        next = Math.min(nextWordBoundary(text, current), target);
+        if (next <= current) next = current + 1; // guarantee progress
+      } else {
+        // Slow trickle: keep the tuned char-by-char cadence.
+        next = current + Math.min(rate.step, backlog);
+      }
       if (next < target) {
         rafRef.current = requestAnimationFrame(() => tickRef.current());
       }
@@ -116,16 +260,15 @@ function useTypewriter(targetText: string, onCaughtUp?: () => void): string {
   return targetText.slice(0, effectiveLength);
 }
 
-// While an assistant message is still streaming, render it as plain text
-// (no markdown parse per delta) and reveal characters through a render-side
-// typewriter buffer so the visible cadence is smooth regardless of how the
-// provider chunked deltas. The parent keeps this mounted after run end until
-// onCaughtUp fires, so the final markdown swap never reveals hidden text as
-// a burst.
+// While an assistant message is still streaming, render markdown-parsed text
+// and reveal characters through a render-side typewriter buffer so the visible
+// cadence is smooth regardless of how the provider chunked deltas. The parent
+// keeps this mounted after run end until onCaughtUp fires, so the final swap
+// to the final MessageMarkdown never reveals hidden text as a burst.
 //
-// `white-space: pre-wrap` preserves newlines and spaces so the stream looks
-// like prose during typing. The wrapper class matches MessageMarkdown so
-// layout/typography don't shift on swap.
+// Partial markdown (e.g. unclosed bold markers) renders imperfectly during
+// streaming but is far better than raw syntax. It self-corrects as more text
+// arrives.
 export const StreamingMessageText = memo(function StreamingMessageText({
   text,
   onCaughtUp,
@@ -133,15 +276,17 @@ export const StreamingMessageText = memo(function StreamingMessageText({
   readonly text: string;
   readonly onCaughtUp?: () => void;
 }) {
-  const displayed = useTypewriter(text, onCaughtUp);
+  const displayed = closeDanglingInlineCode(useTypewriter(text, onCaughtUp));
+  const streamFx = readStreamFx();
   return (
-    <div className="message__content message__content--streaming" style={{ whiteSpace: "pre-wrap" }}>
-      {displayed}
-      {/* Blinking caret to signal active typing. Inline so it follows the
-          current end-of-text position even mid-line. Pure CSS animation —
-          no React state, no re-renders. Removed entirely when the run ends
-          because the whole component swaps out to MessageMarkdown. */}
-      <span className="streaming-caret" aria-hidden="true" />
+    <div className="message__content message__content--streaming" data-stream-fx={streamFx}>
+      <ReactMarkdown
+        remarkPlugins={REMARK_PLUGINS}
+        rehypePlugins={STREAM_REHYPE_PLUGINS}
+        components={MARKDOWN_COMPONENTS}
+      >
+        {displayed}
+      </ReactMarkdown>
     </div>
   );
 });

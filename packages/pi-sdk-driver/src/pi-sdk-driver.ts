@@ -25,7 +25,7 @@ import {
 } from "./session-supervisor.js";
 import { RuntimeSupervisor, type RuntimeSupervisorOptions } from "./runtime-supervisor.js";
 import { createRuntimeDependencies } from "./runtime-deps.js";
-import { generateThreadTitle, type GenerateThreadTitleOptions } from "./thread-title-generator.js";
+import { generateThreadTitle, type GenerateThreadTitleOptions, type GeneratedThreadTitle } from "./thread-title-generator.js";
 
 export interface PiSdkDriverConfig extends PiSdkDriverOptions, RuntimeSupervisorOptions {}
 
@@ -35,7 +35,7 @@ export class PiSdkDriver implements SessionDriver {
   private readonly authStorage: AuthStorage;
   private readonly modelRegistry: ModelRegistry;
   private readonly generateThreadTitleOverride:
-    | ((workspace: WorkspaceRef, options: GenerateThreadTitleOptions) => Promise<string | null | undefined>)
+    | ((workspace: WorkspaceRef, options: GenerateThreadTitleOptions) => Promise<GeneratedThreadTitle | string | null | undefined>)
     | undefined;
   readonly runtimeSupervisor: RuntimeSupervisor;
 
@@ -154,6 +154,10 @@ export class PiSdkDriver implements SessionDriver {
     return this.supervisor.getTranscript(sessionRef);
   }
 
+  readSessionFileEntries(sessionFilePath: string) {
+    return this.supervisor.readSessionFileEntries(sessionFilePath);
+  }
+
   getLoopIterations(sessionRef: SessionRef) {
     return this.supervisor.getLoopIterations(sessionRef);
   }
@@ -162,17 +166,22 @@ export class PiSdkDriver implements SessionDriver {
     return this.supervisor.sessionEditedRalphPlan(sessionRef);
   }
 
-  generateThreadTitle(workspace: WorkspaceRef, options: GenerateThreadTitleOptions): Promise<string | null> {
+  generateThreadTitle(workspace: WorkspaceRef, options: GenerateThreadTitleOptions): Promise<GeneratedThreadTitle | null> {
     if (this.generateThreadTitleOverride) {
-      return Promise.resolve(this.generateThreadTitleOverride(workspace, options)).then((override) =>
-        override !== undefined
-          ? override
-          : generateThreadTitle(workspace, options, {
-              agentDir: this.agentDir,
-              authStorage: this.authStorage,
-              modelRegistry: this.modelRegistry,
-            }),
-      );
+      return Promise.resolve(this.generateThreadTitleOverride(workspace, options)).then((override) => {
+        if (override === undefined) {
+          return generateThreadTitle(workspace, options, {
+            agentDir: this.agentDir,
+            authStorage: this.authStorage,
+            modelRegistry: this.modelRegistry,
+          });
+        }
+        if (override === null || typeof override === "object") {
+          return override as GeneratedThreadTitle | null;
+        }
+        // Legacy string return — wrap as GeneratedThreadTitle.
+        return { type: "other", title: override };
+      });
     }
     return generateThreadTitle(workspace, options, {
       agentDir: this.agentDir,

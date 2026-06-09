@@ -2,7 +2,6 @@ import type { SessionConfig } from "@pi-gui/session-driver";
 import type {
   RuntimeCommandRecord,
   RuntimeProviderRecord,
-  RuntimeSettingsSnapshot,
   RuntimeSnapshot,
 } from "@pi-gui/session-driver/runtime-types";
 import type { ExtensionCommandCompatibilityRecord } from "./desktop-state";
@@ -59,12 +58,9 @@ export interface ComposerModelOption extends ComposerSlashOption {
   readonly modelId: string;
 }
 
-export interface ComposerProviderOption extends ComposerSlashOption {
-  readonly providerId: string;
-}
 
 export const MODEL_OPTIONS_EMPTY_TITLE = "No models available";
-export const MODEL_OPTIONS_EMPTY_DESCRIPTION = "Open Settings to enable a model or log in to a provider.";
+const MODEL_OPTIONS_EMPTY_DESCRIPTION = "Open Settings to enable a model or log in to a provider.";
 
 export type ParsedComposerCommand =
   | { type: "model"; provider: string; modelId: string }
@@ -210,7 +206,7 @@ const HOST_ACTION_SLASH_COMMANDS: readonly ComposerSlashCommand[] = [
   },
 ] as const;
 
-export const THINKING_OPTIONS: readonly ComposerSlashOption[] = [
+const THINKING_OPTIONS: readonly ComposerSlashOption[] = [
   {
     value: "low",
     label: "Low",
@@ -228,8 +224,8 @@ export const THINKING_OPTIONS: readonly ComposerSlashOption[] = [
   },
   {
     value: "xhigh",
-    label: "Extra High",
-    description: "Extra high reasoning depth for complex problems",
+    label: "Max",
+    description: "Maximum reasoning depth (Anthropic Max / OpenAI xhigh)",
   },
 ] as const;
 
@@ -283,7 +279,7 @@ export function buildSlashCommandSections(
   return sections.filter((section) => section.items.length > 0);
 }
 
-export function resolveRuntimeCommands(
+function resolveRuntimeCommands(
   runtime: RuntimeSnapshot | undefined,
   sessionCommands: readonly RuntimeCommandRecord[],
 ): readonly RuntimeCommandRecord[] {
@@ -361,7 +357,11 @@ export function flattenSlashSections(
   return sections.flatMap((section) => section.items);
 }
 
-export function buildProviderOptions(
+interface ComposerProviderOption extends ComposerSlashOption {
+  readonly providerId: string;
+}
+
+function buildProviderOptions(
   providers: readonly RuntimeProviderRecord[],
   filter: (provider: RuntimeProviderRecord) => boolean = () => true,
 ): readonly ComposerProviderOption[] {
@@ -544,16 +544,6 @@ function providerRankForId(
 ): number {
   const provider = providers.find((entry) => entry.id === providerId);
   return provider ? providerRank(provider) : 99;
-}
-
-function summarizeSkillDescription(value: string): string {
-  const trimmed = value.trim().replace(/\s+/g, " ");
-  if (!trimmed) {
-    return "Reusable workflow";
-  }
-
-  const firstSentence = trimmed.match(/^[^.!?]+[.!?]?/)?.[0]?.trim() ?? trimmed;
-  return firstSentence.length > 96 ? `${firstSentence.slice(0, 93).trimEnd()}...` : firstSentence;
 }
 
 function formatRuntimeCommandTitle(command: RuntimeCommandRecord): string {

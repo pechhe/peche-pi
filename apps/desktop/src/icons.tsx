@@ -2,9 +2,21 @@ import type { ReactNode } from "react";
 
 import logoUrl from "./assets/logo.png";
 
-function Icon({ children }: { readonly children: ReactNode }) {
+// Icons follow the Lucide geometry standard: a 24x24 grid, 2px stroke,
+// round caps/joins, and currentColor. The wrapper applies those defaults so
+// each icon body only carries its path data, keeping the set consistent.
+function Icon({ children, className }: { readonly children: ReactNode; readonly className?: string }) {
   return (
-    <svg aria-hidden="true" fill="none" viewBox="0 0 20 20">
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
       {children}
     </svg>
   );
@@ -13,7 +25,17 @@ function Icon({ children }: { readonly children: ReactNode }) {
 export function PlusIcon() {
   return (
     <Icon>
-      <path d="M10 4.25v11.5M4.25 10h11.5" stroke="currentColor" strokeLinecap="round" strokeWidth="1.7" />
+      <path d="M5 12h14" />
+      <path d="M12 5v14" />
+    </Icon>
+  );
+}
+
+export function SearchIcon() {
+  return (
+    <Icon>
+      <circle cx="11" cy="11" r="8" />
+      <path d="m21 21-4.3-4.3" />
     </Icon>
   );
 }
@@ -21,8 +43,9 @@ export function PlusIcon() {
 export function TerminalIcon() {
   return (
     <Icon>
-      <rect x="3.3" y="4.1" width="13.4" height="11.8" rx="2" stroke="currentColor" strokeWidth="1.35" />
-      <path d="m6.2 7.4 2.2 2.1-2.2 2.1M9.7 12h3.7" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.35" />
+      <path d="m7 11 2-2-2-2" />
+      <path d="M11 13h4" />
+      <rect x="3" y="3" width="18" height="18" rx="2" />
     </Icon>
   );
 }
@@ -30,8 +53,9 @@ export function TerminalIcon() {
 export function ExternalTerminalIcon() {
   return (
     <Icon>
-      <path d="M9.4 4.1H5.3a2 2 0 0 0-2 2v8.5a2 2 0 0 0 2 2h8.5a2 2 0 0 0 2-2v-4.1" stroke="currentColor" strokeLinecap="round" strokeWidth="1.35" />
-      <path d="M11.3 4.1h4.6v4.6M15.6 4.4 9.7 10.3" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.35" />
+      <path d="M15 3h6v6" />
+      <path d="M10 14 21 3" />
+      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
     </Icon>
   );
 }
@@ -39,9 +63,8 @@ export function ExternalTerminalIcon() {
 export function SidebarToggleIcon() {
   return (
     <Icon>
-      <rect x="3.4" y="4.1" width="13.2" height="11.8" rx="2.2" stroke="currentColor" strokeWidth="1.35" />
-      <path d="M7.4 4.2v11.6" stroke="currentColor" strokeWidth="1.35" />
-      <path d="M11 8.1 8.9 10l2.1 1.9" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.35" />
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <path d="M9 3v18" />
     </Icon>
   );
 }
@@ -49,8 +72,10 @@ export function SidebarToggleIcon() {
 export function MaximizeIcon() {
   return (
     <Icon>
-      <path d="M6.1 3.8H3.8v2.3M13.9 3.8h2.3v2.3M6.1 16.2H3.8v-2.3M13.9 16.2h2.3v-2.3" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.45" />
-      <path d="M7 7h6v6H7z" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.25" />
+      <path d="M15 3h6v6" />
+      <path d="m21 3-7 7" />
+      <path d="m3 21 7-7" />
+      <path d="M9 21H3v-6" />
     </Icon>
   );
 }
@@ -58,8 +83,10 @@ export function MaximizeIcon() {
 export function MinimizeIcon() {
   return (
     <Icon>
-      <path d="M3.9 7.1h3.2V3.9M16.1 7.1h-3.2V3.9M3.9 12.9h3.2v3.2M16.1 12.9h-3.2v3.2" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.45" />
-      <path d="M7.7 7.7h4.6v4.6H7.7z" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.2" />
+      <path d="m14 10 7-7" />
+      <path d="M20 10h-6V4" />
+      <path d="m3 21 7-7" />
+      <path d="M4 14h6v6" />
     </Icon>
   );
 }
@@ -67,7 +94,8 @@ export function MinimizeIcon() {
 export function CloseIcon() {
   return (
     <Icon>
-      <path d="m6 6 8 8M14 6l-8 8" stroke="currentColor" strokeLinecap="round" strokeWidth="1.5" />
+      <path d="M18 6 6 18" />
+      <path d="m6 6 12 12" />
     </Icon>
   );
 }
@@ -75,8 +103,8 @@ export function CloseIcon() {
 export function ArrowUpIcon() {
   return (
     <Icon>
-      <path d="M10 15.2V4.8" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
-      <path d="M5.8 9 10 4.8 14.2 9" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+      <path d="m5 12 7-7 7 7" />
+      <path d="M12 19V5" />
     </Icon>
   );
 }
@@ -98,7 +126,7 @@ export function PiLogoMark() {
 export function StopSquareIcon() {
   return (
     <Icon>
-      <rect x="5.2" y="5.2" width="9.6" height="9.6" rx="1.6" fill="currentColor" />
+      <rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" stroke="none" />
     </Icon>
   );
 }
@@ -106,12 +134,7 @@ export function StopSquareIcon() {
 export function FolderIcon() {
   return (
     <Icon>
-      <path
-        d="M2.75 6.5a1.75 1.75 0 0 1 1.75-1.75h3.1l1.5 1.7h6.4a1.75 1.75 0 0 1 1.75 1.75v5.3a1.75 1.75 0 0 1-1.75 1.75H4.5a1.75 1.75 0 0 1-1.75-1.75V6.5Z"
-        stroke="currentColor"
-        strokeLinejoin="round"
-        strokeWidth="1.5"
-      />
+      <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
     </Icon>
   );
 }
@@ -119,27 +142,19 @@ export function FolderIcon() {
 export function FileIcon() {
   return (
     <Icon>
-      <path
-        d="M6.1 3.9h5.6l2.3 2.3v8a1.7 1.7 0 0 1-1.7 1.7H6.1a1.7 1.7 0 0 1-1.7-1.7V5.6a1.7 1.7 0 0 1 1.7-1.7Z"
-        stroke="currentColor"
-        strokeLinejoin="round"
-        strokeWidth="1.35"
-      />
-      <path d="M11.7 3.9v2.4h2.3M7.2 9.15h5.6M7.2 11.8h4.2" stroke="currentColor" strokeLinecap="round" strokeWidth="1.35" />
+      <path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z" />
+      <path d="M14 2v5a1 1 0 0 0 1 1h5" />
+      <path d="M10 9H8" />
+      <path d="M16 13H8" />
+      <path d="M16 17H8" />
     </Icon>
   );
 }
 
-export function ArchiveIcon() {
+export function DoneIcon() {
   return (
     <Icon>
-      <path
-        d="M4.1 5.1h11.8l-.8 10.1a1.2 1.2 0 0 1-1.2 1.1H6.1a1.2 1.2 0 0 1-1.2-1.1L4.1 5.1Z"
-        stroke="currentColor"
-        strokeLinejoin="round"
-        strokeWidth="1.35"
-      />
-      <path d="M3.4 4.1h13.2v2.4H3.4zM7.1 9.15h5.8" stroke="currentColor" strokeLinecap="round" strokeWidth="1.35" />
+      <path d="M20 6 9 17l-5-5" />
     </Icon>
   );
 }
@@ -147,14 +162,11 @@ export function ArchiveIcon() {
 export function RestoreIcon() {
   return (
     <Icon>
-      <path
-        d="M4.1 6.15h11.8l-.8 9.05a1.2 1.2 0 0 1-1.2 1.1H6.1a1.2 1.2 0 0 1-1.2-1.1L4.1 6.15Z"
-        stroke="currentColor"
-        strokeLinejoin="round"
-        strokeWidth="1.35"
-      />
-      <path d="M3.4 5.15h13.2v2.1H3.4z" stroke="currentColor" strokeWidth="1.35" />
-      <path d="M10 12.8V8.4m0 0L8.2 10.2M10 8.4l1.8 1.8" stroke="currentColor" strokeLinecap="round" strokeWidth="1.35" />
+      <rect x="2" y="3" width="20" height="5" rx="1" />
+      <path d="M4 8v11a2 2 0 0 0 2 2h2" />
+      <path d="M20 8v11a2 2 0 0 1-2 2h-2" />
+      <path d="m9 15 3-3 3 3" />
+      <path d="M12 12v9" />
     </Icon>
   );
 }
@@ -162,7 +174,7 @@ export function RestoreIcon() {
 export function ChevronDownIcon() {
   return (
     <Icon>
-      <path d="m5.7 8.1 4.3 4.1 4.3-4.1" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" />
+      <path d="m6 9 6 6 6-6" />
     </Icon>
   );
 }
@@ -170,7 +182,7 @@ export function ChevronDownIcon() {
 export function ChevronRightIcon() {
   return (
     <Icon>
-      <path d="m8.1 5.7 4.1 4.3-4.1 4.3" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" />
+      <path d="m9 18 6-6-6-6" />
     </Icon>
   );
 }
@@ -178,8 +190,16 @@ export function ChevronRightIcon() {
 export function CopyIcon() {
   return (
     <Icon>
-      <rect x="6.5" y="6.5" width="9" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.2" fill="none" />
-      <path d="M4.5 13.5V5a1.5 1.5 0 0 1 1.5-1.5h8.5" stroke="currentColor" strokeWidth="1.2" fill="none" strokeLinecap="round" />
+      <rect x="8" y="8" width="14" height="14" rx="2" ry="2" />
+      <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+    </Icon>
+  );
+}
+
+export function CheckIcon() {
+  return (
+    <Icon>
+      <path d="M20 6 9 17l-5-5" />
     </Icon>
   );
 }
@@ -187,49 +207,30 @@ export function CopyIcon() {
 export function SparkIcon() {
   return (
     <Icon>
-      <path
-        d="m10 3.1 1.55 3.66 3.66 1.55-3.66 1.55L10 13.5l-1.55-3.64L4.8 8.3l3.65-1.55L10 3.1Zm5 8.6.72 1.58 1.58.72-1.58.72L15 16.3l-.72-1.58-1.58-.72 1.58-.72.72-1.58Z"
-        fill="currentColor"
-      />
+      <path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z" />
+      <path d="M20 2v4" />
+      <path d="M22 4h-4" />
+      <circle cx="4" cy="20" r="2" />
     </Icon>
   );
 }
 
-export function PiGlyphIcon() {
+export function ContextIcon() {
   return (
     <Icon>
-      <path
-        d="M5 5.25h10"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeWidth="1.7"
-      />
-      <path
-        d="M8 5.25v9.5"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeWidth="1.7"
-      />
-      <path
-        d="M8 10.5c0-1.55 1.15-2.8 2.6-2.8 1.05 0 1.95.5 2.45 1.45"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.5"
-      />
+      <path d="M15 12h-5" />
+      <path d="M15 8h-5" />
+      <path d="M19 17V5a2 2 0 0 0-2-2H4" />
+      <path d="M8 21h12a2 2 0 0 0 2-2v-1a1 1 0 0 0-1-1H11a1 1 0 0 0-1 1v1a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v2a1 1 0 0 0 1 1h3" />
     </Icon>
   );
 }
+
 export function SettingsIcon() {
   return (
     <Icon>
-      <path
-        d="M8.8 3.6h2.4l.4 1.6 1.5.62 1.42-.85 1.7 1.7-.86 1.43.63 1.5 1.6.4v2.4l-1.6.4-.63 1.5.86 1.43-1.7 1.7-1.42-.85-1.5.62-.4 1.6H8.8l-.4-1.6-1.5-.62-1.42.85-1.7-1.7.86-1.43-.63-1.5-1.6-.4v-2.4l1.6-.4.63-1.5-.86-1.43 1.7-1.7 1.42.85 1.5-.62.4-1.6Z"
-        stroke="currentColor"
-        strokeLinejoin="round"
-        strokeWidth="1.25"
-      />
-      <circle cx="10" cy="10" r="2.3" stroke="currentColor" strokeWidth="1.25" />
+      <path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915" />
+      <circle cx="12" cy="12" r="3" />
     </Icon>
   );
 }
@@ -237,13 +238,9 @@ export function SettingsIcon() {
 export function ModelIcon() {
   return (
     <Icon>
-      <path
-        d="M10 3.3 15.8 6.4v7.2L10 16.7 4.2 13.6V6.4L10 3.3Z"
-        stroke="currentColor"
-        strokeLinejoin="round"
-        strokeWidth="1.4"
-      />
-      <path d="M4.5 6.65 10 9.7l5.5-3.05M10 9.8v6.5" stroke="currentColor" strokeWidth="1.2" />
+      <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
+      <path d="m3.3 7 8.7 5 8.7-5" />
+      <path d="M12 22V12" />
     </Icon>
   );
 }
@@ -251,14 +248,14 @@ export function ModelIcon() {
 export function ReasoningIcon() {
   return (
     <Icon>
-      <path
-        d="M7.2 6.1a2.6 2.6 0 1 1 2.6 2.6v1.05M12.35 6.35a2.2 2.2 0 1 1-2.2-2.2"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.35"
-      />
-      <path d="M7.2 13.6h5.6M8.2 16h3.6" stroke="currentColor" strokeLinecap="round" strokeWidth="1.35" />
+      <path d="M12 18V5" />
+      <path d="M15 13a4.17 4.17 0 0 1-3-4 4.17 4.17 0 0 1-3 4" />
+      <path d="M17.598 6.5A3 3 0 1 0 12 5a3 3 0 1 0-5.598 1.5" />
+      <path d="M17.997 5.125a4 4 0 0 1 2.526 5.77" />
+      <path d="M18 18a4 4 0 0 0 2-7.464" />
+      <path d="M19.967 17.483A4 4 0 1 1 12 18a4 4 0 1 1-7.967-.517" />
+      <path d="M6 18a4 4 0 0 1-2-7.464" />
+      <path d="M6.003 5.125a4 4 0 0 0-2.526 5.77" />
     </Icon>
   );
 }
@@ -266,9 +263,7 @@ export function ReasoningIcon() {
 export function StatusIcon() {
   return (
     <Icon>
-      <path d="M4.3 10h11.4" stroke="currentColor" strokeLinecap="round" strokeWidth="1.4" />
-      <path d="M10 4.3v11.4" stroke="currentColor" strokeLinecap="round" strokeWidth="1.4" />
-      <circle cx="10" cy="10" r="6.6" stroke="currentColor" strokeWidth="1.3" />
+      <path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2" />
     </Icon>
   );
 }
@@ -276,13 +271,9 @@ export function StatusIcon() {
 export function SkillIcon() {
   return (
     <Icon>
-      <path
-        d="M10 2.8 15.8 6v8L10 17.2 4.2 14V6L10 2.8Z"
-        stroke="currentColor"
-        strokeLinejoin="round"
-        strokeWidth="1.35"
-      />
-      <path d="M10 2.8V17.2M4.2 6 10 9.2 15.8 6" stroke="currentColor" strokeWidth="1.2" />
+      <path d="M8.3 10a.7.7 0 0 1-.626-1.079L11.4 3a.7.7 0 0 1 1.198-.043L16.3 8.9a.7.7 0 0 1-.572 1.1Z" />
+      <rect x="3" y="14" width="7" height="7" rx="1" />
+      <circle cx="17.5" cy="17.5" r="3.5" />
     </Icon>
   );
 }
@@ -290,28 +281,29 @@ export function SkillIcon() {
 export function ExtensionIcon() {
   return (
     <Icon>
-      <path
-        d="M8.2 3.5 6.7 5a2.3 2.3 0 1 0 1.8 1.8L10 5.3l1.5 1.5a2.3 2.3 0 1 0 1.8-1.8l-1.5-1.5H8.2Z"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.3"
-      />
-      <path d="M10 9.1v7.1" stroke="currentColor" strokeLinecap="round" strokeWidth="1.3" />
+      <path d="M15.39 4.39a1 1 0 0 0 1.68-.474 2.5 2.5 0 1 1 3.014 3.015 1 1 0 0 0-.474 1.68l1.683 1.682a2.414 2.414 0 0 1 0 3.414L19.61 15.39a1 1 0 0 1-1.68-.474 2.5 2.5 0 1 0-3.014 3.015 1 1 0 0 1 .474 1.68l-1.683 1.682a2.414 2.414 0 0 1-3.414 0L8.61 19.61a1 1 0 0 0-1.68.474 2.5 2.5 0 1 1-3.014-3.015 1 1 0 0 0 .474-1.68l-1.683-1.682a2.414 2.414 0 0 1 0-3.414L4.39 8.61a1 1 0 0 1 1.68.474 2.5 2.5 0 1 0 3.014-3.015 1 1 0 0 1-.474-1.68l1.683-1.682a2.414 2.414 0 0 1 3.414 0z" />
     </Icon>
   );
 }
 
-export function RefreshIcon() {
+export function RefreshIcon({ className }: { readonly className?: string } = {}) {
+  return (
+    <Icon className={className}>
+      <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+      <path d="M21 3v5h-5" />
+      <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+      <path d="M8 16H3v5" />
+    </Icon>
+  );
+}
+
+export function GraphIcon() {
   return (
     <Icon>
-      <path
-        d="M15.1 8.2A5.6 5.6 0 1 0 15 12.8M15.2 4.9v3.7h-3.7"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.45"
-      />
+      <circle cx="12" cy="5" r="2.5" />
+      <circle cx="5" cy="19" r="2.5" />
+      <circle cx="19" cy="19" r="2.5" />
+      <path d="M12 7.5v5M7.2 17l3-5M16.8 17l-3-5" />
     </Icon>
   );
 }
@@ -319,32 +311,40 @@ export function RefreshIcon() {
 export function WorktreeIcon() {
   return (
     <Icon>
-      <path d="M6 5.3h8.1v8.1" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.45" />
-      <path d="M13.9 5.45 5.9 13.45" stroke="currentColor" strokeLinecap="round" strokeWidth="1.45" />
-      <path d="M5.85 9.75v3.95h3.95" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.45" />
+      <path d="M15 6a9 9 0 0 0-9 9V3" />
+      <circle cx="18" cy="6" r="3" />
+      <circle cx="6" cy="18" r="3" />
     </Icon>
   );
 }
 
-export function GripIcon() {
+export function ClockIcon() {
   return (
     <Icon>
-      <circle cx="8" cy="7" r="1.2" fill="currentColor" />
-      <circle cx="12" cy="7" r="1.2" fill="currentColor" />
-      <circle cx="8" cy="10" r="1.2" fill="currentColor" />
-      <circle cx="12" cy="10" r="1.2" fill="currentColor" />
-      <circle cx="8" cy="13" r="1.2" fill="currentColor" />
-      <circle cx="12" cy="13" r="1.2" fill="currentColor" />
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
+    </Icon>
+  );
+}
+
+export function MonitorIcon() {
+  return (
+    <Icon>
+      <rect x="2" y="3" width="20" height="14" rx="2" />
+      <path d="M8 21h8" />
+      <path d="M12 17v4" />
     </Icon>
   );
 }
 
 export function EditedFilesIcon() {
-  // Square containing a ± glyph — Codex-style "edited files" summary affordance.
+  // File with +/- rows — Codex-style "edited files" summary affordance.
   return (
     <Icon>
-      <rect x="3.5" y="3.5" width="13" height="13" rx="3" stroke="currentColor" strokeWidth="1.3" fill="none" />
-      <path d="M10 6.5v4M8 8.5h4M8 13.5h4" stroke="currentColor" strokeLinecap="round" strokeWidth="1.3" />
+      <path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z" />
+      <path d="M9 10h6" />
+      <path d="M12 13V7" />
+      <path d="M9 17h6" />
     </Icon>
   );
 }
@@ -352,8 +352,21 @@ export function EditedFilesIcon() {
 export function DiffIcon() {
   return (
     <Icon>
-      <path d="M7 7h6M7 10h4M7 13h5" stroke="currentColor" strokeLinecap="round" strokeWidth="1.3" />
-      <rect x="4" y="4" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.3" fill="none" />
+      <path d="M12 3v14" />
+      <path d="M5 10h14" />
+      <path d="M5 21h14" />
+    </Icon>
+  );
+}
+
+export function AdvisorIcon() {
+  // Speech-bubble-with-lightbulb: advisor / second opinion.
+  return (
+    <Icon>
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+      <path d="M12 8v1" />
+      <path d="M9 11h6" />
+      <path d="M10 8a2 2 0 0 1 4 0c0 1.1-.9 2-2 2s-2-.9-2-2z" />
     </Icon>
   );
 }
@@ -362,20 +375,156 @@ export function ComposeIcon() {
   // Square-with-pencil — Codex-style "new thread" affordance.
   return (
     <Icon>
-      <path
-        d="M9 4.25H6.25A2 2 0 0 0 4.25 6.25v7.5A2 2 0 0 0 6.25 15.75h7.5A2 2 0 0 0 15.75 13.75V11"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.4"
-      />
-      <path
-        d="m12.4 4.6 3 3-5.1 5.1H7.3V9.7l5.1-5.1Z"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.4"
-      />
+      <path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+      <path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z" />
+    </Icon>
+  );
+}
+
+export function ProjectIcon() {
+  return (
+    <Icon>
+      <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z" />
+      <path d="M8 10v4" />
+      <path d="M12 10v2" />
+      <path d="M16 10v6" />
+    </Icon>
+  );
+}
+
+export function AutomationIcon() {
+  // Clock-with-zap — scheduled automation.
+  return (
+    <Icon>
+      <circle cx="12" cy="13" r="8" />
+      <path d="M12 9v4l2 2" />
+      <path d="M5 3L2 6" />
+      <path d="M22 6l-3-3" />
+      <path d="M12 2v3" />
+    </Icon>
+  );
+}
+
+export function AutomationRunIcon() {
+  // Small lightning bolt — marks threads created by automations.
+  return (
+    <Icon>
+      <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+    </Icon>
+  );
+}
+
+export function ChatIcon() {
+  return (
+    <Icon>
+      <path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z" />
+    </Icon>
+  );
+}
+
+export function CompassIcon() {
+  // Scout — exploration/navigation.
+  return (
+    <Icon>
+      <circle cx="12" cy="12" r="10" />
+      <path d="m16.24 7.76-2.12 6.36-6.36 2.12 2.12-6.36 6.36-2.12z" />
+    </Icon>
+  );
+}
+
+export function ShieldCheckIcon() {
+  // Verifier — validation/assurance.
+  return (
+    <Icon>
+      <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
+      <path d="m9 12 2 2 4-4" />
+    </Icon>
+  );
+}
+
+export function WrenchIcon() {
+  // Implementer — build/fix.
+  return (
+    <Icon>
+      <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+    </Icon>
+  );
+}
+
+export function TelescopeIcon() {
+  // Researcher — discovery/observation.
+  return (
+    <Icon>
+      <path d="m10.065 12.493-6.18 1.318a.934.934 0 0 1-1.108-.702l-.537-2.15a1.07 1.07 0 0 1 .691-1.265l13.504-4.44" />
+      <path d="m13.56 11.747 4.332-.924" />
+      <path d="m16 21-3.105-6.21" />
+      <path d="M16.485 5.94a2 2 0 0 1 1.455-2.425l1.09-.272a1 1 0 0 1 1.212.727l1.515 6.06a1 1 0 0 1-.727 1.213l-1.09.272a2 2 0 0 1-2.425-1.455z" />
+      <path d="m6.158 8.633 1.114 4.456" />
+      <path d="m8 21 3.105-6.21" />
+      <circle cx="12" cy="13" r="2" />
+    </Icon>
+  );
+}
+
+export function EyeIcon() {
+  return (
+    <Icon>
+      <path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0z" />
+      <circle cx="12" cy="12" r="3" />
+    </Icon>
+  );
+}
+
+/* ── Thread type icons ──────────────────────────────────── */
+
+export function BugIcon() {
+  return (
+    <Icon>
+      <path d="m8 2 1.88 1.88" />
+      <path d="M14.12 3.88 16 2" />
+      <path d="M9 7.13v-1a3.003 3.003 0 1 1 6 0v1" />
+      <path d="M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6Z" />
+      <path d="M12 20v-9" />
+      <path d="M6.53 9C4.6 8.8 3 7.1 3 5" />
+      <path d="M6 13H2" />
+      <path d="M3 21c0-2.1 1.7-3.9 3.8-4" />
+      <path d="M20.97 5c0 2.1-1.6 3.8-3.5 4" />
+      <path d="M22 13h-4" />
+      <path d="M17.2 17c2.1.1 3.8 1.9 3.8 4" />
+    </Icon>
+  );
+}
+
+export function FeatureIcon() {
+  return (
+    <Icon>
+      <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" />
+    </Icon>
+  );
+}
+
+export function RefactorIcon() {
+  return (
+    <Icon>
+      <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+    </Icon>
+  );
+}
+
+export function InvestigateIcon() {
+  return (
+    <Icon>
+      <circle cx="11" cy="11" r="8" />
+      <path d="m21 21-4.3-4.3" />
+    </Icon>
+  );
+}
+
+export function OtherIcon() {
+  return (
+    <Icon>
+      <path d="M15.5 3H5a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2V8.5L15.5 3Z" />
+      <path d="M14 3v4a2 2 0 0 0 2 2h4" />
     </Icon>
   );
 }

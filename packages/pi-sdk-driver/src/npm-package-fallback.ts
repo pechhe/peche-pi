@@ -103,7 +103,7 @@ async function createAgentSessionResultWithNpmFallback(
   };
 }
 
-export async function createAgentSessionWithNpmFallback(options?: CreateAgentSessionOptions) {
+async function _createAgentSessionWithNpmFallback(options?: CreateAgentSessionOptions) {
   const cwd = options?.cwd ?? process.cwd();
   const agentDir = options?.agentDir ?? getAgentDir();
   const sessionManager = options?.sessionManager ?? SessionManager.create(cwd);

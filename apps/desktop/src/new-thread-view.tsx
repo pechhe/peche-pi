@@ -1,11 +1,11 @@
-import { useEffect, useRef, type ClipboardEvent, type DragEvent, type KeyboardEvent, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type RefObject } from "react";
 import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
 import type { ComposerAttachment, NewThreadEnvironment, WorkspaceRecord } from "./desktop-state";
 import type { ComposerMode } from "./composer-mode";
-import { CavemanSelector } from "./caveman-selector";
-import { ComposerModeSelector } from "./composer-mode-selector";
-import { ModelFeatureBadges } from "./model-feature-badges";
-import { ArrowUpIcon, PiLogoMark } from "./icons";
+import { ComposerControlRow } from "./composer-control-row";
+import { ArrowUpIcon, ChevronDownIcon, MonitorIcon, PiLogoMark, WorktreeIcon } from "./icons";
+import { useButtonSound } from "./use-button-sound";
+import { playClick } from "./button-click-sound";
 import {
   MODEL_OPTIONS_EMPTY_TITLE,
   type ComposerSlashCommand,
@@ -16,7 +16,6 @@ import {
 import { ComposerAttachments, ComposerSurface } from "./composer-surface";
 import { ModelOnboardingNoticeBanner } from "./model-onboarding-notice";
 import type { ModelOnboardingState, ModelOnboardingSettingsSection } from "./model-onboarding";
-import { ModelSelector } from "./model-selector";
 import type { ModelSelectorHandle } from "./model-selector";
 import type { CavemanLevel } from "./ipc";
 
@@ -28,7 +27,6 @@ interface NewThreadViewProps {
   readonly environment: NewThreadEnvironment;
   readonly prompt: string;
   readonly attachments: readonly ComposerAttachment[];
-  readonly lastError?: string;
   readonly provider: string | undefined;
   readonly modelId: string | undefined;
   readonly thinkingLevel: string | undefined;
@@ -51,11 +49,12 @@ interface NewThreadViewProps {
   readonly selectedMentionIndex: number;
   readonly onChangePrompt: (prompt: string) => void;
   readonly onSelectEnvironment: (environment: NewThreadEnvironment) => void;
-  readonly onSelectWorkspace: (workspaceId: string) => void;
   readonly onSetModel: (provider: string, modelId: string) => void;
   readonly onSetThinking: (level: string) => void;
   readonly onSetCavemanLevel: (level: CavemanLevel) => void;
   readonly onSetComposerMode: (mode: ComposerMode) => void;
+  readonly orchestratorMode?: boolean;
+  readonly onToggleOrchestrator?: () => void;
   readonly onOpenModelSettings: (section: ModelOnboardingSettingsSection) => void;
   readonly onComposerKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
   readonly onComposerPaste: (event: ClipboardEvent<HTMLDivElement>) => void;
@@ -65,7 +64,7 @@ interface NewThreadViewProps {
   readonly onSelectSlashOption: (option: ComposerSlashOption) => void;
   readonly onSelectMention: (filePath: string) => void;
   readonly onRemoveAttachment: (attachmentId: string) => void;
-  readonly onSubmit: () => void;
+  readonly onSubmit: (prompt: string) => void;
 }
 
 export function NewThreadView({
@@ -76,7 +75,6 @@ export function NewThreadView({
   environment,
   prompt,
   attachments,
-  lastError,
   provider,
   modelId,
   thinkingLevel,
@@ -99,11 +97,12 @@ export function NewThreadView({
   selectedMentionIndex,
   onChangePrompt,
   onSelectEnvironment,
-  onSelectWorkspace,
   onSetModel,
   onSetThinking,
   onSetCavemanLevel,
   onSetComposerMode,
+  orchestratorMode,
+  onToggleOrchestrator,
   onOpenModelSettings,
   onComposerKeyDown,
   onComposerPaste,
@@ -116,28 +115,89 @@ export function NewThreadView({
   onSubmit,
 }: NewThreadViewProps) {
   const workspace = workspaces.find((entry) => entry.id === selectedWorkspaceId);
+  const [draft, setDraft] = useState(prompt);
+  const latestDraftRef = useRef(prompt);
+  const lastPromptPropRef = useRef(prompt);
+  const composerAutoGrowHeightRef = useRef(0);
 
   useEffect(() => {
     composerRef.current?.focus();
   }, [composerRef]);
 
   useEffect(() => {
+    if (prompt === lastPromptPropRef.current) {
+      return;
+    }
+    lastPromptPropRef.current = prompt;
+    latestDraftRef.current = prompt;
+    setDraft(prompt);
+  }, [prompt]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      onChangePrompt(latestDraftRef.current);
+    }, 250);
+    return () => window.clearTimeout(timeout);
+  }, [draft, onChangePrompt]);
+
+  const handleDraftChange = (nextDraft: string) => {
+    latestDraftRef.current = nextDraft;
+    setDraft(nextDraft);
+    if (showSlashMenu || showSlashOptionMenu || showMentionMenu || /(?:^|\s)[/@][^\s]*$/.test(nextDraft)) {
+      onChangePrompt(nextDraft);
+    }
+  };
+
+  const submitDraft = () => {
+    onChangePrompt(draft);
+    onSubmit(draft);
+  };
+
+  const handleComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    onComposerKeyDown(event);
+    if (event.defaultPrevented || event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) {
+      return;
+    }
+
+    event.preventDefault();
+    if (!draft.trim() && attachments.length === 0) {
+      return;
+    }
+    if (modelOnboarding.requiresModelSelection) {
+      return;
+    }
+
+    playClick("down");
+    submitDraft();
+  };
+
+  useLayoutEffect(() => {
     const composer = composerRef.current;
     if (!composer) {
       return;
     }
 
-    composer.style.height = "0px";
-    composer.style.height = `${Math.min(composer.scrollHeight, 400)}px`;
-  }, [composerRef, prompt]);
+    composer.style.height = "auto";
+    const nextHeight = Math.min(composer.scrollHeight, 400);
+    const previousHeight = composerAutoGrowHeightRef.current;
+    if (Math.abs(nextHeight - previousHeight) < 1) {
+      if (previousHeight > 0) {
+        composer.style.height = `${previousHeight}px`;
+      }
+      return;
+    }
+
+    composerAutoGrowHeightRef.current = nextHeight;
+    composer.style.height = `${nextHeight}px`;
+  }, [composerRef, draft]);
 
   if (!isChat && !workspace) {
     return (
       <section className="canvas canvas--empty">
         <div className="empty-panel">
-          <div className="session-header__eyebrow">New thread</div>
+          <div className="session-header__eyebrow">New project</div>
           <h1>Open a folder to begin</h1>
-          <p>Select a repository from the sidebar first, then start a local or worktree-backed thread.</p>
+          <p>Select a repository from the sidebar first, then start a local or worktree-backed project.</p>
         </div>
       </section>
     );
@@ -150,9 +210,43 @@ export function NewThreadView({
           <div className="new-thread__logo" data-testid="new-thread-logo">
             <PiLogoMark />
           </div>
-          <div className="new-thread__eyebrow">{isChat ? "New chat" : "New thread"}</div>
+          <div className="new-thread__eyebrow">{isChat ? "New chat" : "New project"}</div>
           <h1 className="new-thread__title">{isChat ? "What\u2019s up?" : "Let\u2019s build"}</h1>
         </div>
+
+        {!isChat ? (
+          <div className="new-thread__options">
+            <div className="new-thread__option">
+              <span className="new-thread__option-label">Project</span>
+              <span className="new-thread__project-pill">
+                <span className="new-thread__project-dot" aria-hidden="true" />
+                <span className="new-thread__project-name">{workspace?.name ?? "\u2014"}</span>
+                <ChevronDownIcon />
+              </span>
+            </div>
+            <div className="new-thread__option">
+              <span className="new-thread__option-label">Environment</span>
+              <span className="new-thread__env-group">
+                <button
+                  className={`new-thread__env ${environment === "local" ? "new-thread__env--active" : ""}`}
+                  type="button"
+                  onClick={() => onSelectEnvironment("local")}
+                >
+                  <MonitorIcon />
+                  <span>Local</span>
+                </button>
+                <button
+                  className={`new-thread__env ${environment === "worktree" ? "new-thread__env--active" : ""}`}
+                  type="button"
+                  onClick={() => onSelectEnvironment("worktree")}
+                >
+                  <WorktreeIcon />
+                  <span>Worktree</span>
+                </button>
+              </span>
+            </div>
+          </div>
+        ) : null}
 
         <div className="new-thread__composer composer">
           {attachments.length > 0 ? (
@@ -162,15 +256,13 @@ export function NewThreadView({
           ) : null}
           <div className="conversation conversation--composer">
             <ComposerSurface
-              lastError={lastError}
               activeSlashCommand={activeSlashCommand}
               activeSlashCommandMeta={activeSlashCommandMeta}
               topNotice={(
                 <ModelOnboardingNoticeBanner notice={modelOnboarding.notice} onOpenSettings={onOpenModelSettings} />
               )}
-              queuedMessages={[]}
-              composerDraft={prompt}
-              setComposerDraft={onChangePrompt}
+              composerDraft={draft}
+              setComposerDraft={handleDraftChange}
               composerRef={composerRef}
               attachments={attachments}
               slashSections={slashSections}
@@ -181,13 +273,9 @@ export function NewThreadView({
               showSlashOptionMenu={showSlashOptionMenu}
               slashOptionEmptyState={slashOptionEmptyState}
               onClearSlashCommand={onClearSlashCommand}
-              onComposerKeyDown={onComposerKeyDown}
+              onComposerKeyDown={handleComposerKeyDown}
               onComposerPaste={onComposerPaste}
               onComposerDrop={onComposerDrop}
-              onEditQueuedMessage={() => undefined}
-              onCancelQueuedEdit={() => undefined}
-              onRemoveQueuedMessage={() => undefined}
-              onSteerQueuedMessage={() => undefined}
               onRemoveAttachment={onRemoveAttachment}
               onSelectSlashCommand={onSelectSlashCommand}
               onSelectSlashOption={onSelectSlashOption}
@@ -195,9 +283,9 @@ export function NewThreadView({
               mentionOptions={mentionOptions}
               selectedMentionIndex={selectedMentionIndex}
               onSelectMention={onSelectMention}
-              textareaLabel="New thread prompt"
+              textareaLabel="New project prompt"
               textareaTestId="new-thread-composer"
-              textareaPlaceholder={composerMode === "plan" ? "Describe what you want to plan. Pi will grill you, write a PRD, then prepare Ralph." : "message the clanker"}
+              textareaPlaceholder={composerMode === "plan" ? "Describe what you want to plan. Pi will grill you, write a PRD, then prepare Ralph." : " message the clanker"}
               screenFooter={(
                 <div className="composer__context" aria-label="Context usage unavailable">
                   <div className="composer__context-track">
@@ -215,56 +303,20 @@ export function NewThreadView({
                   cavemanLevel={cavemanLevel}
                   composerMode={composerMode}
                   modelOnboarding={modelOnboarding}
-                  hasContent={Boolean(prompt.trim() || attachments.length > 0)}
+                  hasContent={Boolean(draft.trim() || attachments.length > 0)}
                   modelSelectorRef={modelSelectorRef}
                   onSetModel={onSetModel}
                   onSetThinking={onSetThinking}
                   onSetCavemanLevel={onSetCavemanLevel}
                   onSetComposerMode={onSetComposerMode}
-                  onSubmit={onSubmit}
+                  orchestratorMode={orchestratorMode}
+                  onToggleOrchestrator={onToggleOrchestrator}
+                  onSubmit={submitDraft}
                 />
               )}
             />
           </div>
         </div>
-        {!isChat ? (
-          <div className="new-thread__options">
-            <div className="new-thread__option">
-              <span className="new-thread__option-label">Project</span>
-              <select
-                className="new-thread__project-select"
-                aria-label="Project"
-                value={selectedWorkspaceId}
-                onChange={(event) => onSelectWorkspace(event.target.value)}
-              >
-                {workspaces.map((entry) => (
-                  <option key={entry.id} value={entry.id}>
-                    {entry.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="new-thread__option">
-              <span className="new-thread__option-label">Environment</span>
-              <span className="new-thread__environment-group">
-                <button
-                  className={`new-thread__environment ${environment === "local" ? "new-thread__environment--active" : ""}`}
-                  type="button"
-                  onClick={() => onSelectEnvironment("local")}
-                >
-                  <span>Local</span>
-                </button>
-                <button
-                  className={`new-thread__environment ${environment === "worktree" ? "new-thread__environment--active" : ""}`}
-                  type="button"
-                  onClick={() => onSelectEnvironment("worktree")}
-                >
-                  <span>Worktree</span>
-                </button>
-              </span>
-            </div>
-          </div>
-        ) : null}
       </div>
     </section>
   );
@@ -284,6 +336,8 @@ interface NewThreadComposerFooterProps {
   readonly onSetThinking: (level: string) => void;
   readonly onSetCavemanLevel: (level: CavemanLevel) => void;
   readonly onSetComposerMode: (mode: ComposerMode) => void;
+  readonly orchestratorMode?: boolean;
+  readonly onToggleOrchestrator?: () => void;
   readonly onSubmit: () => void;
 }
 
@@ -301,45 +355,48 @@ function NewThreadComposerFooter({
   onSetThinking,
   onSetCavemanLevel,
   onSetComposerMode,
+  orchestratorMode,
+  onToggleOrchestrator,
   onSubmit,
 }: NewThreadComposerFooterProps) {
+  const submitButtonSound = useButtonSound({ variant: "click", disabled: !hasContent || modelOnboarding.requiresModelSelection });
   return (
     <>
       <div className="composer__footer">
         <div className="composer__footer-row">
           <div className="composer__hint new-thread__hint">
             <span className="composer__hint-prose">Enter to send · Shift+Enter for newline</span>
-            <span className="composer__controls">
-              <span className="composer__controls-sep">{" \u00b7 "}</span>
-              <ComposerModeSelector mode={composerMode} onSetMode={onSetComposerMode} />
-              <span className="composer__controls-sep">{" \u00b7 "}</span>
-              <ModelSelector
-                ref={modelSelectorRef}
-                runtime={runtime}
-                provider={provider}
-                modelId={modelId}
-                thinkingLevel={thinkingLevel}
-                dropdownPlacement="below"
-                showEmptyModelControl
-                unselectedModelLabel={modelOnboarding.unselectedModelLabel}
-                emptyModelLabel={MODEL_OPTIONS_EMPTY_TITLE}
-                emptyModelTitle={modelOnboarding.emptyModelTitle}
-                onSetModel={onSetModel}
-                onSetThinking={onSetThinking}
-              />
-              <span className="composer__controls-sep">{" \u00b7 "}</span>
-              <CavemanSelector level={cavemanLevel} onSetLevel={onSetCavemanLevel} />
-              <ModelFeatureBadges runtime={runtime} provider={provider} modelId={modelId} />
-            </span>
+            <ComposerControlRow
+              runtime={runtime}
+              provider={provider}
+              modelId={modelId}
+              thinkingLevel={thinkingLevel}
+              cavemanLevel={cavemanLevel}
+              composerMode={composerMode}
+              modelSelectorRef={modelSelectorRef}
+              dropdownPlacement="below"
+              showEmptyModelControl
+              unselectedModelLabel={modelOnboarding.unselectedModelLabel}
+              emptyModelLabel={MODEL_OPTIONS_EMPTY_TITLE}
+              emptyModelTitle={modelOnboarding.emptyModelTitle}
+              onSetComposerMode={onSetComposerMode}
+              onSetModel={onSetModel}
+              onSetThinking={onSetThinking}
+              onSetCavemanLevel={onSetCavemanLevel}
+              orchestratorMode={orchestratorMode}
+              onToggleOrchestrator={onToggleOrchestrator}
+            />
           </div>
 
           <div className="composer__actions">
             <span className="composer__key-mount composer__key-mount--send">
               <button
-                aria-label="Start thread"
+                aria-label="Start project"
                 className="button button--primary button--cta-icon composer__send"
                 type="button"
                 disabled={!hasContent || modelOnboarding.requiresModelSelection}
+                data-has-input={hasContent ? "" : undefined}
+                {...submitButtonSound}
                 onClick={onSubmit}
               >
                 <ArrowUpIcon />

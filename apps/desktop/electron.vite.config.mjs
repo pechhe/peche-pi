@@ -2,18 +2,20 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "electron-vite";
 import react from "@vitejs/plugin-react";
-import tsconfigPaths from "vite-tsconfig-paths";
+import checker from "vite-plugin-checker";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = __dirname;
-const pathsProject = path.resolve(projectRoot, "tsconfig.paths.json");
+const _pathsProject = path.resolve(projectRoot, "tsconfig.paths.json");
 const devPort = Number(process.env.PI_APP_DEV_PORT ?? "5173");
 export default defineConfig(({ command }) => {
   const cleanOutputs = command === "build";
 
   return {
     main: {
-      plugins: [tsconfigPaths({ projects: [pathsProject] })],
+      resolve: {
+        tsconfigPaths: true,
+      },
       build: {
         outDir: "out/main",
         emptyOutDir: cleanOutputs,
@@ -25,7 +27,9 @@ export default defineConfig(({ command }) => {
       },
     },
     preload: {
-      plugins: [tsconfigPaths({ projects: [pathsProject] })],
+      resolve: {
+        tsconfigPaths: true,
+      },
       build: {
         outDir: "out/preload",
         emptyOutDir: cleanOutputs,
@@ -39,7 +43,13 @@ export default defineConfig(({ command }) => {
     renderer: {
       root: projectRoot,
       base: "./",
-      plugins: [react(), tsconfigPaths({ projects: [pathsProject] })],
+      plugins: [
+        react(),
+        checker({ oxlint: { lintCommand: "npx oxlint src/" } }),
+      ],
+      resolve: {
+        tsconfigPaths: true,
+      },
       server: {
         port: devPort,
         strictPort: true,

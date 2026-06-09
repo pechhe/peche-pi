@@ -12,7 +12,6 @@ import {
 } from "../helpers/electron-app";
 
 test("shows workspace file mentions from the composer and inserts the selected file", async () => {
-  test.setTimeout(30_000);
   const userDataDir = await makeUserDataDir();
   const workspacePath = await makeWorkspace("mention-workspace");
   await initGitRepo(workspacePath);
@@ -60,7 +59,6 @@ test("shows workspace file mentions from the composer and inserts the selected f
 });
 
 test("toggles the diff panel from the keyboard shortcut and renders changed files on the right", async () => {
-  test.setTimeout(30_000);
   const userDataDir = await makeUserDataDir();
   const workspacePath = await makeWorkspace("diff-workspace");
   await initGitRepo(workspacePath);

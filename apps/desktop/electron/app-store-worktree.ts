@@ -4,16 +4,18 @@ import { homedir } from "node:os";
 import { sessionKey } from "@pi-gui/pi-sdk-driver";
 import type { WorktreeCatalogEntry } from "@pi-gui/catalogs";
 import type { WorkspaceRef } from "@pi-gui/session-driver";
-import type { CreateWorktreeInput, DesktopAppState, RemoveWorktreeInput, StartChatInput, StartThreadInput } from "../src/desktop-state";
+import type { CreateWorktreeInput, DesktopAppState, RemoveWorktreeInput, StartAutomationThreadInput, StartChatInput, StartThreadInput } from "../src/desktop-state";
 import { sendMessageToSession } from "./app-store-composer";
 import { reduce } from "./app-state-reducer";
 import type { CreateWorktreeOptions } from "./worktree-manager";
-import type { AppStoreInternals } from "./app-store-internals";
+import type { ComposerOps, Infrastructure, PersistenceOps, SessionLifecycle, StateAccess, StoreHelpers } from "./app-store-internals";
+
+type WorktreeStore = StateAccess & Infrastructure & StoreHelpers & SessionLifecycle & PersistenceOps & ComposerOps;
 import { NEW_THREAD_PLACEHOLDER_TITLE } from "./thread-title-constants";
 
 /* ── Public methods ─────────────────────────────────────── */
 
-export async function createWorktree(store: AppStoreInternals, input: CreateWorktreeInput): Promise<DesktopAppState> {
+export async function createWorktree(store: WorktreeStore, input: CreateWorktreeInput): Promise<DesktopAppState> {
   await store.initialize();
   const rootWorkspace = store.workspaceRefFromState(input.workspaceId);
   if (!rootWorkspace) {
@@ -46,7 +48,7 @@ export async function createWorktree(store: AppStoreInternals, input: CreateWork
   });
 }
 
-export async function removeWorktree(store: AppStoreInternals, input: RemoveWorktreeInput): Promise<DesktopAppState> {
+export async function removeWorktree(store: WorktreeStore, input: RemoveWorktreeInput): Promise<DesktopAppState> {
   await store.initialize();
   const rootWorkspace = store.workspaceRefFromState(input.workspaceId);
   if (!rootWorkspace) {
@@ -74,7 +76,7 @@ export async function removeWorktree(store: AppStoreInternals, input: RemoveWork
   });
 }
 
-export async function startThread(store: AppStoreInternals, input: StartThreadInput): Promise<DesktopAppState> {
+export async function startThread(store: WorktreeStore, input: StartThreadInput): Promise<DesktopAppState> {
   const __dbg = (step: string) => {
     try { require("node:fs").appendFileSync("/tmp/pi-startthread.log", `[${new Date().toISOString()}] ${step}\n`); } catch { /* ignore */ }
   };
@@ -169,7 +171,85 @@ export async function startThread(store: AppStoreInternals, input: StartThreadIn
   });
 }
 
-export async function startChat(store: AppStoreInternals, input: StartChatInput): Promise<DesktopAppState> {
+/**
+ * Fire a scheduled automation as a new background thread.
+ *
+ * Mirrors `startThread` (worktree creation, model/thinking, auto-title) but
+ * does NOT change selection or navigate — a scheduled fire must not hijack the
+ * user's current view. Returns the created session id.
+ */
+export async function startAutomationThread(
+  store: WorktreeStore,
+  input: StartAutomationThreadInput,
+): Promise<string | undefined> {
+  await store.initialize();
+  const rootWorkspace = store.workspaceRefFromState(input.rootWorkspaceId);
+  if (!rootWorkspace) return undefined;
+
+  let targetWorkspace = rootWorkspace;
+  if (input.environment === "worktree") {
+    const worktreeOptions = buildWorktreeOptions(store, rootWorkspace, undefined, undefined, input.prompt);
+    const created = await store.worktreeManager.createWorktree(rootWorkspace, worktreeOptions);
+    const synced = await store.driver.syncWorkspace(created.path, created.displayName);
+    targetWorkspace = synced.workspace;
+  }
+
+  const prompt = input.prompt?.trim() ?? "";
+  const createOptions = (await store.buildCreateSessionOptions(targetWorkspace.workspaceId)) ?? {};
+  const initialModel =
+    input.provider && input.modelId
+      ? { provider: input.provider, modelId: input.modelId }
+      : createOptions.initialModel;
+  const initialThinkingLevel = input.thinkingLevel ?? createOptions.initialThinkingLevel;
+
+  // A named automation pins its title (⚡ prefix). An unnamed one gets the
+  // placeholder so the auto-title generator can name it like a normal thread.
+  const name = input.name?.trim();
+  const title = name ? `⚡ ${name}` : NEW_THREAD_PLACEHOLDER_TITLE;
+
+  const session = await store.driver.createSession(targetWorkspace, {
+    ...createOptions,
+    title,
+    ...(initialModel ? { initialModel } : {}),
+    ...(initialThinkingLevel ? { initialThinkingLevel } : {}),
+  });
+  const key = sessionKey(session.ref);
+  store.sessionState.transcriptCache.set(key, []);
+  store.sessionState.loadedTranscriptKeys.add(key);
+  store.updateSessionConfig(session.ref, session.config);
+
+  let autoTitle: { requestToken: string; signal: AbortSignal } | undefined;
+  if (!name && prompt) {
+    const controller = new AbortController();
+    const requestToken = randomUUID();
+    store.setPendingAutoTitle(session.ref, { requestToken, cancel: () => controller.abort() });
+    autoTitle = { requestToken, signal: controller.signal };
+  }
+
+  // Surface the new session without touching selection/active view.
+  await store.refreshState({ refreshWorktrees: input.environment === "worktree" });
+
+  if (prompt) {
+    void sendMessageToSession(store, session.ref, prompt, [], {
+      rollbackOptimisticMessageOnError: false,
+    }).catch((error) => {
+      void store.withError(error);
+    });
+  }
+  if (autoTitle) {
+    void generateAndApplyAutoTitle(store, session.ref, targetWorkspace, {
+      prompt,
+      requestToken: autoTitle.requestToken,
+      signal: autoTitle.signal,
+      ...(initialModel ? { model: initialModel } : {}),
+      ...(initialThinkingLevel ? { thinkingLevel: initialThinkingLevel } : {}),
+    });
+  }
+
+  return session.ref.sessionId;
+}
+
+export async function startChat(store: WorktreeStore, input: StartChatInput): Promise<DesktopAppState> {
   await store.initialize();
 
   return store.withErrorHandling(async () => {
@@ -262,7 +342,7 @@ export async function startChat(store: AppStoreInternals, input: StartChatInput)
 }
 
 export async function syncAndListWorktrees(
-  store: AppStoreInternals,
+  store: WorktreeStore,
   workspaces: readonly {
     workspaceId: string;
     path: string;
@@ -353,8 +433,8 @@ export async function syncAndListWorktrees(
  * Build default worktree options — used both by `createWorktree` and `startThread`
  * (which lives in the main store).
  */
-export function buildWorktreeOptions(
-  store: AppStoreInternals,
+function buildWorktreeOptions(
+  store: WorktreeStore,
   workspace: WorkspaceRef,
   fromSessionWorkspaceId?: string,
   fromSessionId?: string,
@@ -383,7 +463,7 @@ export function buildWorktreeOptions(
 /* ── Private helpers ─────────────────────────────────────── */
 
 async function generateAndApplyAutoTitle(
-  store: AppStoreInternals,
+  store: WorktreeStore,
   sessionRef: { workspaceId: string; sessionId: string },
   workspace: WorkspaceRef,
   options: {
@@ -403,13 +483,14 @@ async function generateAndApplyAutoTitle(
   };
 
   try {
-    const generatedTitle = await store.driver.generateThreadTitle(workspace, {
+    const result = await store.driver.generateThreadTitle(workspace, {
       prompt: options.prompt,
       signal: options.signal,
       ...(options.model ? { model: options.model } : {}),
       ...(options.thinkingLevel ? { thinkingLevel: options.thinkingLevel } : {}),
     });
-    if (!generatedTitle) {
+    console.log("[autoTitle] generateThreadTitle result:", JSON.stringify(result));
+    if (!result) {
       clearMatchingPendingTitle();
       return;
     }
@@ -424,14 +505,19 @@ async function generateAndApplyAutoTitle(
     }
 
     store.clearPendingAutoTitle(sessionRef);
-    await store.driver.renameSession(sessionRef, generatedTitle);
-    options.onTitleApplied?.(generatedTitle);
+    // result may be a plain string (legacy override) or { type, title }.
+    const title = typeof result === "string" ? result : result.title;
+    const threadType = typeof result === "string" ? "other" : result.type;
+    console.log("[autoTitle] about to rename + setThreadType", { title, threadType, sessionId: sessionRef.sessionId });
+    await store.driver.renameSession(sessionRef, title);
+    store.setThreadType(sessionRef.sessionId, threadType);
+    options.onTitleApplied?.(title);
   } catch {
     clearMatchingPendingTitle();
   }
 }
 
-function sessionTitleForWorktree(store: AppStoreInternals, workspaceId: string, sessionId: string): string | undefined {
+function sessionTitleForWorktree(store: WorktreeStore, workspaceId: string, sessionId: string): string | undefined {
   return store.state.workspaces
     .find((workspace) => workspace.id === workspaceId)
     ?.sessions.find((session) => session.id === sessionId)

@@ -1,17 +1,20 @@
 import type { BrowserWindow } from "electron";
-import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
+import { exec } from "node:child_process";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
+import { homedir } from "node:os";
+import { promisify } from "node:util";
+import { EditWatcher, type LiveEditStatsListener } from "./edit-watcher.ts";
+
+const execAsync = promisify(exec);
 import {
-  applyHostUiRequestToExtensionUiState,
   type GenerateThreadTitleOptions,
-  isExtensionUiDialogRequest,
   JsonCatalogStore,
   PiSdkDriver,
   type PiSdkDriverConfig,
   sessionKey,
 } from "@pi-gui/pi-sdk-driver";
-import type { SessionCatalogEntry } from "@pi-gui/catalogs";
+import type { SessionCatalogEntry, WorkspaceCatalogEntry } from "@pi-gui/catalogs";
 import type {
   NavigateSessionTreeOptions,
   NavigateSessionTreeResult,
@@ -42,32 +45,31 @@ import {
   type ExtensionCommandCompatibilityRecord,
   type ModelSettingsScopeMode,
   createEmptyDesktopAppState,
+  ZOOM_BASELINE,
   type CreateSessionInput,
   type CreateWorktreeInput,
   type DesktopAppState,
   type NotificationPreferences,
   type ComposerDeviceMode,
+  type StreamRevealMode,
+  type StreamRevealSpeed,
+  type PlanModeIdeologySetting,
+  type ThreadTransitionSettings,
   type ThemeMode,
   type QueuedComposerMessage,
   type RemoveWorktreeInput,
   type SelectedTranscriptRecord,
-  type RalphLoopStatus,
+  type SessionRecord,
   type StartChatInput,
+  type StartAutomationThreadInput,
   type StartThreadInput,
-  type SubagentAgentRecord,
   type SubagentSettingsRecord,
   type TranscriptMessage,
   type WorkspaceRecord,
   type WorkspaceSessionTarget,
 } from "../src/desktop-state";
 import type { ComposerMode } from "../src/composer-mode";
-import {
-  applyTimelineEvent,
-  appendAssistantDelta,
-  appendReasoningDelta,
-  clearActiveAssistantMessage,
-} from "./app-store-timeline";
-import { applySessionEventState, updateSessionRecord } from "./app-store-session-state";
+import { DesktopSessionState, type DesktopSessionStatePatch, updateSessionRecord } from "./app-store-session-state";
 import { reduce } from "./app-state-reducer";
 import type { AppStoreInternals, RefreshStateOptions } from "./app-store-internals";
 import {
@@ -95,18 +97,18 @@ import {
   mergeQueuedComposerMessages,
   mapToRecord,
   previewFromTranscript,
-  toSessionQueuedMessages,
   toSessionRef,
 } from "./app-store-utils";
 import { resolveRepoWorkspaceId } from "../src/workspace-roots";
-import { SessionStateMap, type QueuedComposerEditState } from "./session-state-map";
-import { createEmptyExtensionUiState, serializeExtensionUiState } from "./session-state-map";
+import { SessionStateMap, serializeExtensionUiState, type QueuedComposerEditState } from "./session-state-map";
 import { GitWorktreeManager } from "./worktree-manager";
 import * as workspace from "./app-store-workspace";
 import * as worktree from "./app-store-worktree";
 import * as composer from "./app-store-composer";
+import * as ghRunner from "./gh-runner";
 import { isSessionActivelyViewed } from "./session-visibility";
-import { readRalphLoopStatus } from "./ralph-loop-status";
+import { applySubagentEnvironment } from "./app-store-subagent";
+import * as subagent from "./app-store-subagent";
 import { launchSessionInDefaultTerminal } from "./external-terminal";
 
 const DEFAULT_CHAT_AGENTS_MD = `# Chat Agent
@@ -126,71 +128,16 @@ This chat has no associated coding project or workspace.
 type StateListener = (state: DesktopAppState) => void;
 type SelectedTranscriptListener = (payload: SelectedTranscriptRecord | null) => void;
 type SessionEventListener = (event: SessionDriverEvent, state: DesktopAppState) => void | Promise<void>;
+type StatePatchListener = (patch: { readonly workspaceId: string; readonly session: SessionRecord | null }) => void;
+type TranscriptDeltaPayload = { readonly sessionId: string; readonly workspaceId: string; readonly initial: boolean; readonly messages: readonly TranscriptMessage[] };
+type TranscriptDeltaListener = (delta: TranscriptDeltaPayload) => void;
 type TranscriptMessageRow = Extract<TranscriptMessage, { kind: "message" }>;
 
+function isStreamingSessionEvent(event: SessionDriverEvent): boolean {
+  return event.type === "assistantDelta" || event.type === "reasoningDelta" || event.type === "toolUpdated";
+}
+
 const LEGACY_TRANSCRIPT_HISTORY_LIMIT = 180;
-function shellQuote(value: string): string {
-  return `'${value.replace(/'/g, `'\\''`)}'`;
-}
-
-function defaultSubagentPiCommand(): string {
-  try {
-    const packageJson = require.resolve("@earendil-works/pi-coding-agent/package.json");
-    const cliPath = join(dirname(packageJson), "dist/cli.js");
-    return `/usr/bin/env ELECTRON_RUN_AS_NODE=1 ${shellQuote(process.execPath)} ${shellQuote(cliPath)}`;
-  } catch {
-    return "pi";
-  }
-}
-
-function applySubagentEnvironment(settings: SubagentSettingsRecord): void {
-  process.env.PI_SUBAGENT_PI_COMMAND = settings.piCommandOverride.trim() || defaultSubagentPiCommand();
-  setOptionalEnv("PI_ORCHESTRATOR_MODE", settings.orchestratorMode);
-  setOptionalEnv("PI_SUBAGENT_DISABLE_COORDINATOR_ONLY_TURN", settings.disableCoordinatorOnlyTurn);
-  setOptionalEnv("PI_SUBAGENT_DISABLE_CHILD_CONTEXT_BOUNDARY", settings.disableChildContextBoundary);
-  setOptionalEnv("PI_SUBAGENT_DISABLE_SESSION_TITLES", settings.disableSessionTitles);
-  if (settings.mux === "auto") delete process.env.PI_SUBAGENT_MUX;
-  else process.env.PI_SUBAGENT_MUX = settings.mux;
-}
-
-function setOptionalEnv(name: string, enabled: boolean): void {
-  if (enabled) process.env[name] = "1";
-  else delete process.env[name];
-}
-
-function getSubagentGlobalAgentsDir(): string {
-  return join(process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent"), "agents");
-}
-
-function parseSubagentAgentFile(filePath: string, raw: string, scope: "project" | "global"): SubagentAgentRecord {
-  const nameFromFile = basename(filePath, ".md");
-  const frontmatter = raw.match(/^---\n([\s\S]*?)\n---\n?/);
-  const fields = new Map<string, string>();
-  if (frontmatter) {
-    for (const line of frontmatter[1]?.split(/\r?\n/) ?? []) {
-      const match = line.match(/^([a-zA-Z0-9_-]+):\s*(.*)$/);
-      if (match?.[1]) fields.set(match[1], (match[2] ?? "").trim().replace(/^['\"]|['\"]$/g, ""));
-    }
-  }
-  const mode = fields.get("mode");
-  const sessionMode = fields.get("session-mode");
-  return {
-    id: filePath,
-    name: fields.get("name") || nameFromFile,
-    ...(fields.get("description") ? { description: fields.get("description") } : {}),
-    ...(fields.get("model") ? { model: fields.get("model") } : {}),
-    ...(fields.get("thinking") ? { thinking: fields.get("thinking") } : {}),
-    ...(mode === "interactive" || mode === "background" ? { mode } : {}),
-    ...(fields.get("async") === "true" ? { async: true } : fields.get("async") === "false" ? { async: false } : {}),
-    ...(fields.get("auto-exit") === "true" ? { autoExit: true } : fields.get("auto-exit") === "false" ? { autoExit: false } : {}),
-    ...(sessionMode === "standalone" || sessionMode === "lineage-only" || sessionMode === "fork" ? { sessionMode } : {}),
-    ...(fields.get("allow-model-override") === "true" ? { allowModelOverride: true } : fields.get("allow-model-override") === "false" ? { allowModelOverride: false } : {}),
-    filePath,
-    scope,
-    raw,
-  };
-}
-
 interface PersistedTranscriptRecord {
   readonly version: 1;
   readonly transcript: readonly TranscriptMessage[];
@@ -220,7 +167,13 @@ export class DesktopAppStore implements AppStoreInternals {
   state = createEmptyDesktopAppState();
   private readonly listeners = new Set<StateListener>();
   private readonly selectedTranscriptListeners = new Set<SelectedTranscriptListener>();
+  private readonly statePatchListeners = new Set<StatePatchListener>();
+  private readonly transcriptDeltaListeners = new Set<TranscriptDeltaListener>();
+  private readonly transcriptLastSentCount = new Map<string, number>();
+  private readonly pendingTranscriptDeltaBySession = new Map<string, TranscriptDeltaPayload>();
+  private transcriptDeltaFlushTimer: NodeJS.Timeout | undefined;
   private readonly sessionEventListeners = new Set<SessionEventListener>();
+  private readonly autoCompactInFlight = new Set<string>();
   readonly driver: PiSdkDriver;
   readonly catalogStore: JsonCatalogStore;
   readonly worktreeManager: GitWorktreeManager;
@@ -228,6 +181,7 @@ export class DesktopAppStore implements AppStoreInternals {
   private readonly transcriptStore: JsonFileStore<PersistedTranscriptStoreValue>;
   readonly attachmentStore: JsonFileStore<ComposerAttachment[]>;
   readonly sessionState = new SessionStateMap();
+  private readonly desktopSessionState = new DesktopSessionState(this.sessionState);
   readonly runtimeByWorkspace = new Map<string, RuntimeSnapshot>();
   readonly extensionCommandCompatibilityByWorkspace = new Map<string, Map<string, ExtensionCommandCompatibilityRecord>>();
   readonly pendingRuntimeCommandsBySession = new Map<string, PendingRuntimeCommandExecution>();
@@ -240,6 +194,15 @@ export class DesktopAppStore implements AppStoreInternals {
   private initPromise: Promise<void> | undefined;
   private selectionEpoch = 0;
   private refreshStateDepth = 0;
+  private readonly editWatcher = new EditWatcher();
+  private liveEditStatsListener: LiveEditStatsListener | undefined;
+
+  setLiveEditStatsListener(listener: LiveEditStatsListener | undefined): void {
+    this.liveEditStatsListener = listener;
+  }
+
+  /** Set externally after construction. Used by refreshState to include automations. */
+  automationStoreRef: { getAll(): readonly import("../src/desktop-state.ts").Automation[] } | null = null;
 
   constructor(options: DesktopAppStoreOptions) {
     const catalogFilePath = join(options.userDataDir, "catalogs.json");
@@ -258,6 +221,7 @@ export class DesktopAppStore implements AppStoreInternals {
     this.attachmentStore = new JsonFileStore<ComposerAttachment[]>(options.userDataDir, "attachments");
     this.initialWorkspacePaths = options.initialWorkspacePaths;
     this.getWindow = options.getWindow ?? (() => null);
+    this.editWatcher.setListener((stats) => this.liveEditStatsListener?.(stats));
   }
 
   /* ── Lifecycle ──────────────────────────────────────────── */
@@ -286,6 +250,68 @@ export class DesktopAppStore implements AppStoreInternals {
     } catch {
       return null;
     }
+  }
+
+  /**
+   * Get the transcript for an arbitrary session (not just the selected one).
+   * Loads from persisted storage or driver if not already cached.
+   */
+  async getSessionTranscript(sessionRef: SessionRef): Promise<readonly TranscriptMessage[]> {
+    await this.initialize();
+    await this.ensureTranscriptLoaded(sessionRef);
+    return this.sessionState.transcriptCache.get(sessionKey(sessionRef)) ?? [];
+  }
+
+  /**
+   * Read raw session entries from a subagent's `.jsonl` file on disk. The
+   * renderer converts these into a read-only timeline. Returns [] on any error
+   * (e.g. file not yet created for a freshly-launched subagent).
+   */
+  async getSubagentSessionEntries(sessionFilePath: string): Promise<readonly unknown[]> {
+    await this.initialize();
+    try {
+      return this.driver.readSessionFileEntries(sessionFilePath);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Search transcript text across multiple sessions by reading persisted files.
+   * Returns matching session keys with context snippets. Does NOT load into cache.
+   */
+  async searchTranscripts(
+    sessionKeysToSearch: readonly string[],
+    query: string,
+  ): Promise<readonly { sessionKey: string; snippet: string; messageId: string }[]> {
+    const q = query.trim().toLowerCase();
+    if (!q || sessionKeysToSearch.length === 0) return [];
+
+    const results: { sessionKey: string; snippet: string; messageId: string }[] = [];
+    const MAX_RESULTS = 20;
+
+    for (const key of sessionKeysToSearch) {
+      if (results.length >= MAX_RESULTS) break;
+      const persisted = await this.readPersistedTranscript(key);
+      if (!persisted) continue;
+
+      for (const msg of persisted.transcript) {
+        const text = extractSearchableText(msg);
+        if (!text) continue;
+        const lower = text.toLowerCase();
+        const idx = lower.indexOf(q);
+        if (idx === -1) continue;
+
+        // Extract a context snippet around the match
+        const start = Math.max(0, idx - 60);
+        const end = Math.min(text.length, idx + q.length + 60);
+        const snippet = (start > 0 ? "…" : "") + text.slice(start, end).replace(/\s+/g, " ").trim() + (end < text.length ? "…" : "");
+        results.push({ sessionKey: key, snippet, messageId: (msg as { id?: string }).id ?? "" });
+        break; // one match per session is enough
+      }
+    }
+
+    return results;
   }
 
   async flushPersistence(): Promise<void> {
@@ -319,6 +345,13 @@ export class DesktopAppStore implements AppStoreInternals {
     void this.getState().then(listener).catch(() => undefined);
     return () => {
       this.listeners.delete(listener);
+    };
+  }
+
+  subscribeToStatePatch(listener: StatePatchListener): () => void {
+    this.statePatchListeners.add(listener);
+    return () => {
+      this.statePatchListeners.delete(listener);
     };
   }
 
@@ -458,7 +491,7 @@ export class DesktopAppStore implements AppStoreInternals {
 
   async submitComposer(
     textInput: string,
-    options?: { readonly deliverAs?: "steer" | "followUp"; readonly mode?: ComposerMode },
+    options?: { readonly deliverAs?: "steer" | "followUp"; readonly mode?: ComposerMode; readonly isFirstPlanPrompt?: boolean },
   ): Promise<DesktopAppState> {
     return composer.submitComposer(this, textInput, options);
   }
@@ -583,8 +616,68 @@ export class DesktopAppStore implements AppStoreInternals {
     return worktree.startThread(this, input);
   }
 
+  async startAutomationThread(input: StartAutomationThreadInput): Promise<string | undefined> {
+    return worktree.startAutomationThread(this, input);
+  }
+
   async createSession(input: CreateSessionInput): Promise<DesktopAppState> {
     return workspace.createSession(this, input);
+  }
+
+  /**
+   * Create a new session seeded with an initial message (e.g. handoff payload).
+   * Returns the new session ID without navigating to it.
+   */
+  async createSeededSession(
+    input: import("./handoff-core").CreateSeededSessionInput,
+  ): Promise<{ readonly sessionId: string }> {
+    await this.initialize();
+    const ws = this.workspaceRefFromState(input.workspaceId);
+    if (!ws) {
+      throw new Error(`Unknown workspace: ${input.workspaceId}`);
+    }
+
+    const createOptions = await this.buildCreateSessionOptions(input.workspaceId);
+    const snapshot = await this.driver.createSession(ws, {
+      ...createOptions,
+      title: input.title || "Advisor",
+    });
+    const key = sessionKey(snapshot.ref);
+    this.sessionState.transcriptCache.set(key, []);
+    this.sessionState.loadedTranscriptKeys.add(key);
+    this.updateSessionConfig(snapshot.ref, snapshot.config);
+
+    // Seed the session with the handoff payload as the first user message.
+    await this.driver.sendUserMessage(snapshot.ref, {
+      text: input.seedText,
+      deliverAs: "steer",
+    });
+
+    // Refresh session list to pick up the new session.
+    await this.refreshState({});
+
+    return { sessionId: snapshot.ref.sessionId };
+  }
+
+  /* ── GitHub issue runner ────────────────────────────────── */
+
+  async listGhMilestones(workspaceId?: string): Promise<DesktopAppState> {
+    await this.initialize();
+    const wsId = workspaceId ?? this.state.selectedWorkspaceId;
+    if (!wsId) return this.emit();
+    return ghRunner.refreshMilestones(this, wsId);
+  }
+
+  async runGhMilestone(workspaceId: string, milestoneNumber: number): Promise<DesktopAppState> {
+    await this.initialize();
+    void ghRunner.runMilestone(this, workspaceId, milestoneNumber);
+    return this.emit();
+  }
+
+  async cancelGhRun(): Promise<DesktopAppState> {
+    await this.initialize();
+    ghRunner.cancelRun(this);
+    return this.emit();
   }
 
   /* ── View / UI state ───────────────────────────────────── */
@@ -616,6 +709,42 @@ export class DesktopAppStore implements AppStoreInternals {
     return this.emit();
   }
 
+  async setZoomFactor(zoomFactor: number): Promise<DesktopAppState> {
+    await this.initialize();
+    const next = reduce(this.state, { type: "settings/setZoomFactor", zoomFactor });
+    if (next === this.state) {
+      return structuredClone(this.state);
+    }
+    this.state = next;
+    await this.persistUiState();
+    return this.emit();
+  }
+
+  async setQueueMode(enabled: boolean): Promise<DesktopAppState> {
+    await this.initialize();
+    const next = reduce(this.state, { type: "settings/setQueueMode", queueMode: enabled });
+    if (next === this.state) {
+      return structuredClone(this.state);
+    }
+    this.state = next;
+
+    // When enabling queue mode, select the oldest session with hasUnseenUpdate
+    if (enabled) {
+      const queuedSession = findNextQueuedSession(this.state);
+      if (queuedSession) {
+        await this.selectSessionFast(queuedSession);
+      }
+    }
+
+    await this.persistUiState();
+    return this.emit();
+  }
+
+  /** Find the next queued session (oldest hasUnseenUpdate). */
+  findNextQueuedSession(excludeWorkspaceId?: string, excludeSessionId?: string): { workspaceId: string; sessionId: string } | undefined {
+    return findNextQueuedSession(this.state, excludeWorkspaceId, excludeSessionId);
+  }
+
   async setNotificationPreferences(preferences: Partial<NotificationPreferences>): Promise<DesktopAppState> {
     await this.initialize();
     this.state = reduce(this.state, { type: "settings/mergeNotificationPreferences", preferences });
@@ -638,58 +767,22 @@ export class DesktopAppStore implements AppStoreInternals {
   }
 
   async setSubagentSettings(settings: Partial<SubagentSettingsRecord>): Promise<DesktopAppState> {
-    await this.initialize();
-    this.state = {
-      ...this.state,
-      subagentSettings: {
-        ...this.state.subagentSettings,
-        ...settings,
-        piCommandOverride: settings.piCommandOverride?.trim() ?? this.state.subagentSettings.piCommandOverride,
-      },
-    };
-    applySubagentEnvironment(this.state.subagentSettings);
-    await this.persistUiState();
-    return this.emit();
+    return subagent.setSubagentSettings(this, settings);
   }
 
   async refreshSubagentAgents(workspaceId: string): Promise<DesktopAppState> {
-    await this.initialize();
-    await this.reloadSubagentAgentsForWorkspace(workspaceId);
-    return this.emit();
+    return subagent.refreshSubagentAgents(this, workspaceId);
   }
 
   async saveSubagentAgent(workspaceId: string, input: { readonly name: string; readonly raw: string; readonly scope?: "project" | "global" }): Promise<DesktopAppState> {
-    await this.initialize();
-    const workspace = this.state.workspaces.find((entry) => entry.id === workspaceId);
-    if (!workspace) return this.withError(`Unknown workspace: ${workspaceId}`);
-    const name = input.name.trim();
-    if (!/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(name)) return this.withError("Agent name must be lower-kebab-case.");
-    const scope = input.scope ?? "project";
-    const agentPath = scope === "global"
-      ? join(getSubagentGlobalAgentsDir(), `${name}.md`)
-      : join(workspace.path, ".pi", "agents", `${name}.md`);
-    await mkdir(dirname(agentPath), { recursive: true });
-    await writeFile(agentPath, input.raw, "utf8");
-    await this.reloadSubagentAgentsForWorkspace(workspaceId);
-    await this.refreshRuntime(workspaceId);
-    return this.emit();
+    return subagent.saveSubagentAgent(this, workspaceId, input);
   }
 
   async deleteSubagentAgent(workspaceId: string, name: string, scope: "project" | "global" = "project"): Promise<DesktopAppState> {
-    await this.initialize();
-    const workspace = this.state.workspaces.find((entry) => entry.id === workspaceId);
-    if (!workspace) return this.withError(`Unknown workspace: ${workspaceId}`);
-    const agentPath = scope === "global"
-      ? join(getSubagentGlobalAgentsDir(), `${name}.md`)
-      : join(workspace.path, ".pi", "agents", `${name}.md`);
-    await rm(agentPath, { force: true });
-    await this.reloadSubagentAgentsForWorkspace(workspaceId);
-    await this.refreshRuntime(workspaceId);
-    return this.emit();
+    return subagent.deleteSubagentAgent(this, workspaceId, name, scope);
   }
 
   async setCommitPushModel(workspaceId: string, model: string): Promise<DesktopAppState> {
-    await this.initialize();
     const next = reduce(this.state, { type: "settings/setCommitPushModel", commitPushModel: model });
     if (next === this.state) {
       return this.emit();
@@ -699,15 +792,346 @@ export class DesktopAppStore implements AppStoreInternals {
     return this.emit();
   }
 
-  async setEnableTransparency(enabled: boolean): Promise<DesktopAppState> {
-    await this.initialize();
-    const next = reduce(this.state, { type: "settings/setEnableTransparency", enableTransparency: enabled });
-    if (next === this.state) {
-      return structuredClone(this.state);
+  private agentSettingsPath(): string {
+    return join(homedir(), ".pi", "agent", "settings.json");
+  }
+
+  async getSmartCompactSettings(): Promise<Record<string, unknown>> {
+    try {
+      const raw = await readFile(this.agentSettingsPath(), "utf8");
+      const parsed = JSON.parse(raw);
+      return (typeof parsed === "object" && parsed !== null ? parsed : {}).smartCompact ?? {};
+    } catch {
+      return {};
     }
-    this.state = next;
-    await this.persistUiState();
-    return this.emit();
+  }
+
+  async setSmartCompactSettings(settings: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const filePath = this.agentSettingsPath();
+    let raw: Record<string, unknown> = {};
+    try {
+      const content = await readFile(filePath, "utf8");
+      raw = JSON.parse(content);
+      if (typeof raw !== "object" || raw === null) raw = {};
+    } catch {
+      // file doesn't exist yet
+    }
+    const current = (raw.smartCompact ?? {}) as Record<string, unknown>;
+    const next = { ...current, ...settings };
+    // Remove undefined/null values
+    for (const key of Object.keys(next)) {
+      if (next[key] === undefined || next[key] === null) delete next[key];
+    }
+    raw.smartCompact = next;
+    await mkdir(dirname(filePath), { recursive: true });
+    await writeFile(filePath, `${JSON.stringify(raw, null, 2)}\n`, "utf8");
+    return next;
+  }
+
+  private extensionConfigDir(): string {
+    return join(homedir(), ".pi", "agent", "extension-configs");
+  }
+
+  private extensionConfigPath(extensionPath: string): string {
+    // Create a safe filename from the extension path
+    const safeName = extensionPath
+      .replace(/[^a-zA-Z0-9]/g, "_")
+      .replace(/_+/g, "_")
+      .toLowerCase();
+    return join(this.extensionConfigDir(), `${safeName}.json`);
+  }
+
+  async getExtensionConfig(extensionPath: string): Promise<import("../src/ipc").ExtensionConfigSchema | null> {
+    try {
+      const configPath = this.extensionConfigPath(extensionPath);
+      const raw = await readFile(configPath, "utf8");
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
+
+  async setExtensionConfig(extensionPath: string, values: readonly { key: string; value: string | number | boolean }[]): Promise<void> {
+    const existing = await this.getExtensionConfig(extensionPath);
+    if (!existing) return;
+
+    // Update field values
+    const updatedFields = existing.fields.map((field) => {
+      const override = values.find((v) => v.key === field.key);
+      if (override) {
+        return { ...field, currentValue: override.value };
+      }
+      return field;
+    });
+
+    const updated: import("../src/ipc").ExtensionConfigSchema = {
+      ...existing,
+      fields: updatedFields,
+    };
+
+    const configPath = this.extensionConfigPath(extensionPath);
+    await mkdir(dirname(configPath), { recursive: true });
+    await writeFile(configPath, `${JSON.stringify(updated, null, 2)}\n`, "utf8");
+
+    // Also write env vars to a .env file if any
+    const envFields = updatedFields.filter((f) => f.source === "env" && f.currentValue !== undefined);
+    if (envFields.length > 0) {
+      const envPath = join(this.extensionConfigDir(), ".env");
+      let envContent = "";
+      try {
+        envContent = await readFile(envPath, "utf8");
+      } catch {}
+      for (const field of envFields) {
+        const regex = new RegExp(`^${field.key}=.*$`, "m");
+        const line = `${field.key}=${field.currentValue}`;
+        if (regex.test(envContent)) {
+          envContent = envContent.replace(regex, line);
+        } else {
+          envContent += `\n${line}`;
+        }
+      }
+      await writeFile(envPath, envContent.trim() + "\n", "utf8");
+    }
+  }
+
+  async analyzeExtensionConfig(extensionPath: string, model?: string): Promise<import("../src/ipc").ExtensionConfigSchema> {
+    // Read the extension source code
+    let sourceCode = "";
+    try {
+      sourceCode = await readFile(extensionPath, "utf8");
+    } catch {
+      throw new Error(`Cannot read extension file: ${extensionPath}`);
+    }
+
+    // Try to read README if exists
+    let readme = "";
+    const dir = dirname(extensionPath);
+    for (const readmeName of ["README.md", "readme.md", "README.txt", "readme.txt"]) {
+      try {
+        readme = await readFile(join(dir, readmeName), "utf8");
+        break;
+      } catch {}
+    }
+
+    // Try LLM-based analysis first
+    const llmResult = await this.analyzeExtensionConfigWithLLM(extensionPath, sourceCode, readme, model);
+    if (llmResult) {
+      return llmResult;
+    }
+
+    // Fallback to regex-based analysis
+    const fields: import("../src/ipc").ExtensionConfigField[] = [];
+
+    // Find environment variables: process.env.VARIABLE_NAME
+    const envRegex = /process\.env\.([A-Z_][A-Z0-9_]*)/g;
+    let envMatch;
+    while ((envMatch = envRegex.exec(sourceCode)) !== null) {
+      const varName = envMatch[1];
+      if (varName && !fields.some((f) => f.key === varName)) {
+        fields.push({
+          key: varName,
+          label: varName.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase()),
+          type: "string",
+          source: "env",
+          description: `Environment variable: ${varName}`,
+        });
+      }
+    }
+
+    const schema: import("../src/ipc").ExtensionConfigSchema = {
+      extensionPath,
+      displayName: basename(extensionPath, ".ts"),
+      fields,
+      analyzedAt: new Date().toISOString(),
+    };
+
+    // Save the schema
+    const configPath = this.extensionConfigPath(extensionPath);
+    await mkdir(dirname(configPath), { recursive: true });
+    await writeFile(configPath, `${JSON.stringify(schema, null, 2)}\n`, "utf8");
+
+    return schema;
+  }
+
+  private async analyzeExtensionConfigWithLLM(
+    extensionPath: string,
+    sourceCode: string,
+    readme: string,
+    model?: string,
+  ): Promise<import("../src/ipc").ExtensionConfigSchema | null> {
+    try {
+      const { PROVIDER_CONFIGS, parseProviderAndModel } = await import("./llm-helpers.js");
+
+      // Use provided model, smart-compact model, or fallback to deepseek
+      let modelString = model;
+      if (!modelString) {
+        const settings = await this.getSmartCompactSettings();
+        modelString = (typeof settings.summaryModel === "string" ? settings.summaryModel : null) ?? "deepseek:deepseek-chat";
+      }
+      const { providerId, modelId } = parseProviderAndModel(modelString);
+      const config = PROVIDER_CONFIGS[providerId];
+      if (!config) return null;
+
+      // Get API key from store
+      const apiKey = await this.getProviderApiKey(providerId);
+      if (!apiKey) return null;
+
+      // Truncate source if too long
+      const maxSourceLen = 15000;
+      const truncatedSource = sourceCode.length > maxSourceLen
+        ? sourceCode.slice(0, maxSourceLen) + "\n... (truncated)"
+        : sourceCode;
+
+      const truncatedReadme = readme.length > 5000
+        ? readme.slice(0, 5000) + "\n... (truncated)"
+        : readme;
+
+      const systemPrompt = `You are analyzing a pi coding agent extension to extract its configuration options.
+
+An extension can have these types of configuration:
+1. Environment variables (process.env.VAR_NAME) - credentials, API keys, feature flags
+2. JSON config files (settings.json, config.json) - structured settings
+3. CLI flags (registerFlag) - command-line options
+4. Hardcoded constants that should be configurable - URLs, timeouts, limits
+
+For each configuration option found, extract:
+- key: the identifier (env var name, config key, flag name)
+- label: human-readable name
+- type: "string" | "number" | "boolean" | "select"
+- description: what this option controls
+- defaultValue: if found in the code
+- options: for select type, the allowed values
+- source: "env" | "file" | "flag" | "constant"
+- sourcePath: for file type, the config file path
+
+Return a JSON array of configuration fields. Only include ACTUAL configuration options, not internal constants.`;
+
+      const userMessage = `Analyze this extension and extract all configuration options.
+
+Extension path: ${extensionPath}
+
+Source code:
+\`\`\`
+${truncatedSource}
+\`\`\`
+${truncatedReadme ? `\nREADME:\n\`\`\`\n${truncatedReadme}\n\`\`\`` : ""}
+
+Return ONLY a JSON array of configuration fields, no explanation.`;
+
+      const response = await fetch(`${config.apiBase}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: modelId,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userMessage },
+          ],
+          max_tokens: 2000,
+          temperature: 0.1,
+        }),
+      });
+
+      if (!response.ok) return null;
+
+      const data = await response.json() as any;
+      const content = data.choices?.[0]?.message?.content;
+      if (!content) return null;
+
+      // Extract JSON from response (handle markdown code blocks)
+      let jsonStr = content;
+      const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (jsonMatch) {
+        jsonStr = jsonMatch[1];
+      }
+      // Also try to find raw JSON array
+      const arrayMatch = jsonStr.match(/\[\s*\{[\s\S]*\}\s*\]/);
+      if (arrayMatch) {
+        jsonStr = arrayMatch[0];
+      }
+
+      const parsed = JSON.parse(jsonStr);
+      if (!Array.isArray(parsed)) return null;
+
+      const fields: import("../src/ipc").ExtensionConfigField[] = parsed.map((item: any) => ({
+        key: String(item.key || ""),
+        label: String(item.label || item.key || ""),
+        type: ["string", "number", "boolean", "select"].includes(item.type) ? item.type : "string",
+        description: item.description ? String(item.description) : undefined,
+        defaultValue: item.defaultValue,
+        currentValue: item.defaultValue,
+        options: Array.isArray(item.options) ? item.options.map(String) : undefined,
+        source: ["env", "file", "flag", "constant"].includes(item.source) ? item.source : "constant",
+        sourcePath: item.sourcePath ? String(item.sourcePath) : undefined,
+      }));
+
+      const schema: import("../src/ipc").ExtensionConfigSchema = {
+        extensionPath,
+        displayName: basename(extensionPath, ".ts"),
+        fields,
+        analyzedAt: new Date().toISOString(),
+        analyzedBy: modelString,
+      };
+
+      // Save the schema
+      const configPath = this.extensionConfigPath(extensionPath);
+      await mkdir(dirname(configPath), { recursive: true });
+      await writeFile(configPath, `${JSON.stringify(schema, null, 2)}\n`, "utf8");
+
+      return schema;
+    } catch (err) {
+      console.error("LLM analysis failed, falling back to regex:", err);
+      return null;
+    }
+  }
+
+  async installExtension(source: string, local?: boolean): Promise<{ success: boolean; message: string }> {
+    try {
+      const args = ["install", source];
+      if (local) args.push("-l");
+      const { stdout, stderr } = await execAsync(`pi ${args.join(" ")}`);
+      return {
+        success: true,
+        message: stdout || stderr || `Installed ${source}`,
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        message: err.stderr || err.stdout || err.message || "Installation failed",
+      };
+    }
+  }
+
+  async uninstallExtension(source: string, local?: boolean): Promise<{ success: boolean; message: string }> {
+    try {
+      const args = ["uninstall", source];
+      if (local) args.push("-l");
+      const { stdout, stderr } = await execAsync(`pi ${args.join(" ")}`);
+      return {
+        success: true,
+        message: stdout || stderr || `Uninstalled ${source}`,
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        message: err.stderr || err.stdout || err.message || "Uninstallation failed",
+      };
+    }
+  }
+
+  async checkExtensionUpdates(): Promise<{ source: string; current: string; latest: string }[]> {
+    try {
+      const _stdout = await execAsync("pi list --updates");
+      // Parse the output - this is a simplified parser
+      // In reality, you'd want to parse the actual format of pi list --updates
+      const updates: { source: string; current: string; latest: string }[] = [];
+      return updates;
+    } catch {
+      return [];
+    }
   }
 
   async setTranscriptVerbose(enabled: boolean): Promise<DesktopAppState> {
@@ -728,6 +1152,46 @@ export class DesktopAppStore implements AppStoreInternals {
       return structuredClone(this.state);
     }
     this.state = next;
+    await this.persistUiState();
+    return this.emit();
+  }
+
+  async setStreamReveal(mode: StreamRevealMode): Promise<DesktopAppState> {
+    await this.initialize();
+    const next = reduce(this.state, { type: "settings/setStreamReveal", streamReveal: mode });
+    if (next === this.state) {
+      return structuredClone(this.state);
+    }
+    this.state = next;
+    await this.persistUiState();
+    return this.emit();
+  }
+
+  async setStreamRevealSpeed(speed: StreamRevealSpeed): Promise<DesktopAppState> {
+    await this.initialize();
+    const next = reduce(this.state, { type: "settings/setStreamRevealSpeed", streamRevealSpeed: speed });
+    if (next === this.state) {
+      return structuredClone(this.state);
+    }
+    this.state = next;
+    await this.persistUiState();
+    return this.emit();
+  }
+
+  async setPlanModeIdeology(ideology: PlanModeIdeologySetting): Promise<DesktopAppState> {
+    await this.initialize();
+    const next = reduce(this.state, { type: "settings/setPlanModeIdeology", planModeIdeology: ideology });
+    if (next === this.state) {
+      return structuredClone(this.state);
+    }
+    this.state = next;
+    await this.persistUiState();
+    return this.emit();
+  }
+
+  async setThreadTransition(preferences: Partial<ThreadTransitionSettings>): Promise<DesktopAppState> {
+    await this.initialize();
+    this.state = reduce(this.state, { type: "settings/mergeThreadTransition", preferences });
     await this.persistUiState();
     return this.emit();
   }
@@ -865,11 +1329,59 @@ export class DesktopAppStore implements AppStoreInternals {
     );
   }
 
+  async addCustomProvider(
+    workspaceId: string,
+    config: {
+      readonly providerId: string;
+      readonly displayName: string;
+      readonly baseUrl: string;
+      readonly api: "openai-completions" | "openai-responses" | "anthropic-messages";
+      readonly apiKey: string;
+      readonly models: ReadonlyArray<{
+        readonly id: string;
+        readonly name: string;
+        readonly reasoning: boolean;
+        readonly input: readonly ("text" | "image")[];
+        readonly contextWindow: number;
+        readonly maxTokens: number;
+      }>;
+    },
+  ): Promise<DesktopAppState> {
+    return this.withRuntimeUpdate(workspaceId, (ws) =>
+      this.driver.runtimeSupervisor.addCustomProvider(ws, config),
+    );
+  }
+
+  async removeCustomProvider(workspaceId: string, providerId: string): Promise<DesktopAppState> {
+    return this.withRuntimeUpdate(workspaceId, (ws) =>
+      this.driver.runtimeSupervisor.removeCustomProvider(ws, providerId),
+    );
+  }
+
   async setEnableSkillCommands(workspaceId: string, enabled: boolean): Promise<DesktopAppState> {
     return this.withRuntimeUpdate(workspaceId, (ws) =>
       this.driver.runtimeSupervisor.setEnableSkillCommands(ws, enabled),
       { reloadSessions: true },
     );
+  }
+
+  async setRetrySettings(
+    workspaceId: string,
+    settings: { enabled: boolean; maxRetries: number; baseDelayMs: number },
+  ): Promise<DesktopAppState> {
+    return this.withRuntimeUpdate(workspaceId, (ws) =>
+      this.driver.runtimeSupervisor.setRetrySettings(ws, settings),
+    );
+  }
+
+  async getRetrySettings(
+    workspaceId: string,
+  ): Promise<{ enabled: boolean; maxRetries: number; baseDelayMs: number }> {
+    const ws = this.workspaceRefFromState(workspaceId);
+    if (!ws) {
+      return { enabled: true, maxRetries: 3, baseDelayMs: 2000 };
+    }
+    return this.driver.runtimeSupervisor.getRetrySettings(ws);
   }
 
   async setScopedModelPatterns(workspaceId: string, patterns: readonly string[]): Promise<DesktopAppState> {
@@ -985,67 +1497,100 @@ export class DesktopAppStore implements AppStoreInternals {
 
   /* ── Internal infrastructure (AppStoreInternals) ───────── */
 
+  /** Merge persisted UI preferences into the current state. ~pure. */
+  private mergePersistedState(persisted: PersistedUiState): DesktopAppState {
+    return {
+      ...this.state,
+      activeView: persisted.activeView ?? this.state.activeView,
+      modelSettingsScopeMode: persisted.modelSettingsScopeMode ?? this.state.modelSettingsScopeMode,
+      globalModelSettings: persisted.appGlobalModelSettings ?? this.state.globalModelSettings,
+      notificationPreferences: {
+        ...this.state.notificationPreferences,
+        ...persisted.notificationPreferences,
+      },
+      subagentSettings: {
+        ...this.state.subagentSettings,
+        ...persisted.subagentSettings,
+      },
+      integratedTerminalShell: persisted.integratedTerminalShell ?? this.state.integratedTerminalShell,
+      externalTerminalApp: persisted.externalTerminalApp ?? this.state.externalTerminalApp,
+      retrySettings: persisted.retrySettings ?? this.state.retrySettings,
+      lastViewedAtBySession: persisted.lastViewedAtBySession ?? {},
+      threadTypeBySession: persisted.threadTypeBySession ?? {},
+      workspaceOrder: persisted.workspaceOrder ?? [],
+      sidebarCollapsed: persisted.sidebarCollapsed ?? this.state.sidebarCollapsed,
+      zoomFactor: persisted.zoomFactor ?? this.state.zoomFactor,
+      transcriptVerbose: persisted.transcriptVerbose ?? this.state.transcriptVerbose,
+      composerDeviceMode: persisted.composerDeviceMode ?? this.state.composerDeviceMode,
+      streamReveal: persisted.streamReveal ?? this.state.streamReveal,
+      streamRevealSpeed: persisted.streamRevealSpeed ?? this.state.streamRevealSpeed,
+      threadTransition: persisted.threadTransition
+        ? { ...this.state.threadTransition, ...persisted.threadTransition }
+        : this.state.threadTransition,
+      themeMode: persisted.themeMode ?? this.state.themeMode,
+      commitPushModel: persisted.commitPushModel ?? this.state.commitPushModel,
+      chats: persisted.chats ?? [],
+      selectedChatId: persisted.selectedChatId ?? "",
+    };
+  }
+
+  /** Copy persisted per-session maps into the in-memory session state. */
+  private restorePersistedSessionMaps(persisted: PersistedUiState): void {
+    this.sessionState.lastViewedAtBySession.clear();
+    for (const [key, viewedAt] of Object.entries(persisted.lastViewedAtBySession ?? {})) {
+      if (viewedAt) {
+        this.sessionState.lastViewedAtBySession.set(key, viewedAt);
+      }
+    }
+    this.sessionState.composerDraftsBySession.clear();
+    for (const [key, draft] of Object.entries(persisted.composerDraftsBySession ?? {})) {
+      if (draft) {
+        this.sessionState.composerDraftsBySession.set(key, draft);
+      }
+    }
+    this.extensionCommandCompatibilityByWorkspace.clear();
+    for (const [workspaceId, records] of restoreCompatibilityByWorkspace(
+      persisted.extensionCommandCompatibilityByWorkspace,
+    )) {
+      this.extensionCommandCompatibilityByWorkspace.set(workspaceId, records);
+    }
+  }
+
+  /** Build a fallback state when initializeInternal fails. */
+  private buildInitFallbackState(persisted: PersistedUiState, error: unknown): DesktopAppState {
+    return {
+      ...createEmptyDesktopAppState(),
+      zoomFactor: persisted.zoomFactor ?? ZOOM_BASELINE,
+      transcriptVerbose: persisted.transcriptVerbose ?? false,
+      composerDeviceMode: persisted.composerDeviceMode ?? "modular-cream",
+      streamReveal: persisted.streamReveal ?? "blur",
+      streamRevealSpeed: persisted.streamRevealSpeed ?? "medium",
+      themeMode: persisted.themeMode ?? "system",
+      lastError: error instanceof Error ? error.message : String(error),
+      commitPushModel: persisted.commitPushModel,
+      chats: persisted.chats ?? [],
+      selectedChatId: persisted.selectedChatId ?? "",
+      revision: 1,
+    };
+  }
+
   private async initializeInternal(): Promise<void> {
     const persisted = await this.readUiState();
     try {
-      this.state = {
-        ...this.state,
-        activeView: persisted.activeView ?? this.state.activeView,
-        modelSettingsScopeMode: persisted.modelSettingsScopeMode ?? this.state.modelSettingsScopeMode,
-        globalModelSettings: persisted.appGlobalModelSettings ?? this.state.globalModelSettings,
-        notificationPreferences: {
-          ...this.state.notificationPreferences,
-          ...persisted.notificationPreferences,
-        },
-        subagentSettings: {
-          ...this.state.subagentSettings,
-          ...persisted.subagentSettings,
-        },
-        integratedTerminalShell: persisted.integratedTerminalShell ?? this.state.integratedTerminalShell,
-        externalTerminalApp: persisted.externalTerminalApp ?? this.state.externalTerminalApp,
-        lastViewedAtBySession: persisted.lastViewedAtBySession ?? {},
-        workspaceOrder: persisted.workspaceOrder ?? [],
-        sidebarCollapsed: persisted.sidebarCollapsed ?? this.state.sidebarCollapsed,
-        enableTransparency: persisted.enableTransparency ?? this.state.enableTransparency,
-        transcriptVerbose: persisted.transcriptVerbose ?? this.state.transcriptVerbose,
-        composerDeviceMode: persisted.composerDeviceMode ?? this.state.composerDeviceMode,
-        themeMode: persisted.themeMode ?? this.state.themeMode,
-        commitPushModel: persisted.commitPushModel ?? this.state.commitPushModel,
-        chats: persisted.chats ?? [],
-        selectedChatId: persisted.selectedChatId ?? "",
-      };
+      this.state = this.mergePersistedState(persisted);
       applySubagentEnvironment(this.state.subagentSettings);
       await this.migrateLegacyPersistence(persisted);
-      this.sessionState.lastViewedAtBySession.clear();
-      for (const [key, viewedAt] of Object.entries(persisted.lastViewedAtBySession ?? {})) {
-        if (viewedAt) {
-          this.sessionState.lastViewedAtBySession.set(key, viewedAt);
-        }
-      }
-      this.sessionState.composerDraftsBySession.clear();
-      for (const [key, draft] of Object.entries(persisted.composerDraftsBySession ?? {})) {
-        if (draft) {
-          this.sessionState.composerDraftsBySession.set(key, draft);
-        }
-      }
-      this.extensionCommandCompatibilityByWorkspace.clear();
-      for (const [workspaceId, records] of restoreCompatibilityByWorkspace(
-        persisted.extensionCommandCompatibilityByWorkspace,
-      )) {
-        this.extensionCommandCompatibilityByWorkspace.set(workspaceId, records);
-      }
+      this.restorePersistedSessionMaps(persisted);
+
       const initialWorkspacePaths = this.initialWorkspacePaths.map((path) => path.trim()).filter(Boolean);
       const knownWorkspaces = await this.driver.listWorkspaces();
       const workspacesToSync = new Map<string, string | undefined>();
-
       for (const workspacePath of initialWorkspacePaths) {
         workspacesToSync.set(workspacePath, undefined);
       }
-
       for (const ws of knownWorkspaces.workspaces) {
         workspacesToSync.set(ws.path, ws.displayName);
       }
-
       await Promise.all(
         [...workspacesToSync.entries()].map(([workspacePath, displayName]) =>
           this.driver.syncWorkspace(workspacePath, displayName),
@@ -1067,18 +1612,7 @@ export class DesktopAppStore implements AppStoreInternals {
       }
       this.startSelectedSessionHydration(restoredSessionRef, { markViewed: false });
     } catch (error) {
-      this.state = {
-        ...createEmptyDesktopAppState(),
-        enableTransparency: persisted.enableTransparency ?? false,
-        transcriptVerbose: persisted.transcriptVerbose ?? false,
-        composerDeviceMode: persisted.composerDeviceMode ?? "off",
-        themeMode: persisted.themeMode ?? "system",
-        lastError: error instanceof Error ? error.message : String(error),
-        commitPushModel: persisted.commitPushModel,
-        chats: persisted.chats ?? [],
-        selectedChatId: persisted.selectedChatId ?? "",
-        revision: 1,
-      };
+      this.state = this.buildInitFallbackState(persisted, error);
       await this.persistUiState();
       this.emit();
     }
@@ -1110,6 +1644,78 @@ export class DesktopAppStore implements AppStoreInternals {
         }
       }),
     );
+  }
+
+  /** Remove runtime + compatibility entries for workspaces no longer in the catalog. */
+  private pruneStaleMaps(liveWorkspaceIds: ReadonlySet<string>): void {
+    for (const wsId of this.runtimeByWorkspace.keys()) {
+      if (!liveWorkspaceIds.has(wsId)) {
+        this.runtimeByWorkspace.delete(wsId);
+      }
+    }
+    for (const workspaceId of this.extensionCommandCompatibilityByWorkspace.keys()) {
+      if (!liveWorkspaceIds.has(workspaceId)) {
+        this.extensionCommandCompatibilityByWorkspace.delete(workspaceId);
+      }
+    }
+  }
+
+  /** Load runtimes for all non-selected workspaces + prune stale compat entries. */
+  private async preloadSecondaryRuntimes(
+    selectedWorkspaceId: string,
+    rawWorkspaces: readonly WorkspaceCatalogEntry[],
+  ): Promise<void> {
+    if (selectedWorkspaceId && !this.runtimeByWorkspace.has(selectedWorkspaceId)) {
+      await this.ensureRuntimeLoaded(selectedWorkspaceId, rawWorkspaces);
+    }
+    const secondaryWorkspacesToLoad = rawWorkspaces
+      .filter((workspace) => workspace.workspaceId !== selectedWorkspaceId)
+      .filter((workspace) => !this.runtimeByWorkspace.has(workspace.workspaceId));
+    const secondaryRuntimeLoads = await Promise.allSettled(
+      secondaryWorkspacesToLoad.map((workspace) => this.ensureRuntimeLoaded(workspace.workspaceId, rawWorkspaces)),
+    );
+    secondaryRuntimeLoads.forEach((result, index) => {
+      if (result.status === "fulfilled") {
+        return;
+      }
+      const failedWorkspace = secondaryWorkspacesToLoad[index];
+      console.warn(
+        `[pi-gui] Failed to preload runtime for ${failedWorkspace?.path ?? "unknown workspace"}: ${
+          result.reason instanceof Error ? result.reason.message : String(result.reason)
+        }`,
+      );
+    });
+    for (const runtime of this.runtimeByWorkspace.values()) {
+      pruneCompatibilityForRuntimeSnapshot(this.extensionCommandCompatibilityByWorkspace, runtime);
+    }
+  }
+
+  /** Resolve global + per-repo model settings and restore if stale. */
+  private async resolveRefreshModelSettings(
+    workspaces: readonly WorkspaceRecord[],
+    rawWorkspaces: readonly WorkspaceCatalogEntry[],
+    selectedWorkspaceId: string,
+  ): Promise<{ globalModelSettings: ModelSettingsSnapshot; scopedModelSettingsByWorkspace: Record<string, ModelSettingsSnapshot> | undefined }> {
+    const liveGlobalModelSettings = await this.loadLiveGlobalModelSettings(
+      rawWorkspaces,
+      selectedWorkspaceId || rawWorkspaces[0]?.workspaceId,
+    );
+    const globalModelSettings =
+      this.state.modelSettingsScopeMode === "per-repo" && hasStoredModelSettings(this.state.globalModelSettings)
+        ? this.state.globalModelSettings
+        : liveGlobalModelSettings;
+    if (
+      this.state.modelSettingsScopeMode === "per-repo" &&
+      hasStoredModelSettings(globalModelSettings) &&
+      !modelSettingsEqual(globalModelSettings, liveGlobalModelSettings)
+    ) {
+      await this.restoreGlobalModelSettings(globalModelSettings, rawWorkspaces, selectedWorkspaceId);
+    }
+    const scopedModelSettingsByWorkspace =
+      this.state.modelSettingsScopeMode === "per-repo"
+        ? await this.loadScopedModelSettingsByWorkspace(workspaces, rawWorkspaces, globalModelSettings)
+        : undefined;
+    return { globalModelSettings, scopedModelSettingsByWorkspace };
   }
 
   async refreshState(options: RefreshStateOptions = {}): Promise<DesktopAppState> {
@@ -1154,62 +1760,17 @@ export class DesktopAppStore implements AppStoreInternals {
         this.sessionState.runningSinceBySession,
         this.sessionState.sessionConfigBySession,
         this.sessionState.lastViewedAtBySession,
+        this.sessionState.contextUsageBySession,
       );
       const worktreesByWorkspace = buildWorktreeRecords(workspacesSnapshot.workspaces, worktreeEntries);
-      const liveWorkspaceIds = new Set(workspaces.map((w) => w.id));
-      for (const wsId of this.runtimeByWorkspace.keys()) {
-        if (!liveWorkspaceIds.has(wsId)) {
-          this.runtimeByWorkspace.delete(wsId);
-        }
-      }
-      for (const workspaceId of this.extensionCommandCompatibilityByWorkspace.keys()) {
-        if (!liveWorkspaceIds.has(workspaceId)) {
-          this.extensionCommandCompatibilityByWorkspace.delete(workspaceId);
-        }
-      }
+      this.pruneStaleMaps(new Set(workspaces.map((w) => w.id)));
+      await this.preloadSecondaryRuntimes(selectedWorkspaceId, workspacesSnapshot.workspaces);
 
-      if (selectedWorkspaceId && !this.runtimeByWorkspace.has(selectedWorkspaceId)) {
-        await this.ensureRuntimeLoaded(selectedWorkspaceId, workspacesSnapshot.workspaces);
-      }
-      const secondaryWorkspacesToLoad = workspacesSnapshot.workspaces
-        .filter((workspace) => workspace.workspaceId !== selectedWorkspaceId)
-        .filter((workspace) => !this.runtimeByWorkspace.has(workspace.workspaceId));
-      const secondaryRuntimeLoads = await Promise.allSettled(
-        secondaryWorkspacesToLoad.map((workspace) => this.ensureRuntimeLoaded(workspace.workspaceId, workspacesSnapshot.workspaces)),
-      );
-      secondaryRuntimeLoads.forEach((result, index) => {
-        if (result.status === "fulfilled") {
-          return;
-        }
-        const failedWorkspace = secondaryWorkspacesToLoad[index];
-        console.warn(
-          `[pi-gui] Failed to preload runtime for ${failedWorkspace?.path ?? "unknown workspace"}: ${
-            result.reason instanceof Error ? result.reason.message : String(result.reason)
-          }`,
-        );
-      });
-      for (const runtime of this.runtimeByWorkspace.values()) {
-        pruneCompatibilityForRuntimeSnapshot(this.extensionCommandCompatibilityByWorkspace, runtime);
-      }
-      const liveGlobalModelSettings = await this.loadLiveGlobalModelSettings(
+      const { globalModelSettings, scopedModelSettingsByWorkspace } = await this.resolveRefreshModelSettings(
+        workspaces,
         workspacesSnapshot.workspaces,
-        selectedWorkspaceId || workspacesSnapshot.workspaces[0]?.workspaceId,
+        selectedWorkspaceId,
       );
-      const globalModelSettings =
-        this.state.modelSettingsScopeMode === "per-repo" && hasStoredModelSettings(this.state.globalModelSettings)
-          ? this.state.globalModelSettings
-          : liveGlobalModelSettings;
-      if (
-        this.state.modelSettingsScopeMode === "per-repo" &&
-        hasStoredModelSettings(globalModelSettings) &&
-        !modelSettingsEqual(globalModelSettings, liveGlobalModelSettings)
-      ) {
-        await this.restoreGlobalModelSettings(globalModelSettings, workspacesSnapshot.workspaces, selectedWorkspaceId);
-      }
-      const scopedModelSettingsByWorkspace =
-        this.state.modelSettingsScopeMode === "per-repo"
-          ? await this.loadScopedModelSettingsByWorkspace(workspaces, workspacesSnapshot.workspaces, globalModelSettings)
-          : undefined;
       const runtimeByWorkspace = this.serializeEffectiveRuntimeState(workspaces, scopedModelSettingsByWorkspace);
       for (const workspace of workspaces) {
         await this.reloadSubagentAgentsForWorkspace(workspace.id, workspace.path);
@@ -1217,17 +1778,8 @@ export class DesktopAppStore implements AppStoreInternals {
 
       const activeView = options.activeView ?? this.state.activeView;
       const composerDraftSync = this.resolveComposerDraftSync(selectedWorkspaceId, selectedSessionId, options);
-      const selectedLoopStatus = this.resolveSelectedLoopStatus(workspaces, selectedWorkspaceId, selectedSessionId);
-      const selectedSessionCreatedRalphPlan = await this.resolveSelectedSessionCreatedRalphPlan(
-        workspaces,
-        selectedWorkspaceId,
-        selectedSessionId,
-        selectedLoopStatus,
-      );
       this.state = {
         ...this.state,
-        selectedLoopStatus,
-        selectedSessionCreatedRalphPlan,
         workspaces,
         worktreesByWorkspace,
         selectedWorkspaceId,
@@ -1248,6 +1800,7 @@ export class DesktopAppStore implements AppStoreInternals {
         queuedComposerMessages: this.resolveQueuedComposerMessages(selectedWorkspaceId, selectedSessionId),
         editingQueuedMessageId: this.resolveEditingQueuedMessageId(selectedWorkspaceId, selectedSessionId),
         lastError: this.resolveSelectedSessionError(selectedWorkspaceId, selectedSessionId, options.clearLastError),
+        automations: this.automationStoreRef ? this.automationStoreRef.getAll() : this.state.automations,
         revision: this.state.revision + 1,
       };
 
@@ -1292,10 +1845,12 @@ export class DesktopAppStore implements AppStoreInternals {
 
   async ensureSessionReady(sessionRef: SessionRef): Promise<SessionSnapshot | undefined> {
     await this.ensureTranscriptLoaded(sessionRef);
-    let snapshot: SessionSnapshot | undefined;
-    if (!this.sessionState.sessionSubscriptions.has(sessionKey(sessionRef))) {
-      snapshot = await this.driver.openSession(sessionRef);
-      this.updateSessionConfig(sessionRef, snapshot.config);
+    // Always open the session to get a fresh snapshot (including contextUsage).
+    // openSession is idempotent for already-subscribed sessions.
+    const snapshot = await this.driver.openSession(sessionRef);
+    this.updateSessionConfig(sessionRef, snapshot.config);
+    if (snapshot.contextUsage) {
+      this.sessionState.contextUsageBySession.set(sessionKey(sessionRef), snapshot.contextUsage);
     }
     await this.ensureSessionSubscribed(sessionRef);
     await this.refreshSessionCommands(sessionRef);
@@ -1306,84 +1861,15 @@ export class DesktopAppStore implements AppStoreInternals {
     if (!this.sessionState.sessionSubscriptions.has(sessionKey(sessionRef))) {
       const snapshot = await this.driver.openSession(sessionRef);
       this.updateSessionConfig(sessionRef, snapshot.config);
+      if (snapshot.contextUsage) {
+        this.sessionState.contextUsageBySession.set(sessionKey(sessionRef), snapshot.contextUsage);
+      }
       this.updateQueuedComposerMessages(sessionRef, snapshot.queuedMessages);
     }
     await this.ensureSessionSubscribed(sessionRef);
   }
 
-  /**
-   * Build a composite transcript for a loop thread by stitching the
-   * parentSession iteration chain, inserting a divider before each iteration.
-   * Returns null when the session is not a loop iteration, so callers fall
-   * back to a plain transcript.
-   */
-  private async loadLoopTranscript(sessionRef: SessionRef): Promise<TranscriptMessage[] | null> {
-    const iterations = await this.driver.getLoopIterations(sessionRef);
-    if (!iterations) {
-      return null;
-    }
-    const rows: TranscriptMessage[] = [];
-    for (const iteration of iterations) {
-      rows.push({
-        kind: "summary",
-        id: `loop-divider-${iteration.sessionId}`,
-        createdAt: iteration.messages[0]?.createdAt ?? new Date().toISOString(),
-        label: iteration.label,
-        presentation: "divider",
-      });
-      rows.push(...iteration.messages);
-    }
-    return rows;
-  }
 
-  /**
-   * Read the Ralph loop status (if any) for the selected workspace so the
-   * renderer can lock the loop thread's composer and surface loop controls.
-   * Returns undefined when no `.ralph/loop.md` exists.
-   */
-  private resolveSelectedLoopStatus(
-    workspaces: readonly { id: string; path: string }[],
-    selectedWorkspaceId: string,
-    selectedSessionId: string,
-  ): RalphLoopStatus | undefined {
-    if (!selectedWorkspaceId || !selectedSessionId) {
-      return undefined;
-    }
-    const workspace = workspaces.find((entry) => entry.id === selectedWorkspaceId);
-    if (!workspace) {
-      return undefined;
-    }
-    return readRalphLoopStatus(workspace.path, selectedSessionId) ?? undefined;
-  }
-
-  /**
-   * Whether the selected chat is the one that wrote the workspace's Ralph plan,
-   * so the "Begin Ralph loop" banner shows only there. Gated to avoid scanning
-   * session entries unless there is actually a plan to run and the thread is
-   * not already a loop thread.
-   */
-  private async resolveSelectedSessionCreatedRalphPlan(
-    workspaces: readonly WorkspaceRecord[],
-    selectedWorkspaceId: string,
-    selectedSessionId: string,
-    selectedLoopStatus: RalphLoopStatus | undefined,
-  ): Promise<boolean> {
-    if (!selectedWorkspaceId || !selectedSessionId || selectedLoopStatus?.isSelectedSessionActive) {
-      return false;
-    }
-    const workspace = workspaces.find((entry) => entry.id === selectedWorkspaceId);
-    if (!workspace?.ralphPlans?.length) {
-      return false;
-    }
-    try {
-      return await this.driver.sessionEditedRalphPlan({
-        workspaceId: selectedWorkspaceId,
-        sessionId: selectedSessionId,
-      });
-    } catch {
-      return false;
-    }
-  }
 
   private async ensureTranscriptLoaded(sessionRef: SessionRef): Promise<void> {
     const key = sessionKey(sessionRef);
@@ -1394,7 +1880,7 @@ export class DesktopAppStore implements AppStoreInternals {
     const cachedTranscript = await this.readPersistedTranscript(key);
     const transcript = cachedTranscript
       ? await this.resolveLoadedTranscript(sessionRef, cachedTranscript)
-      : (await this.loadLoopTranscript(sessionRef)) ?? (await this.driver.getTranscript(sessionRef));
+      : await this.driver.getTranscript(sessionRef);
 
     if (!cachedTranscript || cachedTranscript.format === "legacy") {
       await this.writePersistedTranscript(key, transcript);
@@ -1407,7 +1893,7 @@ export class DesktopAppStore implements AppStoreInternals {
   async reloadTranscriptFromDriver(sessionRef: SessionRef): Promise<void> {
     const key = sessionKey(sessionRef);
     const transcript =
-      (await this.loadLoopTranscript(sessionRef)) ?? (await this.driver.getTranscript(sessionRef));
+      await this.driver.getTranscript(sessionRef);
     this.sessionState.loadedTranscriptKeys.add(key);
     this.sessionState.transcriptCache.set(key, transcript);
     void this.writePersistedTranscript(key, transcript);
@@ -1583,42 +2069,7 @@ export class DesktopAppStore implements AppStoreInternals {
   }
 
   private async reloadSubagentAgentsForWorkspace(workspaceId: string, workspacePath?: string): Promise<void> {
-    const workspace = this.state.workspaces.find((entry) => entry.id === workspaceId);
-    const path = workspacePath ?? workspace?.path;
-    if (!path) return;
-    const agents = new Map<string, SubagentAgentRecord>();
-    await this.readSubagentAgentsFromDir(getSubagentGlobalAgentsDir(), "global", agents);
-    await this.readSubagentAgentsFromDir(join(path, ".pi", "agents"), "project", agents);
-    this.state = {
-      ...this.state,
-      subagentAgentsByWorkspace: {
-        ...this.state.subagentAgentsByWorkspace,
-        [workspaceId]: [...agents.values()].sort((a, b) => a.name.localeCompare(b.name)),
-      },
-    };
-  }
-
-  private async readSubagentAgentsFromDir(
-    dir: string,
-    scope: "project" | "global",
-    agents: Map<string, SubagentAgentRecord>,
-  ): Promise<void> {
-    let files: string[] = [];
-    try {
-      files = (await readdir(dir)).filter((file) => file.endsWith(".md"));
-    } catch {
-      return;
-    }
-    for (const file of files.sort()) {
-      const filePath = join(dir, file);
-      try {
-        const raw = await readFile(filePath, "utf8");
-        const agent = parseSubagentAgentFile(filePath, raw, scope);
-        agents.set(agent.name, agent);
-      } catch {
-        // Skip unreadable agent files but keep settings surface usable.
-      }
-    }
+    return subagent.reloadSubagentAgentsForWorkspace(this, workspaceId, workspacePath);
   }
 
   private clearExtensionUiForWorkspace(workspaceId: string): void {
@@ -1681,102 +2132,9 @@ export class DesktopAppStore implements AppStoreInternals {
       });
   }
 
-  private getOrCreateExtensionUiState(sessionRef: SessionRef) {
-    const key = sessionKey(sessionRef);
-    const existing = this.sessionState.extensionUiBySession.get(key);
-    if (existing) {
-      return existing;
-    }
-
-    const created = createEmptyExtensionUiState();
-    this.sessionState.extensionUiBySession.set(key, created);
-    return created;
-  }
-
-  private applyHostUiRequest(event: Extract<SessionDriverEvent, { type: "hostUiRequest" }>): void {
-    const key = sessionKey(event.sessionRef);
-    if (event.request.kind === "reset") {
-      this.sessionState.extensionUiBySession.delete(key);
-      return;
-    }
-
-    const uiState = this.getOrCreateExtensionUiState(event.sessionRef);
-    applyHostUiRequestToExtensionUiState(uiState, event.request);
-
-    switch (event.request.kind) {
-      case "editorText":
-        this.sessionState.composerDraftsBySession.set(key, event.request.text);
-        if (
-          this.state.selectedWorkspaceId === event.sessionRef.workspaceId &&
-          this.state.selectedSessionId === event.sessionRef.sessionId
-        ) {
-          this.state = {
-            ...this.state,
-            composerDraft: event.request.text,
-            composerDraftSyncSource: "extension-editor-text",
-            composerDraftSyncNonce: this.state.composerDraftSyncNonce + 1,
-          };
-        }
-        break;
-      default:
-        if (isExtensionUiDialogRequest(event.request)) {
-          const dialog = event.request;
-          uiState.pendingDialogs = [
-            ...uiState.pendingDialogs.filter((entry) => entry.requestId !== dialog.requestId),
-            dialog,
-          ];
-        }
-        break;
-    }
-  }
-
-  private async handleSessionEvent(event: SessionDriverEvent, subscriptionKey = sessionKey(event.sessionRef)): Promise<void> {
-    const key = sessionKey(event.sessionRef);
-    if (subscriptionKey !== key) {
-      this.migrateSessionSubscriptionKey(subscriptionKey, key);
-    }
-    const knownSession = this.sessionFromState(event.sessionRef);
-    const shouldFollowSessionMutation = subscriptionKey !== key && this.currentSelectedSessionKey() === subscriptionKey;
-    let refreshedFollowedSession = false;
-    if (
-      !knownSession &&
-      (event.type === "sessionOpened" ||
-        event.type === "sessionUpdated" ||
-        event.type === "runCompleted" ||
-        event.type === "hostUiRequest")
-    ) {
-      if (this.refreshStateDepth === 0) {
-        await this.refreshState({
-          selectedWorkspaceId:
-            this.state.selectedWorkspaceId === event.sessionRef.workspaceId
-              ? event.sessionRef.workspaceId
-              : this.state.selectedWorkspaceId,
-          selectedSessionId: shouldFollowSessionMutation ? event.sessionRef.sessionId : this.state.selectedSessionId,
-          clearLastError: true,
-        });
-        refreshedFollowedSession = shouldFollowSessionMutation;
-      }
-    }
-
+  /** Apply the event-specific side effects (update config, errors, cleanup). */
+  private async applySessionEventActions(event: SessionDriverEvent, key: string): Promise<void> {
     switch (event.type) {
-      case "assistantDelta":
-        appendAssistantDelta(
-          this.sessionState.transcriptCache,
-          this.sessionState.activeAssistantMessageBySession,
-          this.sessionState.activeReasoningMessageBySession,
-          event.sessionRef,
-          event.text,
-        );
-        break;
-      case "reasoningDelta":
-        appendReasoningDelta(
-          this.sessionState.transcriptCache,
-          this.sessionState.activeAssistantMessageBySession,
-          this.sessionState.activeReasoningMessageBySession,
-          event.sessionRef,
-          event.text,
-        );
-        break;
       case "sessionOpened":
       case "runCompleted":
         this.updateSessionConfig(event.sessionRef, event.snapshot.config);
@@ -1791,76 +2149,161 @@ export class DesktopAppStore implements AppStoreInternals {
         }
         break;
       case "runFailed":
-        // runFailed errors already render in the transcript as activity items.
-        // Don't also set lastError (avoid double display as banner + timeline).
         await this.refreshSessionCommands(event.sessionRef);
+        this.sessionState.sessionErrorsBySession.set(key, event.error.message);
         break;
       case "extensionCompatibilityIssue":
         this.reportExtensionCompatibilityIssue(event.sessionRef, event.issue, event.timestamp);
         break;
       case "sessionClosed":
-        this.sessionState.extensionUiBySession.delete(key);
-        this.sessionState.sessionCommandsBySession.delete(key);
-        this.sessionState.queuedComposerMessagesBySession.delete(key);
-        this.sessionState.queuedComposerEditsBySession.delete(key);
         this.clearPendingAutoTitle(event.sessionRef);
         this.pendingRuntimeCommandsBySession.delete(key);
         this.reportedCompatibilityIssuesBySession.delete(key);
-        break;
-      case "toolStarted":
-      case "toolUpdated":
-      case "toolFinished":
-        break;
-      case "hostUiRequest":
-        this.applyHostUiRequest(event);
+        this.sessionState.sessionSubscriptions.get(key)?.();
+        this.sessionState.sessionSubscriptions.delete(key);
+        this.sessionState.sessionErrorsBySession.delete(key);
         break;
       default:
         break;
     }
-
-    if (event.type === "sessionClosed") {
-      this.sessionState.sessionSubscriptions.get(key)?.();
-      this.sessionState.sessionSubscriptions.delete(key);
-    }
-
-    if (event.type === "runFailed") {
-      this.sessionState.sessionErrorsBySession.set(key, event.error.message);
-    } else if (event.type === "runCompleted" || event.type === "sessionClosed") {
+    if (event.type === "runCompleted") {
       this.sessionState.sessionErrorsBySession.delete(key);
+      await this.maybeAutoCompact(event.sessionRef, event.snapshot);
     }
+  }
 
-    applyTimelineEvent(this.sessionState.transcriptCache, event, {
-      runMetricsBySession: this.sessionState.runMetricsBySession,
-      runningSinceBySession: this.sessionState.runningSinceBySession,
-      activeAssistantMessageBySession: this.sessionState.activeAssistantMessageBySession,
-      activeReasoningMessageBySession: this.sessionState.activeReasoningMessageBySession,
-    });
-    this.state = applySessionEventState(
-      this.state,
-      event,
-      this.sessionState.transcriptCache,
-      this.sessionState.runningSinceBySession,
-      this.sessionState.lastViewedAtBySession,
-    );
-    this.markSessionViewedIfActivelyViewed(event.sessionRef);
-    this.state = this.syncDerivedSessionState(this.state, event.sessionRef);
+  /**
+   * Auto-trigger smart compaction after a run completes when context usage
+   * crosses the configured threshold. Reads settings from ~/.pi/agent/settings.json
+   * (smartCompact). Percent OR token threshold — whichever is hit first.
+   */
+  private async maybeAutoCompact(sessionRef: SessionRef, snapshot: SessionSnapshot): Promise<void> {
+    const usage = snapshot.contextUsage;
+    if (!usage || usage.contextWindow <= 0) {
+      return;
+    }
+    const settings = await this.getSmartCompactSettings();
+    // Default on; only disabled when explicitly set to false.
+    if (settings.autoTrigger === false) {
+      return;
+    }
+    const minContextPercent = typeof settings.minContextPercent === "number" ? settings.minContextPercent : 60;
+    const minTokenThreshold = typeof settings.minTokenThreshold === "number" ? settings.minTokenThreshold : 0;
+    const percent = (usage.usedTokens / usage.contextWindow) * 100;
+    const hitPercent = percent >= minContextPercent;
+    const hitTokens = minTokenThreshold > 0 && usage.usedTokens >= minTokenThreshold;
+    if (!hitPercent && !hitTokens) {
+      return;
+    }
+    const key = sessionKey(sessionRef);
+    if (this.autoCompactInFlight.has(key)) {
+      return;
+    }
+    this.autoCompactInFlight.add(key);
+    try {
+      await this.driver.compactSession(sessionRef);
+    } catch (error) {
+      console.error(`[smart-compact] auto-compact failed for ${key}:`, error);
+    } finally {
+      this.autoCompactInFlight.delete(key);
+    }
+  }
+
+  /** Hydrate the state patch, persist, and publish all relevant channels. */
+  private async publishSessionEventResults(
+    event: SessionDriverEvent,
+    patch: DesktopSessionStatePatch,
+    shouldFollowSessionMutation: boolean,
+    refreshedFollowedSession: boolean,
+  ): Promise<DesktopAppState> {
+    this.state = {
+      ...patch.state,
+      extensionCommandCompatibilityByWorkspace: serializeCompatibilityByWorkspace(this.extensionCommandCompatibilityByWorkspace),
+    };
     if (shouldFollowSessionMutation && event.type !== "sessionClosed") {
       this.applyFastSessionSelection(event.sessionRef);
       if (!refreshedFollowedSession) {
         this.startSelectedSessionHydration(event.sessionRef);
       }
     }
-    if (event.type !== "hostUiRequest") {
+    if (patch.shouldPersistTranscript) {
       this.persistTranscriptCacheForSession(event.sessionRef);
     }
-    if (event.type === "runCompleted" || event.type === "runFailed" || event.type === "sessionClosed") {
+    if (patch.shouldPersistUiImmediately) {
       await this.persistUiState();
-    } else if (event.type !== "hostUiRequest") {
+    } else if (patch.shouldSchedulePersistUi) {
       this.schedulePersistUiState();
     }
-    const snapshot = this.emit();
-    this.publishSelectedTranscriptFor(event.sessionRef);
+    const shouldPublishFullState = !isStreamingSessionEvent(event);
+    const snapshot = shouldPublishFullState ? this.emit() : this.state;
+    this.publishStatePatchFor(event.sessionRef);
+    this.publishTranscriptDeltaFor(event.sessionRef, { coalesce: isStreamingSessionEvent(event) });
+    if (shouldPublishFullState) {
+      this.publishSelectedTranscriptFor(event.sessionRef);
+    }
     await this.emitSessionEvent(event, snapshot);
+    return snapshot;
+  }
+
+  /** For events from unknown sessions, trigger a full catalog refresh. */
+  private async refreshForUnknownSession(
+    event: SessionDriverEvent,
+    shouldFollowSessionMutation: boolean,
+  ): Promise<boolean> {
+    if (
+      this.sessionFromState(event.sessionRef) ||
+      this.refreshStateDepth !== 0 ||
+      (event.type !== "sessionOpened" &&
+        event.type !== "sessionUpdated" &&
+        event.type !== "runCompleted" &&
+        event.type !== "runFailed" &&
+        event.type !== "hostUiRequest")
+    ) {
+      return false;
+    }
+    await this.refreshState({
+      selectedWorkspaceId:
+        this.state.selectedWorkspaceId === event.sessionRef.workspaceId
+          ? event.sessionRef.workspaceId
+          : this.state.selectedWorkspaceId,
+      selectedSessionId: shouldFollowSessionMutation ? event.sessionRef.sessionId : this.state.selectedSessionId,
+      clearLastError: true,
+    });
+    return shouldFollowSessionMutation;
+  }
+
+  private async handleSessionEvent(event: SessionDriverEvent, subscriptionKey = sessionKey(event.sessionRef)): Promise<void> {
+    const key = sessionKey(event.sessionRef);
+    if (subscriptionKey !== key) {
+      this.migrateSessionSubscriptionKey(subscriptionKey, key);
+    }
+
+    // Live edit stats: start/stop file watching for write tool calls
+    this.handleEditWatcherEvent(event);
+
+    const shouldFollowSessionMutation = subscriptionKey !== key && this.currentSelectedSessionKey() === subscriptionKey;
+    const refreshedFollowedSession = await this.refreshForUnknownSession(event, shouldFollowSessionMutation);
+    await this.applySessionEventActions(event, key);
+    const patch = this.desktopSessionState.consumeSessionDriverEvent(this.state, event, {
+      sessionActivelyViewed: isSessionActivelyViewed(this.state, event.sessionRef, this.getWindow()),
+    });
+    await this.publishSessionEventResults(event, patch, shouldFollowSessionMutation, refreshedFollowedSession);
+  }
+
+  private handleEditWatcherEvent(event: SessionDriverEvent): void {
+    if (event.type === "toolStarted") {
+      if (/write|edit|patch|apply/i.test(event.toolName)) {
+        const filePath = extractFilePathFromInput(event.input);
+        if (filePath) {
+          const workspaceRoot = this.getWorkspacePath(event.sessionRef.workspaceId);
+          if (workspaceRoot) {
+            this.editWatcher.start(event.callId, filePath, workspaceRoot);
+          }
+        }
+      }
+    } else if (event.type === "toolFinished") {
+      this.editWatcher.stop(event.callId);
+    }
   }
 
   workspaceRefFromState(workspaceId: string): WorkspaceRef | undefined {
@@ -2099,6 +2542,8 @@ export class DesktopAppStore implements AppStoreInternals {
     return worktree.startChat(this, input);
   }
 
+  // ── Plan orchestrator ─────────────────────────────────
+
   async selectChat(chatId: string): Promise<DesktopAppState> {
     await this.initialize();
     const chat = this.state.chats.find((c) => c.id === chatId);
@@ -2263,14 +2708,19 @@ export class DesktopAppStore implements AppStoreInternals {
       subagentSettings: this.state.subagentSettings,
       integratedTerminalShell: this.state.integratedTerminalShell || undefined,
       externalTerminalApp: this.state.externalTerminalApp || undefined,
+      retrySettings: this.state.retrySettings,
       lastViewedAtBySession: mapToRecord(this.sessionState.lastViewedAtBySession),
+      threadTypeBySession: Object.keys(this.state.threadTypeBySession).length > 0 ? this.state.threadTypeBySession : undefined,
       workspaceOrder: this.state.workspaceOrder.length > 0 ? this.state.workspaceOrder : undefined,
       modelSettingsScopeMode: this.state.modelSettingsScopeMode,
       appGlobalModelSettings: hasStoredModelSettings(this.state.globalModelSettings) ? this.state.globalModelSettings : undefined,
       sidebarCollapsed: this.state.sidebarCollapsed || undefined,
-      enableTransparency: this.state.enableTransparency,
+      zoomFactor: this.state.zoomFactor,
       transcriptVerbose: this.state.transcriptVerbose,
       composerDeviceMode: this.state.composerDeviceMode,
+      streamReveal: this.state.streamReveal,
+      streamRevealSpeed: this.state.streamRevealSpeed,
+      threadTransition: this.state.threadTransition,
       themeMode: this.state.themeMode,
       chats: this.state.chats.length > 0 ? this.state.chats : undefined,
       selectedChatId: this.state.selectedChatId || undefined,
@@ -2394,19 +2844,86 @@ export class DesktopAppStore implements AppStoreInternals {
     // No manual clone: Electron IPC structured-clones the payload when sending
     // to the renderer, so an extra in-process copy is pure waste. Listeners on
     // the main side treat the array as read-only.
-    return {
-      workspaceId: sessionRef.workspaceId,
-      sessionId: sessionRef.sessionId,
-      transcript: this.sessionState.transcriptCache.get(sessionKey(sessionRef)) ?? [],
-    };
+    return this.desktopSessionState.buildSelectedTranscriptRecord(sessionRef);
   }
 
   emit(): DesktopAppState {
-    const snapshot = structuredClone(this.state);
+    const snapshot = this.state;
     for (const listener of this.listeners) {
       listener(snapshot);
     }
     return snapshot;
+  }
+
+  subscribeToTranscriptDelta(listener: TranscriptDeltaListener): () => void {
+    this.transcriptDeltaListeners.add(listener);
+    return () => {
+      this.transcriptDeltaListeners.delete(listener);
+    };
+  }
+
+  private publishTranscriptDeltaFor(sessionRef: SessionRef, options: { readonly coalesce?: boolean } = {}): void {
+    if (!this.isSelectedSession(sessionRef)) {
+      return;
+    }
+    const key = sessionKey(sessionRef);
+    const fullTranscript = this.desktopSessionState.buildSelectedTranscriptRecord(sessionRef).transcript;
+    const lastSent = this.transcriptLastSentCount.get(key) ?? 0;
+    const isInitial = lastSent === 0;
+    const newMessages = fullTranscript.slice(lastSent);
+    const changedMessages = newMessages.length > 0 ? newMessages : fullTranscript.slice(-1);
+    this.transcriptLastSentCount.set(key, fullTranscript.length);
+    if (changedMessages.length === 0 && !isInitial) {
+      return;
+    }
+    const delta = {
+      sessionId: sessionRef.sessionId,
+      workspaceId: sessionRef.workspaceId,
+      initial: isInitial,
+      messages: changedMessages,
+    };
+    this.publishTranscriptDelta(key, delta, options);
+  }
+
+  private publishTranscriptDelta(
+    key: string,
+    delta: TranscriptDeltaPayload,
+    options: { readonly coalesce?: boolean } = {},
+  ): void {
+    if (!options.coalesce) {
+      this.pendingTranscriptDeltaBySession.delete(key);
+      this.sendTranscriptDelta(delta);
+      return;
+    }
+    this.pendingTranscriptDeltaBySession.set(key, delta);
+    if (this.transcriptDeltaFlushTimer) {
+      return;
+    }
+    this.transcriptDeltaFlushTimer = setTimeout(() => {
+      this.transcriptDeltaFlushTimer = undefined;
+      const pending = [...this.pendingTranscriptDeltaBySession.values()];
+      this.pendingTranscriptDeltaBySession.clear();
+      for (const item of pending) {
+        this.sendTranscriptDelta(item);
+      }
+    }, 250);
+  }
+
+  private sendTranscriptDelta(delta: TranscriptDeltaPayload): void {
+    for (const listener of this.transcriptDeltaListeners) {
+      listener(delta);
+    }
+  }
+
+  publishStatePatchFor(sessionRef: SessionRef): void {
+    const session = this.sessionFromState(sessionRef);
+    const patch = {
+      workspaceId: sessionRef.workspaceId,
+      session: session ?? null,
+    };
+    for (const listener of this.statePatchListeners) {
+      listener(patch);
+    }
   }
 
   publishSelectedTranscript(): void {
@@ -2464,6 +2981,7 @@ export class DesktopAppStore implements AppStoreInternals {
 
   private applyFastSessionSelection(sessionRef: SessionRef): DesktopAppState {
     this.restoredSelectedSessionKeysAwaitingSelection.delete(sessionKey(sessionRef));
+    this.transcriptLastSentCount.delete(sessionKey(sessionRef));
     const nextState = reduce(this.state, {
       type: "selection/selectSession",
       workspaceId: sessionRef.workspaceId,
@@ -2857,6 +3375,16 @@ export class DesktopAppStore implements AppStoreInternals {
     this.sessionState.pendingAutoTitleBySession.delete(key);
     pendingAutoTitle.cancel();
   }
+
+  setThreadType(sessionId: string, type: string): void {
+    console.log("[setThreadType] called", { sessionId, type, currentKeys: Object.keys(this.state.threadTypeBySession) });
+    this.state = {
+      ...this.state,
+      threadTypeBySession: { ...this.state.threadTypeBySession, [sessionId]: type },
+    };
+    void this.persistUiState();
+    void this.emit();
+  }
 }
 
 /* ── Module-private free functions ───────────────────────── */
@@ -3038,6 +3566,23 @@ function isTranscriptMessageRow(item: TranscriptMessage): item is TranscriptMess
   return item.kind === "message";
 }
 
+function extractSearchableText(msg: TranscriptMessage): string {
+  switch (msg.kind) {
+    case "message":
+      return msg.text ?? "";
+    case "activity":
+      return [msg.label, msg.detail].filter(Boolean).join(" ");
+    case "tool":
+      return [msg.label, msg.detail].filter(Boolean).join(" ");
+    case "summary":
+      return msg.label ?? "";
+    case "reasoning":
+      return msg.text ?? "";
+    default:
+      return "";
+  }
+}
+
 function sameTranscriptMessage(
   left: TranscriptMessageRow | undefined,
   right: TranscriptMessageRow | undefined,
@@ -3068,4 +3613,39 @@ function resolveSelectedSessionIdFromCatalog(
     return preferredSessionId;
   }
   return workspaceSessions[0]?.sessionRef.sessionId ?? "";
+}
+
+/**
+ * Find the next queued session: the oldest (by updatedAt) session with
+ * hasUnseenUpdate that is not archived. Optionally exclude a specific
+ * session (e.g. the one just submitted).
+ */
+function findNextQueuedSession(
+  state: DesktopAppState,
+  excludeWorkspaceId?: string,
+  excludeSessionId?: string,
+): { readonly workspaceId: string; readonly sessionId: string } | undefined {
+  const candidates: { workspaceId: string; session: SessionRecord }[] = [];
+  for (const workspace of state.workspaces) {
+    for (const session of workspace.sessions) {
+      if (session.archivedAt || !session.hasUnseenUpdate) {
+        continue;
+      }
+      if (workspace.id === excludeWorkspaceId && session.id === excludeSessionId) {
+        continue;
+      }
+      candidates.push({ workspaceId: workspace.id, session });
+    }
+  }
+  // Sort by updatedAt ascending (oldest first)
+  candidates.sort((a, b) => a.session.updatedAt.localeCompare(b.session.updatedAt));
+  const next = candidates[0];
+  return next ? { workspaceId: next.workspaceId, sessionId: next.session.id } : undefined;
+}
+
+function extractFilePathFromInput(input: unknown): string | undefined {
+  if (typeof input !== "object" || input === null) return undefined;
+  const record = input as Record<string, unknown>;
+  const path = record.file_path ?? record.filePath ?? record.path ?? record.filename;
+  return typeof path === "string" ? path : undefined;
 }

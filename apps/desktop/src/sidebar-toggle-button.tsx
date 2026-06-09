@@ -1,4 +1,5 @@
 import { SidebarToggleIcon } from "./icons";
+import { useButtonSound } from "./use-button-sound";
 
 interface SidebarToggleButtonProps {
   readonly collapsed: boolean;
@@ -7,6 +8,7 @@ interface SidebarToggleButtonProps {
 }
 
 export function SidebarToggleButton({ collapsed, shortcutLabel, onToggle }: SidebarToggleButtonProps) {
+  const buttonSound = useButtonSound({ category: "toggle" });
   return (
     <div className="shortcut-tooltip-wrap sidebar-toggle">
       <button
@@ -15,6 +17,7 @@ export function SidebarToggleButton({ collapsed, shortcutLabel, onToggle }: Side
         className="icon-button sidebar-toggle__button"
         data-testid="sidebar-toggle"
         type="button"
+        {...buttonSound}
         onClick={onToggle}
       >
         <SidebarToggleIcon />

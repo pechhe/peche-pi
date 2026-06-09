@@ -33,22 +33,12 @@ test("settings/setSidebarCollapsed does not mutate the input state", () => {
   assert.equal(frozen.revision, 3);
 });
 
-test("settings/setEnableTransparency sets the field and is a no-op when unchanged", () => {
-  const base = { ...createEmptyDesktopAppState(), enableTransparency: false, revision: 1 };
-  const next = reduce(base, { type: "settings/setEnableTransparency", enableTransparency: true });
-  assert.equal(next.enableTransparency, true);
-  assert.equal(next.revision, 2);
-
-  const noop = reduce(next, { type: "settings/setEnableTransparency", enableTransparency: true });
-  assert.equal(noop, next);
-});
-
 test("settings/setComposerDeviceMode sets the field and is a no-op when unchanged", () => {
-  const base = { ...createEmptyDesktopAppState(), composerDeviceMode: "off" as const };
-  const next = reduce(base, { type: "settings/setComposerDeviceMode", composerDeviceMode: "screen" });
-  assert.equal(next.composerDeviceMode, "screen");
+  const base = { ...createEmptyDesktopAppState(), composerDeviceMode: "modular-cream" as const };
+  const next = reduce(base, { type: "settings/setComposerDeviceMode", composerDeviceMode: "modular-metal" });
+  assert.equal(next.composerDeviceMode, "modular-metal");
 
-  const noop = reduce(next, { type: "settings/setComposerDeviceMode", composerDeviceMode: "screen" });
+  const noop = reduce(next, { type: "settings/setComposerDeviceMode", composerDeviceMode: "modular-metal" });
   assert.equal(noop, next);
 });
 
@@ -159,6 +149,25 @@ test("settings/mergeNotificationPreferences merges shallowly and always bumps re
   assert.notEqual(stillBumps, next);
 });
 
+test("settings/mergeThreadTransition merges shallowly and always bumps revision", () => {
+  const base = {
+    ...createEmptyDesktopAppState(),
+    threadTransition: { motion: "curve" as const, heroExit: false, bubbleHandoff: false },
+    revision: 5,
+  };
+  const next = reduce(base, {
+    type: "settings/mergeThreadTransition",
+    preferences: { motion: "spring" as const, bubbleHandoff: true },
+  });
+  assert.deepEqual(next.threadTransition, { motion: "spring", heroExit: false, bubbleHandoff: true });
+  assert.equal(next.revision, 6);
+
+  // Empty/identical patch still bumps revision (mirrors notification merge).
+  const stillBumps = reduce(next, { type: "settings/mergeThreadTransition", preferences: {} });
+  assert.equal(stillBumps.revision, 7);
+  assert.notEqual(stillBumps, next);
+});
+
 test("composer/setDraft owns draft sync nonce, clears lastError, and no-ops when draft/source unchanged", () => {
   const base = {
     ...createEmptyDesktopAppState(),
@@ -247,5 +256,115 @@ test("selection/selectSession owns threads view and selected-session composer co
     composerDraft: "draft for s1",
     composerAttachments: [{ ...attachment }],
   });
+  assert.equal(noop, next);
+});
+
+test("chats/add appends a chat and bumps revision", () => {
+  const base = { ...createEmptyDesktopAppState(), revision: 1 };
+  const chat = { id: "c1", title: "Hello", status: "idle" as const, archivedAt: undefined, createdAt: "2025-01-01", updatedAt: "2025-01-01" };
+  const next = reduce(base, { type: "chats/add", chat });
+  assert.equal(next.chats.length, 1);
+  assert.equal(next.chats[0]!.id, "c1");
+  assert.equal(next.revision, 2);
+});
+
+test("chats/add is a no-op when chat with same id already exists", () => {
+  const chat = { id: "c1", title: "Hello", status: "idle" as const, archivedAt: undefined, createdAt: "2025-01-01", updatedAt: "2025-01-01" };
+  const base = { ...createEmptyDesktopAppState(), chats: [chat], revision: 5 };
+  const next = reduce(base, { type: "chats/add", chat: { ...chat, title: "Different" } });
+  assert.equal(next, base);
+});
+
+test("chats/select sets selectedChatId and bumps revision", () => {
+  const base = { ...createEmptyDesktopAppState(), selectedChatId: "", revision: 3 };
+  const next = reduce(base, { type: "chats/select", chatId: "c1" });
+  assert.equal(next.selectedChatId, "c1");
+  assert.equal(next.revision, 4);
+});
+
+test("chats/select is a no-op when chatId is already selected", () => {
+  const base = { ...createEmptyDesktopAppState(), selectedChatId: "c1", revision: 3 };
+  const next = reduce(base, { type: "chats/select", chatId: "c1" });
+  assert.equal(next, base);
+});
+
+test("chats/remove removes the chat and clears selection if it was selected", () => {
+  const chat = { id: "c1", title: "Hello", status: "idle" as const, archivedAt: undefined, createdAt: "2025-01-01", updatedAt: "2025-01-01" };
+  const base = { ...createEmptyDesktopAppState(), chats: [chat], selectedChatId: "c1", revision: 5 };
+  const next = reduce(base, { type: "chats/remove", chatId: "c1" });
+  assert.equal(next.chats.length, 0);
+  assert.equal(next.selectedChatId, "");
+  assert.equal(next.revision, 6);
+});
+
+test("chats/remove preserves selection when removing a different chat", () => {
+  const c1 = { id: "c1", title: "A", status: "idle" as const, archivedAt: undefined, createdAt: "", updatedAt: "" };
+  const c2 = { id: "c2", title: "B", status: "idle" as const, archivedAt: undefined, createdAt: "", updatedAt: "" };
+  const base = { ...createEmptyDesktopAppState(), chats: [c1, c2], selectedChatId: "c2", revision: 1 };
+  const next = reduce(base, { type: "chats/remove", chatId: "c1" });
+  assert.equal(next.chats.length, 1);
+  assert.equal(next.chats[0]!.id, "c2");
+  assert.equal(next.selectedChatId, "c2");
+});
+
+test("chats/remove is a no-op when chatId not found", () => {
+  const base = { ...createEmptyDesktopAppState(), chats: [], revision: 1 };
+  const next = reduce(base, { type: "chats/remove", chatId: "missing" });
+  assert.equal(next, base);
+});
+
+test("chats/archive sets archivedAt on the matching chat", () => {
+  const chat = { id: "c1", title: "Hello", status: "idle" as const, archivedAt: undefined, createdAt: "", updatedAt: "" };
+  const base = { ...createEmptyDesktopAppState(), chats: [chat], revision: 1 };
+  const next = reduce(base, { type: "chats/archive", chatId: "c1", archivedAt: "2025-06-01" });
+  assert.equal(next.chats[0]!.archivedAt, "2025-06-01");
+});
+
+test("chats/unarchive clears archivedAt on the matching chat", () => {
+  const chat = { id: "c1", title: "Hello", status: "idle" as const, archivedAt: "2025-06-01", createdAt: "", updatedAt: "" };
+  const base = { ...createEmptyDesktopAppState(), chats: [chat], revision: 1 };
+  const next = reduce(base, { type: "chats/unarchive", chatId: "c1" });
+  assert.equal(next.chats[0]!.archivedAt, undefined);
+});
+
+test("chats/rename updates title and updatedAt", () => {
+  const chat = { id: "c1", title: "Old", status: "idle" as const, archivedAt: undefined, createdAt: "", updatedAt: "2025-01-01" };
+  const base = { ...createEmptyDesktopAppState(), chats: [chat], revision: 1 };
+  const next = reduce(base, { type: "chats/rename", chatId: "c1", title: "New" });
+  assert.equal(next.chats[0]!.title, "New");
+  assert.ok(next.chats[0]!.updatedAt !== "2025-01-01");
+});
+
+test("chats/setStatus sets running status with runningSince", () => {
+  const chat = { id: "c1", title: "Hello", status: "idle" as const, archivedAt: undefined, createdAt: "", updatedAt: "" };
+  const base = { ...createEmptyDesktopAppState(), chats: [chat], revision: 1 };
+  const next = reduce(base, { type: "chats/setStatus", chatId: "c1", status: "running" });
+  assert.equal(next.chats[0]!.status, "running");
+  assert.ok(next.chats[0]!.runningSince !== undefined);
+});
+
+test("chats/setStatus clears runningSince when going idle", () => {
+  const chat = { id: "c1", title: "Hello", status: "running" as const, runningSince: "2025-06-01", archivedAt: undefined, createdAt: "", updatedAt: "" };
+  const base = { ...createEmptyDesktopAppState(), chats: [chat], revision: 1 };
+  const next = reduce(base, { type: "chats/setStatus", chatId: "c1", status: "idle" });
+  assert.equal(next.chats[0]!.status, "idle");
+  assert.equal(next.chats[0]!.runningSince, undefined);
+});
+
+test("settings/setZoomFactor sets the field and is a no-op when unchanged", () => {
+  const base = { ...createEmptyDesktopAppState(), zoomFactor: 1.0 };
+  const next = reduce(base, { type: "settings/setZoomFactor", zoomFactor: 1.5 });
+  assert.equal(next.zoomFactor, 1.5);
+
+  const noop = reduce(next, { type: "settings/setZoomFactor", zoomFactor: 1.5 });
+  assert.equal(noop, next);
+});
+
+test("settings/setQueueMode sets the field and is a no-op when unchanged", () => {
+  const base = { ...createEmptyDesktopAppState(), queueMode: false };
+  const next = reduce(base, { type: "settings/setQueueMode", queueMode: true });
+  assert.equal(next.queueMode, true);
+
+  const noop = reduce(next, { type: "settings/setQueueMode", queueMode: true });
   assert.equal(noop, next);
 });

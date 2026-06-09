@@ -6,6 +6,7 @@ import type {
   NotificationPreferences,
   SubagentSettingsRecord,
   ThemeMode,
+  ThreadTransitionSettings,
 } from "../src/desktop-state";
 import type { ModelSettingsSnapshot } from "@pi-gui/session-driver/runtime-types";
 import { randomUUID } from "node:crypto";
@@ -25,19 +26,24 @@ export interface PersistedUiState {
   readonly subagentSettings?: Partial<SubagentSettingsRecord>;
   readonly integratedTerminalShell?: string;
   readonly externalTerminalApp?: string;
+  readonly retrySettings?: { readonly enabled: boolean; readonly maxRetries: number; readonly baseDelayMs: number };
   readonly lastViewedAtBySession?: Record<string, string>;
   readonly workspaceOrder?: readonly string[];
   readonly modelSettingsScopeMode?: ModelSettingsScopeMode;
   readonly appGlobalModelSettings?: ModelSettingsSnapshot;
   readonly sidebarCollapsed?: boolean;
+  readonly zoomFactor?: number;
   readonly allowMultiple?: boolean;
-  readonly enableTransparency?: boolean;
   readonly transcriptVerbose?: boolean;
-  readonly composerDeviceMode?: "off" | "screen" | "modular" | "screen-neon";
+  readonly composerDeviceMode?: "modular-cream" | "modular-metal";
+  readonly streamReveal?: "plain" | "blur" | "blur-rise" | "warm" | "glow";
+  readonly streamRevealSpeed?: "low" | "medium" | "high";
+  readonly threadTransition?: ThreadTransitionSettings;
   readonly themeMode?: ThemeMode;
   readonly commitPushModel?: string;
   readonly chats?: readonly ChatRecord[];
   readonly selectedChatId?: string;
+  readonly threadTypeBySession?: Record<string, string>;
 }
 
 export interface LegacyPersistedUiState extends PersistedUiState {
@@ -45,31 +51,43 @@ export interface LegacyPersistedUiState extends PersistedUiState {
   readonly transcripts?: Record<string, readonly unknown[]>;
 }
 
+const VALID_VERSIONS: ReadonlySet<number> = new Set([2, 3, 4, 5, 6, 7, 8, 9, 10]);
+
+function normalizeComposerDeviceMode(
+  raw: unknown,
+): "modular-cream" | "modular-metal" | undefined {
+  if (raw === "modular-cream" || raw === "modular-metal") {
+    return raw;
+  }
+  return undefined;
+}
+
+function normalizeStreamReveal(
+  raw: unknown,
+): "plain" | "blur" | "blur-rise" | "warm" | "glow" | undefined {
+  return raw === "plain" || raw === "blur" || raw === "blur-rise" || raw === "warm" || raw === "glow"
+    ? raw
+    : undefined;
+}
+
+function normalizeStreamRevealSpeed(raw: unknown): "low" | "medium" | "high" | undefined {
+  return raw === "low" || raw === "medium" || raw === "high" ? raw : undefined;
+}
+
+function normalizeThemeMode(raw: unknown): ThemeMode | undefined {
+  return raw === "dracula" || raw === "dark" || raw === "light" || raw === "system" ? raw : undefined;
+}
+
+function normalizeModelSettingsScopeMode(raw: unknown): ModelSettingsScopeMode | undefined {
+  return raw === "per-repo" || raw === "app-global" ? raw : undefined;
+}
+
 export async function readPersistedUiState(uiStateFilePath: string): Promise<LegacyPersistedUiState> {
   try {
     const raw = await readFile(uiStateFilePath, "utf8");
     const parsed = JSON.parse(raw) as LegacyPersistedUiState;
     return {
-      version:
-        parsed.version === 10
-          ? 10
-          : parsed.version === 9
-            ? 9
-            : parsed.version === 8
-              ? 8
-              : parsed.version === 7
-                ? 7
-                : parsed.version === 6
-                  ? 6
-                  : parsed.version === 5
-                    ? 5
-                    : parsed.version === 4
-                      ? 4
-                      : parsed.version === 3
-                        ? 3
-                        : parsed.version === 2
-                          ? 2
-                          : undefined,
+      version: VALID_VERSIONS.has(parsed.version as number) ? parsed.version : undefined,
       selectedWorkspaceId: parsed.selectedWorkspaceId,
       selectedSessionId: parsed.selectedSessionId,
       activeView: parsed.activeView,
@@ -84,26 +102,18 @@ export async function readPersistedUiState(uiStateFilePath: string): Promise<Leg
         typeof parsed.externalTerminalApp === "string" ? parsed.externalTerminalApp : undefined,
       lastViewedAtBySession: parsed.lastViewedAtBySession,
       workspaceOrder: Array.isArray(parsed.workspaceOrder) ? parsed.workspaceOrder : undefined,
-      modelSettingsScopeMode:
-        parsed.modelSettingsScopeMode === "per-repo" || parsed.modelSettingsScopeMode === "app-global"
-          ? parsed.modelSettingsScopeMode
-          : undefined,
+      modelSettingsScopeMode: normalizeModelSettingsScopeMode(parsed.modelSettingsScopeMode),
       appGlobalModelSettings: toPersistedModelSettingsSnapshot(parsed.appGlobalModelSettings),
       sidebarCollapsed: typeof parsed.sidebarCollapsed === "boolean" ? parsed.sidebarCollapsed : undefined,
+      zoomFactor:
+        typeof parsed.zoomFactor === "number" && Number.isFinite(parsed.zoomFactor) ? parsed.zoomFactor : undefined,
       allowMultiple: typeof parsed.allowMultiple === "boolean" ? parsed.allowMultiple : undefined,
-      enableTransparency: typeof parsed.enableTransparency === "boolean" ? parsed.enableTransparency : undefined,
       transcriptVerbose: typeof parsed.transcriptVerbose === "boolean" ? parsed.transcriptVerbose : undefined,
-      composerDeviceMode:
-        parsed.composerDeviceMode === "screen" || parsed.composerDeviceMode === "modular" || parsed.composerDeviceMode === "screen-neon" || parsed.composerDeviceMode === "off"
-          ? parsed.composerDeviceMode
-          : // Migrate legacy boolean: true → screen, false/undefined → off
-            (parsed as { composerDeviceMode?: unknown }).composerDeviceMode === true
-            ? "screen"
-            : undefined,
-      themeMode:
-        parsed.themeMode === "dracula" || parsed.themeMode === "dark" || parsed.themeMode === "light" || parsed.themeMode === "system"
-          ? parsed.themeMode
-          : undefined,
+      composerDeviceMode: normalizeComposerDeviceMode(parsed.composerDeviceMode),
+      streamReveal: normalizeStreamReveal(parsed.streamReveal),
+      streamRevealSpeed: normalizeStreamRevealSpeed(parsed.streamRevealSpeed),
+      threadTransition: normalizeThreadTransition(parsed.threadTransition),
+      themeMode: normalizeThemeMode(parsed.themeMode),
       commitPushModel: typeof parsed.commitPushModel === "string" ? parsed.commitPushModel : undefined,
       chats: Array.isArray(parsed.chats) ? (parsed.chats as readonly ChatRecord[]) : undefined,
       selectedChatId: typeof parsed.selectedChatId === "string" ? parsed.selectedChatId : undefined,
@@ -157,6 +167,23 @@ export async function writePersistedUiState(
       }
     }
   });
+}
+
+function normalizeThreadTransition(value: unknown): ThreadTransitionSettings | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const candidate = value as Record<string, unknown>;
+  const motion =
+    candidate.motion === "off" ||
+    candidate.motion === "curve" ||
+    candidate.motion === "dock" ||
+    candidate.motion === "spring"
+      ? candidate.motion
+      : "curve";
+  return {
+    motion,
+    heroExit: candidate.heroExit === true,
+    bubbleHandoff: candidate.bubbleHandoff === true,
+  };
 }
 
 function normalizeSubagentSettings(value: unknown): Partial<SubagentSettingsRecord> | undefined {

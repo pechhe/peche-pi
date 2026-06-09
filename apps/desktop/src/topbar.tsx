@@ -1,10 +1,15 @@
-import type { MouseEvent as ReactMouseEvent, Dispatch, SetStateAction } from "react";
-import type { AppView, DesktopAppState, SessionRecord, WorkspaceRecord, WorktreeRecord } from "./desktop-state";
-import { DiffIcon, ExternalTerminalIcon, FolderIcon, TerminalIcon } from "./icons";
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import type { AppView, SessionRecord, WorkspaceRecord, WorktreeRecord } from "./desktop-state";
+import { AdvisorIcon, DiffIcon, ExternalTerminalIcon, FolderIcon, SettingsIcon, TerminalIcon } from "./icons";
+import { playButtonClick } from "./button-click-sound";
 import { getDesktopShortcutLabel, type PiDesktopApi } from "./ipc";
+import { ProjectMapPopover } from "./project-map-popover";
 import type { WorkspaceMenuState } from "./hooks/use-workspace-menu";
 import { CommitPushButton } from "./commit-push-button";
+import { UpdatePill } from "./update-pill";
 import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
+import { showToast } from "./toast";
+import type { UndoEditsResult } from "./ipc";
 
 interface TopbarProps {
   readonly activeView: AppView;
@@ -17,12 +22,6 @@ interface TopbarProps {
   readonly workspaces: readonly WorkspaceRecord[];
   readonly wsMenu: WorkspaceMenuState;
   readonly api: PiDesktopApi;
-  readonly setSnapshot: Dispatch<SetStateAction<DesktopAppState | null>>;
-  readonly updateSnapshot: (
-    api: PiDesktopApi,
-    setSnapshot: Dispatch<SetStateAction<DesktopAppState | null>>,
-    action: () => Promise<DesktopAppState>,
-  ) => Promise<DesktopAppState>;
   readonly terminalAvailable: boolean;
   readonly terminalVisible: boolean;
   readonly onToggleTerminal: () => void;
@@ -30,8 +29,14 @@ interface TopbarProps {
   readonly onOpenExternalTerminal: () => void;
   readonly showDiffPanel: boolean;
   readonly onToggleDiffPanel: () => void;
+  readonly showAdvisorPanel?: boolean;
+  readonly onToggleAdvisorPanel?: () => void;
   readonly selectedRuntime?: RuntimeSnapshot;
   readonly commitPushModel?: string;
+  readonly transcriptVerbose: boolean;
+  readonly onSetTranscriptVerbose: (enabled: boolean) => void;
+  readonly onOpenGraph?: () => void;
+  readonly onUndoAllEdits?: () => Promise<UndoEditsResult>;
 }
 
 export function Topbar(props: TopbarProps) {
@@ -46,8 +51,7 @@ export function Topbar(props: TopbarProps) {
     workspaces,
     wsMenu,
     api,
-    setSnapshot,
-    updateSnapshot,
+
     terminalAvailable,
     terminalVisible,
     onToggleTerminal,
@@ -55,12 +59,34 @@ export function Topbar(props: TopbarProps) {
     onOpenExternalTerminal,
     showDiffPanel,
     onToggleDiffPanel,
+    showAdvisorPanel,
+    onToggleAdvisorPanel,
     selectedRuntime,
     commitPushModel,
+    transcriptVerbose,
+    onSetTranscriptVerbose,
+    onUndoAllEdits,
   } = props;
+  const [undoAllState, setUndoAllState] = useState<"idle" | "undoing" | "done" | "error">("idle");
   const terminalShortcut = getDesktopShortcutLabel(api.platform, "J");
   const diffShortcut = getDesktopShortcutLabel(api.platform, "D");
   const commitShortcut = api.platform === "darwin" ? "⌘⇧K" : "Ctrl+Shift+K";
+  const [viewSettingsOpen, setViewSettingsOpen] = useState(false);
+  const viewSettingsRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!viewSettingsOpen) {
+      return;
+    }
+    const handlePointerDown = (event: PointerEvent) => {
+      if (viewSettingsRef.current?.contains(event.target as Node)) {
+        return;
+      }
+      setViewSettingsOpen(false);
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [viewSettingsOpen]);
 
   const handleDoubleClick = (event: ReactMouseEvent<HTMLElement>) => {
     const target = event.target;
@@ -133,24 +159,102 @@ export function Topbar(props: TopbarProps) {
         {selectedWorkspace && activeView === "threads" && selectedSession ? (
           <>
             <span className="topbar__separator">/</span>
-            <span className="topbar__session">{selectedSessionTitle ?? selectedSession.title}</span>
+            <span
+              className="topbar__session topbar__session--clickable"
+              title="Click to copy session path"
+              onClick={() => {
+                const text = selectedSession.sessionFilePath ?? selectedSession.id;
+                void navigator.clipboard.writeText(text);
+                showToast({ variant: "success", message: selectedSession.sessionFilePath ? "Session path copied" : "Session ID copied", autoDismissMs: 2000 });
+              }}
+            >{selectedSessionTitle ?? selectedSession.title}</span>
           </>
         ) : activeView === "new-thread" && rootWorkspace ? (
           <>
             <span className="topbar__separator">/</span>
-            <span className="topbar__session">New thread</span>
+            <span className="topbar__session">New project</span>
           </>
         ) : null}
       </div>
 
       <div className="topbar__actions">
+        <UpdatePill api={api} />
+        <CommitPushButton
+          workspaceId={rootWorkspace?.id ?? ""}
+          runtime={selectedRuntime}
+          commitPushModel={commitPushModel}
+          api={api}
+          sessionStatus={selectedSession?.status}
+          shortcutLabel={commitShortcut}
+        />
+        {onUndoAllEdits && activeView === "threads" && selectedSession && selectedSession.status !== "running" ? (
+          <div className="shortcut-tooltip-wrap topbar__tooltip-wrap">
+            <button
+              aria-label="Revert all changes in this thread"
+              className="topbar__revert-all"
+              data-testid="topbar-revert-all"
+              type="button"
+              disabled={undoAllState === "undoing"}
+              onClick={() => {
+                playButtonClick();
+                setUndoAllState("undoing");
+                void onUndoAllEdits().then(
+                  (result) => {
+                    if (result.reverted.length === 0) {
+                      setUndoAllState("error");
+                      showToast({ variant: "success", message: "Nothing to revert", autoDismissMs: 2000 });
+                    } else {
+                      setUndoAllState("done");
+                      showToast({ variant: "success", message: `Reverted ${result.reverted.length} file${result.reverted.length === 1 ? "" : "s"}`, autoDismissMs: 3000 });
+                    }
+                  },
+                  () => setUndoAllState("error"),
+                );
+              }}
+            >
+              {undoAllState === "undoing" ? "Reverting…" : "Revert All"}
+            </button>
+            <span className="shortcut-tooltip topbar__tooltip" role="tooltip">
+              <span>Revert all thread changes</span>
+            </span>
+          </div>
+        ) : null}
+        <ProjectMapPopover rootWorkspace={rootWorkspace} api={api} onOpenGraph={props.onOpenGraph} />
+        <div className="view-settings" ref={viewSettingsRef}>
+          <button
+            aria-label="View settings"
+            aria-expanded={viewSettingsOpen}
+            aria-haspopup="menu"
+            className={`icon-button topbar__icon ${viewSettingsOpen ? "icon-button--active" : ""}`}
+            type="button"
+            onClick={() => { playButtonClick(); setViewSettingsOpen((current) => !current); }}
+          >
+            <SettingsIcon />
+          </button>
+          {viewSettingsOpen ? (
+            <div className="view-settings__menu" role="menu">
+              <label className="view-settings__item">
+                <span>
+                  <strong>Verbose transcript</strong>
+                  <small>Show blackhole + cymbal chatter.</small>
+                </span>
+                <input
+                  aria-label="Verbose transcript"
+                  type="checkbox"
+                  checked={transcriptVerbose}
+                  onChange={(event) => onSetTranscriptVerbose(event.currentTarget.checked)}
+                />
+              </label>
+            </div>
+          ) : null}
+        </div>
         <div className="shortcut-tooltip-wrap topbar__tooltip-wrap">
           <button
             aria-label="Toggle terminal"
             className={`icon-button topbar__icon ${terminalVisible ? "icon-button--active" : ""}`}
             type="button"
             disabled={!terminalAvailable}
-            onClick={onToggleTerminal}
+            onClick={() => { playButtonClick(); onToggleTerminal(); }}
           >
             <TerminalIcon />
           </button>
@@ -165,7 +269,7 @@ export function Topbar(props: TopbarProps) {
             className="icon-button topbar__icon"
             type="button"
             disabled={!externalTerminalAvailable}
-            onClick={onOpenExternalTerminal}
+            onClick={() => { playButtonClick(); onOpenExternalTerminal(); }}
           >
             <ExternalTerminalIcon />
           </button>
@@ -178,7 +282,7 @@ export function Topbar(props: TopbarProps) {
             aria-label="Toggle changes"
             className={`icon-button topbar__icon ${showDiffPanel ? "icon-button--active" : ""}`}
             type="button"
-            onClick={onToggleDiffPanel}
+            onClick={() => { playButtonClick(); onToggleDiffPanel(); }}
           >
             <DiffIcon />
           </button>
@@ -187,24 +291,37 @@ export function Topbar(props: TopbarProps) {
             <kbd>{diffShortcut}</kbd>
           </span>
         </div>
-        <CommitPushButton
-          workspaceId={rootWorkspace?.id ?? ""}
-          runtime={selectedRuntime}
-          commitPushModel={commitPushModel}
-          api={api}
-          sessionStatus={selectedSession?.status}
-          shortcutLabel={commitShortcut}
-        />
-        <button
-          aria-label="Add folder"
-          className="icon-button topbar__icon"
-          type="button"
-          onClick={() => {
-            void updateSnapshot(api, setSnapshot, () => api.pickWorkspace());
-          }}
-        >
-          <FolderIcon />
-        </button>
+        {onToggleAdvisorPanel ? (
+          <div className="shortcut-tooltip-wrap topbar__tooltip-wrap">
+            <button
+              aria-label="Toggle advisor"
+              className={`icon-button topbar__icon ${showAdvisorPanel ? "icon-button--active" : ""}`}
+              type="button"
+              onClick={() => { playButtonClick(); onToggleAdvisorPanel(); }}
+            >
+              <AdvisorIcon />
+            </button>
+            <span className="shortcut-tooltip topbar__tooltip" role="tooltip">
+              <span>Toggle advisor</span>
+              <kbd>{api.platform === "darwin" ? "⌘⇧A" : "Ctrl+Shift+A"}</kbd>
+            </span>
+          </div>
+        ) : null}
+        {rootWorkspace ? (
+          <div className="shortcut-tooltip-wrap topbar__tooltip-wrap">
+            <button
+              aria-label="Open project in Finder"
+              className="icon-button topbar__icon"
+              type="button"
+              onClick={() => { playButtonClick(); void api.openWorkspaceInFinder(rootWorkspace.id); }}
+            >
+              <FolderIcon />
+            </button>
+            <span className="shortcut-tooltip topbar__tooltip" role="tooltip">
+              <span>Open in Finder</span>
+            </span>
+          </div>
+        ) : null}
       </div>
     </header>
   );

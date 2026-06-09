@@ -2,7 +2,7 @@ import type { ExtensionCompatibilityIssue } from "@pi-gui/session-driver";
 
 const UNSUPPORTED_HOST_UI_PREFIX = "__PI_GUI_UNSUPPORTED_HOST_UI__:";
 
-export function createUnsupportedHostUiIssue(capability: string): ExtensionCompatibilityIssue {
+function createUnsupportedHostUiIssue(capability: string): ExtensionCompatibilityIssue {
   return {
     capability,
     classification: "terminal-only",
@@ -26,16 +26,12 @@ export function parseUnsupportedHostUiErrorMessage(message: string): ExtensionCo
   }
 }
 
-export function serializeUnsupportedHostUiIssue(issue: ExtensionCompatibilityIssue): string {
+function serializeUnsupportedHostUiIssue(issue: ExtensionCompatibilityIssue): string {
   return `${UNSUPPORTED_HOST_UI_PREFIX}${JSON.stringify(issue)}`;
 }
 
-export function genericUnsupportedCapabilityMessage(capability: string): string {
+function genericUnsupportedCapabilityMessage(capability: string): string {
   return `Terminal-only ${labelForCapability(capability)} is not supported in pi-gui. Use pi in the terminal for that workflow.`;
-}
-
-export function commandUnsupportedCapabilityMessage(commandName: string, capability: string): string {
-  return `/${commandName} requires terminal-only ${labelForCapability(capability)} and is not supported in pi-gui yet. Use pi in the terminal for this command.`;
 }
 
 function labelForCapability(capability: string): string {

@@ -1,6 +1,5 @@
-import type { SessionTranscriptMessage, SessionTranscriptRole } from "@pi-gui/pi-sdk-driver";
+import type { SessionTranscriptMessage } from "@pi-gui/pi-sdk-driver";
 
-export type SessionRole = SessionTranscriptRole;
 export type TimelineTone = "neutral" | "success" | "warning" | "error";
 export type TimelineToolStatus = "running" | "success" | "error";
 export type TimelineSummaryPresentation = "inline" | "divider";
@@ -16,6 +15,14 @@ export interface TimelineActivity {
   // info-level extension chatter (e.g. blackhole OM progress, cymbal nudges).
   // Hidden from the transcript unless transcriptVerbose is enabled.
   readonly noise?: boolean;
+  // When present, this activity is a transient auto-retry line: render a
+  // braille spinner, the attempt counter, and a live countdown to `deadline`
+  // (ISO timestamp of the next attempt). Cleared once the run resumes.
+  readonly retry?: {
+    readonly attempt: number;
+    readonly maxAttempts: number;
+    readonly deadline: string;
+  };
 }
 
 export interface TimelineToolCall {

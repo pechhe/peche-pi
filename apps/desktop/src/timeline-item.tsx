@@ -1,16 +1,69 @@
-import { memo, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { SessionTranscriptMessage } from "@pi-gui/pi-sdk-driver";
-import type { TimelineActivity, TimelineReasoning, TimelineToolCall, TimelineSummary, TranscriptMessage } from "./timeline-types";
+import type { TimelineActivity, TimelineReasoning, TimelineToolCall, TimelineSummary } from "./timeline-types";
 import type { TimelineEditedFiles, TimelineThinkingSection } from "./timeline-model";
-import type { UndoEditOp, UndoEditReplacement, UndoEditsResult } from "./ipc";
-import type { TimelineRow, TimelineToolBurst } from "./timeline-grouping";
-import { summariseToolBurst } from "./timeline-grouping";
+import type { LiveEditStats, UndoEditOp, UndoEditReplacement, UndoEditsResult } from "./ipc";
+import type { TimelineRow, TimelineToolBurst } from "./timeline-model";
+import { summariseToolBurst } from "./timeline-model";
 import { MessageMarkdown, StreamingMessageText } from "./message-markdown";
 import { InlineDiff, extractDiffFromOutput } from "./diff-inline";
-import { ChevronRightIcon, CopyIcon, DiffIcon, EditedFilesIcon, FileIcon, FolderIcon, TerminalIcon } from "./icons";
+import { CheckIcon, ChevronRightIcon, CopyIcon, DiffIcon, EditedFilesIcon, FileIcon, FolderIcon, TerminalIcon } from "./icons";
 import { openImageLightbox } from "./image-lightbox";
 import { extensionToLanguage } from "./syntax-highlight";
+import { PLAN_MODE_PROMPT_SEPARATOR } from "./composer-mode";
 import { SubagentToolCard, isSubagentTool } from "./subagent-card";
+import { WorkingSpinner } from "./working-label";
+import { showToast } from "./toast";
+
+/**
+ * Walks text nodes inside a container and wraps occurrences of `query` in <mark>.
+ * Used to highlight the matching word when jumping from search to a transcript message.
+ */
+function HighlightQuery({ query, children }: { readonly query: string; readonly children: React.ReactNode }) {
+  const containerRef = useRef<HTMLSpanElement | null>(null);
+
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    if (!container || !query.trim()) return;
+
+    const q = query.trim();
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+    const textNodes: Text[] = [];
+    while (walker.nextNode()) textNodes.push(walker.currentNode as Text);
+
+    for (const node of textNodes) {
+      const lower = node.textContent?.toLowerCase() ?? "";
+      const qLower = q.toLowerCase();
+      let idx = lower.indexOf(qLower);
+      if (idx === -1) continue;
+
+      const parent = node.parentNode;
+      if (!parent) continue;
+      let remaining = node;
+      let searchFrom = 0;
+
+      while (idx !== -1 && remaining.textContent) {
+        // Split before match
+        const before = remaining.splitText(idx);
+        // Split after match
+        const match = before.splitText(q.length);
+
+        const mark = document.createElement("mark");
+        mark.textContent = before.textContent;
+        parent.insertBefore(mark, match);
+
+        remaining = match;
+        searchFrom = 0;
+        const nextLower = remaining.textContent?.toLowerCase() ?? "";
+        idx = nextLower.indexOf(qLower, searchFrom);
+      }
+    }
+  }, [query]);
+
+  // display:contents keeps this wrapper layout-neutral so it can wrap block-level
+  // rows (tool cards, activity lines) without disturbing their flow.
+  return <span ref={containerRef} style={{ display: "contents" }}>{children}</span>;
+}
 
 // Tracks user-message ids whose entrance animation has already played. The
 // createdAt gate suppresses animation when an existing transcript is loaded for
@@ -50,12 +103,16 @@ export const TimelineItem = memo(function TimelineItem({
   onToggleBurst,
   onToggleReasoning,
   onViewFileInDiff,
+  onRevealInFinder,
   onUndoEdits,
   onRedoEdits,
   streamingAssistantId,
   onStreamingCaughtUp,
   streamingReasoningId,
   liveThinkingSectionId,
+  highlightQuery,
+  liveEditStats,
+  turnUndoOps,
 }: {
   readonly item: TimelineRow;
   readonly expandedToolCallIds?: ReadonlySet<string>;
@@ -65,18 +122,25 @@ export const TimelineItem = memo(function TimelineItem({
   readonly onToggleBurst?: (burstId: string) => void;
   readonly onToggleReasoning?: (reasoningId: string) => void;
   readonly onViewFileInDiff?: (path: string) => void;
+  readonly onRevealInFinder?: (path: string) => void;
   readonly onUndoEdits?: (ops: readonly UndoEditOp[]) => Promise<UndoEditsResult>;
   readonly onRedoEdits?: (ops: readonly UndoEditOp[]) => Promise<UndoEditsResult>;
   readonly streamingAssistantId?: string;
   readonly onStreamingCaughtUp?: (messageId: string) => void;
   readonly streamingReasoningId?: string;
   readonly liveThinkingSectionId?: string;
+  /** When set, matching text in this item is highlighted (e.g. from search jump). */
+  readonly highlightQuery?: string;
+  readonly liveEditStats?: ReadonlyMap<string, LiveEditStats>;
+  /** Map from edited-files card/activity ID to combined turn undo ops. */
+  readonly turnUndoOps?: { byEditedFilesId: ReadonlyMap<string, readonly UndoEditOp[]>; byActivityId: ReadonlyMap<string, readonly UndoEditOp[]> };
 }) {
+  const content = (() => {
   switch (item.kind) {
     case "message":
-      return <TimelineMessage item={item} streamingAssistantId={streamingAssistantId} onStreamingCaughtUp={onStreamingCaughtUp} />;
+      return <TimelineMessage item={item} streamingAssistantId={streamingAssistantId} onStreamingCaughtUp={onStreamingCaughtUp} highlightQuery={highlightQuery} />;
     case "activity":
-      return <TimelineActivityItem item={item} />;
+      return <TimelineActivityItem item={item} onUndoEdits={onUndoEdits} turnUndoOps={turnUndoOps?.byActivityId.get(item.id)} />;
     case "thinkingSection":
       return (
         <TimelineThinkingSectionItem
@@ -87,7 +151,9 @@ export const TimelineItem = memo(function TimelineItem({
           expandedToolCallIds={expandedToolCallIds}
           onToggleToolCall={onToggleToolCall}
           onViewFileInDiff={onViewFileInDiff}
+          onRevealInFinder={onRevealInFinder}
           streamingReasoningId={streamingReasoningId}
+          liveEditStats={liveEditStats}
         />
       );
     case "reasoning":
@@ -109,6 +175,8 @@ export const TimelineItem = memo(function TimelineItem({
           expanded={expandedToolCallIds?.has(item.callId) ?? false}
           onToggle={onToggleToolCall}
           onViewFileInDiff={onViewFileInDiff}
+          onRevealInFinder={onRevealInFinder}
+          liveStats={liveEditStats?.get(item.callId)}
         />
       );
     case "toolBurst":
@@ -120,15 +188,24 @@ export const TimelineItem = memo(function TimelineItem({
           expandedToolCallIds={expandedToolCallIds}
           onToggleToolCall={onToggleToolCall}
           onViewFileInDiff={onViewFileInDiff}
+          onRevealInFinder={onRevealInFinder}
+          liveEditStats={liveEditStats}
         />
       );
     case "editedFiles":
-      return <TimelineEditedFilesItem item={item} onViewFileInDiff={onViewFileInDiff} onUndoEdits={onUndoEdits} onRedoEdits={onRedoEdits} />;
+      return <TimelineEditedFilesItem item={item} onViewFileInDiff={onViewFileInDiff} onRevealInFinder={onRevealInFinder} onUndoEdits={onUndoEdits} onRedoEdits={onRedoEdits} turnUndoOps={turnUndoOps?.byEditedFilesId.get(item.id)} />;
     case "summary":
       return <TimelineSummaryItem item={item} />;
     default:
       return null;
   }
+  })();
+  // message kind highlights internally (it must skip the streaming case); wrap
+  // every other searchable row here so its label/detail/text get marked too.
+  if (highlightQuery && item.kind !== "message") {
+    return <HighlightQuery query={highlightQuery}>{content}</HighlightQuery>;
+  }
+  return content;
 }, (prev, next) => {
   // The main process re-clones every transcript message before pushing to
   // the renderer, so identity comparison is useless. Compare the fields that
@@ -137,9 +214,12 @@ export const TimelineItem = memo(function TimelineItem({
   if (prev.onToggleBurst !== next.onToggleBurst) return false;
   if (prev.onToggleReasoning !== next.onToggleReasoning) return false;
   if (prev.onViewFileInDiff !== next.onViewFileInDiff) return false;
+  if (prev.onRevealInFinder !== next.onRevealInFinder) return false;
   if (prev.onUndoEdits !== next.onUndoEdits) return false;
   if (prev.onRedoEdits !== next.onRedoEdits) return false;
+  if (prev.turnUndoOps !== next.turnUndoOps) return false;
   if (prev.onStreamingCaughtUp !== next.onStreamingCaughtUp) return false;
+  if (prev.highlightQuery !== next.highlightQuery) return false;
   if (prev.item.kind === "reasoning" && next.item.kind === "reasoning") {
     const prevExpanded = prev.expandedReasoningIds?.has(prev.item.id) ?? false;
     const nextExpanded = next.expandedReasoningIds?.has(next.item.id) ?? false;
@@ -197,58 +277,71 @@ export const TimelineItem = memo(function TimelineItem({
       }
     }
   }
+  // Check if live edit stats changed for any tool in this item
+  if (!sameLiveStatsForItem(prev.item, prev.liveEditStats, next.liveEditStats)) return false;
   return true;
 });
 
-function isSameTimelineItem(a: TimelineRow, b: TimelineRow): boolean {
-  if (a.id !== b.id || a.kind !== b.kind) return false;
-  if (a.kind === "toolBurst" && b.kind === "toolBurst") {
+function sameLiveStatsForItem(
+  item: TimelineRow,
+  prev: ReadonlyMap<string, LiveEditStats> | undefined,
+  next: ReadonlyMap<string, LiveEditStats> | undefined,
+): boolean {
+  if (prev === next) return true;
+  if (!prev || !next) return false;
+  const callIds: string[] = [];
+  if (item.kind === "tool") callIds.push(item.callId);
+  else if (item.kind === "toolBurst") { for (const t of item.tools) callIds.push(t.callId); }
+  else if (item.kind === "thinkingSection") { for (const c of item.children) if (c.kind === "tool") callIds.push(c.callId); }
+  for (const callId of callIds) {
+    const a = prev.get(callId);
+    const b = next.get(callId);
+    if (a !== b && (!a || !b || a.added !== b.added || a.removed !== b.removed)) return false;
+  }
+  return true;
+}
+
+const timelineItemEquality: {
+  readonly [K in TimelineRow["kind"]]?: (
+    a: Extract<TimelineRow, { kind: K }>,
+    b: Extract<TimelineRow, { kind: K }>,
+  ) => boolean;
+} = {
+  message: (a, b) =>
+    a.text === b.text &&
+    a.role === b.role &&
+    (a.attachments?.length ?? 0) === (b.attachments?.length ?? 0),
+  // input/output are cloned objects across publishes; comparing by reference is
+  // useless and deep equality is too expensive. Once a tool reaches a terminal
+  // status its content is immutable, so status + identity is sufficient.
+  tool: (a, b) =>
+    a.callId === b.callId &&
+    a.toolName === b.toolName &&
+    a.status === b.status &&
+    a.label === b.label &&
+    a.status !== "running",
+  activity: (a, b) =>
+    a.label === b.label && a.detail === b.detail && a.metadata === b.metadata && a.tone === b.tone,
+  summary: (a, b) =>
+    a.label === b.label && a.metadata === b.metadata && a.presentation === b.presentation,
+  reasoning: (a, b) => a.text === b.text,
+  toolBurst: (a, b) => {
     if (a.tools.length !== b.tools.length) return false;
     for (let idx = 0; idx < a.tools.length; idx += 1) {
       const ta = a.tools[idx]!;
       const tb = b.tools[idx]!;
-      if (ta.callId !== tb.callId || ta.status !== tb.status || ta.toolName !== tb.toolName) {
-        return false;
-      }
+      if (ta.callId !== tb.callId || ta.status !== tb.status || ta.toolName !== tb.toolName) return false;
     }
     return true;
-  }
-  if (a.kind === "message" && b.kind === "message") {
-    return (
-      a.text === b.text &&
-      a.role === b.role &&
-      (a.attachments?.length ?? 0) === (b.attachments?.length ?? 0)
-    );
-  }
-  if (a.kind === "tool" && b.kind === "tool") {
-    // input/output are cloned objects across publishes; comparing by reference is
-    // useless and deep equality is too expensive. Once a tool reaches a terminal
-    // status its content is immutable, so status + identity is sufficient.
-    return (
-      a.callId === b.callId &&
-      a.toolName === b.toolName &&
-      a.status === b.status &&
-      a.label === b.label &&
-      a.status !== "running"
-    );
-  }
-  if (a.kind === "activity" && b.kind === "activity") {
-    return a.label === b.label && a.detail === b.detail && a.metadata === b.metadata && a.tone === b.tone;
-  }
-  if (a.kind === "summary" && b.kind === "summary") {
-    return a.label === b.label && a.metadata === b.metadata && a.presentation === b.presentation;
-  }
-  if (a.kind === "reasoning" && b.kind === "reasoning") {
-    return a.text === b.text;
-  }
-  if (a.kind === "editedFiles" && b.kind === "editedFiles") {
+  },
+  editedFiles: (a, b) => {
     if (a.tools.length !== b.tools.length) return false;
     for (let idx = 0; idx < a.tools.length; idx += 1) {
       if (a.tools[idx]!.id !== b.tools[idx]!.id) return false;
     }
     return true;
-  }
-  if (a.kind === "thinkingSection" && b.kind === "thinkingSection") {
+  },
+  thinkingSection: (a, b) => {
     if (a.trailing !== b.trailing) return false;
     if (a.children.length !== b.children.length) return false;
     for (let idx = 0; idx < a.children.length; idx += 1) {
@@ -259,8 +352,14 @@ function isSameTimelineItem(a: TimelineRow, b: TimelineRow): boolean {
       if (ca.kind === "tool" && cb.kind === "tool" && ca.status !== cb.status) return false;
     }
     return true;
-  }
-  return true;
+  },
+};
+
+function isSameTimelineItem(a: TimelineRow, b: TimelineRow): boolean {
+  if (a.id !== b.id || a.kind !== b.kind) return false;
+  const checker = timelineItemEquality[a.kind];
+  if (!checker) return true;
+  return checker(a as never, b as never);
 }
 
 function TimelineReasoningItem({
@@ -291,7 +390,7 @@ function TimelineReasoningItem({
       </button>
       {expanded ? (
         <div className="timeline-reasoning__body">
-          <MessageMarkdown text={item.text} />
+          {isStreaming ? <StreamingMessageText text={item.text} /> : <MessageMarkdown text={item.text} />}
         </div>
       ) : null}
     </article>
@@ -306,7 +405,9 @@ function TimelineThinkingSectionItem({
   expandedToolCallIds,
   onToggleToolCall,
   onViewFileInDiff,
+  onRevealInFinder,
   streamingReasoningId,
+  liveEditStats,
 }: {
   readonly item: TimelineThinkingSection;
   readonly isLive: boolean;
@@ -315,7 +416,9 @@ function TimelineThinkingSectionItem({
   readonly expandedToolCallIds?: ReadonlySet<string>;
   readonly onToggleToolCall?: (callId: string) => void;
   readonly onViewFileInDiff?: (path: string) => void;
+  readonly onRevealInFinder?: (path: string) => void;
   readonly streamingReasoningId?: string;
+  readonly liveEditStats?: ReadonlyMap<string, LiveEditStats>;
 }) {
   // While the run is the live tail, the section streams its content with no
   // header label — the global braille "Thinking…" pill at the bottom of the
@@ -359,21 +462,20 @@ function TimelineThinkingSectionItem({
             <div className="timeline-thinking__body">
               {item.children.map((child) =>
                 child.kind === "reasoning" ? (
-                  <div
+                  <TimelineThinkingReasoningChild
                     key={child.id}
-                    className={`timeline-thinking__reasoning${
-                      streamingReasoningId === child.id ? " timeline-thinking__reasoning--streaming" : ""
-                    }`}
-                  >
-                    <MessageMarkdown text={child.text} />
-                  </div>
+                    item={child}
+                    isStreaming={streamingReasoningId === child.id}
+                  />
                 ) : (
-                  <TimelineToolCallItem
+                  <TimelineThinkingToolChild
                     key={child.id}
                     item={child}
                     expanded={expandedToolCallIds?.has(child.callId) ?? false}
                     onToggle={onToggleToolCall}
                     onViewFileInDiff={onViewFileInDiff}
+                    onRevealInFinder={onRevealInFinder}
+                    liveStats={liveEditStats?.get(child.callId)}
                   />
                 ),
               )}
@@ -385,8 +487,64 @@ function TimelineThinkingSectionItem({
   );
 }
 
+const TimelineThinkingReasoningChild = memo(function TimelineThinkingReasoningChild({
+  item,
+  isStreaming,
+}: {
+  readonly item: TimelineReasoning;
+  readonly isStreaming: boolean;
+}) {
+  // Render reasoning text immediately (no typewriter). The typewriter's
+  // per-character reveals constantly change content height, which fires the
+  // virtualizer's ResizeObserver on every frame and produces visible scroll
+  // jitter while the thinking section is the live tail.
+  return (
+    <div className={`timeline-thinking__reasoning${isStreaming ? " timeline-thinking__reasoning--streaming" : ""}`}>
+      <MessageMarkdown text={item.text} />
+    </div>
+  );
+}, (prev, next) => prev.item.id === next.item.id && prev.item.text === next.item.text && prev.isStreaming === next.isStreaming);
+
+const TimelineThinkingToolChild = memo(function TimelineThinkingToolChild({
+  item,
+  expanded,
+  onToggle,
+  onViewFileInDiff,
+  onRevealInFinder,
+  liveStats,
+}: {
+  readonly item: TimelineToolCall;
+  readonly expanded: boolean;
+  readonly onToggle?: (callId: string) => void;
+  readonly onViewFileInDiff?: (path: string) => void;
+  readonly onRevealInFinder?: (path: string) => void;
+  readonly liveStats?: LiveEditStats;
+}) {
+  return (
+    <TimelineToolCallItem
+      item={item}
+      expanded={expanded}
+      onToggle={onToggle}
+      onViewFileInDiff={onViewFileInDiff}
+      onRevealInFinder={onRevealInFinder}
+      liveStats={liveStats}
+    />
+  );
+}, (prev, next) => (
+  prev.item.callId === next.item.callId &&
+  prev.item.toolName === next.item.toolName &&
+  prev.item.status === next.item.status &&
+  prev.item.label === next.item.label &&
+  prev.expanded === next.expanded &&
+  prev.onToggle === next.onToggle &&
+  prev.onViewFileInDiff === next.onViewFileInDiff &&
+  prev.onRevealInFinder === next.onRevealInFinder &&
+  prev.liveStats === next.liveStats &&
+  prev.item.status !== "running"
+));
+
 // Keep in sync with the grid-rows transition duration in main.css.
-const THINKING_COLLAPSE_MS = 260;
+const THINKING_COLLAPSE_MS = 240;
 
 function formatThinkDuration(children: TimelineThinkingSection["children"]): string {
   const times = children
@@ -463,16 +621,60 @@ function buildUndoOps(tools: TimelineEditedFiles["tools"]): UndoEditOp[] {
   return ops;
 }
 
+/**
+ * Build maps from edited-files card IDs and activity item IDs to the
+ * combined undo ops for that entire "turn" (all edited-files since the
+ * last user message). Activity items get the same ops so the "Worked for
+ * X" bar can show an inline Undo button.
+ */
+export function buildTurnUndoOpsMap(rows: readonly TimelineRow[]): {
+  byEditedFilesId: Map<string, UndoEditOp[]>;
+  byActivityId: Map<string, UndoEditOp[]>;
+} {
+  const byEditedFilesId = new Map<string, UndoEditOp[]>();
+  const byActivityId = new Map<string, UndoEditOp[]>();
+  const pendingEdits: TimelineEditedFiles[] = [];
+  const pendingActivities: TimelineActivity[] = [];
+  const flush = () => {
+    if (pendingEdits.length === 0) {
+      pendingActivities.length = 0;
+      return;
+    }
+    const ops: UndoEditOp[] = [];
+    for (const item of pendingEdits) ops.push(...buildUndoOps(item.tools));
+    for (const item of pendingEdits) byEditedFilesId.set(item.id, ops);
+    for (const item of pendingActivities) byActivityId.set(item.id, ops);
+    pendingEdits.length = 0;
+    pendingActivities.length = 0;
+  };
+  for (const row of rows) {
+    if (row.kind === "message" && row.role === "user") {
+      flush();
+    } else if (row.kind === "editedFiles") {
+      pendingEdits.push(row);
+    } else if (row.kind === "activity") {
+      pendingActivities.push(row);
+    }
+  }
+  flush();
+  return { byEditedFilesId, byActivityId };
+}
+
 function TimelineEditedFilesItem({
   item,
   onViewFileInDiff,
+  onRevealInFinder,
   onUndoEdits,
   onRedoEdits,
+  turnUndoOps,
 }: {
   readonly item: TimelineEditedFiles;
   readonly onViewFileInDiff?: (path: string) => void;
+  readonly onRevealInFinder?: (path: string) => void;
   readonly onUndoEdits?: (ops: readonly UndoEditOp[]) => Promise<UndoEditsResult>;
   readonly onRedoEdits?: (ops: readonly UndoEditOp[]) => Promise<UndoEditsResult>;
+  /** Combined undo ops for this entire turn (all edited-files cards since the last user message). */
+  readonly turnUndoOps?: readonly UndoEditOp[];
 }) {
   const [undoState, setUndoState] = useState<"idle" | "undoing" | "undone" | "redoing" | "error">("idle");
   const [undoNote, setUndoNote] = useState<string | null>(null);
@@ -486,12 +688,16 @@ function TimelineEditedFilesItem({
   const reviewPath = files[0]!.path;
   const undone = undoState === "undone" || undoState === "redoing";
 
+  // Use turn-level ops when available (reverts all cards in this turn),
+  // otherwise fall back to just this card's ops.
+  const effectiveOps = turnUndoOps && turnUndoOps.length > 0 ? turnUndoOps : buildUndoOps(item.tools);
+
   const handleUndo = async () => {
     if (!onUndoEdits || undoState === "undoing" || undoState === "redoing") return;
     setUndoState("undoing");
     setUndoNote(null);
     try {
-      const result = await onUndoEdits(buildUndoOps(item.tools));
+      const result = await onUndoEdits(effectiveOps);
       if (result.reverted.length === 0) {
         setUndoState("error");
         setUndoNote(result.failed[0]?.reason ?? "Nothing could be undone.");
@@ -510,7 +716,7 @@ function TimelineEditedFilesItem({
     setUndoState("redoing");
     setUndoNote(null);
     try {
-      const result = await onRedoEdits(buildUndoOps(item.tools));
+      const result = await onRedoEdits(effectiveOps);
       if (result.reverted.length === 0) {
         setUndoState("undone");
         setUndoNote(result.failed[0]?.reason ?? "Nothing could be redone.");
@@ -552,7 +758,7 @@ function TimelineEditedFilesItem({
           {undoNote ? <span className="timeline-edited-files__note">{undoNote}</span> : null}
           {onUndoEdits && !undone ? (
             <button
-              aria-label="Undo edits"
+              aria-label="Undo turn"
               className="timeline-edited-files__undo"
               data-testid="timeline-edited-files-undo"
               type="button"
@@ -564,7 +770,7 @@ function TimelineEditedFilesItem({
           ) : null}
           {onRedoEdits && undone ? (
             <button
-              aria-label="Redo edits"
+              aria-label="Redo turn"
               className="timeline-edited-files__undo"
               data-testid="timeline-edited-files-redo"
               type="button"
@@ -590,21 +796,33 @@ function TimelineEditedFilesItem({
       {multiple ? (
         <div className="timeline-edited-files__list">
           {files.map((file) => (
-            <button
-              className="timeline-edited-files__row"
-              key={file.path}
-              type="button"
-              data-testid="timeline-edited-files-row"
-              aria-label={`View ${file.path} in changes`}
-              disabled={!onViewFileInDiff}
-              onClick={onViewFileInDiff ? () => onViewFileInDiff(file.path) : undefined}
-            >
-              <span className="timeline-edited-files__path">{shortenPath(file.path)}</span>
-              <span className="timeline-edited-files__stats">
-                <span className="timeline-tool__stat-add">{`+${file.added}`}</span>{" "}
-                <span className="timeline-tool__stat-del">{`-${file.removed}`}</span>
-              </span>
-            </button>
+            <div className="timeline-edited-files__row-wrapper" key={file.path}>
+              <button
+                className="timeline-edited-files__row"
+                type="button"
+                data-testid="timeline-edited-files-row"
+                aria-label={`View ${file.path} in changes`}
+                disabled={!onViewFileInDiff}
+                onClick={onViewFileInDiff ? () => onViewFileInDiff(file.path) : undefined}
+              >
+                <span className="timeline-edited-files__path">{shortenPath(file.path)}</span>
+                <span className="timeline-edited-files__stats">
+                  <span className="timeline-tool__stat-add">{`+${file.added}`}</span>{" "}
+                  <span className="timeline-tool__stat-del">{`-${file.removed}`}</span>
+                </span>
+              </button>
+              {onRevealInFinder ? (
+                <button
+                  aria-label={`Reveal ${file.path} in Finder`}
+                  className="icon-button timeline-edited-files__reveal"
+                  data-testid="timeline-edited-files-reveal"
+                  type="button"
+                  onClick={() => onRevealInFinder(file.path)}
+                >
+                  <FolderIcon />
+                </button>
+              ) : null}
+            </div>
           ))}
         </div>
       ) : null}
@@ -612,17 +830,41 @@ function TimelineEditedFilesItem({
   );
 }
 
+function CopyMessageButton({ text }: { readonly text: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(() => {
+    void navigator.clipboard.writeText(text);
+    setCopied(true);
+    showToast({ variant: "success", message: "Copied", autoDismissMs: 2000 });
+    setTimeout(() => setCopied(false), 2000);
+  }, [text]);
+
+  return (
+    <button
+      className="icon-button timeline-item__copy"
+      type="button"
+      aria-label={copied ? "Copied" : "Copy message"}
+      onClick={handleCopy}
+    >
+      {copied ? <CheckIcon /> : <CopyIcon />}
+    </button>
+  );
+}
+
 function TimelineMessage({
   item,
   streamingAssistantId,
   onStreamingCaughtUp,
+  highlightQuery,
 }: {
   readonly item: SessionTranscriptMessage;
   readonly streamingAssistantId?: string;
   readonly onStreamingCaughtUp?: (messageId: string) => void;
+  readonly highlightQuery?: string;
 }) {
   if (item.role === "user") {
-    return <UserTimelineMessage item={item} />;
+    return <UserTimelineMessage item={item} highlightQuery={highlightQuery} />;
   }
 
   if (item.role === "branchSummary" || item.role === "compactionSummary") {
@@ -631,21 +873,33 @@ function TimelineMessage({
         <div className="timeline-item__summary-eyebrow">
           {item.role === "branchSummary" ? "Branch summary" : "Compaction summary"}
         </div>
-        <MessageMarkdown text={item.text} />
+        {highlightQuery ? <HighlightQuery query={highlightQuery}><MessageMarkdown text={item.text} /></HighlightQuery> : <MessageMarkdown text={item.text} />}
       </article>
     );
   }
 
   const isStreaming = item.id === streamingAssistantId;
+  const messageContent = isStreaming ? <StreamingMessageText text={item.text} onCaughtUp={() => onStreamingCaughtUp?.(item.id)} /> : <MessageMarkdown text={item.text} />;
   return (
     <article className="timeline-item timeline-item--assistant">
-      {isStreaming ? <StreamingMessageText text={item.text} onCaughtUp={() => onStreamingCaughtUp?.(item.id)} /> : <MessageMarkdown text={item.text} />}
+      {highlightQuery && !isStreaming ? <HighlightQuery query={highlightQuery}>{messageContent}</HighlightQuery> : messageContent}
+      {!isStreaming ? <CopyMessageButton text={item.text} /> : null}
     </article>
   );
 }
 
-function UserTimelineMessage({ item }: { readonly item: SessionTranscriptMessage }) {
+function splitPlanModePrompt(text: string): { instructions: string; prompt: string } | undefined {
+  const separatorIndex = text.indexOf(PLAN_MODE_PROMPT_SEPARATOR);
+  if (separatorIndex === -1) return undefined;
+  const instructions = text.slice(0, separatorIndex).trim();
+  const prompt = text.slice(separatorIndex + PLAN_MODE_PROMPT_SEPARATOR.length).trim();
+  return { instructions, prompt };
+}
+
+function UserTimelineMessage({ item, highlightQuery }: { readonly item: SessionTranscriptMessage; readonly highlightQuery?: string }) {
   const [justSent, setJustSent] = useState(() => isFreshUserBubble(item));
+  const [planInstructionsExpanded, setPlanInstructionsExpanded] = useState(false);
+  const planPrompt = splitPlanModePrompt(item.text);
 
   useEffect(() => {
     if (!justSent) return;
@@ -697,18 +951,124 @@ function UserTimelineMessage({ item }: { readonly item: SessionTranscriptMessage
             )}
           </div>
         ) : null}
-        <MessageMarkdown text={item.text} />
+        {planPrompt ? (
+          <>
+            <div className="timeline-plan-prompt">
+              <button
+                type="button"
+                className="timeline-plan-prompt__header"
+                onClick={() => setPlanInstructionsExpanded((expanded) => !expanded)}
+                aria-expanded={planInstructionsExpanded}
+              >
+                <span
+                  className={`timeline-plan-prompt__chevron${planInstructionsExpanded ? " timeline-plan-prompt__chevron--expanded" : ""}`}
+                  aria-hidden="true"
+                >
+                  <ChevronRightIcon />
+                </span>
+                <span>Plan mode instructions</span>
+              </button>
+              {planInstructionsExpanded ? (
+                <div className="timeline-plan-prompt__body">
+                  <MessageMarkdown text={planPrompt.instructions} />
+                </div>
+              ) : null}
+            </div>
+            {highlightQuery ? <HighlightQuery query={highlightQuery}><MessageMarkdown text={planPrompt.prompt} /></HighlightQuery> : <MessageMarkdown text={planPrompt.prompt} />}
+          </>
+        ) : highlightQuery ? (
+          <HighlightQuery query={highlightQuery}><MessageMarkdown text={item.text} /></HighlightQuery>
+        ) : (
+          <MessageMarkdown text={item.text} />
+        )}
       </div>
     </article>
   );
 }
 
-function TimelineActivityItem({ item }: { readonly item: TimelineActivity }) {
+function TimelineActivityItem({
+  item,
+  onUndoEdits,
+  turnUndoOps,
+}: {
+  readonly item: TimelineActivity;
+  readonly onUndoEdits?: (ops: readonly UndoEditOp[]) => Promise<UndoEditsResult>;
+  readonly turnUndoOps?: readonly UndoEditOp[];
+}) {
+  const [undoState, setUndoState] = useState<"idle" | "undoing" | "undone" | "redoing">("idle");
+  if (item.retry) {
+    return <TimelineRetryItem label={item.label} retry={item.retry} />;
+  }
+  const hasUndo = turnUndoOps && turnUndoOps.length > 0 && onUndoEdits;
+
+  const handleUndo = async () => {
+    if (!onUndoEdits || undoState !== "idle") return;
+    setUndoState("undoing");
+    try {
+      await onUndoEdits(turnUndoOps!);
+      setUndoState("undone");
+    } catch {
+      setUndoState("idle");
+    }
+  };
+
   return (
-    <div className={`timeline-activity timeline-activity--${item.tone ?? "neutral"}`}>
-      <span className="timeline-activity__label">{item.label}</span>
+    <div className={`timeline-activity timeline-activity--${item.tone ?? "neutral"}${undoState === "undone" ? " timeline-activity--undone" : ""}`}>
+      <span className="timeline-activity__label">
+        {undoState === "undone" ? "Reverted" : item.label}
+      </span>
       {item.detail ? <span className="timeline-activity__detail">{item.detail}</span> : null}
       {item.metadata ? <span className="timeline-activity__meta">{item.metadata}</span> : null}
+      {hasUndo && undoState !== "undone" ? (
+        <button
+          className="timeline-activity__undo"
+          data-testid="timeline-activity-undo"
+          type="button"
+          disabled={undoState === "undoing"}
+          onClick={handleUndo}
+        >
+          {undoState === "undoing" ? "Undoing…" : "Undo"}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function secondsUntil(deadline: string): number {
+  return Math.max(0, Math.ceil((new Date(deadline).getTime() - Date.now()) / 1000));
+}
+
+/**
+ * A single transient line shown while a transient connection failure is being
+ * auto-retried: braille spinner, attempt counter, and a live countdown to the
+ * next attempt. The countdown ticks locally so it stays smooth without any
+ * per-second traffic from the main process.
+ */
+function TimelineRetryItem({
+  label,
+  retry,
+}: {
+  readonly label: string;
+  readonly retry: NonNullable<TimelineActivity["retry"]>;
+}) {
+  const [remaining, setRemaining] = useState(() => secondsUntil(retry.deadline));
+  useEffect(() => {
+    setRemaining(secondsUntil(retry.deadline));
+    const id = window.setInterval(() => {
+      setRemaining(secondsUntil(retry.deadline));
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [retry.deadline]);
+
+  const countdown =
+    remaining > 0 ? `retrying in ${remaining}s` : "retrying…";
+  return (
+    <div className="timeline-activity timeline-activity--error timeline-activity--retry">
+      <WorkingSpinner className="timeline-activity__spinner" />
+      <span className="timeline-activity__label">{label}</span>
+      <span className="timeline-activity__meta">
+        attempt {retry.attempt}/{retry.maxAttempts} · {countdown}
+      </span>
     </div>
   );
 }
@@ -718,16 +1078,22 @@ function TimelineToolCallItem({
   expanded,
   onToggle,
   onViewFileInDiff,
+  onRevealInFinder,
+  liveStats,
 }: {
   readonly item: TimelineToolCall;
   readonly expanded: boolean;
   readonly onToggle?: (callId: string) => void;
   readonly onViewFileInDiff?: (path: string) => void;
+  readonly onRevealInFinder?: (path: string) => void;
+  readonly liveStats?: LiveEditStats;
 }) {
   const hasContent = item.input !== undefined || item.output !== undefined;
   const diffText = isWriteTool(item.toolName) ? extractDiffFromOutput(item.output) ?? extractDiffFromOutput(item.input) : undefined;
   const diffStats = diffText ? countDiffStats(diffText) : undefined;
-  const compactLabel = buildCompactLabel(item, diffStats);
+  const isLiveEditing = item.status === "running" && isWriteTool(item.toolName);
+  const effectiveStats = diffStats ?? (isLiveEditing && liveStats && (liveStats.added > 0 || liveStats.removed > 0) ? liveStats : undefined);
+  const compactLabel = buildCompactLabel(item, effectiveStats);
   const filePath = isWriteTool(item.toolName) ? extractFilename(item.input) || undefined : undefined;
   const diffLanguage = diffText && filePath ? extensionToLanguage(filePath) : undefined;
 
@@ -751,13 +1117,13 @@ function TimelineToolCallItem({
               <ChevronRightIcon />
             </span>
           ) : null}
-          <span className="timeline-tool__icon" aria-hidden="true">{toolIcon(item)}</span>
+          <span className="timeline-tool__icon" aria-hidden="true">{isLiveEditing ? <WorkingSpinner /> : toolIcon(item)}</span>
           <span className="timeline-tool__label">{compactLabel}</span>
-          {diffStats ? (
-            <span className="timeline-tool__diff-stats">
-              <span className="timeline-tool__stat-add">+{diffStats.added}</span>
+          {effectiveStats ? (
+            <span className="timeline-tool__diff-stats timeline-tool__diff-stats--live">
+              <span className="timeline-tool__stat-add">+{effectiveStats.added}</span>
               {" "}
-              <span className="timeline-tool__stat-del">-{diffStats.removed}</span>
+              <span className="timeline-tool__stat-del">-{effectiveStats.removed}</span>
             </span>
           ) : null}
           <span className="timeline-tool__meta-inline">{`${item.toolName} \u00b7 ${statusLabel(item.status)}`}</span>
@@ -774,6 +1140,20 @@ function TimelineToolCallItem({
             }}
           >
             <DiffIcon />
+          </button>
+        ) : null}
+        {filePath && onRevealInFinder ? (
+          <button
+            aria-label={`Reveal ${filePath} in Finder`}
+            className="icon-button timeline-tool__reveal-in-finder"
+            data-testid="timeline-tool-reveal-in-finder"
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onRevealInFinder(filePath);
+            }}
+          >
+            <FolderIcon />
           </button>
         ) : null}
       </div>
@@ -827,7 +1207,7 @@ function toolIcon(item: TimelineToolCall) {
   return <TerminalIcon />;
 }
 
-function buildCompactLabel(item: TimelineToolCall, diffStats: { added: number; removed: number } | undefined): string {
+function buildCompactLabel(item: TimelineToolCall, _diffStats: { added: number; removed: number } | undefined): string {
   if (isWriteTool(item.toolName)) {
     const filename = extractFilename(item.input);
     if (filename) {
@@ -894,6 +1274,8 @@ function TimelineToolBurstItem({
   expandedToolCallIds,
   onToggleToolCall,
   onViewFileInDiff,
+  onRevealInFinder,
+  liveEditStats,
 }: {
   readonly item: TimelineToolBurst;
   readonly expanded: boolean;
@@ -901,6 +1283,8 @@ function TimelineToolBurstItem({
   readonly expandedToolCallIds?: ReadonlySet<string>;
   readonly onToggleToolCall?: (callId: string) => void;
   readonly onViewFileInDiff?: (path: string) => void;
+  readonly onRevealInFinder?: (path: string) => void;
+  readonly liveEditStats?: ReadonlyMap<string, LiveEditStats>;
 }) {
   const summary = summariseToolBurst(item);
   const hasError = item.tools.some((tool) => tool.status === "error");
@@ -931,6 +1315,8 @@ function TimelineToolBurstItem({
               expanded={expandedToolCallIds?.has(tool.callId) ?? false}
               onToggle={onToggleToolCall}
               onViewFileInDiff={onViewFileInDiff}
+              onRevealInFinder={onRevealInFinder}
+              liveStats={liveEditStats?.get(tool.callId)}
             />
           ))}
         </div>

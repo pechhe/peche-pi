@@ -34,6 +34,15 @@ export interface RuntimeModelRecord {
   readonly reasoning: boolean;
   readonly supportsImages: boolean;
   readonly contextWindow: number;
+  /** Thinking levels supported by this model (computed from model.thinkingLevelMap). */
+  readonly availableThinkingLevels: readonly string[];
+  /**
+   * Provider-specific display names for thinking levels, keyed by pi level.
+   * Only contains entries the model maps to a concrete provider value (e.g.
+   * `{ xhigh: "max" }` for Opus, `{ xhigh: "xhigh" }` for GPT-5.5). Lets the UI
+   * show the provider's own name instead of a hard-coded label.
+   */
+  readonly thinkingLevelLabels: Readonly<Record<string, string>>;
 }
 
 export interface RuntimeSkillRecord {
@@ -123,11 +132,31 @@ export interface RuntimeLoginPrompt {
   readonly allowEmpty?: boolean;
 }
 
+export interface RuntimeLoginDeviceCodeInfo {
+  readonly userCode: string;
+  readonly verificationUri: string;
+  readonly intervalSeconds?: number;
+  readonly expiresInSeconds?: number;
+}
+
+export interface RuntimeLoginSelectOption {
+  readonly id: string;
+  readonly label: string;
+}
+
+export interface RuntimeLoginSelectPrompt {
+  readonly message: string;
+  readonly options: readonly RuntimeLoginSelectOption[];
+}
+
 export interface RuntimeLoginCallbacks {
   readonly onAuth: (info: RuntimeLoginAuthInfo) => void | Promise<void>;
+  readonly onDeviceCode: (info: RuntimeLoginDeviceCodeInfo) => void;
   readonly onPrompt: (prompt: RuntimeLoginPrompt) => Promise<string>;
   readonly onProgress?: (message: string) => void | Promise<void>;
   readonly onManualCodeInput?: () => Promise<string>;
+  /** Show an interactive selector and return the selected option id, or undefined on cancel. */
+  readonly onSelect: (prompt: RuntimeLoginSelectPrompt) => Promise<string | undefined>;
   readonly signal?: AbortSignal;
 }
 
@@ -137,6 +166,25 @@ export interface RuntimeResourceDriver {
   login(workspace: WorkspaceRef, providerId: string, callbacks: RuntimeLoginCallbacks): Promise<RuntimeSnapshot>;
   logout(workspace: WorkspaceRef, providerId: string): Promise<RuntimeSnapshot>;
   setProviderApiKey(workspace: WorkspaceRef, providerId: string, apiKey: string): Promise<RuntimeSnapshot>;
+  addCustomProvider(
+    workspace: WorkspaceRef,
+    config: {
+      readonly providerId: string;
+      readonly displayName: string;
+      readonly baseUrl: string;
+      readonly api: "openai-completions" | "openai-responses" | "anthropic-messages";
+      readonly apiKey: string;
+      readonly models: ReadonlyArray<{
+        readonly id: string;
+        readonly name: string;
+        readonly reasoning: boolean;
+        readonly input: readonly ("text" | "image")[];
+        readonly contextWindow: number;
+        readonly maxTokens: number;
+      }>;
+    },
+  ): Promise<RuntimeSnapshot>;
+  removeCustomProvider(workspace: WorkspaceRef, providerId: string): Promise<RuntimeSnapshot>;
   setDefaultModel(
     workspace: WorkspaceRef,
     selection: {

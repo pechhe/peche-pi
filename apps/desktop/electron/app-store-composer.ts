@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { sessionKey } from "@pi-gui/pi-sdk-driver";
-import type { SessionConfig, SessionQueuedMessage, SessionRef } from "@pi-gui/session-driver";
+import type { RuntimeCommandRecord, SessionConfig, SessionRef } from "@pi-gui/session-driver";
 import type { ComposerAttachment, DesktopAppState, QueuedComposerMessage, WorkspaceSessionTarget } from "../src/desktop-state";
-import { buildPlanModePrompt, type ComposerMode } from "../src/composer-mode";
+import { buildPlanModePrompt, type ComposerMode, type PlanModeIdeology } from "../src/composer-mode";
 import { toSessionRef } from "./app-store-utils";
 import {
   formatSessionConfigStatus,
@@ -21,12 +21,14 @@ import {
   toTranscriptAttachments,
 } from "./app-store-utils";
 import { reduce } from "./app-state-reducer";
-import type { AppStoreInternals } from "./app-store-internals";
+import type { ComposerOps, Infrastructure, PersistenceOps, SessionLifecycle, StateAccess, StoreHelpers } from "./app-store-internals";
+
+type ComposerStore = StateAccess & Infrastructure & StoreHelpers & SessionLifecycle & ComposerOps & PersistenceOps;
 
 /* ── Public methods ─────────────────────────────────────── */
 
 export async function updateComposerDraft(
-  store: AppStoreInternals,
+  store: ComposerStore,
   composerDraft: string,
 ): Promise<DesktopAppState> {
   await store.initialize();
@@ -53,7 +55,7 @@ export async function updateComposerDraft(
 }
 
 export async function addComposerAttachments(
-  store: AppStoreInternals,
+  store: ComposerStore,
   attachments: readonly ComposerAttachment[],
 ): Promise<DesktopAppState> {
   await store.initialize();
@@ -75,7 +77,7 @@ export async function addComposerAttachments(
 }
 
 export async function removeComposerAttachment(
-  store: AppStoreInternals,
+  store: ComposerStore,
   attachmentId: string,
 ): Promise<DesktopAppState> {
   await store.initialize();
@@ -105,7 +107,7 @@ export async function removeComposerAttachment(
 }
 
 export async function editQueuedComposerMessage(
-  store: AppStoreInternals,
+  store: ComposerStore,
   messageId: string,
   currentDraft = "",
 ): Promise<DesktopAppState> {
@@ -139,7 +141,7 @@ export async function editQueuedComposerMessage(
 }
 
 export async function cancelQueuedComposerEdit(
-  store: AppStoreInternals,
+  store: ComposerStore,
 ): Promise<DesktopAppState> {
   await store.initialize();
   const sessionRef = store.selectedSessionRef();
@@ -175,7 +177,7 @@ export async function cancelQueuedComposerEdit(
 }
 
 export async function removeQueuedComposerMessage(
-  store: AppStoreInternals,
+  store: ComposerStore,
   messageId: string,
 ): Promise<DesktopAppState> {
   await store.initialize();
@@ -218,7 +220,7 @@ export async function removeQueuedComposerMessage(
 }
 
 export async function steerQueuedComposerMessage(
-  store: AppStoreInternals,
+  store: ComposerStore,
   messageId: string,
 ): Promise<DesktopAppState> {
   await store.initialize();
@@ -262,16 +264,126 @@ export async function steerQueuedComposerMessage(
   }
 }
 
+/**
+ * Save the current draft + attachments and return a terminal-only error.
+ * Used when a slash command is only available in the terminal surface.
+ */
+async function saveDraftAndRejectTerminalCommand(
+  store: ComposerStore,
+  sessionRef: SessionRef,
+  key: string,
+  textInput: string,
+  attachments: readonly ComposerAttachment[],
+  message: string,
+): Promise<DesktopAppState> {
+  store.sessionState.composerDraftsBySession.set(key, textInput);
+  if (attachments.length > 0) {
+    store.sessionState.composerAttachmentsBySession.set(key, cloneComposerAttachments(attachments));
+    await store.persistComposerAttachments(key, attachments);
+  }
+  store.state = {
+    ...store.state,
+    composerDraft: textInput,
+    composerDraftSyncSource: "command",
+    composerDraftSyncNonce: store.state.composerDraftSyncNonce + 1,
+    composerAttachments: cloneComposerAttachments(attachments),
+    revision: store.state.revision + 1,
+  };
+  return store.withError(message);
+}
+
+/**
+ * Submit a message to a running session's queue (followUp or steer mode).
+ * Handles editing state, optimistic transcript updates, and persistence.
+ */
+async function submitQueuedMessage(
+  store: ComposerStore,
+  sessionRef: SessionRef,
+  key: string,
+  text: string,
+  attachments: readonly ComposerAttachment[],
+  editingState: ReturnType<ComposerOps["getQueuedComposerEditState"]>,
+  options: { deliverAs: "steer" | "followUp" },
+): Promise<DesktopAppState> {
+  const nextMessage = buildQueuedComposerMessage({
+    existing: editingState
+      ? store.getQueuedComposerMessages(sessionRef).find((message) => message.id === editingState.messageId)
+      : undefined,
+    text,
+    attachments,
+    mode: options.deliverAs,
+  });
+  const nextQueuedMessages = editingState
+    ? replaceQueuedComposerMessage(
+        store.getQueuedComposerMessages(sessionRef),
+        editingState.messageId,
+        nextMessage,
+      )
+    : [
+        ...store.getQueuedComposerMessages(sessionRef),
+        nextMessage,
+      ];
+
+  store.sessionState.composerDraftsBySession.delete(key);
+  store.sessionState.composerAttachmentsBySession.delete(key);
+  store.setQueuedComposerEditState(sessionRef, undefined);
+  await store.persistComposerAttachments(key, []);
+  const nextSessionQueuedMessages = toSessionQueuedMessages(nextQueuedMessages);
+  if (options.deliverAs === "steer") {
+    const optimisticSteerMessage = nextSessionQueuedMessages.find((message) => message.id === nextMessage.id);
+    if (optimisticSteerMessage) {
+      appendQueuedUserMessage(store.sessionState.transcriptCache, sessionRef, optimisticSteerMessage);
+      store.publishSelectedTranscriptFor(sessionRef);
+      store.persistTranscriptCacheForSession(sessionRef);
+    }
+  }
+  await store.driver.replaceQueuedMessages(sessionRef, nextSessionQueuedMessages);
+  return store.refreshState({
+    clearLastError: true,
+    markSelectedSessionViewed: false,
+  });
+}
+
+/** Restore composer state after a failed submit. */
+function recoverFromSubmitError(
+  store: ComposerStore,
+  key: string,
+  textInput: string,
+  attachments: readonly ComposerAttachment[],
+  editingState: ReturnType<ComposerOps["getQueuedComposerEditState"]>,
+  resolvedRuntimeSlashCommand: RuntimeCommandRecord | undefined,
+  sessionRef: SessionRef,
+): void {
+  if (resolvedRuntimeSlashCommand) {
+    store.finishRuntimeCommandExecution(sessionRef);
+  }
+  if (textInput) {
+    store.sessionState.composerDraftsBySession.set(key, textInput);
+  }
+  if (attachments.length > 0) {
+    store.sessionState.composerAttachmentsBySession.set(key, cloneComposerAttachments(attachments));
+    void store.persistComposerAttachments(key, attachments);
+  }
+  if (editingState) {
+    store.setQueuedComposerEditState(sessionRef, editingState);
+  }
+}
+
 export async function submitComposer(
-  store: AppStoreInternals,
+  store: ComposerStore,
   textInput: string,
   options: {
     readonly deliverAs?: "steer" | "followUp";
     readonly mode?: ComposerMode;
+    readonly isFirstPlanPrompt?: boolean;
   } = {},
 ): Promise<DesktopAppState> {
   await store.initialize();
-  const submittedText = options.mode === "plan" ? buildPlanModePrompt(textInput) : textInput;
+  const planIdeology = resolvePlanModeIdeology(textInput, store.state.planModeIdeology);
+  const isFirst = options.isFirstPlanPrompt !== false; // default true for safety
+  const submittedText = options.mode === "plan"
+    ? buildPlanModePrompt(stripPlanModeIdeologyPrefix(textInput, planIdeology), planIdeology, isFirst)
+    : textInput;
   const text = submittedText.trim();
   const sessionRef = store.selectedSessionRef();
   const attachments = sessionRef
@@ -299,108 +411,56 @@ export async function submitComposer(
   }
 
   const key = sessionKey(sessionRef);
-  const selectedSession = store.sessionFromState(sessionRef);
-  const isRunning = selectedSession?.status === "running";
+  let isRunning = store.sessionFromState(sessionRef)?.status === "running";
   const editingState = store.getQueuedComposerEditState(sessionRef);
-  let optimisticSteerMessage: SessionQueuedMessage | undefined;
+  if (isRunning && store.getQueuedComposerMessages(sessionRef).length === 0 && !editingState) {
+    const latestSnapshot = await store.driver.openSession(sessionRef);
+    store.updateQueuedComposerMessages(sessionRef, latestSnapshot.queuedMessages);
+    isRunning = latestSnapshot.status === "running";
+  }
   try {
     if (resolvedRuntimeSlashCommand) {
       const learnedCompatibility = store.getLearnedRuntimeCommandCompatibility(sessionRef.workspaceId, resolvedRuntimeSlashCommand);
       if (learnedCompatibility?.status === "terminal-only") {
-        store.sessionState.composerDraftsBySession.set(key, textInput);
-        if (attachments.length > 0) {
-          store.sessionState.composerAttachmentsBySession.set(key, cloneComposerAttachments(attachments));
-          await store.persistComposerAttachments(key, attachments);
-        }
-        store.state = {
-          ...store.state,
-          composerDraft: textInput,
-          composerDraftSyncSource: "command",
-          composerDraftSyncNonce: store.state.composerDraftSyncNonce + 1,
-          composerAttachments: cloneComposerAttachments(attachments),
-          revision: store.state.revision + 1,
-        };
-        return store.withError(learnedCompatibility.message);
+        return saveDraftAndRejectTerminalCommand(store, sessionRef, key, textInput, attachments, learnedCompatibility.message);
       }
-
       store.beginRuntimeCommandExecution(sessionRef, resolvedRuntimeSlashCommand);
     }
 
     if (isRunning && !resolvedRuntimeSlashCommand) {
-      const deliverAs = options.deliverAs ?? "followUp";
-      const nextMessage = buildQueuedComposerMessage({
-        existing: editingState
-          ? store.getQueuedComposerMessages(sessionRef).find((message) => message.id === editingState.messageId)
-          : undefined,
-        text,
-        attachments,
-        mode: deliverAs,
-      });
-      const nextQueuedMessages = editingState
-        ? replaceQueuedComposerMessage(
-            store.getQueuedComposerMessages(sessionRef),
-            editingState.messageId,
-            nextMessage,
-          )
-        : [
-            ...store.getQueuedComposerMessages(sessionRef),
-            nextMessage,
-          ];
-
-      store.sessionState.composerDraftsBySession.delete(key);
-      store.sessionState.composerAttachmentsBySession.delete(key);
-      store.setQueuedComposerEditState(sessionRef, undefined);
-      await store.persistComposerAttachments(key, []);
-      const nextSessionQueuedMessages = toSessionQueuedMessages(nextQueuedMessages);
-      optimisticSteerMessage = deliverAs === "steer"
-        ? nextSessionQueuedMessages.find((message) => message.id === nextMessage.id)
-        : undefined;
-      if (optimisticSteerMessage) {
-        appendQueuedUserMessage(store.sessionState.transcriptCache, sessionRef, optimisticSteerMessage);
-        store.publishSelectedTranscriptFor(sessionRef);
-        store.persistTranscriptCacheForSession(sessionRef);
-      }
-      await store.driver.replaceQueuedMessages(sessionRef, nextSessionQueuedMessages);
-      return store.refreshState({
-        clearLastError: true,
-        markSelectedSessionViewed: false,
+      return submitQueuedMessage(store, sessionRef, key, text, attachments, editingState, {
+        deliverAs: options.deliverAs ?? "followUp",
       });
     }
 
-    await sendMessageToSession(store, sessionRef, text, attachments);
+    await sendMessageToSession(store, sessionRef, text, attachments, { mode: options.mode });
     const runtimeCommandOutcome = resolvedRuntimeSlashCommand
       ? store.finishRuntimeCommandExecution(sessionRef)
       : undefined;
     if (runtimeSlashCommand) {
       await store.refreshSessionCommandsFor(sessionRef);
     }
+
+    // Queue mode: advance to next queued session after submit
+    if (store.state.queueMode) {
+      const nextQueued = store.findNextQueuedSession(sessionRef.workspaceId, sessionRef.sessionId);
+      if (nextQueued) {
+        await store.selectSessionFast(nextQueued);
+      }
+    }
+
     return store.refreshState({
       clearLastError: !runtimeCommandOutcome?.blockedMessage,
       markSelectedSessionViewed: false,
     });
   } catch (error) {
-    if (resolvedRuntimeSlashCommand) {
-      store.finishRuntimeCommandExecution(sessionRef);
-    }
-    if (textInput) {
-      store.sessionState.composerDraftsBySession.set(key, textInput);
-    }
-    if (attachments.length > 0) {
-      store.sessionState.composerAttachmentsBySession.set(key, cloneComposerAttachments(attachments));
-      await store.persistComposerAttachments(key, attachments);
-    }
-    if (editingState) {
-      store.setQueuedComposerEditState(sessionRef, editingState);
-    }
-    if (optimisticSteerMessage) {
-      removeOptimisticQueuedUserMessage(store, sessionRef, optimisticSteerMessage.id);
-    }
+    recoverFromSubmitError(store, key, textInput, attachments, editingState, resolvedRuntimeSlashCommand, sessionRef);
     return store.withError(error);
   }
 }
 
 export async function setSessionModel(
-  store: AppStoreInternals,
+  store: ComposerStore,
   target: WorkspaceSessionTarget,
   provider: string,
   modelId: string,
@@ -412,12 +472,12 @@ export async function setSessionModel(
   return store.withErrorHandling(async () => {
     await store.driver.setSessionModel(sessionRef, { provider, modelId });
     syncSessionConfig(store, key, { provider, modelId });
-    return finishComposerCommand(store, sessionRef, key, `Model set to ${provider}:${modelId}`, { keepDraft: true });
+    return finishComposerCommand(store, sessionRef, key, `Model set to ${provider}:${modelId}`, { keepDraft: true, silent: true });
   });
 }
 
 export async function setSessionThinkingLevel(
-  store: AppStoreInternals,
+  store: ComposerStore,
   sessionRef: SessionRef,
   thinkingLevel: string,
 ): Promise<DesktopAppState> {
@@ -426,11 +486,11 @@ export async function setSessionThinkingLevel(
   return store.withErrorHandling(async () => {
     await store.driver.setSessionThinkingLevel(sessionRef, thinkingLevel);
     syncSessionConfig(store, key, { thinkingLevel });
-    return finishComposerCommand(store, sessionRef, key, `Thinking set to ${thinkingLevel}`, { keepDraft: true });
+    return finishComposerCommand(store, sessionRef, key, `Thinking set to ${thinkingLevel}`, { keepDraft: true, silent: true });
   });
 }
 
-export async function cancelCurrentRun(store: AppStoreInternals): Promise<DesktopAppState> {
+export async function cancelCurrentRun(store: ComposerStore): Promise<DesktopAppState> {
   await store.initialize();
   const sessionRef = store.selectedSessionRef();
   if (!sessionRef) {
@@ -453,13 +513,27 @@ export async function cancelCurrentRun(store: AppStoreInternals): Promise<Deskto
 
 /* ── Internal helpers ───────────────────────────────────── */
 
+function resolvePlanModeIdeology(text: string, defaultIdeology: PlanModeIdeology = "default"): PlanModeIdeology {
+  if (/^\s*\/(?:plan-)?grill\b/i.test(text)) return "grill";
+  return defaultIdeology;
+}
+
+function stripPlanModeIdeologyPrefix(text: string, ideology: PlanModeIdeology): string {
+  if (ideology !== "grill") {
+    return text;
+  }
+  return text.replace(/^\s*\/(?:plan-)?grill\b\s*/i, "");
+}
+
+
 export async function sendMessageToSession(
-  store: AppStoreInternals,
+  store: ComposerStore,
   sessionRef: SessionRef,
   text: string,
   attachments: readonly ComposerAttachment[],
   options: {
     readonly rollbackOptimisticMessageOnError?: boolean;
+    readonly mode?: ComposerMode;
   } = {},
 ): Promise<void> {
   const key = sessionKey(sessionRef);
@@ -487,6 +561,7 @@ export async function sendMessageToSession(
     await store.driver.sendUserMessage(sessionRef, {
       text,
       attachments: toSessionAttachments(attachments),
+      mode: options.mode,
     });
   } catch (error) {
     if (rollbackOptimisticMessageOnError) {
@@ -525,7 +600,7 @@ function replaceQueuedComposerMessage(
 }
 
 function removeOptimisticQueuedUserMessage(
-  store: AppStoreInternals,
+  store: ComposerStore,
   sessionRef: SessionRef,
   messageId: string,
 ): void {
@@ -540,13 +615,13 @@ function removeOptimisticQueuedUserMessage(
 }
 
 /** Eagerly merge config fields so finishComposerCommand sees them before the async sessionUpdated event arrives. */
-function syncSessionConfig(store: AppStoreInternals, key: string, patch: Partial<SessionConfig>): void {
+function syncSessionConfig(store: ComposerStore, key: string, patch: Partial<SessionConfig>): void {
   const current = store.sessionState.sessionConfigBySession.get(key) ?? {};
   store.sessionState.sessionConfigBySession.set(key, { ...current, ...patch });
 }
 
 async function runComposerCommand(
-  store: AppStoreInternals,
+  store: ComposerStore,
   sessionRef: SessionRef,
   commandText: string,
 ): Promise<DesktopAppState | undefined> {
@@ -567,13 +642,13 @@ async function runComposerCommand(
       modelId: parsed.modelId,
     });
     syncSessionConfig(store, key, { provider: parsed.provider, modelId: parsed.modelId });
-    return finishComposerCommand(store, sessionRef, key, `Model set to ${parsed.provider}:${parsed.modelId}`);
+    return finishComposerCommand(store, sessionRef, key, `Model set to ${parsed.provider}:${parsed.modelId}`, { silent: true });
   }
 
   if (parsed.type === "thinking") {
     await store.driver.setSessionThinkingLevel(sessionRef, parsed.thinkingLevel);
     syncSessionConfig(store, key, { thinkingLevel: parsed.thinkingLevel });
-    return finishComposerCommand(store, sessionRef, key, `Thinking set to ${parsed.thinkingLevel}`);
+    return finishComposerCommand(store, sessionRef, key, `Thinking set to ${parsed.thinkingLevel}`, { silent: true });
   }
 
   if (parsed.type === "status") {
@@ -619,7 +694,7 @@ async function runComposerCommand(
   return store.withError(`Unsupported slash command: ${commandText}`);
 }
 
-function appendLocalActivity(store: AppStoreInternals, sessionRef: SessionRef, label: string): void {
+function appendLocalActivity(store: ComposerStore, sessionRef: SessionRef, label: string): void {
   const key = sessionKey(sessionRef);
   const transcript = [...(store.sessionState.transcriptCache.get(key) ?? [])];
   transcript.push(makeActivityItem(label));
@@ -628,18 +703,20 @@ function appendLocalActivity(store: AppStoreInternals, sessionRef: SessionRef, l
 }
 
 function finishComposerCommand(
-  store: AppStoreInternals,
+  store: ComposerStore,
   sessionRef: SessionRef,
   key: string,
   label: string,
-  options?: { readonly keepDraft?: boolean },
+  options?: { readonly keepDraft?: boolean; readonly silent?: boolean },
 ): DesktopAppState {
   const keepDraft = options?.keepDraft ?? false;
   if (!keepDraft) {
     store.sessionState.composerDraftsBySession.delete(key);
     store.sessionState.composerAttachmentsBySession.delete(key);
   }
-  appendLocalActivity(store, sessionRef, label);
+  if (!options?.silent) {
+    appendLocalActivity(store, sessionRef, label);
+  }
   const transcript = store.sessionState.transcriptCache.get(key) ?? [];
   const preview = previewFromTranscript(transcript);
   store.state = {

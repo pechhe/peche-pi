@@ -31,7 +31,7 @@ end
 `;
 }
 
-export function updateCaskContent(existingContent, { assetUrl, caskToken = "pi-gui", sha256, version }) {
+function updateCaskContent(existingContent, { assetUrl, caskToken = "pi-gui", sha256, version }) {
   const tokenMatch = existingContent.match(CASK_PATTERN);
   if (!tokenMatch) {
     throw new Error("Unable to find cask token declaration in Homebrew cask.");

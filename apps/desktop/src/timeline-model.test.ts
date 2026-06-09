@@ -182,6 +182,58 @@ test("timeline model creates tool lifecycle rows and run summaries", () => {
   assert.equal(runtime.runningSince, undefined);
 });
 
+test("timeline model suppresses the Worked-for divider while an async subagent launch is pending", () => {
+  const runtime: SessionTimelineRuntimeState = {};
+  let transcript: readonly TranscriptMessage[] = [];
+
+  transcript = applySessionEventToTimeline(
+    transcript,
+    event({ type: "sessionUpdated", snapshot: snapshot({ status: "running", runningRunId: "run-1" }) }),
+    runtime,
+    factory,
+  );
+  transcript = applySessionEventToTimeline(
+    transcript,
+    event({ type: "toolStarted", callId: "sub-1", toolName: "subagent", input: { name: "fix-sync" } }),
+    runtime,
+    factory,
+  );
+  // Async launch resolves immediately with status "started" — the main run then
+  // completes because it yielded to await the subagent, not because it's done.
+  transcript = applySessionEventToTimeline(
+    transcript,
+    event({ type: "toolFinished", callId: "sub-1", success: true, output: { details: { status: "started", name: "fix-sync" } } }),
+    runtime,
+    factory,
+  );
+  transcript = applySessionEventToTimeline(
+    transcript,
+    event({ type: "runCompleted", snapshot: snapshot({ status: "idle" }), timestamp: "2026-01-01T00:00:08.000Z" }),
+    runtime,
+    factory,
+  );
+
+  assert.deepEqual(
+    transcript.filter((item) => item.kind === "summary").map((item) => item.label),
+    [],
+  );
+
+  // When the subagent later reports back, a new run produces an assistant reply,
+  // so the launch row is no longer trailing and the divider appears.
+  transcript = appendAssistantDeltaToTimeline(transcript, runtime, "All done.", factory);
+  transcript = applySessionEventToTimeline(
+    transcript,
+    event({ type: "runCompleted", snapshot: snapshot({ status: "idle" }), timestamp: "2026-01-01T00:00:12.000Z" }),
+    runtime,
+    factory,
+  );
+
+  assert.deepEqual(
+    transcript.filter((item) => item.kind === "summary").map((item) => item.label),
+    ["Completed"],
+  );
+});
+
 test("timeline model surfaces run failures as error activity", () => {
   const runtime: SessionTimelineRuntimeState = {
     runMetrics: { startedAt: "2026-01-01T00:00:00.000Z", toolCount: 0, searchCount: 0, fileCount: 0 },
@@ -199,6 +251,62 @@ test("timeline model surfaces run failures as error activity", () => {
   assert.equal(transcript[0]!.kind === "activity" ? transcript[0]!.tone : undefined, "error");
   assert.equal(transcript[0]!.kind === "activity" ? transcript[0]!.metadata : undefined, "Worked for 1m");
   assert.equal(runtime.runMetrics, undefined);
+});
+
+test("timeline model collapses consecutive identical run failures into one error", () => {
+  const runtime: SessionTimelineRuntimeState = {
+    runMetrics: { startedAt: "2026-01-01T00:00:00.000Z", toolCount: 0, searchCount: 0, fileCount: 0 },
+    runningSince: "2026-01-01T00:00:00.000Z",
+  };
+
+  const err = (ts: string) =>
+    event({ type: "runFailed", error: { message: "Usage limit reached — resets in 3h 46m", code: "ERROR" }, timestamp: ts });
+
+  let transcript = applySessionEventToTimeline([], err("2026-01-01T00:01:00.000Z"), runtime, factory);
+  transcript = applySessionEventToTimeline(transcript, err("2026-01-01T00:02:00.000Z"), runtime, factory);
+  transcript = applySessionEventToTimeline(transcript, err("2026-01-01T00:03:00.000Z"), runtime, factory);
+
+  const errors = transcript.filter((item) => item.kind === "activity" && item.tone === "error");
+  assert.equal(errors.length, 1);
+});
+
+test("timeline model collapses auto-retries into a single live retry line", () => {
+  const runtime: SessionTimelineRuntimeState = {};
+
+  const fail = (ts: string) =>
+    event({ type: "runFailed", error: { message: "Connection error", code: "ECONNRESET" }, timestamp: ts });
+  const retry = (attempt: number, ts: string) =>
+    event({
+      type: "runRetrying",
+      attempt,
+      maxAttempts: 5,
+      delayMs: 4000,
+      message: "Connection error",
+      timestamp: ts,
+    });
+
+  // Attempt 1 fails then schedules a retry.
+  let transcript = applySessionEventToTimeline([], fail("2026-01-01T00:01:00.000Z"), runtime, factory);
+  transcript = applySessionEventToTimeline(transcript, retry(1, "2026-01-01T00:01:00.000Z"), runtime, factory);
+  // Attempt 2 fails then schedules another retry.
+  transcript = applySessionEventToTimeline(transcript, fail("2026-01-01T00:01:04.000Z"), runtime, factory);
+  transcript = applySessionEventToTimeline(transcript, retry(2, "2026-01-01T00:01:04.000Z"), runtime, factory);
+
+  // Exactly one row total, and it is the live retry line for the latest attempt.
+  assert.equal(transcript.length, 1);
+  const row = transcript[0]!;
+  assert.equal(row.kind, "activity");
+  if (row.kind !== "activity") return;
+  assert.equal(row.tone, "error");
+  assert.equal(row.label, "Connection error");
+  assert.equal(row.retry?.attempt, 2);
+  assert.equal(row.retry?.maxAttempts, 5);
+  assert.equal(row.retry?.deadline, "2026-01-01T00:01:08.000Z");
+
+  // When the run resumes (assistant text), the transient retry line is cleared.
+  const resumed = appendAssistantDeltaToTimeline(transcript, runtime, "Hello", factory);
+  assert.equal(resumed.some((item) => item.kind === "activity" && Boolean(item.retry)), false);
+  assert.equal(resumed.some((item) => item.kind === "message"), true);
 });
 
 test("timeline model extracts reopened transcript meta activity and groups non-trailing tool bursts", () => {

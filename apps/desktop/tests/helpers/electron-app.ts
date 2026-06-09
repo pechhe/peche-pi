@@ -298,7 +298,7 @@ async function copyAgentFile(
   }
 }
 
-export async function resolvePackagedAppBundle(releaseDir = packagedReleaseDir): Promise<string> {
+async function resolvePackagedAppBundle(releaseDir = packagedReleaseDir): Promise<string> {
   let appBundles: string[];
   try {
     appBundles = await findAppBundles(releaseDir);
@@ -338,7 +338,7 @@ export async function resolveAppBundleExecutable(appBundle: string): Promise<str
   return join(macOsDir, executableEntry.name);
 }
 
-export async function resolvePackagedReleaseZip(releaseDir = packagedReleaseDir): Promise<string> {
+async function resolvePackagedReleaseZip(releaseDir = packagedReleaseDir): Promise<string> {
   const entries = await readdir(releaseDir, { withFileTypes: true });
   const zipEntry =
     entries.find((entry) => entry.isFile() && entry.name.endsWith("-arm64.zip")) ??
@@ -360,7 +360,7 @@ export async function extractPackagedReleaseZipAppBundle(
   return extractAppBundleFromReleaseZip(zipPath, appName);
 }
 
-export async function extractAppBundleFromReleaseZip(
+async function extractAppBundleFromReleaseZip(
   zipPath: string,
   appName = "pi-gui 2.app",
 ): Promise<string> {
@@ -713,7 +713,7 @@ export async function pasteTinyPngViaClipboard(
   await expect(window.locator(".composer-attachment")).toBeVisible();
 }
 
-export async function pasteTinyPngFromClipboardFiles(
+async function pasteTinyPngFromClipboardFiles(
   window: Page,
   fileName = "screenshot.png",
   composerTestId = "composer",
@@ -1081,7 +1081,7 @@ export async function resolveDeferredThreadTitle(harness: DesktopHarness, title:
   }, title);
 }
 
-export async function rejectDeferredThreadTitle(harness: DesktopHarness): Promise<void> {
+async function rejectDeferredThreadTitle(harness: DesktopHarness): Promise<void> {
   await harness.electronApp.evaluate(async () => {
     const hooks = (globalThis as {
       __PI_APP_TEST_HOOKS?: { rejectDeferredThreadTitle?: () => void };
@@ -1344,10 +1344,12 @@ export async function openNewThread(window: Page): Promise<void> {
   if (await composer.isVisible().catch(() => false)) {
     return;
   }
-  const button = window.locator(".sidebar").getByRole("button", { name: "New thread", exact: true });
+  // The button is labeled "New project in {workspace}" — find it by the "New project" prefix
+  const button = window.locator(".sidebar button[aria-label^='New project in']");
   await expect(button).toBeVisible({ timeout: 15_000 });
   await expect(button).toBeEnabled({ timeout: 15_000 });
-  await button.click();
+  // Parent workspace-row div intercepts pointer events, force click
+  await button.click({ force: true });
   await expect(composer).toBeVisible({ timeout: 15_000 });
 }
 

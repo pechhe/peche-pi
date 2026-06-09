@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { SessionCatalogEntry, WorkspaceCatalogEntry, WorktreeCatalogEntry } from "@pi-gui/catalogs";
 import { sessionKey } from "@pi-gui/pi-sdk-driver";
-import type { SessionAttachment, SessionConfig, SessionQueuedMessage, SessionRef } from "@pi-gui/session-driver";
+import type { SessionAttachment, SessionConfig, SessionContextUsage, SessionQueuedMessage, SessionRef } from "@pi-gui/session-driver";
 import type {
   ComposerAttachment,
   QueuedComposerMessage,
@@ -10,11 +10,11 @@ import type {
   WorktreeRecord,
   WorkspaceRecord,
   WorkspaceSessionTarget,
-} from "../src/desktop-state";
-import { isMetaActivity } from "../src/timeline-grouping";
-import { listRalphPlans } from "./ralph-plans";
+} from "../src/desktop-state.ts";
+import { isMetaActivity } from "../src/timeline-model.ts";
 
-export const LEGACY_TRANSCRIPT_HISTORY_LIMIT = 180;
+
+const _LEGACY_TRANSCRIPT_HISTORY_LIMIT = 180;
 
 export function mapToRecord<V>(map: Map<string, V>): Record<string, V> {
   return Object.fromEntries(map.entries());
@@ -28,6 +28,7 @@ export function buildWorkspaceRecords(
   runningSinceBySession: Map<string, string>,
   sessionConfigBySession: Map<string, SessionConfig>,
   lastViewedAtBySession: Map<string, string>,
+  contextUsageBySession: Map<string, SessionContextUsage>,
 ): WorkspaceRecord[] {
   const workspaceRoots = resolveWorkspaceRoots(workspaces, worktrees);
 
@@ -46,7 +47,7 @@ export function buildWorkspaceRecords(
             branchName: linkedWorktreeBranchName(workspace, worktrees, rootWorkspaceId),
           }
         : {}),
-      ralphPlans: listRalphPlans(workspace.path),
+
       sessions: sessions
         .filter((session) => session.workspaceId === workspace.workspaceId)
         .map((session) =>
@@ -56,6 +57,7 @@ export function buildWorkspaceRecords(
             runningSinceBySession,
             sessionConfigBySession,
             lastViewedAtBySession,
+            contextUsageBySession,
           ),
         ),
     };
@@ -207,6 +209,7 @@ function buildSessionRecord(
   runningSinceBySession: Map<string, string>,
   sessionConfigBySession: Map<string, SessionConfig>,
   lastViewedAtBySession: Map<string, string>,
+  contextUsageBySession: Map<string, SessionContextUsage>,
 ): SessionRecord {
   const key = sessionKey(session.sessionRef);
   const transcript = transcriptCache.get(key) ?? [];
@@ -224,6 +227,8 @@ function buildSessionRecord(
     hasUnseenUpdate: hasUnseenSessionUpdate(session.status, session.updatedAt, lastViewedAt, transcript),
     isAwaitingAssistantText: isAwaitingAssistantText(session.status, transcript),
     config: sessionConfigBySession.get(key),
+    contextUsage: contextUsageBySession.get(key),
+    sessionFilePath: session.sessionFilePath,
   };
 }
 
@@ -502,7 +507,7 @@ function normalizeComposerAttachment(value: Record<string, unknown>): ComposerAt
 
 export function makeActivityItem(
   label: string,
-  options: Pick<Extract<TranscriptMessage, { kind: "activity" }>, "detail" | "metadata" | "tone" | "noise"> = {},
+  options: Pick<Extract<TranscriptMessage, { kind: "activity" }>, "detail" | "metadata" | "tone" | "noise" | "retry"> = {},
 ): TranscriptMessage {
   return {
     kind: "activity",
@@ -581,7 +586,7 @@ export function previewFromTranscript(transcript: readonly TranscriptMessage[]):
   return undefined;
 }
 
-export function formatElapsedDuration(startedAt: string, endedAt: string): string {
+function _formatElapsedDuration(startedAt: string, endedAt: string): string {
   const diffMs = Math.max(0, Date.parse(endedAt) - Date.parse(startedAt));
   const seconds = Math.max(1, Math.round(diffMs / 1000));
   if (seconds < 60) {

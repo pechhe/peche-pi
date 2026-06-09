@@ -74,7 +74,7 @@ export function DiffPanel({
 
   useEffect(() => {
     refresh();
-  }, [workspaceId, sessionId]);
+  }, [workspaceId, sessionId, refresh]);
 
   useEffect(() => {
     if (!fileRequest) return;

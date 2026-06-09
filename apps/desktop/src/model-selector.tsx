@@ -1,15 +1,18 @@
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
 import {
   buildModelOptions,
   MODEL_OPTIONS_EMPTY_TITLE,
-  THINKING_OPTIONS,
   type ComposerModelOption,
 } from "./composer-commands";
 import { ReasoningMeter } from "./reasoning-meter";
+import { ShortcutHint } from "./shortcut-hint";
+import { useButtonSound } from "./use-button-sound";
 
 export interface ModelSelectorHandle {
   openModelDropdown(): void;
+  selectSliderSlot(index: number): void;
+  cycleThinkingLevel(direction: -1 | 1): void;
 }
 
 interface ModelSelectorProps {
@@ -33,12 +36,21 @@ function modelKey(providerId: string, modelId: string): string {
   return `${providerId}:${modelId}`;
 }
 
-function nextThinkingLevel(level: string): string {
-  const index = THINKING_OPTIONS.findIndex((option) => option.value === level);
-  if (index === -1) {
-    return THINKING_OPTIONS[0]!.value;
-  }
-  return THINKING_OPTIONS[(index + 1) % THINKING_OPTIONS.length]!.value;
+function nextThinkingLevel(level: string, availableLevels: readonly string[]): string {
+  // Cycle through every level the model supports (in canonical dial order),
+  // including "off", so each slot the dial renders is reachable.
+  if (availableLevels.length === 0) return "off";
+  const index = availableLevels.indexOf(level);
+  if (index === -1) return availableLevels[0]!;
+  return availableLevels[(index + 1) % availableLevels.length]!;
+}
+
+function shortModelLabel(label: string): string {
+  return label
+    .replace(/^claude\s+/i, "Claude ")
+    .replace(/^gpt-?5/i, "GPT-5")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 export const ModelSelector = forwardRef<ModelSelectorHandle, ModelSelectorProps>(
@@ -51,8 +63,8 @@ export const ModelSelector = forwardRef<ModelSelectorHandle, ModelSelectorProps>
       disabled,
       dropdownPlacement = "above",
       showEmptyModelControl = false,
-      unselectedModelLabel = "Choose model",
-      emptyModelLabel = "Choose model",
+      unselectedModelLabel: _unselectedModelLabel = "Choose model",
+      emptyModelLabel: _emptyModelLabel = "Choose model",
       emptyModelTitle = MODEL_OPTIONS_EMPTY_TITLE,
       onSetModel,
       onSetThinking,
@@ -63,15 +75,69 @@ export const ModelSelector = forwardRef<ModelSelectorHandle, ModelSelectorProps>
     const [modelFilter, setModelFilter] = useState("");
     const [hiddenModelKeys, setHiddenModelKeys] = useState<Set<string>>(new Set());
     const [showHiddenModels, setShowHiddenModels] = useState(false);
+    const [pinnedModelKeys, setPinnedModelKeys] = useState<readonly string[]>([]);
+    const [visualModelKey, setVisualModelKey] = useState<string | undefined>(undefined);
     const containerRef = useRef<HTMLDivElement | null>(null);
+    const pendingModelFrameRef = useRef<number | undefined>(undefined);
+    const rotarySound = useButtonSound({ variant: "rotary", disabled });
 
     useImperativeHandle(ref, () => ({
       openModelDropdown() {
         setOpen("model");
       },
+      selectSliderSlot(index: number) {
+        const option = sliderOptions[index];
+        if (option) handleSelectModel(option);
+      },
+      cycleThinkingLevel(direction: -1 | 1) {
+        if (!thinkingLevel) return;
+        // Cycle the full set the model supports (off/minimal included), in the
+        // same canonical order the dial uses.
+        if (availableThinkingLevels.length === 0) return;
+        const currentIndex = availableThinkingLevels.indexOf(thinkingLevel);
+        const nextIndex = currentIndex >= 0
+          ? (currentIndex + direction + availableThinkingLevels.length) % availableThinkingLevels.length
+          : direction > 0 ? 0 : availableThinkingLevels.length - 1;
+        const next = availableThinkingLevels[nextIndex];
+        if (next) onSetThinking(next);
+      },
     }));
 
     const modelOptions = useMemo(() => buildModelOptions(runtime), [runtime]);
+
+    // Resolve the effective model record so the dial only ever offers levels the
+    // model actually supports. When no explicit provider/modelId is set (session
+    // is on the default model), fall back to the runtime's default model rather
+    // than inventing all six levels — otherwise unsupported levels (e.g. off,
+    // minimal) appear as phantom slots that the session clamp immediately rejects.
+    const effectiveModelRecord = useMemo(() => {
+      if (!runtime) return undefined;
+      const p = provider ?? runtime.settings.defaultProvider;
+      const m = modelId ?? runtime.settings.defaultModelId;
+      if (!p || !m) return undefined;
+      return runtime.models.find((record) => record.providerId === p && record.modelId === m);
+    }, [runtime, provider, modelId]);
+
+    // When the model is explicitly selected but not found in the registry (e.g.
+    // custom model not yet loaded), use the default model's levels instead of
+    // the old ["off"] fallback which showed a phantom "off" slot for models
+    // that don't support it.
+    const fallbackModelRecord = useMemo(() => {
+      if (!runtime) return undefined;
+      const dp = runtime.settings.defaultProvider;
+      const dm = runtime.settings.defaultModelId;
+      if (!dp || !dm) return undefined;
+      return runtime.models.find((record) => record.providerId === dp && record.modelId === dm);
+    }, [runtime]);
+
+    const availableThinkingLevels =
+      effectiveModelRecord?.availableThinkingLevels ??
+      fallbackModelRecord?.availableThinkingLevels ??
+      ["off"];
+
+    // Provider-specific display names (e.g. xhigh shows as "MAX" for Opus,
+    // "XHIGH" for GPT-5.5) so the dial matches the selected model.
+    const thinkingLevelLabels = effectiveModelRecord?.thinkingLevelLabels ?? fallbackModelRecord?.thinkingLevelLabels;
 
     const visibleModelOptions = useMemo(() => {
       if (showHiddenModels || hiddenModelKeys.size === 0) return modelOptions;
@@ -93,18 +159,34 @@ export const ModelSelector = forwardRef<ModelSelectorHandle, ModelSelectorProps>
     const hasAvailableModelOptions = modelOptions.length > 0;
     const hasModelControl = Boolean(provider && modelId) || hasAvailableModelOptions;
     const shouldRenderModelControl = hasModelControl || showEmptyModelControl;
-    const activeModelLabel = useMemo(() => {
+    const _activeModelLabel = useMemo(() => {
       if (!provider || !modelId) return undefined;
       return modelOptions.find(
         (m) => m.providerId === provider && m.modelId === modelId,
       )?.label;
     }, [modelOptions, provider, modelId]);
-    const modelBadgeLabel =
-      provider && modelId
-        ? (activeModelLabel ?? `${provider}:${modelId}`)
-        : hasAvailableModelOptions
-          ? unselectedModelLabel
-          : emptyModelLabel;
+
+    const pinnedModelOptions = useMemo(() => {
+      const byKey = new Map(modelOptions.map((option) => [modelKey(option.providerId, option.modelId), option]));
+      const picked = pinnedModelKeys
+        .map((key) => byKey.get(key))
+        .filter((option): option is ComposerModelOption => Boolean(option));
+      for (const option of modelOptions) {
+        if (picked.length >= 3) break;
+        if (!picked.some((p) => p.providerId === option.providerId && p.modelId === option.modelId)) {
+          picked.push(option);
+        }
+      }
+      return picked.slice(0, 3);
+    }, [modelOptions, pinnedModelKeys]);
+    const activeKey = visualModelKey ?? (provider && modelId ? modelKey(provider, modelId) : undefined);
+    const overflowModelOption = useMemo(() => {
+      if (!activeKey || pinnedModelOptions.some((m) => modelKey(m.providerId, m.modelId) === activeKey)) return undefined;
+      return modelOptions.find((m) => modelKey(m.providerId, m.modelId) === activeKey);
+    }, [activeKey, modelOptions, pinnedModelOptions]);
+    const sliderOptions = overflowModelOption ? [...pinnedModelOptions, overflowModelOption] : pinnedModelOptions;
+    const activeSliderIndex = sliderOptions.findIndex((m) => modelKey(m.providerId, m.modelId) === activeKey);
+    const sliderPosition = activeSliderIndex >= 0 ? activeSliderIndex : 1;
     const noMatchingModels =
       hasAvailableModelOptions && modelFilter.trim().length > 0 && groupedModels.length === 0;
 
@@ -117,11 +199,45 @@ export const ModelSelector = forwardRef<ModelSelectorHandle, ModelSelectorProps>
       setShowHiddenModels(false);
     };
 
-    const handleSelectModel = (option: ComposerModelOption) => {
-      if (option.providerId !== provider || option.modelId !== modelId) {
-        onSetModel(option.providerId, option.modelId);
+    const pinModelOut = (option: ComposerModelOption, replaceIndex = sliderPosition) => {
+      const key = modelKey(option.providerId, option.modelId);
+      setPinnedModelKeys((prev) => {
+        if (prev.includes(key)) return prev;
+        const next = pinnedModelOptions.map((p) => modelKey(p.providerId, p.modelId));
+        next[Math.max(0, Math.min(2, replaceIndex))] = key;
+        return next;
+      });
+    };
+
+    const restoreComposerFocus = () => {
+      const textarea = containerRef.current
+        ?.closest(".composer__surface")
+        ?.querySelector<HTMLTextAreaElement>("textarea");
+      textarea?.focus();
+    };
+
+    const handleSelectModel = (option: ComposerModelOption, pinToOut = false) => {
+      const key = modelKey(option.providerId, option.modelId);
+      const optionSliderIndex = pinnedModelOptions.findIndex((m) => modelKey(m.providerId, m.modelId) === key);
+      if (pinToOut && optionSliderIndex === -1) {
+        pinModelOut(option);
       }
+      setVisualModelKey(key);
       setOpen("none");
+      // Dropdown autoFocus stole focus from the composer; hand it back so the
+      // user can keep typing after picking a model. rAF runs after the dropdown
+      // unmounts, otherwise focus lands on the about-to-be-removed input.
+      window.requestAnimationFrame(restoreComposerFocus);
+
+      if (option.providerId === provider && option.modelId === modelId) return;
+
+      if (pendingModelFrameRef.current !== undefined) {
+        window.cancelAnimationFrame(pendingModelFrameRef.current);
+      }
+      pendingModelFrameRef.current = window.requestAnimationFrame(() => {
+        pendingModelFrameRef.current = undefined;
+        onSetModel(option.providerId, option.modelId);
+      });
     };
 
     const handleDropdownKeyDown = (event: React.KeyboardEvent) => {
@@ -135,6 +251,26 @@ export const ModelSelector = forwardRef<ModelSelectorHandle, ModelSelectorProps>
         }
       }
     };
+
+    useEffect(() => {
+      if (pinnedModelKeys.length === 0 && modelOptions.length > 0) {
+        setPinnedModelKeys(modelOptions.slice(0, 3).map((option) => modelKey(option.providerId, option.modelId)));
+      }
+    }, [modelOptions, pinnedModelKeys.length]);
+
+    useEffect(() => {
+      return () => {
+        if (pendingModelFrameRef.current !== undefined) {
+          window.cancelAnimationFrame(pendingModelFrameRef.current);
+        }
+      };
+    }, []);
+
+    useEffect(() => {
+      if (visualModelKey && provider && modelId && visualModelKey === modelKey(provider, modelId)) {
+        setVisualModelKey(undefined);
+      }
+    }, [visualModelKey, provider, modelId]);
 
     useEffect(() => {
       if (open === "none") {
@@ -167,22 +303,70 @@ export const ModelSelector = forwardRef<ModelSelectorHandle, ModelSelectorProps>
       return null;
     }
 
-    const flatFiltered = filteredModels;
+    const _flatFiltered = filteredModels;
     const hiddenCount = modelOptions.length - visibleModelOptions.length;
 
     return (
       <span className="model-selector" ref={containerRef}>
         {shouldRenderModelControl ? (
-          <span className="model-selector__anchor">
+          <span className="model-selector__anchor" data-section-label="Model">
             <span className="composer__key-mount">
-              <button
-                className="model-selector__badge"
-                type="button"
-                disabled={disabled}
-                onClick={() => setOpen(open === "model" ? "none" : "model")}
+              <ShortcutHint keys="⌘1–4" />
+              <span
+                className="model-selector__badge model-selector__badge--slider"
+                data-physical-key="model"
+                aria-expanded={open === "model"}
+                style={{ "--model-slider-position": `${sliderPosition}` } as CSSProperties}
               >
-                {modelBadgeLabel}
-              </button>
+                <span className="model-selector__slider" aria-hidden="true">
+                  <span className="model-selector__slider-ticks">
+                    <span className="model-selector__slider-tick model-selector__slider-tick--0" />
+                    <span className="model-selector__slider-tick model-selector__slider-tick--1" />
+                    <span className="model-selector__slider-tick model-selector__slider-tick--2" />
+                    <span className="model-selector__slider-tick model-selector__slider-tick--3" />
+                  </span>
+                  <span className="model-selector__slider-track">
+                    <span className="model-selector__slider-rail" />
+                    <span className="model-selector__slider-glow" />
+                  </span>
+                  <span className="model-selector__slider-thumb" />
+                </span>
+                {sliderOptions.map((option, index) => {
+                  const isActive = modelKey(option.providerId, option.modelId) === activeKey;
+                  return (
+                    <button
+                      className={`model-selector__slider-label model-selector__slider-label--slot model-selector__slider-label--slot-${index}${isActive ? " model-selector__slider-label--selected" : ""}`}
+                      type="button"
+                      key={modelKey(option.providerId, option.modelId)}
+                      disabled={disabled}
+                      title={`Switch to ${option.label}`}
+                      {...rotarySound}
+                      onClick={() => {
+                        if (index === 3 && isActive) {
+                          setOpen(open === "model" ? "none" : "model");
+                        } else {
+                          handleSelectModel(option);
+                        }
+                      }}
+                    >
+                      {shortModelLabel(option.label)}
+                    </button>
+                  );
+                })}
+                {sliderOptions.length < 4 ? (
+                  <button
+                    className="model-selector__slider-label model-selector__slider-label--slot model-selector__slider-label--slot-3 model-selector__slider-label--menu"
+                    type="button"
+                    disabled={disabled}
+                    aria-label="Open full model menu"
+                    aria-expanded={open === "model"}
+                    {...rotarySound}
+                    onClick={() => setOpen(open === "model" ? "none" : "model")}
+                  >
+                    …
+                  </button>
+                ) : null}
+              </span>
             </span>
             {open === "model" ? (
               <div
@@ -226,19 +410,31 @@ export const ModelSelector = forwardRef<ModelSelectorHandle, ModelSelectorProps>
                             {isActive ? (
                               <span className="model-selector__item-meta">active</span>
                             ) : null}
-                            <button
-                              className="model-selector__item-hide"
-                              type="button"
-                              tabIndex={-1}
-                              title="Hide from picker"
-                              aria-label="Hide model"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleHideModel(option);
-                              }}
-                            >
-                              <HideIcon />
-                            </button>
+                            <span className="model-selector__item-actions" onClick={(e) => e.stopPropagation()}>
+                              {[0, 1, 2].map((slot) => (
+                                <button
+                                  className="model-selector__item-slot"
+                                  type="button"
+                                  tabIndex={-1}
+                                  key={slot}
+                                  title={`Keep in position ${slot + 1}`}
+                                  aria-label={`Keep model in slider position ${slot + 1}`}
+                                  onClick={() => pinModelOut(option, slot)}
+                                >
+                                  {slot + 1}
+                                </button>
+                              ))}
+                              <button
+                                className="model-selector__item-hide"
+                                type="button"
+                                tabIndex={-1}
+                                title="Hide from model menu"
+                                aria-label="Hide model from menu"
+                                onClick={() => handleHideModel(option)}
+                              >
+                                hide
+                              </button>
+                            </span>
                           </button>
                         );
                       })}
@@ -273,16 +469,19 @@ export const ModelSelector = forwardRef<ModelSelectorHandle, ModelSelectorProps>
           </span>
         ) : null}
         {thinkingLevel ? (
-          <span className="model-selector__anchor">
-            <span className="composer__key-mount">
+          <span className="model-selector__anchor" data-section-label="Reasoning">
+            <span className="composer__key-mount composer__key-mount--reasoning">
+              <ShortcutHint keys="⌘↑↓" />
               <button
-                className="model-selector__badge"
+                className="model-selector__badge model-selector__badge--reasoning"
                 type="button"
+                data-physical-key="thinking"
                 disabled={disabled}
                 title="Thinking level (click to cycle)"
-                onClick={() => onSetThinking(nextThinkingLevel(thinkingLevel))}
+                {...rotarySound}
+                onClick={() => onSetThinking(nextThinkingLevel(thinkingLevel, availableThinkingLevels))}
               >
-                <ReasoningMeter level={thinkingLevel} size={12} />
+                <ReasoningMeter level={thinkingLevel} availableLevels={availableThinkingLevels} levelLabels={thinkingLevelLabels} size={12} />
               </button>
             </span>
           </span>
@@ -291,25 +490,6 @@ export const ModelSelector = forwardRef<ModelSelectorHandle, ModelSelectorProps>
     );
   },
 );
-
-function HideIcon() {
-  return (
-    <svg
-      width="12"
-      height="12"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
-      <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
-      <line x1="1" y1="1" x2="23" y2="23" />
-    </svg>
-  );
-}
 
 interface ModelGroup {
   readonly provider: string;

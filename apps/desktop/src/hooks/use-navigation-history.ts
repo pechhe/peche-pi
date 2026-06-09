@@ -14,11 +14,6 @@ export interface NavigationEntry {
   readonly selectedSessionId: string;
 }
 
-export interface NavigateTarget {
-  readonly activeView: AppView;
-  readonly workspaceId: string;
-  readonly sessionId: string;
-}
 
 function entryFromSnapshot(snapshot: DesktopAppState): NavigationEntry {
   return {

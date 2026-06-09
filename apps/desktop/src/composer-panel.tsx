@@ -1,10 +1,8 @@
 import { type ClipboardEvent, type Dispatch, type DragEvent, type KeyboardEvent, type RefObject, type SetStateAction } from "react";
 import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
-import type { ComposerAttachment, QueuedComposerMessage, RalphLoopStatus, SessionRecord } from "./desktop-state";
+import type { ComposerAttachment, QueuedComposerMessage, SessionExtensionDialogRecord, SessionRecord } from "./desktop-state";
 import type { ComposerMode } from "./composer-mode";
-import { CavemanSelector } from "./caveman-selector";
-import { ComposerModeSelector } from "./composer-mode-selector";
-import { ModelFeatureBadges } from "./model-feature-badges";
+import { ComposerControlRow } from "./composer-control-row";
 import { ArrowUpIcon, StopSquareIcon } from "./icons";
 import type {
   ComposerSlashCommand,
@@ -13,40 +11,17 @@ import type {
   ComposerSlashOptionEmptyState,
 } from "./composer-commands";
 import { ComposerAttachments, ComposerSurface } from "./composer-surface";
+import { ToastHost } from "./toast";
+import { QueuedComposerMessages } from "./queued-composer-messages";
 import { ModelOnboardingNoticeBanner } from "./model-onboarding-notice";
 import type { ModelOnboardingState, ModelOnboardingSettingsSection } from "./model-onboarding";
-import { ModelSelector } from "./model-selector";
 import type { ModelSelectorHandle } from "./model-selector";
-import type { CavemanLevel } from "./ipc";
-import type { TimelineMetaEvent } from "./timeline-grouping";
-
-export interface LoopControlProps {
-  readonly status: RalphLoopStatus;
-  readonly onStop: () => void;
-  readonly onResume: () => void;
-  readonly onRestart: () => void;
-}
-
-export interface BeginRalphLoopProps {
-  /** Title of the incomplete plan found in this workspace. */
-  readonly planTitle: string;
-  readonly onBegin: () => void;
-}
+import type { CavemanLevel, SmartCompactSettings } from "./ipc";
+import { QuestionnaireComposer } from "./questionnaire-composer";
+import { playClick } from "./button-click-sound";
 
 interface ComposerPanelProps {
   readonly selectedSession: SessionRecord;
-  /**
-   * When present, the selected thread is a Ralph loop iteration: the normal
-   * composer is replaced by a read-only control bar so the loop cannot be
-   * interrupted by typing into the active iteration.
-   */
-  readonly loopControl?: LoopControlProps;
-  /**
-   * When present, this workspace has an incomplete Ralph plan ready to run. A
-   * "Begin Ralph loop" banner appears above the composer to launch it.
-   */
-  readonly beginRalphLoop?: BeginRalphLoopProps;
-  readonly lastError?: string;
   readonly runtime?: RuntimeSnapshot;
   readonly activeSlashCommand?: ComposerSlashCommand;
   readonly activeSlashCommandMeta?: string;
@@ -63,8 +38,9 @@ interface ComposerPanelProps {
   readonly thinkingLevel: string | undefined;
   readonly cavemanLevel: CavemanLevel;
   readonly composerMode: ComposerMode;
-  readonly blackholeAvailable: boolean;
-  readonly metaEvents?: readonly TimelineMetaEvent[];
+  readonly orchestratorMode?: boolean;
+  readonly onToggleOrchestrator?: () => void;
+  readonly smartCompactSettings: SmartCompactSettings;
   readonly slashSections: readonly ComposerSlashCommandSection[];
   readonly slashOptions: readonly ComposerSlashOption[];
   readonly selectedSlashCommand?: ComposerSlashCommand;
@@ -87,6 +63,10 @@ interface ComposerPanelProps {
   readonly onSetThinking: (level: string) => void;
   readonly onSetCavemanLevel: (level: CavemanLevel) => void;
   readonly onSetComposerMode: (mode: ComposerMode) => void;
+  /** True once a plan-mode run has produced a plan and is idle, ready to execute. */
+  readonly planReady?: boolean;
+  /** Approve the written plan: sends an execute message and flips to build mode. */
+  readonly onExecutePlan?: () => void;
   readonly modelOnboarding: ModelOnboardingState;
   readonly onOpenModelSettings: (section: ModelOnboardingSettingsSection) => void;
   readonly onSubmit: () => void;
@@ -94,6 +74,8 @@ interface ComposerPanelProps {
   readonly mentionOptions: readonly string[];
   readonly selectedMentionIndex: number;
   readonly onSelectMention: (filePath: string) => void;
+  readonly questionnaireRequest?: Extract<SessionExtensionDialogRecord, { readonly kind: "questionnaire" }>;
+  readonly onRespondToQuestionnaire?: (response: import("@pi-gui/session-driver").HostUiResponse) => void;
 }
 
 function resolveFallbackContextWindow(
@@ -122,7 +104,6 @@ function formatTokenCount(tokens: number): string {
 
 export function ComposerPanel({
   selectedSession,
-  lastError,
   runtime,
   activeSlashCommand,
   activeSlashCommandMeta,
@@ -139,8 +120,9 @@ export function ComposerPanel({
   thinkingLevel,
   cavemanLevel,
   composerMode,
-  blackholeAvailable,
-  metaEvents,
+  orchestratorMode,
+  onToggleOrchestrator,
+  smartCompactSettings,
   slashSections,
   slashOptions,
   selectedSlashCommand,
@@ -163,6 +145,8 @@ export function ComposerPanel({
   onSetThinking,
   onSetCavemanLevel,
   onSetComposerMode,
+  planReady,
+  onExecutePlan,
   modelOnboarding,
   onOpenModelSettings,
   onSubmit,
@@ -170,12 +154,12 @@ export function ComposerPanel({
   mentionOptions,
   selectedMentionIndex,
   onSelectMention,
-  loopControl,
-  beginRalphLoop,
+  questionnaireRequest,
+  onRespondToQuestionnaire,
 }: ComposerPanelProps) {
-  if (loopControl) {
-    return <LoopControlBar {...loopControl} />;
-  }
+  const questionnaireContent = questionnaireRequest && onRespondToQuestionnaire
+    ? <QuestionnaireComposer request={questionnaireRequest} onRespond={onRespondToQuestionnaire} />
+    : undefined;
 
   const hasComposerInput = composerDraft.trim().length > 0 || attachments.length > 0;
   const primaryActionIsStop = selectedSession.status === "running" && !hasComposerInput;
@@ -188,7 +172,17 @@ export function ComposerPanel({
   const contextPercent = contextUsage
     ? Math.min(100, Math.max(0, (contextUsage.usedTokens / contextUsage.contextWindow) * 100))
     : 0;
-  const compactThresholdTokens = contextUsage ? 81000 : undefined;
+  // Auto-compact indicator must mirror the real trigger in app-store's
+  // maybeAutoCompact: fire at minContextPercent of the window OR at
+  // minTokenThreshold tokens (whichever is lower), unless auto-trigger is off.
+  const autoCompactEnabled = smartCompactSettings.autoTrigger !== false;
+  const minContextPercent = typeof smartCompactSettings.minContextPercent === "number" ? smartCompactSettings.minContextPercent : 60;
+  const minTokenThreshold = typeof smartCompactSettings.minTokenThreshold === "number" ? smartCompactSettings.minTokenThreshold : 0;
+  const compactThresholdTokens = autoCompactEnabled && contextUsage
+    ? (minTokenThreshold > 0
+        ? Math.min(minTokenThreshold, (minContextPercent / 100) * contextUsage.contextWindow)
+        : (minContextPercent / 100) * contextUsage.contextWindow)
+    : undefined;
   const compactThresholdPercent = compactThresholdTokens && contextUsage
     ? Math.min(100, Math.max(0, (compactThresholdTokens / contextUsage.contextWindow) * 100))
     : 0;
@@ -198,26 +192,27 @@ export function ComposerPanel({
 
   return (
     <footer className="composer">
-      {beginRalphLoop ? (
-        <div className="composer__begin-loop">
-          <button
-            type="button"
-            className="composer__begin-loop-button"
-            onClick={beginRalphLoop.onBegin}
-            title={`Ralph plan ready: ${beginRalphLoop.planTitle}`}
-          >
-            Begin Ralph loop
-          </button>
-        </div>
-      ) : null}
+      <ToastHost />
+
       {attachments.length > 0 ? (
         <div className="composer__attachment-shelf">
           <ComposerAttachments attachments={attachments} onRemoveAttachment={onRemoveAttachment} />
         </div>
       ) : null}
+      {queuedMessages.length > 0 || editingQueuedMessageId ? (
+        <div className="composer__queued-shelf">
+          <QueuedComposerMessages
+            messages={queuedMessages}
+            editingQueuedMessageId={editingQueuedMessageId}
+            onEditMessage={onEditQueuedMessage}
+            onCancelEdit={onCancelQueuedEdit}
+            onRemoveMessage={onRemoveQueuedMessage}
+            onSteerMessage={onSteerQueuedMessage}
+          />
+        </div>
+      ) : null}
       <div className="conversation conversation--composer">
         <ComposerSurface
-          lastError={lastError}
           activeSlashCommand={activeSlashCommand}
           activeSlashCommandMeta={activeSlashCommandMeta}
           topNotice={(
@@ -227,8 +222,6 @@ export function ComposerPanel({
           setComposerDraft={setComposerDraft}
           composerRef={composerRef}
           attachments={attachments}
-          queuedMessages={queuedMessages}
-          editingQueuedMessageId={editingQueuedMessageId}
           slashSections={slashSections}
           slashOptions={slashOptions}
           selectedSlashCommand={selectedSlashCommand}
@@ -241,10 +234,6 @@ export function ComposerPanel({
           onComposerPaste={onComposerPaste}
           onComposerDrop={onComposerDrop}
           onRemoveAttachment={onRemoveAttachment}
-          onEditQueuedMessage={onEditQueuedMessage}
-          onCancelQueuedEdit={onCancelQueuedEdit}
-          onRemoveQueuedMessage={onRemoveQueuedMessage}
-          onSteerQueuedMessage={onSteerQueuedMessage}
           onSelectSlashCommand={onSelectSlashCommand}
           onSelectSlashOption={onSelectSlashOption}
           showMentionMenu={showMentionMenu}
@@ -253,7 +242,8 @@ export function ComposerPanel({
           onSelectMention={onSelectMention}
           textareaLabel="Composer"
           textareaTestId="composer"
-          textareaPlaceholder="message the clanker"
+          textareaPlaceholder=" message the clanker"
+          screenContent={questionnaireContent}
           screenFooter={(
             <div
               className="composer__context"
@@ -264,8 +254,14 @@ export function ComposerPanel({
               }
             >
               <div className="composer__context-track">
-                {blackholeAvailable && contextUsage ? (
-                  <div className="composer__context-compact-tick" style={{ left: `${compactThresholdPercent}%` }} />
+                {contextUsage && compactThresholdTokens ? (
+                  <div
+                    className="composer__context-compact-tick"
+                    style={{ left: `${compactThresholdPercent}%` }}
+                    title={`Auto-compact at ${formatTokenCount(compactThresholdTokens)} tokens`}
+                    aria-label={`Auto-compact at ${formatTokenCount(compactThresholdTokens)} tokens`}
+                    data-label="auto"
+                  />
                 ) : null}
                 <div className="composer__context-fill" style={{ width: `${contextPercent}%` }} />
               </div>
@@ -273,38 +269,16 @@ export function ComposerPanel({
                 {contextUsage
                   ? `${formatTokenCount(contextUsage.usedTokens)} / ${formatTokenCount(contextUsage.contextWindow)}`
                   : "Context —"}
-                {blackholeAvailable && contextUsage && compactTokensRemaining !== undefined ? (
+                {contextUsage && compactTokensRemaining !== undefined ? (
                   <span className="composer__context-compact-label">
                     {compactTokensRemaining > 0
-                      ? `Blackhole in ${formatTokenCount(compactTokensRemaining)}`
-                      : "Blackhole ready"}
+                      ? `Auto-compact in ${formatTokenCount(compactTokensRemaining)}`
+                      : "Auto-compact ready"}
                   </span>
                 ) : null}
-                {metaEvents && metaEvents.length > 0 ? (
-                  <span className="composer__context-meta-count">{`· ${metaEvents.length} event${metaEvents.length === 1 ? "" : "s"}`}</span>
-                ) : null}
+
               </span>
-              <div className="composer__context-popover" role="tooltip">
-                <div className="composer__context-popover-section">
-                  <div className="composer__context-popover-title">Context</div>
-                  {contextUsage
-                    ? <div className="composer__context-popover-detail">{`${formatTokenCount(contextUsage.usedTokens)} / ${formatTokenCount(contextUsage.contextWindow)} tokens`}</div>
-                    : <div className="composer__context-popover-detail">Unavailable until a model-backed turn runs</div>}
-                </div>
-                {metaEvents && metaEvents.length > 0 ? (
-                  <div className="composer__context-popover-section">
-                    <div className="composer__context-popover-title">Recent session events</div>
-                    <ul className="composer__context-popover-list">
-                      {metaEvents.slice(-20).reverse().map((event) => (
-                        <li key={event.id} className="composer__context-popover-item">
-                          <span className="composer__context-popover-label">{event.label}</span>
-                          {event.metadata ? <span className="composer__context-popover-meta">{event.metadata}</span> : null}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null}
-              </div>
+
             </div>
           )}
           footer={(
@@ -316,36 +290,36 @@ export function ComposerPanel({
                       ? `${runningLabel} · Enter to queue · Cmd+Enter to steer`
                       : "Enter to send · Shift+Enter for newline"}
                   </span>
-                  <span className="composer__controls">
-                    <span className="composer__controls-sep">{" · "}</span>
-                    <ComposerModeSelector
-                      mode={composerMode}
-                      disabled={selectedSession.status === "running"}
-                      onSetMode={onSetComposerMode}
-                    />
-                    <span className="composer__controls-sep">{" · "}</span>
-                    <ModelSelector
-                      ref={modelSelectorRef}
-                      runtime={runtime}
-                      provider={provider}
-                      modelId={modelId}
-                      thinkingLevel={thinkingLevel}
-                      disabled={selectedSession.status === "running"}
-                      unselectedModelLabel={modelOnboarding.unselectedModelLabel}
-                      emptyModelTitle={modelOnboarding.emptyModelTitle}
-                      onSetModel={onSetModel}
-                      onSetThinking={onSetThinking}
-                    />
-                    <span className="composer__controls-sep">{" · "}</span>
-                    <CavemanSelector
-                      level={cavemanLevel}
-                      disabled={selectedSession.status === "running"}
-                      onSetLevel={onSetCavemanLevel}
-                    />
-                    <ModelFeatureBadges runtime={runtime} provider={provider} modelId={modelId} />
-                  </span>
+                  <ComposerControlRow
+                    runtime={runtime}
+                    provider={provider}
+                    modelId={modelId}
+                    thinkingLevel={thinkingLevel}
+                    cavemanLevel={cavemanLevel}
+                    composerMode={composerMode}
+                    orchestratorMode={orchestratorMode}
+                    onToggleOrchestrator={onToggleOrchestrator}
+                    modelSelectorRef={modelSelectorRef}
+                    unselectedModelLabel={modelOnboarding.unselectedModelLabel}
+                    emptyModelTitle={modelOnboarding.emptyModelTitle}
+                    onSetComposerMode={onSetComposerMode}
+                    onSetModel={onSetModel}
+                    onSetThinking={onSetThinking}
+                    onSetCavemanLevel={onSetCavemanLevel}
+                  />
                 </div>
                 <div className="composer__actions">
+                  {composerMode === "plan" && planReady ? (
+                    <button
+                      type="button"
+                      className="button button--primary composer__execute-plan"
+                      title="Execute the plan and switch to Build mode"
+                      onPointerDown={() => { playClick("down"); }}
+                      onClick={() => onExecutePlan?.()}
+                    >
+                      Execute plan
+                    </button>
+                  ) : null}
                   <span className="composer__key-mount composer__key-mount--send">
                     <button
                       aria-label={primaryActionIsStop ? "Stop run" : "Send message"}
@@ -353,9 +327,10 @@ export function ComposerPanel({
                       data-testid="send"
                       type="button"
                       disabled={
-                        !primaryActionIsStop &&
-                        ((!composerDraft.trim() && attachments.length === 0) || modelOnboarding.requiresModelSelection)
+                        !primaryActionIsStop && modelOnboarding.requiresModelSelection
                       }
+                      data-has-input={primaryActionIsStop || hasComposerInput ? "" : undefined}
+                      onPointerDown={() => { playClick("down"); }}
                       onClick={onSubmit}
                     >
                       {primaryActionIsStop ? <StopSquareIcon /> : <ArrowUpIcon />}
@@ -371,38 +346,4 @@ export function ComposerPanel({
   );
 }
 
-function LoopControlBar({ status, onStop, onResume, onRestart }: LoopControlProps) {
-  const { running, iteration, maxIterations, stopReason } = status;
-  const progress = `iteration ${iteration}/${maxIterations}`;
-  return (
-    <footer className="composer composer--loop">
-      <div className="loop-control-bar">
-        <div className="loop-control-bar__status">
-          <span className="loop-control-bar__title">Ralph loop</span>
-          <span className="loop-control-bar__detail">
-            {running ? `Running · ${progress}` : `Stopped${stopReason ? ` · ${stopReason}` : ""} · ${progress}`}
-          </span>
-          <span className="loop-control-bar__hint">
-            Input is disabled — each iteration runs in a fresh session so the loop is not interrupted.
-          </span>
-        </div>
-        <div className="loop-control-bar__actions">
-          {running ? (
-            <button type="button" className="loop-control-bar__button" onClick={onStop}>
-              Stop loop
-            </button>
-          ) : (
-            <>
-              <button type="button" className="loop-control-bar__button" onClick={onResume}>
-                Resume
-              </button>
-              <button type="button" className="loop-control-bar__button" onClick={onRestart}>
-                Restart
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-    </footer>
-  );
-}
+

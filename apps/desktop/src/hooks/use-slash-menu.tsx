@@ -202,7 +202,7 @@ export function useSlashMenu(params: UseSlashMenuParams): SlashMenuState {
       setActiveSlashFlow(undefined);
       setSlashOptionIndex(0);
     }
-  }, [activeSlashFlow, activeSlashQuery, slashQuery]);
+  }, [activeSlashFlow, activeSlashQuery, slashQuery, composerDraft]);
 
   useEffect(() => {
     setActiveSlashFlow(undefined);
@@ -294,6 +294,26 @@ export function useSlashMenu(params: UseSlashMenuParams): SlashMenuState {
     fillComposerFromSlash(command.template, { suppressMenu: true });
   };
 
+  const applyOptionWithApi = (
+    optionValue: string,
+    callback: ((value: string) => void) | undefined,
+    requireSession: boolean,
+    apiCall: () => Promise<DesktopAppState>,
+  ) => {
+    resetSlashUi();
+    setComposerDraft("");
+    if (callback) {
+      callback(optionValue);
+      return;
+    }
+    if (!selectedWorkspace || !api || (requireSession && !selectedSession)) {
+      return;
+    }
+    void apiCall().then((state) => {
+      setComposerDraft(state.composerDraft);
+    });
+  };
+
   const applySlashOptionSelection = (option: ComposerSlashOption) => {
     if (!activeSlashOptionCommand) {
       return;
@@ -305,80 +325,51 @@ export function useSlashMenu(params: UseSlashMenuParams): SlashMenuState {
       return;
     }
 
-    if (activeSlashOptionCommand.kind === "model") {
-      const modelOption = option as Extract<ComposerSlashOption, { value: string }> & { providerId?: string };
-      const providerId = modelOption.providerId;
-      if (!providerId) {
-        return;
-      }
-      resetSlashUi();
-      setComposerDraft("");
-      if (onSelectModelOption) {
-        onSelectModelOption(providerId, option.value);
-        return;
-      }
-      if (!selectedWorkspace || !selectedSession || !api) {
-        return;
-      }
-      void updateSnapshot(api, setSnapshot, () =>
-        api.setSessionModel(selectedWorkspace.id, selectedSession.id, providerId, option.value),
-      ).then((state) => {
-        setComposerDraft(state.composerDraft);
-      });
+    const kind = activeSlashOptionCommand.kind;
+
+    if (kind === "model") {
+      const providerId = (option as { providerId?: string }).providerId;
+      if (!providerId) return;
+      applyOptionWithApi(
+        option.value,
+        onSelectModelOption ? (v) => onSelectModelOption(providerId, v) : undefined,
+        true,
+        () => api!.setSessionModel(selectedWorkspace!.id, selectedSession!.id, providerId, option.value),
+      );
       return;
     }
 
-    if (activeSlashOptionCommand.kind === "thinking") {
-      resetSlashUi();
-      setComposerDraft("");
-      if (onSelectThinkingOption) {
-        onSelectThinkingOption(option.value);
-        return;
-      }
-      if (!selectedWorkspace || !selectedSession || !api) {
-        return;
-      }
-      void updateSnapshot(api, setSnapshot, () =>
-        api.setSessionThinkingLevel(
-          selectedWorkspace.id,
-          selectedSession.id,
+    if (kind === "thinking") {
+      applyOptionWithApi(
+        option.value,
+        onSelectThinkingOption,
+        true,
+        () => api!.setSessionThinkingLevel(
+          selectedWorkspace!.id,
+          selectedSession!.id,
           option.value as NonNullable<RuntimeSnapshot["settings"]["defaultThinkingLevel"]>,
         ),
-      ).then((state) => {
-        setComposerDraft(state.composerDraft);
-      });
+      );
       return;
     }
 
-    if (activeSlashOptionCommand.kind === "login") {
-      resetSlashUi();
-      setComposerDraft("");
-      if (onSelectLoginProvider) {
-        onSelectLoginProvider(option.value);
-        return;
-      }
-      if (!selectedWorkspace || !api) {
-        return;
-      }
-      void updateSnapshot(api, setSnapshot, () => api.loginProvider(selectedWorkspace.id, option.value)).then((state) => {
-        setComposerDraft(state.composerDraft);
-      });
+    if (kind === "login") {
+      applyOptionWithApi(
+        option.value,
+        onSelectLoginProvider,
+        false,
+        () => api!.loginProvider(selectedWorkspace!.id, option.value),
+      );
       return;
     }
 
-    if (activeSlashOptionCommand.kind === "logout") {
-      resetSlashUi();
-      setComposerDraft("");
-      if (onSelectLogoutProvider) {
-        onSelectLogoutProvider(option.value);
-        return;
-      }
-      if (!selectedWorkspace || !api) {
-        return;
-      }
-      void updateSnapshot(api, setSnapshot, () => api.logoutProvider(selectedWorkspace.id, option.value)).then((state) => {
-        setComposerDraft(state.composerDraft);
-      });
+    if (kind === "logout") {
+      applyOptionWithApi(
+        option.value,
+        onSelectLogoutProvider,
+        false,
+        () => api!.logoutProvider(selectedWorkspace!.id, option.value),
+      );
       return;
     }
 

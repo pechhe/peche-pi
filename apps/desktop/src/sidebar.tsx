@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -13,18 +13,231 @@ import {
 } from "@dnd-kit/core";
 import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { AppView, ChatRecord, SessionRecord, WorkspaceRecord, WorktreeRecord } from "./desktop-state";
-import { ArchiveIcon, ChevronDownIcon, ChevronRightIcon, ComposeIcon, ExtensionIcon, FolderIcon, RestoreIcon, SettingsIcon, SkillIcon, WorktreeIcon } from "./icons";
+import type { AppView, Automation, ChatRecord, SessionRecord, WorkspaceRecord, WorktreeRecord } from "./desktop-state";
+import { countAutomationsNext24h } from "./desktop-state";
+import { type ThreadType, threadTypeAccent, parseThreadType } from "./thread-types";
+import { BugIcon, FeatureIcon, RefactorIcon, InvestigateIcon, OtherIcon } from "./icons";
+import { ChatIcon, ChevronDownIcon, ComposeIcon, ContextIcon, DoneIcon, ExtensionIcon, AutomationIcon, AutomationRunIcon, FolderIcon, ProjectIcon, RestoreIcon, SearchIcon, SettingsIcon, SkillIcon, SparkIcon, WorktreeIcon } from "./icons";
 import { WorkingSpinner } from "./working-label";
-import type { PiDesktopApi } from "./ipc";
+import { getDesktopShortcutLabel, type PiDesktopApi } from "./ipc";
 import { formatRelativeTime } from "./string-utils";
+import { playDoneSound } from "./done-sound";
+import { fireDoneCelebration } from "./done-celebration";
+import { playButtonClick } from "./button-click-sound";
 import type { WorkspaceMenuState } from "./hooks/use-workspace-menu";
 import { PENDING_THREAD_SESSION_ID, type ThreadGroup, type ThreadListEntry } from "./thread-groups";
 import type { Dispatch, SetStateAction } from "react";
 import type { DesktopAppState } from "./desktop-state";
+import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
+
 import type { SidebarResize } from "./hooks/use-sidebar-width";
+import type { SidebarNavEntry } from "./hooks/build-sidebar-nav-list";
+import { GhLoopSection } from "./gh-loop-section";
+
+interface MovingHighlightState {
+  readonly left: number;
+  readonly top: number;
+  readonly width: number;
+  readonly height: number;
+  readonly ready: boolean;
+  readonly visible: boolean;
+}
+
+function hiddenMovingHighlight(): MovingHighlightState {
+  return { left: 0, top: 0, width: 0, height: 0, ready: false, visible: false };
+}
+
+function measureMovingHighlight(container: HTMLElement, target: HTMLElement): MovingHighlightState {
+  const containerRect = container.getBoundingClientRect();
+  const targetRect = target.getBoundingClientRect();
+  return {
+    left: targetRect.left - containerRect.left,
+    top: targetRect.top - containerRect.top,
+    width: targetRect.width,
+    height: targetRect.height,
+    ready: true,
+    visible: true,
+  };
+}
+
+function MovingSidebarHighlight({
+  children,
+  className,
+  itemSelector,
+}: {
+  readonly children: ReactNode;
+  readonly className: string;
+  readonly itemSelector: string;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const hoveredItem = useRef<HTMLElement | null>(null);
+  const [hoverIndicator, setHoverIndicator] = useState<MovingHighlightState>(hiddenMovingHighlight);
+  const [activeIndicator, setActiveIndicator] = useState<MovingHighlightState>(hiddenMovingHighlight);
+  const [pendingIndicator, setPendingIndicator] = useState<MovingHighlightState>(hiddenMovingHighlight);
+  const [shouldAnimate, setShouldAnimate] = useState(false);
+
+  function setTarget(
+    target: HTMLElement | null,
+    setIndicator: (value: MovingHighlightState | ((previous: MovingHighlightState) => MovingHighlightState)) => void,
+  ) {
+    const container = ref.current;
+    if (!container || !target) {
+      setIndicator((previous) => previous.ready ? { ...previous, visible: false } : hiddenMovingHighlight());
+      return;
+    }
+
+    setIndicator(measureMovingHighlight(container, target));
+  }
+
+  function updateActiveTarget() {
+    const active = ref.current?.querySelector<HTMLElement>(".session-row--active, .sidebar__nav-item--active") ?? null;
+    setTarget(active, setActiveIndicator);
+    if (active && active === hoveredItem.current) {
+      hoveredItem.current = null;
+      setTarget(null, setHoverIndicator);
+    }
+    const pending = ref.current?.querySelector<HTMLElement>(".session-row--pending") ?? null;
+    setTarget(pending, setPendingIndicator);
+  }
+
+  function itemFromTarget(target: EventTarget | null): HTMLElement | null {
+    if (!(target instanceof Element)) return null;
+    const item = target.closest<HTMLElement>(itemSelector);
+    if (!item) return null;
+    if (item.classList.contains("session-row--active") || item.classList.contains("sidebar__nav-item--active")) {
+      return null;
+    }
+    return item;
+  }
+
+  useEffect(() => {
+    if (shouldAnimate || (!hoverIndicator.ready && !activeIndicator.ready && !pendingIndicator.ready)) return;
+    let firstFrame = 0;
+    let secondFrame = 0;
+    firstFrame = requestAnimationFrame(() => {
+      secondFrame = requestAnimationFrame(() => setShouldAnimate(true));
+    });
+    return () => {
+      cancelAnimationFrame(firstFrame);
+      cancelAnimationFrame(secondFrame);
+    };
+  }, [activeIndicator.ready, hoverIndicator.ready, pendingIndicator.ready, shouldAnimate]);
+
+  useEffect(() => {
+    const container = ref.current;
+    if (!container) return;
+
+    updateActiveTarget();
+    if (typeof ResizeObserver === "undefined") return;
+
+    const observer = new ResizeObserver(() => {
+      setTarget(hoveredItem.current, setHoverIndicator);
+      updateActiveTarget();
+    });
+    observer.observe(container);
+    for (const item of container.querySelectorAll<HTMLElement>(itemSelector)) {
+      observer.observe(item);
+    }
+
+    // Re-measure the active indicator when the `--active` class moves between
+    // items (e.g. selecting a different thread), since that re-render does not
+    // trigger the ResizeObserver.
+    let mutationObserver: MutationObserver | undefined;
+    if (typeof MutationObserver !== "undefined") {
+      mutationObserver = new MutationObserver(() => updateActiveTarget());
+      mutationObserver.observe(container, {
+        subtree: true,
+        childList: true,
+        attributes: true,
+        attributeFilter: ["class"],
+      });
+    }
+
+    return () => {
+      observer.disconnect();
+      mutationObserver?.disconnect();
+    };
+  }, [itemSelector]);
+
+  // Scroll the pending row into view when it changes.
+  useEffect(() => {
+    if (!pendingIndicator.ready || !pendingIndicator.visible) return;
+    const pendingEl = ref.current?.querySelector<HTMLElement>(".session-row--pending");
+    pendingEl?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [pendingIndicator.ready, pendingIndicator.visible, pendingIndicator.top]);
+
+  return (
+    <div
+      ref={ref}
+      className={`${className} sidebar-moving-highlight`}
+      onPointerMove={(event) => {
+        const next = itemFromTarget(event.target);
+        if (next === hoveredItem.current) return;
+        hoveredItem.current = next;
+        setTarget(next, setHoverIndicator);
+      }}
+      onPointerLeave={() => {
+        hoveredItem.current = null;
+        setTarget(null, setHoverIndicator);
+      }}
+      onFocus={(event) => {
+        const next = itemFromTarget(event.target);
+        hoveredItem.current = next;
+        setTarget(next, setHoverIndicator);
+      }}
+      onBlur={(event) => {
+        const container = ref.current;
+        if (container && event.relatedTarget instanceof Node && container.contains(event.relatedTarget)) return;
+        hoveredItem.current = null;
+        setTarget(null, setHoverIndicator);
+      }}
+    >
+      <div
+        aria-hidden="true"
+        className="sidebar-moving-highlight__indicator sidebar-moving-highlight__indicator--hover"
+        style={{
+          transform: `translate3d(${hoverIndicator.left + 2}px, ${hoverIndicator.top + 2}px, 0)`,
+          width: Math.max(0, hoverIndicator.width - 4),
+          height: Math.max(0, hoverIndicator.height - 4),
+          opacity: hoverIndicator.visible ? 1 : 0,
+          transition: shouldAnimate
+            ? "transform 350ms cubic-bezier(0.32, 1.15, 0.60, 1.00), width 250ms cubic-bezier(0.22, 1, 0.36, 1), height 250ms cubic-bezier(0.22, 1, 0.36, 1), opacity 150ms ease"
+            : "opacity 150ms ease",
+        }}
+      />
+      <div
+        aria-hidden="true"
+        className="sidebar-moving-highlight__indicator sidebar-moving-highlight__indicator--active"
+        style={{
+          transform: `translate3d(${activeIndicator.left + 2}px, ${activeIndicator.top + 2}px, 0)`,
+          width: Math.max(0, activeIndicator.width - 4),
+          height: Math.max(0, activeIndicator.height - 4),
+          opacity: activeIndicator.visible ? 1 : 0,
+          transition: shouldAnimate
+            ? "transform 350ms cubic-bezier(0.32, 1.15, 0.60, 1.00), width 250ms cubic-bezier(0.22, 1, 0.36, 1), height 250ms cubic-bezier(0.22, 1, 0.36, 1), opacity 150ms ease"
+            : "opacity 150ms ease",
+        }}
+      />
+      <div
+        aria-hidden="true"
+        className="sidebar-moving-highlight__indicator sidebar-moving-highlight__indicator--pending"
+        style={{
+          transform: `translate3d(${pendingIndicator.left + 2}px, ${pendingIndicator.top + 2}px, 0)`,
+          width: Math.max(0, pendingIndicator.width - 4),
+          height: Math.max(0, pendingIndicator.height - 4),
+          opacity: pendingIndicator.visible ? 1 : 0,
+          transition: shouldAnimate
+            ? "transform 350ms cubic-bezier(0.32, 1.15, 0.60, 1.00), width 250ms cubic-bezier(0.22, 1, 0.36, 1), height 250ms cubic-bezier(0.22, 1, 0.36, 1), opacity 150ms ease"
+            : "opacity 150ms ease",
+        }}
+      />
+      {children}
+    </div>
+  );
+}
 
 interface SidebarProps {
+  readonly collapsed: boolean;
   readonly resize: SidebarResize;
   readonly activeView: AppView;
   readonly selectedWorkspace: WorkspaceRecord | undefined;
@@ -45,8 +258,10 @@ interface SidebarProps {
   readonly onSetActiveView: (view: AppView) => void;
   readonly onOpenSkills: (workspaceId?: string) => void;
   readonly onOpenExtensions: (workspaceId?: string) => void;
+  readonly onOpenContext: (workspaceId?: string) => void;
   readonly onOpenSettings: (workspaceId?: string) => void;
-  readonly onArchiveSession: (target: { workspaceId: string; sessionId: string }) => void;
+  readonly queueMode: boolean;
+  readonly onArchiveSession: (target: { workspaceId: string; sessionId: string; selectNextSessionId?: string }) => void;
   readonly onArchiveAllNonRunningSessions: (workspaceId: string, olderThanMs?: number) => void;
   readonly onSelectSession: (target: { workspaceId: string; sessionId: string }) => void;
   readonly onUnarchiveSession: (target: { workspaceId: string; sessionId: string }) => void;
@@ -55,10 +270,24 @@ interface SidebarProps {
   readonly onArchiveChat: (chatId: string) => void;
   readonly onUnarchiveChat: (chatId: string) => void;
   readonly onRemoveChat: (chatId: string) => void;
+  readonly pendingSidebarSelection: SidebarNavEntry | null;
+  readonly automations: readonly Automation[];
+  readonly onOpenAutomations: (workspaceId?: string) => void;
+  readonly onOpenAgents: () => void;
+  readonly onOpenSearch: () => void;
+  readonly sessionsWithRunningSubagents?: ReadonlySet<string>;
+  readonly threadTypeBySession?: Readonly<Record<string, string>>;
+  /** Runtime snapshot for model selection. */
+  readonly runtime?: RuntimeSnapshot;
+  readonly ghLoops?: readonly import("./gh-types").GhLoopRecord[];
+  readonly ghRunnerState?: import("./gh-types").GhRunnerState;
+  readonly onRunLoop?: (workspaceId: string, loopNumber: number) => void;
+  readonly onCancelGhRun?: () => void;
 }
 
 export function Sidebar(props: SidebarProps) {
   const {
+    collapsed,
     resize,
     activeView,
     selectedWorkspace,
@@ -72,10 +301,12 @@ export function Sidebar(props: SidebarProps) {
     setSnapshot,
     updateSnapshot,
     onNewThreadForWorkspace,
-    onSetActiveView,
+    onSetActiveView: _onSetActiveView,
     onOpenSkills,
     onOpenExtensions,
+    onOpenContext,
     onOpenSettings,
+    queueMode,
     onArchiveSession,
     onArchiveAllNonRunningSessions,
     onSelectSession,
@@ -85,7 +316,20 @@ export function Sidebar(props: SidebarProps) {
     onArchiveChat,
     onUnarchiveChat,
     onRemoveChat,
+    pendingSidebarSelection,
+    onOpenAutomations,
+    onOpenAgents,
+    onOpenSearch,
+    sessionsWithRunningSubagents,
+    threadTypeBySession,
+    ghLoops,
+    ghRunnerState,
+    onRunLoop,
+    onCancelGhRun,
   } = props;
+
+  const automationTotal = props.automations.length;
+  const automationUpcoming = useMemo(() => countAutomationsNext24h(props.automations), [props.automations]);
 
   const [activeId, setActiveId] = useState<string | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
@@ -136,7 +380,7 @@ export function Sidebar(props: SidebarProps) {
   const activeGroup = activeId ? rootGroups.find((g) => g.rootWorkspace.id === activeId) : undefined;
 
   return (
-    <aside className="sidebar">
+    <aside className="sidebar" aria-hidden={collapsed} inert={collapsed || undefined}>
       <div
         className={`sidebar__resize-handle ${resize.isResizing ? "sidebar__resize-handle--active" : ""}`}
         onPointerDown={resize.onPointerDown}
@@ -145,37 +389,92 @@ export function Sidebar(props: SidebarProps) {
         aria-orientation="vertical"
       />
       <div className="sidebar__top">
-        <div className="sidebar__nav">
+        <button
+          className="sidebar__search"
+          type="button"
+          onClick={() => { playButtonClick(); onOpenSearch(); }}
+        >
+          <SearchIcon />
+          <span className="sidebar__search-label">Search</span>
+          <kbd className="sidebar__search-shortcut">{getDesktopShortcutLabel(api.platform, "K")}</kbd>
+        </button>
+        <MovingSidebarHighlight className="sidebar__nav" itemSelector=".sidebar__nav-item">
+          <button
+            className={`sidebar__nav-item ${activeView === "agents" ? "sidebar__nav-item--active" : ""}`}
+            type="button"
+            onClick={() => { playButtonClick(); onOpenAgents(); }}
+          >
+            <SparkIcon />
+            <span>Agents</span>
+            <kbd className="sidebar__nav-shortcut shortcut-hint">{getDesktopShortcutLabel(api.platform, "⇧1")}</kbd>
+          </button>
           <button
             className={`sidebar__nav-item ${activeView === "skills" ? "sidebar__nav-item--active" : ""}`}
             type="button"
-            onClick={() => onOpenSkills(selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id)}
+            onClick={() => { playButtonClick(); onOpenSkills(selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id); }}
           >
             <SkillIcon />
             <span>Skills</span>
+            <kbd className="sidebar__nav-shortcut shortcut-hint">{getDesktopShortcutLabel(api.platform, "⇧2")}</kbd>
           </button>
           <button
             className={`sidebar__nav-item ${activeView === "extensions" ? "sidebar__nav-item--active" : ""}`}
             type="button"
-            onClick={() => onOpenExtensions(selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id)}
+            onClick={() => { playButtonClick(); onOpenExtensions(selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id); }}
           >
             <ExtensionIcon />
             <span>Extensions</span>
+            <kbd className="sidebar__nav-shortcut shortcut-hint">{getDesktopShortcutLabel(api.platform, "⇧3")}</kbd>
+          </button>
+          <button
+            className={`sidebar__nav-item ${activeView === "automations" ? "sidebar__nav-item--active" : ""}`}
+            type="button"
+            onClick={() => { playButtonClick(); onOpenAutomations(selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id); }}
+          >
+            <AutomationIcon />
+            <span>Automations</span>
+            {automationTotal > 0 ? (
+              <span className="sidebar__nav-badges" aria-label={`${automationTotal} automations, ${automationUpcoming} in next 24h`}>
+                <span className="sidebar__nav-badge sidebar__nav-badge--muted">
+                  <AutomationIcon />
+                  {automationTotal}
+                </span>
+                {automationUpcoming > 0 ? (
+                  <span className="sidebar__nav-badge sidebar__nav-badge--accent">
+                    <AutomationRunIcon />
+                    {automationUpcoming}
+                  </span>
+                ) : null}
+              </span>
+            ) : null}
+            <kbd className="sidebar__nav-shortcut shortcut-hint">{getDesktopShortcutLabel(api.platform, "⇧4")}</kbd>
+          </button>
+          <button
+            className={`sidebar__nav-item ${activeView === "context" ? "sidebar__nav-item--active" : ""}`}
+            type="button"
+            onClick={() => { playButtonClick(); onOpenContext(selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id); }}
+          >
+            <ContextIcon />
+            <span>Context</span>
+            <kbd className="sidebar__nav-shortcut shortcut-hint">{getDesktopShortcutLabel(api.platform, "⇧5")}</kbd>
           </button>
           <button
             className={`sidebar__nav-item ${activeView === "settings" ? "sidebar__nav-item--active" : ""}`}
             type="button"
-            onClick={() => onOpenSettings(selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id)}
+            onClick={() => { playButtonClick(); onOpenSettings(selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id); }}
           >
             <SettingsIcon />
             <span>Settings</span>
+            <kbd className="sidebar__nav-shortcut shortcut-hint">{getDesktopShortcutLabel(api.platform, ",")}</kbd>
           </button>
-        </div>
+        </MovingSidebarHighlight>
       </div>
 
       <div className="sidebar__section">
         <div className="section__head">
-          <span>Threads</span>
+          <div className="section__title-row">
+            <ProjectIcon /><span className="section__title">{queueMode ? "Queue" : activeView === "kanban" ? "Kanban" : "Projects"}</span>
+          </div>
           <div className="section__tools">
             <button
               aria-label="Open folder"
@@ -208,6 +507,13 @@ export function Sidebar(props: SidebarProps) {
           <DndContext sensors={sensors} collisionDetection={headerCollision} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
             <SortableContext items={rootGroupIds} strategy={verticalListSortingStrategy}>
               <div className="workspace-list" data-testid="workspace-list">
+                <GhLoopSection
+                  loops={ghLoops}
+                  runnerState={ghRunnerState}
+                  selectedWorkspaceId={selectedWorkspace?.id}
+                  onRun={onRunLoop ?? (() => {})}
+                  onCancel={onCancelGhRun ?? (() => {})}
+                />
                 {rootGroups.map((group) => (
                   <SortableWorkspaceGroup
                     key={group.rootWorkspace.id}
@@ -224,6 +530,10 @@ export function Sidebar(props: SidebarProps) {
                     onSelectSession={onSelectSession}
                     onUnarchiveSession={onUnarchiveSession}
                     onNewThreadForWorkspace={onNewThreadForWorkspace}
+                    pendingSidebarSelection={pendingSidebarSelection}
+                    onOpenAutomations={onOpenAutomations}
+                    sessionsWithRunningSubagents={sessionsWithRunningSubagents}
+                    threadTypeBySession={threadTypeBySession}
                   />
                 ))}
                 {orphanGroups.map((group) => (
@@ -242,6 +552,10 @@ export function Sidebar(props: SidebarProps) {
                     onSelectSession={onSelectSession}
                     onUnarchiveSession={onUnarchiveSession}
                     onNewThreadForWorkspace={onNewThreadForWorkspace}
+                    pendingSidebarSelection={pendingSidebarSelection}
+                    onOpenAutomations={onOpenAutomations}
+                    sessionsWithRunningSubagents={sessionsWithRunningSubagents}
+                    threadTypeBySession={threadTypeBySession}
                   />
                 ))}
               </div>
@@ -263,6 +577,10 @@ export function Sidebar(props: SidebarProps) {
                     onSelectSession={onSelectSession}
                     onUnarchiveSession={onUnarchiveSession}
                     onNewThreadForWorkspace={onNewThreadForWorkspace}
+                    pendingSidebarSelection={pendingSidebarSelection}
+                    onOpenAutomations={onOpenAutomations}
+                    sessionsWithRunningSubagents={sessionsWithRunningSubagents}
+                    threadTypeBySession={threadTypeBySession}
                   />
                 </div>
               ) : null}
@@ -270,9 +588,15 @@ export function Sidebar(props: SidebarProps) {
           </DndContext>
         )}
       </div>
+      <div className="sidebar__thread-nav-hint shortcut-hint" aria-hidden="true">
+        {getDesktopShortcutLabel(api.platform, "⇧↑↓")} navigate threads
+      </div>
       <div className="sidebar__section sidebar__chats">
         <div className="section__head">
-          <span>Chats</span>
+          <div className="section__title-row">
+            <ChatIcon />
+            <span>Chats</span>
+          </div>
           <div className="section__tools">
             <button
               aria-label="New chat"
@@ -303,6 +627,7 @@ export function Sidebar(props: SidebarProps) {
             onArchiveChat={onArchiveChat}
             onUnarchiveChat={onUnarchiveChat}
             onRemoveChat={onRemoveChat}
+            pendingSidebarSelection={pendingSidebarSelection}
           />
         )}
       </div>
@@ -321,11 +646,15 @@ interface WorkspaceGroupProps {
   readonly linkedWorktreeByWorkspaceId: Map<string, WorktreeRecord>;
   readonly wsMenu: WorkspaceMenuState;
   readonly api: PiDesktopApi;
-  readonly onArchiveSession: (target: { workspaceId: string; sessionId: string }) => void;
+  readonly onArchiveSession: (target: { workspaceId: string; sessionId: string; selectNextSessionId?: string }) => void;
   readonly onArchiveAllNonRunningSessions: (workspaceId: string, olderThanMs?: number) => void;
   readonly onSelectSession: (target: { workspaceId: string; sessionId: string }) => void;
   readonly onUnarchiveSession: (target: { workspaceId: string; sessionId: string }) => void;
   readonly onNewThreadForWorkspace: (rootWorkspaceId: string) => void;
+  readonly pendingSidebarSelection: SidebarNavEntry | null;
+  readonly onOpenAutomations: (workspaceId?: string) => void;
+  readonly sessionsWithRunningSubagents?: ReadonlySet<string>;
+  readonly threadTypeBySession?: Readonly<Record<string, string>>;
 }
 
 function SortableWorkspaceGroup(props: WorkspaceGroupProps) {
@@ -335,7 +664,6 @@ function SortableWorkspaceGroup(props: WorkspaceGroupProps) {
     id: group.rootWorkspace.id,
     disabled: isRenaming,
   });
-
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -380,6 +708,10 @@ function WorkspaceGroupContent(
     onUnarchiveSession,
     onNewThreadForWorkspace,
     dragHandleProps,
+    pendingSidebarSelection,
+    onOpenAutomations,
+    sessionsWithRunningSubagents,
+    threadTypeBySession,
   } = props;
 
   const workspaceActive =
@@ -387,6 +719,7 @@ function WorkspaceGroupContent(
     rootWorkspace.id === selectedWorkspace?.rootWorkspaceId;
   const linkedWorktree = linkedWorktreeByWorkspaceId.get(rootWorkspace.id);
   const archivedSectionOpen = wsMenu.expandedArchivedByWorkspace[rootWorkspace.id] ?? false;
+  const [showAllArchived, setShowAllArchived] = useState(false);
   const isCollapsed = wsMenu.collapsedWorkspaces[rootWorkspace.id] ?? false;
 
   return (
@@ -417,7 +750,19 @@ function WorkspaceGroupContent(
           ref={wsMenu.workspaceMenuId === rootWorkspace.id ? wsMenu.workspaceMenuWrapRef : undefined}
         >
           <button
-            aria-label={`New thread in ${rootWorkspace.name}`}
+            aria-label={`Automations for ${rootWorkspace.name}`}
+            className="icon-button workspace-row__automation-button workspace-row__compose-button"
+            type="button"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onOpenAutomations(rootWorkspace.id);
+            }}
+          >
+            <AutomationIcon />
+          </button>
+          <button
+            aria-label={`New project in ${rootWorkspace.name}`}
             className="icon-button workspace-row__compose-button"
             type="button"
             onClick={(event) => {
@@ -544,29 +889,38 @@ function WorkspaceGroupContent(
       ) : null}
       {!isCollapsed ? (
         <>
-          <div className="session-list">
-            {threads.map((thread) => {
+          <MovingSidebarHighlight className="session-list" itemSelector=".session-row">
+            {threads.map((thread, index) => {
               const active =
                 thread.session.id === PENDING_THREAD_SESSION_ID ||
                 (activeView === "threads" &&
                   thread.workspaceId === selectedWorkspace?.id &&
                   thread.session.id === selectedSession?.id);
+              const pending =
+                pendingSidebarSelection?.kind === "thread" &&
+                pendingSidebarSelection.workspaceId === thread.workspaceId &&
+                pendingSidebarSelection.sessionId === thread.session.id;
+              const nextThread = threads[index + 1] ?? (index > 0 ? threads[index - 1] : undefined);
               return (
                 <ThreadSessionRow
                   key={`${thread.workspaceId}:${thread.session.id}`}
                   active={active}
+                  pending={pending}
                   thread={thread}
+                  hasRunningSubagents={sessionsWithRunningSubagents?.has(`${thread.workspaceId}:${thread.session.id}`) ?? false}
+                  threadType={threadTypeBySession?.[thread.session.id]}
                   onAction={() =>
                     onArchiveSession({
                       workspaceId: thread.workspaceId,
                       sessionId: thread.session.id,
+                      selectNextSessionId: nextThread?.session.id,
                     })
                   }
                   onSelect={() => onSelectSession({ workspaceId: thread.workspaceId, sessionId: thread.session.id })}
                 />
               );
             })}
-          </div>
+          </MovingSidebarHighlight>
           {archivedThreads.length > 0 ? (
             <div className="archived-thread-group">
               <button
@@ -581,33 +935,51 @@ function WorkspaceGroupContent(
                 >
                   <ChevronDownIcon />
                 </span>
-                <span>Archived</span>
+                <span>Past</span>
                 <span className="archived-thread-group__count">{archivedThreads.length}</span>
               </button>
               {archivedSectionOpen ? (
-                <div className="session-list session-list--archived">
-                  {archivedThreads.map((thread) => {
-                    const active =
-                      activeView === "threads" &&
-                      thread.workspaceId === selectedWorkspace?.id &&
-                      thread.session.id === selectedSession?.id;
-                    return (
-                      <ThreadSessionRow
-                        key={`${thread.workspaceId}:${thread.session.id}`}
-                        active={active}
-                        archived
-                        thread={thread}
-                        onAction={() =>
-                          onUnarchiveSession({
-                            workspaceId: thread.workspaceId,
-                            sessionId: thread.session.id,
-                          })
-                        }
-                        onSelect={() => onSelectSession({ workspaceId: thread.workspaceId, sessionId: thread.session.id })}
-                      />
-                    );
-                  })}
-                </div>
+                <>
+                  <MovingSidebarHighlight className="session-list session-list--archived" itemSelector=".session-row">
+                    {(showAllArchived ? archivedThreads : archivedThreads.slice(0, 20)).map((thread) => {
+                      const active =
+                        activeView === "threads" &&
+                        thread.workspaceId === selectedWorkspace?.id &&
+                        thread.session.id === selectedSession?.id;
+                      const pending =
+                        pendingSidebarSelection?.kind === "thread" &&
+                        pendingSidebarSelection.workspaceId === thread.workspaceId &&
+                        pendingSidebarSelection.sessionId === thread.session.id;
+                      return (
+                        <ThreadSessionRow
+                          key={`${thread.workspaceId}:${thread.session.id}`}
+                          active={active}
+                          pending={pending}
+                          archived
+                          thread={thread}
+                          hasRunningSubagents={sessionsWithRunningSubagents?.has(`${thread.workspaceId}:${thread.session.id}`) ?? false}
+                          threadType={threadTypeBySession?.[thread.session.id]}
+                          onAction={() =>
+                            onUnarchiveSession({
+                              workspaceId: thread.workspaceId,
+                              sessionId: thread.session.id,
+                            })
+                          }
+                          onSelect={() => onSelectSession({ workspaceId: thread.workspaceId, sessionId: thread.session.id })}
+                        />
+                      );
+                    })}
+                  </MovingSidebarHighlight>
+                  {archivedThreads.length > 20 ? (
+                    <button
+                      className="archived-thread-group__show-all"
+                      type="button"
+                      onClick={() => setShowAllArchived(true)}
+                    >
+                      Show all {archivedThreads.length}
+                    </button>
+                  ) : null}
+                </>
               ) : null}
             </div>
           ) : null}
@@ -619,12 +991,13 @@ function WorkspaceGroupContent(
 
 /* ── Thread session row ────────────────────────────────── */
 
-function sessionIndicatorVariant(thread: ThreadListEntry): "running" | "unseen" | "none" {
+function sessionIndicatorVariant(thread: ThreadListEntry, hasRunningSubagents: boolean): "running" | "unseen" | "none" {
   // Show the braille spinner continuously on the sidebar while the session
   // is running, regardless of whether the assistant has started producing
-  // visible output. The spinner only stops when the task finishes (status
-  // transitions away from "running").
-  if (thread.session.status === "running") {
+  // visible output. The spinner also stays visible while sub-agents are
+  // active — the main turn may finish (status → "idle") while spawned
+  // sub-agents are still working.
+  if (thread.session.status === "running" || hasRunningSubagents) {
     return "running";
   }
   if (thread.session.hasUnseenUpdate) {
@@ -633,25 +1006,73 @@ function sessionIndicatorVariant(thread: ThreadListEntry): "running" | "unseen" 
   return "none";
 }
 
-function ThreadSessionRow({
-  active,
-  archived = false,
-  thread,
-  onAction,
-  onSelect,
-}: {
+/* ── Done moment (animation + sound + celebration) ───────────── */
+
+// Total time the row animates before it leaves the active list. Keep in sync
+// with the .session-row--completing animation in sidebar.css.
+const DONE_ANIMATION_MS = 500;
+
+interface ThreadSessionRowProps {
   readonly active: boolean;
+  readonly pending?: boolean;
   readonly archived?: boolean;
   readonly thread: ThreadListEntry;
+  readonly hasRunningSubagents?: boolean;
+  readonly threadType?: string;
   readonly onAction: () => void;
   readonly onSelect: () => void;
-}) {
-  const indicatorVariant = sessionIndicatorVariant(thread);
+}
+
+function ThreadTypeIcon({ type }: { readonly type: ThreadType }) {
+  switch (type) {
+    case "bug": return <BugIcon />;
+    case "feature": return <FeatureIcon />;
+    case "refactor": return <RefactorIcon />;
+    case "investigate": return <InvestigateIcon />;
+    default: return <OtherIcon />;
+  }
+}
+
+const ThreadSessionRow = memo(function ThreadSessionRow({
+  active,
+  pending = false,
+  archived = false,
+  thread,
+  hasRunningSubagents = false,
+  threadType,
+  onAction,
+  onSelect,
+}: ThreadSessionRowProps) {
+  const resolvedType = parseThreadType(threadType ?? "");
+  const accentColor = threadTypeAccent(resolvedType);
+  const accentVars = { "--ws-accent": accentColor } as React.CSSProperties;
+  const indicatorVariant = sessionIndicatorVariant(thread, hasRunningSubagents);
+  const [completing, setCompleting] = useState(false);
+
+  const handleDone = (event: ReactMouseEvent) => {
+    event.stopPropagation();
+    if (archived) {
+      // Restore is instant; no celebratory moment needed.
+      onAction();
+      return;
+    }
+    if (completing) {
+      return;
+    }
+    const rect = event.currentTarget.getBoundingClientRect();
+    fireDoneCelebration(rect.left + rect.width / 2, rect.top + rect.height / 2);
+    setCompleting(true);
+    playDoneSound();
+    // Let the "done" animation play before the row leaves the active list.
+    window.setTimeout(() => onAction(), DONE_ANIMATION_MS);
+  };
+
   return (
     <div
-      className={`session-row ${active ? "session-row--active" : ""}`}
+      className={`session-row ${active ? "session-row--active" : ""} ${pending ? "session-row--pending" : ""} ${completing ? "session-row--completing" : ""}`}
       data-sidebar-indicator={indicatorVariant}
       data-session-id={thread.session.id}
+      style={accentVars}
       onClick={onSelect}
     >
       <button className="session-row__select" onClick={onSelect} type="button">
@@ -660,6 +1081,16 @@ function ThreadSessionRow({
             <WorkingSpinner className="session-row__status session-row__status--running" title="Thinking…" />
           ) : null}
           {indicatorVariant === "unseen" ? <span className="session-row__status session-row__status--unseen" /> : null}
+          {thread.session.automationId || thread.session.title.startsWith("⚡ ") ? (
+            <span className="session-row__automation-indicator" aria-label="Automation" title="Created by automation">
+              <AutomationRunIcon />
+            </span>
+          ) : null}
+          {indicatorVariant === "none" && !thread.session.automationId && !thread.session.title.startsWith("⚡ ") ? (
+            <span className="session-row__type-icon" aria-label={resolvedType}>
+              <ThreadTypeIcon type={resolvedType} />
+            </span>
+          ) : null}
         </span>
         <span className="session-row__body">
           <span className="session-row__title-line">
@@ -675,18 +1106,32 @@ function ThreadSessionRow({
         ) : null}
         <span className="session-row__time">{formatRelativeTime(thread.session.updatedAt)}</span>
         <button
-          aria-label={`${archived ? "Restore" : "Archive"} ${thread.session.title}`}
-          className="icon-button session-row__action"
+          aria-label={`${archived ? "Restore" : "Mark done"} ${thread.session.title}`}
+          className={`icon-button session-row__action ${archived ? "" : "session-row__action--done"}`}
           type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            onAction();
-          }}
+          onClick={handleDone}
         >
-          {archived ? <RestoreIcon /> : <ArchiveIcon />}
+          {archived ? <RestoreIcon /> : <DoneIcon />}
         </button>
       </span>
     </div>
+  );
+}, sameThreadSessionRowProps);
+
+function sameThreadSessionRowProps(previous: ThreadSessionRowProps, next: ThreadSessionRowProps): boolean {
+  return (
+    previous.active === next.active &&
+    previous.pending === next.pending &&
+    previous.archived === next.archived &&
+    previous.hasRunningSubagents === next.hasRunningSubagents &&
+    previous.threadType === next.threadType &&
+    previous.thread.workspaceId === next.thread.workspaceId &&
+    previous.thread.environment.kind === next.thread.environment.kind &&
+    previous.thread.session.id === next.thread.session.id &&
+    previous.thread.session.title === next.thread.session.title &&
+    previous.thread.session.status === next.thread.session.status &&
+    previous.thread.session.hasUnseenUpdate === next.thread.session.hasUnseenUpdate &&
+    previous.thread.session.updatedAt === next.thread.session.updatedAt
   );
 }
 
@@ -699,6 +1144,7 @@ function SidebarChatsList({
   onArchiveChat,
   onUnarchiveChat,
   onRemoveChat,
+  pendingSidebarSelection,
 }: {
   readonly chats: readonly ChatRecord[];
   readonly selectedWorkspaceId: string;
@@ -706,27 +1152,32 @@ function SidebarChatsList({
   readonly onArchiveChat: (chatId: string) => void;
   readonly onUnarchiveChat: (chatId: string) => void;
   readonly onRemoveChat: (chatId: string) => void;
+  readonly pendingSidebarSelection: SidebarNavEntry | null;
 }) {
   const activeChats = chats.filter((c) => !c.archivedAt);
   const archivedChats = chats.filter((c) => c.archivedAt);
   const [showArchived, setShowArchived] = useState(false);
+  const [showAllArchived, setShowAllArchived] = useState(false);
+  const INITIAL_ARCHIVED_LIMIT = 20;
 
   return (
     <>
-      <div className="session-list">
+      <MovingSidebarHighlight className="session-list" itemSelector=".session-row">
         {activeChats.map((chat) => {
           const isActive = Boolean(chat.chatWorkspaceId) && chat.chatWorkspaceId === selectedWorkspaceId;
+          const pending = pendingSidebarSelection?.kind === "chat" && pendingSidebarSelection.sessionId === chat.id;
           return (
             <ChatRow
               key={chat.id}
               chat={chat}
               isActive={isActive}
+              pending={pending}
               onSelect={() => onSelectChat(chat.id)}
               onArchive={() => onArchiveChat(chat.id)}
             />
           );
         })}
-      </div>
+      </MovingSidebarHighlight>
       {archivedChats.length > 0 ? (
         <div className="archived-thread-group">
           <button
@@ -741,26 +1192,39 @@ function SidebarChatsList({
             >
               <ChevronDownIcon />
             </span>
-            <span>Archived</span>
+            <span>Past</span>
             <span className="archived-thread-group__count">{archivedChats.length}</span>
           </button>
           {showArchived ? (
-            <div className="session-list session-list--archived">
-              {archivedChats.map((chat) => {
-                const isActive = Boolean(chat.chatWorkspaceId) && chat.chatWorkspaceId === selectedWorkspaceId;
-                return (
-                  <ChatRow
-                    key={chat.id}
-                    chat={chat}
-                    isActive={isActive}
-                    archived
-                    onSelect={() => onSelectChat(chat.id)}
-                    onUnarchive={() => onUnarchiveChat(chat.id)}
-                    onRemove={() => onRemoveChat(chat.id)}
-                  />
-                );
-              })}
-            </div>
+            <>
+              <MovingSidebarHighlight className="session-list session-list--archived" itemSelector=".session-row">
+                {(showAllArchived ? archivedChats : archivedChats.slice(0, INITIAL_ARCHIVED_LIMIT)).map((chat) => {
+                  const isActive = Boolean(chat.chatWorkspaceId) && chat.chatWorkspaceId === selectedWorkspaceId;
+                  const pending = pendingSidebarSelection?.kind === "chat" && pendingSidebarSelection.sessionId === chat.id;
+                  return (
+                    <ChatRow
+                      key={chat.id}
+                      chat={chat}
+                      isActive={isActive}
+                      pending={pending}
+                      archived
+                      onSelect={() => onSelectChat(chat.id)}
+                      onUnarchive={() => onUnarchiveChat(chat.id)}
+                      onRemove={() => onRemoveChat(chat.id)}
+                    />
+                  );
+                })}
+              </MovingSidebarHighlight>
+              {!showAllArchived && archivedChats.length > INITIAL_ARCHIVED_LIMIT ? (
+                <button
+                  className="archived-thread-group__show-all"
+                  type="button"
+                  onClick={() => setShowAllArchived(true)}
+                >
+                  Show all {archivedChats.length}
+                </button>
+              ) : null}
+            </>
           ) : null}
         </div>
       ) : null}
@@ -768,29 +1232,47 @@ function SidebarChatsList({
   );
 }
 
-function ChatRow({
-  chat,
-  isActive,
-  archived = false,
-  onSelect,
-  onArchive,
-  onUnarchive,
-  onRemove,
-}: {
+interface ChatRowProps {
   readonly chat: ChatRecord;
   readonly isActive: boolean;
+  readonly pending?: boolean;
   readonly archived?: boolean;
   readonly onSelect: () => void;
   readonly onArchive?: () => void;
   readonly onUnarchive?: () => void;
   readonly onRemove?: () => void;
-}) {
+}
+
+const ChatRow = memo(function ChatRow({
+  chat,
+  isActive,
+  pending = false,
+  archived = false,
+  onSelect,
+  onArchive,
+  onUnarchive,
+  onRemove,
+}: ChatRowProps) {
   const indicatorVariant: "running" | "unseen" | "none" =
     chat.status === "running" ? "running" : chat.hasUnseenUpdate ? "unseen" : "none";
+  const [completing, setCompleting] = useState(false);
+
+  const handleDone = (event: ReactMouseEvent) => {
+    event.stopPropagation();
+    if (completing) {
+      return;
+    }
+    const rect = event.currentTarget.getBoundingClientRect();
+    fireDoneCelebration(rect.left + rect.width / 2, rect.top + rect.height / 2);
+    setCompleting(true);
+    playDoneSound();
+    // Let the "done" animation play before the row leaves the active list.
+    window.setTimeout(() => onArchive?.(), DONE_ANIMATION_MS);
+  };
 
   return (
     <div
-      className={`session-row ${isActive ? "session-row--active" : ""}`}
+      className={`session-row ${isActive ? "session-row--active" : ""} ${pending ? "session-row--pending" : ""} ${completing ? "session-row--completing" : ""}`}
       data-sidebar-indicator={indicatorVariant}
       data-session-id={chat.id}
       onClick={onSelect}
@@ -838,18 +1320,30 @@ function ChatRow({
           </>
         ) : (
           <button
-            aria-label={`Archive ${chat.title}`}
-            className="icon-button session-row__action"
+            aria-label={`Mark done ${chat.title}`}
+            className="icon-button session-row__action session-row__action--done"
             type="button"
-            onClick={(event) => {
-              event.stopPropagation();
-              onArchive?.();
-            }}
+            onClick={handleDone}
           >
-            <ArchiveIcon />
+            <DoneIcon />
           </button>
         )}
       </span>
     </div>
+  );
+}, sameChatRowProps);
+
+function sameChatRowProps(previous: ChatRowProps, next: ChatRowProps): boolean {
+  return (
+    previous.isActive === next.isActive &&
+    previous.pending === next.pending &&
+    previous.archived === next.archived &&
+    previous.chat.id === next.chat.id &&
+    previous.chat.title === next.chat.title &&
+    previous.chat.updatedAt === next.chat.updatedAt &&
+    previous.chat.status === next.chat.status &&
+    previous.chat.hasUnseenUpdate === next.chat.hasUnseenUpdate &&
+    previous.chat.archivedAt === next.chat.archivedAt &&
+    previous.chat.chatWorkspaceId === next.chat.chatWorkspaceId
   );
 }

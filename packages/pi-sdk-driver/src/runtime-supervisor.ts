@@ -1,4 +1,4 @@
-import { readFile, rm } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import {
   DefaultPackageManager,
@@ -108,13 +108,103 @@ export class RuntimeSupervisor implements RuntimeResourceDriver {
     if (!normalized) {
       throw new Error("API key is required.");
     }
-    if (!providerSupportsDesktopApiKeySetup(providerId)) {
-      throw new Error(`API key setup is not supported for ${providerId}.`);
-    }
     this.authStorage.set(providerId, { type: "api_key", key: normalized });
     this.modelRegistry.refresh();
     await context.resourceLoader.reload();
     await this.autoEnableModelsForAuthenticatedProviders(context, [providerId]);
+    return this.buildSnapshot(context);
+  }
+
+  async addCustomProvider(
+    workspace: WorkspaceRef,
+    config: {
+      readonly providerId: string;
+      readonly displayName: string;
+      readonly baseUrl: string;
+      readonly api: "openai-completions" | "openai-responses" | "anthropic-messages";
+      readonly apiKey: string;
+      readonly models: ReadonlyArray<{
+        readonly id: string;
+        readonly name: string;
+        readonly reasoning: boolean;
+        readonly input: readonly ("text" | "image")[];
+        readonly contextWindow: number;
+        readonly maxTokens: number;
+      }>;
+    },
+  ): Promise<RuntimeSnapshot> {
+    const context = await this.ensureContext(workspace);
+    const providerId = config.providerId.trim().toLowerCase().replace(/[^a-z0-9-]/g, "-");
+    if (!providerId) {
+      throw new Error("Provider ID is required.");
+    }
+    if (!config.apiKey.trim()) {
+      throw new Error("API key is required.");
+    }
+    if (!config.baseUrl.trim()) {
+      throw new Error("Base URL is required.");
+    }
+
+    // Write provider to models.json
+    const modelsPath = join(this.agentDir, "models.json");
+    let existing: Record<string, unknown> = {};
+    try {
+      const raw = await readFile(modelsPath, "utf8");
+      existing = JSON.parse(raw);
+    } catch {
+      // File doesn't exist or is invalid, start fresh
+    }
+    const providers = (existing.providers ?? {}) as Record<string, unknown>;
+    providers[providerId] = {
+      baseUrl: config.baseUrl.trim(),
+      api: config.api,
+      apiKey: config.apiKey.trim(),
+      models: config.models.map((m) => ({
+        id: m.id,
+        name: m.name,
+        reasoning: m.reasoning,
+        input: [...m.input],
+        contextWindow: m.contextWindow,
+        maxTokens: m.maxTokens,
+      })),
+    };
+    existing.providers = providers;
+    await writeJsonAtomic(modelsPath, existing);
+
+    // Set auth in auth.json
+    this.authStorage.set(providerId, { type: "api_key", key: config.apiKey.trim() });
+
+    // Refresh and return
+    this.modelRegistry.refresh();
+    await context.resourceLoader.reload();
+    await this.autoEnableModelsForAuthenticatedProviders(context, [providerId]);
+    return this.buildSnapshot(context);
+  }
+
+  async removeCustomProvider(workspace: WorkspaceRef, providerId: string): Promise<RuntimeSnapshot> {
+    const context = await this.ensureContext(workspace);
+    const modelsPath = join(this.agentDir, "models.json");
+    let existing: Record<string, unknown> = {};
+    try {
+      const raw = await readFile(modelsPath, "utf8");
+      existing = JSON.parse(raw);
+    } catch {
+      return this.buildSnapshot(context);
+    }
+    const providers = (existing.providers ?? {}) as Record<string, unknown>;
+    if (!(providerId in providers)) {
+      throw new Error(`Provider "${providerId}" not found in models.json.`);
+    }
+    delete providers[providerId];
+    existing.providers = providers;
+    await writeJsonAtomic(modelsPath, existing);
+
+    // Remove auth
+    this.authStorage.remove(providerId);
+
+    // Refresh and return
+    this.modelRegistry.refresh();
+    await context.resourceLoader.reload();
     return this.buildSnapshot(context);
   }
 
@@ -188,6 +278,30 @@ export class RuntimeSupervisor implements RuntimeResourceDriver {
     await context.settingsManager.flush();
     await context.resourceLoader.reload();
     return this.buildSnapshot(context);
+  }
+
+  async setRetrySettings(
+    workspace: WorkspaceRef,
+    settings: { enabled: boolean; maxRetries: number; baseDelayMs: number },
+  ): Promise<RuntimeSnapshot> {
+    const context = await this.ensureContext(workspace);
+    const sm = context.settingsManager as unknown as { globalSettings: Record<string, unknown>; markModified: (field: string) => void; save: () => void };
+    if (!sm.globalSettings.retry) {
+      sm.globalSettings.retry = {};
+    }
+    const retry = sm.globalSettings.retry as Record<string, unknown>;
+    retry.enabled = settings.enabled;
+    retry.maxRetries = settings.maxRetries;
+    retry.baseDelayMs = settings.baseDelayMs;
+    sm.markModified("retry");
+    sm.save();
+    await context.settingsManager.flush();
+    return this.buildSnapshot(context);
+  }
+
+  async getRetrySettings(workspace: WorkspaceRef): Promise<{ enabled: boolean; maxRetries: number; baseDelayMs: number }> {
+    const context = await this.ensureContext(workspace);
+    return context.settingsManager.getRetrySettings();
   }
 
   async setScopedModelPatterns(workspace: WorkspaceRef, patterns: readonly string[]): Promise<RuntimeSnapshot> {
@@ -446,7 +560,6 @@ export class RuntimeSupervisor implements RuntimeResourceDriver {
       .map((providerId) => {
         const auth = this.authStorage.get(providerId);
         const oauthProvider = oauthProviders.get(providerId);
-        const apiKeySetupSupported = providerSupportsDesktopApiKeySetup(providerId);
         const providerAuthStatus = this.modelRegistry.getProviderAuthStatus(providerId);
         const hasAuth = providerAuthStatus.configured || this.authStorage.hasAuth(providerId);
         return {
@@ -454,9 +567,9 @@ export class RuntimeSupervisor implements RuntimeResourceDriver {
           name: oauthProvider?.name ?? providerId,
           hasAuth,
           authType: auth?.type ?? "none",
-          authSource: inferProviderAuthSource(auth, providerAuthStatus, apiKeySetupSupported),
+          apiKeySetupSupported: true,
+          authSource: inferProviderAuthSource(auth, providerAuthStatus),
           oauthSupported: Boolean(oauthProvider),
-          apiKeySetupSupported,
         };
       });
   }
@@ -472,6 +585,8 @@ export class RuntimeSupervisor implements RuntimeResourceDriver {
       .getAll()
       .map<RuntimeModelRecord>((model) => {
         const provider = providers.get(model.provider);
+        const availableThinkingLevels = getAvailableThinkingLevels(model);
+        const thinkingLevelLabels = getThinkingLevelLabels(model);
         return {
           providerId: model.provider,
           providerName: provider?.name ?? model.provider,
@@ -482,6 +597,8 @@ export class RuntimeSupervisor implements RuntimeResourceDriver {
           reasoning: Boolean(model.reasoning),
           supportsImages: model.input.includes("image"),
           contextWindow: model.contextWindow,
+          availableThinkingLevels,
+          thinkingLevelLabels,
         };
       })
       .sort((left, right) =>
@@ -867,33 +984,11 @@ async function readPackageDisplayName(packageRoot: string): Promise<string | und
   return folderName || undefined;
 }
 
-const DESKTOP_API_KEY_PROVIDER_IDS = new Set([
-  "azure-openai-responses",
-  "cerebras",
-  "google",
-  "groq",
-  "huggingface",
-  "kimi-coding",
-  "minimax",
-  "minimax-cn",
-  "mistral",
-  "openai",
-  "opencode",
-  "opencode-go",
-  "openrouter",
-  "vercel-ai-gateway",
-  "xai",
-  "zai",
-]);
 
-function providerSupportsDesktopApiKeySetup(providerId: string): boolean {
-  return DESKTOP_API_KEY_PROVIDER_IDS.has(providerId);
-}
 
 function inferProviderAuthSource(
   auth: { readonly type: "oauth" | "api_key" } | undefined,
   providerAuthStatus: AuthStatus,
-  apiKeySetupSupported: boolean,
 ): "none" | "oauth" | "auth_file" | "env" | "external" {
   if (auth?.type === "oauth") {
     return "oauth";
@@ -915,7 +1010,7 @@ function inferProviderAuthSource(
   if (!providerAuthStatus.configured) {
     return "none";
   }
-  return apiKeySetupSupported ? "env" : "external";
+  return "env";
 }
 
 function toRuntimeSourceInfo(path: string, metadata: PathMetadata): RuntimeSourceInfo {
@@ -966,4 +1061,43 @@ function firstNonEmptyLine(value: string): string | undefined {
     .split(/\r?\n/)
     .map((line) => line.trim())
     .find(Boolean);
+}
+
+/**
+ * Compute the thinking levels supported by a model.
+ * Mirrors getSupportedThinkingLevels from @earendil-works/pi-ai/models
+ * without adding a direct dependency on pi-ai.
+ */
+function getAvailableThinkingLevels(model: { reasoning?: boolean; thinkingLevelMap?: Record<string, string | null> }): readonly string[] {
+  const ALL_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh"];
+  if (!model.reasoning) return ["off"];
+
+  return ALL_LEVELS.filter((level) => {
+    const mapped = model.thinkingLevelMap?.[level];
+    if (mapped === null) return false;
+    if (level === "xhigh") return mapped !== undefined;
+    return true;
+  });
+}
+
+/**
+ * Collect the provider-specific names a model uses for each thinking level.
+ * Only levels mapped to a concrete string are included, so the UI can show the
+ * provider's own label (e.g. Opus `xhigh -> "max"`, GPT-5.5 `xhigh -> "xhigh"`).
+ */
+function getThinkingLevelLabels(model: { thinkingLevelMap?: Record<string, string | null> }): Readonly<Record<string, string>> {
+  const labels: Record<string, string> = {};
+  for (const [level, mapped] of Object.entries(model.thinkingLevelMap ?? {})) {
+    if (typeof mapped === "string") {
+      labels[level] = mapped;
+    }
+  }
+  return labels;
+}
+
+async function writeJsonAtomic(filePath: string, data: unknown): Promise<void> {
+  await mkdir(dirname(filePath), { recursive: true });
+  const tmpPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+  await writeFile(tmpPath, JSON.stringify(data, null, 2) + "\n", "utf8");
+  await rename(tmpPath, filePath);
 }

@@ -43,6 +43,26 @@ export default function dialogExtension(pi) {
       ctx.ui.notify(value ? "Editor lines " + value.split("\n").length : "Editor cancelled", "info");
     },
   });
+
+  pi.registerCommand("dialog-questionnaire", {
+    description: "Open a questionnaire",
+    handler: async (_args, ctx) => {
+      const answers = await ctx.ui.questionnaire({
+        title: "Planner needs more info",
+        questions: [{
+          id: "goal",
+          prompt: "What is the primary goal of this plan?",
+          options: [
+            { value: "ship", label: "Ship a new feature", recommended: true },
+            { value: "refactor", label: "Refactor / Cleanup" },
+            { value: "research", label: "Research / Spike" },
+          ],
+          allowOther: true,
+        }],
+      });
+      ctx.ui.notify(answers ? "Questionnaire " + answers[0].value : "Questionnaire cancelled", "info");
+    },
+  });
 }
 `;
 
@@ -162,6 +182,18 @@ test("renders extension dialogs in the Electron surface and routes responses bac
     await dialog.getByRole("button", { name: "Submit", exact: true }).click();
     await expect(dialog).toHaveCount(0);
     await expect(window.locator(".timeline")).toContainText("Editor lines 2");
+
+    await composer.fill("/dialog-questionnaire ");
+    await composer.press("Enter");
+    const questionnaire = window.getByTestId("questionnaire-composer");
+    await expect(questionnaire).toBeVisible();
+    await expect(questionnaire).toContainText("Planner needs more info");
+    await expect(questionnaire).toContainText("1 / 1");
+    await expect(questionnaire).toContainText("What is the primary goal of this plan?");
+    await expect(window.getByRole("button", { name: /Composer mode:/ })).toBeVisible();
+    await questionnaire.getByRole("button", { name: /Refactor \/ Cleanup/ }).click();
+    await expect(questionnaire).toHaveCount(0);
+    await expect(window.locator(".timeline")).toContainText("Questionnaire refactor");
   } finally {
     await harness.close();
   }

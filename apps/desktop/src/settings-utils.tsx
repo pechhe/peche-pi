@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import type { RuntimeSettingsSnapshot, RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
 
-export type SettingsSection = "appearance" | "general" | "providers" | "models" | "notifications";
+export type SettingsSection = "appearance" | "general" | "providers" | "models" | "notifications" | "sounds";
 
 export const THINKING_LEVELS: NonNullable<RuntimeSettingsSnapshot["defaultThinkingLevel"]>[] = [
   "low",
@@ -31,23 +31,10 @@ export function sectionTitle(section: SettingsSection): string {
       return "Models";
     case "notifications":
       return "Notifications";
+    case "sounds":
+      return "Sounds";
     default:
       return "General";
-  }
-}
-
-export function sectionDescription(section: SettingsSection, workspaceName: string): string {
-  switch (section) {
-    case "appearance":
-      return "Choose between light, dark, Dracula, or automatic system theme.";
-    case "providers":
-      return `Connect providers and manage auth for ${workspaceName}.`;
-    case "models":
-      return "Choose the default model and which models appear in pickers.";
-    case "notifications":
-      return "Manage both macOS notification access and which background events should alert you.";
-    default:
-      return "Keep the high-value app and runtime controls close to hand.";
   }
 }
 
@@ -90,8 +77,9 @@ export function SettingsGroup({
   readonly description?: string;
   readonly children: ReactNode;
 }) {
+  const searchable = [title, description].filter(Boolean).join(" ");
   return (
-    <div className="settings-section">
+    <div className="settings-section" data-searchable={searchable || undefined}>
       {title ? <h3 className="settings-section__title">{title}</h3> : null}
       {description ? <p className="settings-section__description">{description}</p> : null}
       <div className="settings-group">{children}</div>
@@ -108,8 +96,9 @@ export function SettingsRow({
   readonly description?: string;
   readonly children?: ReactNode;
 }) {
+  const searchable = [title, description].filter(Boolean).join(" ");
   return (
-    <div className="settings-row">
+    <div className="settings-row" data-searchable={searchable || undefined}>
       <div className="settings-row__label">
         <div className="settings-row__title">{title}</div>
         {description ? <div className="settings-row__description">{description}</div> : null}
@@ -121,7 +110,7 @@ export function SettingsRow({
 
 export function SettingsInfoRow({ label, value }: { readonly label: string; readonly value: string }) {
   return (
-    <div className="settings-row">
+    <div className="settings-row" data-searchable={`${label} ${value}`}>
       <div className="settings-row__label">
         <div className="settings-row__title">{label}</div>
       </div>

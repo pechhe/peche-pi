@@ -1,17 +1,7 @@
-import type { ModelSettingsSnapshot, RuntimeSettingsSnapshot, RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
+import type { ModelSettingsSnapshot, RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
 import type { DesktopAppState, WorkspaceRecord } from "./desktop-state";
-import { resolveRepoWorkspaceId } from "./workspace-roots";
 
-export function toModelSettingsSnapshot(settings: RuntimeSettingsSnapshot | ModelSettingsSnapshot): ModelSettingsSnapshot {
-  return {
-    ...(settings.defaultProvider ? { defaultProvider: settings.defaultProvider } : {}),
-    ...(settings.defaultModelId ? { defaultModelId: settings.defaultModelId } : {}),
-    ...(settings.defaultThinkingLevel ? { defaultThinkingLevel: settings.defaultThinkingLevel } : {}),
-    enabledModelPatterns: [...settings.enabledModelPatterns],
-  };
-}
-
-export function applyModelSettings(
+function applyModelSettings(
   runtime: RuntimeSnapshot | undefined,
   modelSettings: ModelSettingsSnapshot | undefined,
 ): RuntimeSnapshot | undefined {
@@ -33,19 +23,6 @@ export function applyModelSettings(
       enabledModelPatterns: [...modelSettings.enabledModelPatterns],
     },
   };
-}
-
-export function resolveModelSettingsOwnerId(
-  state: Pick<DesktopAppState, "modelSettingsScopeMode" | "workspaces">,
-  workspaceId: string | undefined,
-): string | undefined {
-  if (!workspaceId) {
-    return undefined;
-  }
-  if (state.modelSettingsScopeMode !== "per-repo") {
-    return workspaceId;
-  }
-  return resolveRepoWorkspaceId(state.workspaces, workspaceId) ?? workspaceId;
 }
 
 export function getEffectiveModelRuntime(

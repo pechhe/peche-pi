@@ -1,4 +1,4 @@
-export const TERMINAL_REPLAY_BUFFER_LENGTH = 1_000_000;
+const TERMINAL_REPLAY_BUFFER_LENGTH = 1_000_000;
 
 export interface TerminalReplayUpdate {
   readonly replay: string;

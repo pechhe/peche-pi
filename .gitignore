@@ -11,9 +11,16 @@ test-results/
 .claude/worktrees/
 .codex/worktrees/
 .DS_Store
+.fallow/
 tmp-chat-parity.png
 tmp-latest-design.png
 tmp-sample-design.png
+
+# Agent/runtime artifacts (not source)
+.pi/todos/
+.ralph/
+pi-session-*.html
+*.tsbuildinfo
 
 # Vite dev build artifacts
 *.js

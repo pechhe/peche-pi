@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { desktopShortcut, getDesktopState, launchDesktop, makeUserDataDir, makeWorkspace } from "../helpers/electron-app";
 
-test("models settings expose subagent config and project agent manager", async () => {
+test("subagents settings expose config and project agent manager", async () => {
   test.setTimeout(60_000);
 
   const userDataDir = await makeUserDataDir();
@@ -30,13 +30,13 @@ Scout prompt.
   try {
     const window = await harness.firstWindow();
     await openSettings(window);
-    await openSettingsSection(window, "Models");
+    await openSettingsSection(window, "Subagents");
 
-    await expect(window.getByText("Subagents", { exact: true })).toBeVisible();
+    await expect(window.getByRole("heading", { name: "Subagents", exact: true })).toBeVisible();
     await expect(window.getByText("Agent manager", { exact: true })).toBeVisible();
     await expect(window.locator(".subagent-settings-agent__name", { hasText: "scout" })).toBeVisible();
     await expect(window.locator(".subagent-settings-agent", { hasText: "scout" }).getByText("global", { exact: true })).toBeVisible();
-    await expect(window.locator("input.settings-input")).toHaveAttribute("placeholder", "Bundled Pi command");
+    await expect(window.locator("input.settings-input").first()).toHaveAttribute("placeholder", "Bundled Pi command");
 
     await window.locator(".settings-row", { hasText: "Orchestrator mode" }).getByRole("button", { name: "Disabled" }).click();
     await expect.poll(async () => (await getDesktopState(window)).subagentSettings.orchestratorMode).toBe(true);
@@ -53,7 +53,7 @@ Scout prompt.
     await expect(window.locator(".subagent-settings-agent__name", { hasText: "new-agent" })).toBeVisible();
 
     const agent = window.locator(".subagent-settings-agent", { hasText: "new-agent" });
-    await agent.locator("summary").click();
+    await agent.locator(":scope > summary").click();
     const modelValue = await agent.locator("select.settings-select").first().locator("option").nth(1).getAttribute("value");
     expect(modelValue).toBeTruthy();
     await agent.locator("select.settings-select").first().selectOption(modelValue ?? "");
@@ -70,7 +70,7 @@ async function openSettings(window: Page): Promise<void> {
   await expect(window.getByTestId("settings-surface")).toBeVisible();
 }
 
-async function openSettingsSection(window: Page, section: "Models"): Promise<void> {
+async function openSettingsSection(window: Page, section: "Subagents"): Promise<void> {
   await window.getByRole("button", { name: section, exact: true }).click();
   await expect(window.locator(".view-header__title")).toContainText(section);
 }

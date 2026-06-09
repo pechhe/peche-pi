@@ -6,11 +6,11 @@ export interface PendingRuntimeCommandExecution {
   blockedMessage?: string;
 }
 
-export function createCompatibilityKey(extensionPath: string, commandName: string): string {
+function createCompatibilityKey(extensionPath: string, commandName: string): string {
   return `${extensionPath}::${commandName}`;
 }
 
-export function createCompatibilityKeyForCommand(command: RuntimeCommandRecord): string {
+function createCompatibilityKeyForCommand(command: RuntimeCommandRecord): string {
   return createCompatibilityKey(command.sourceInfo.path, command.name);
 }
 

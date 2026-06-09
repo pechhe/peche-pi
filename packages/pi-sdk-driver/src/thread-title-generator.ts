@@ -10,6 +10,11 @@ import type { AuthStorage, ModelRegistry } from "@earendil-works/pi-coding-agent
 import type { SessionModelSelection, WorkspaceRef } from "@pi-gui/session-driver";
 import { messageText as sessionMessageText } from "./session-supervisor-utils.js";
 
+export interface GeneratedThreadTitle {
+  readonly type: string;
+  readonly title: string;
+}
+
 export interface GenerateThreadTitleOptions {
   readonly prompt: string;
   readonly model?: SessionModelSelection;
@@ -26,9 +31,9 @@ interface ThreadTitleGeneratorDeps {
 const MAX_THREAD_TITLE_LENGTH = 36;
 const THREAD_TITLE_SYSTEM_PROMPT = [
   "You generate concise UI thread titles for a coding assistant.",
-  "Return only the title text.",
-  "Keep it short, usually 2 to 5 words.",
-  "Use the same language as the source message.",
+  "Return your answer on two lines: the thread type, then the title.",
+  "Line 1: exactly one of: bug, feature, refactor, investigate, other",
+  "Line 2: the title (2 to 5 words, same language as the source message).",
   "Preserve ticket IDs exactly.",
   "No markdown, quotes, labels, or trailing punctuation.",
 ].join("\n");
@@ -37,7 +42,7 @@ export async function generateThreadTitle(
   workspace: WorkspaceRef,
   options: GenerateThreadTitleOptions,
   deps: ThreadTitleGeneratorDeps,
-): Promise<string | null> {
+): Promise<GeneratedThreadTitle | null> {
   const prompt = options.prompt.trim();
   if (!prompt || options.signal?.aborted) {
     return null;
@@ -82,13 +87,17 @@ export async function generateThreadTitle(
     if (!session.model) {
       return null;
     }
+    // Only require that auth resolves (auth.ok). Do NOT require auth.apiKey:
+    // OAuth / subscription providers (Claude Pro/Max, ChatGPT) authenticate via
+    // injected bearer tokens, not a stored apiKey, so apiKey is undefined there.
+    // Requiring it silently skipped titles for every OAuth-backed thread.
     const auth = await session.modelRegistry.getApiKeyAndHeaders(session.model);
-    if (!auth.ok || !auth.apiKey) {
+    if (!auth.ok) {
       return null;
     }
 
     await session.prompt(buildTitlePrompt(prompt), { source: "interactive" });
-    return normalizeThreadTitle(extractLastAssistantText(session));
+    return parseGeneratedThreadTitle(extractLastAssistantText(session));
   } finally {
     options.signal?.removeEventListener("abort", handleAbort);
     session.dispose();
@@ -111,8 +120,8 @@ function createThreadTitleResourceLoader(): ResourceLoader {
 
 function buildTitlePrompt(prompt: string): string {
   return [
-    "Generate a short UI thread title for the user's first message.",
-    "Return only the title.",
+    "Classify the user's first message and generate a short thread title.",
+    "Return exactly two lines: the type, then the title.",
     "",
     "<user_message>",
     prompt,
@@ -131,7 +140,50 @@ function extractLastAssistantText(session: { messages: readonly unknown[] }): st
   return "";
 }
 
-function normalizeThreadTitle(title: string): string | null {
+const VALID_THREAD_TYPES = new Set(["bug", "feature", "refactor", "investigate", "other"]);
+
+/**
+ * Parse the model's two-line response: line 1 = type, line 2 = title.
+ * Falls back to "other" type if the first line isn't a valid type.
+ */
+function parseGeneratedThreadTitle(raw: string): GeneratedThreadTitle | null {
+  const lines = raw.replace(/\r\n?/g, "\n").split("\n").map((l) => l.trim()).filter(Boolean);
+  if (lines.length === 0) {
+    return null;
+  }
+
+  const firstLine = lines[0]!;
+  let type: string;
+  let titleRaw: string;
+
+  if (lines.length >= 2) {
+    // Two-line format: type on line 1, title on line 2.
+    type = firstLine.toLowerCase().replace(/[^a-z]/g, "");
+    titleRaw = lines[1]!;
+  } else {
+    // Single line — try to extract type prefix "type: title".
+    const colonMatch = firstLine.match(/^(bug|feature|refactor|investigate|other)\s*:\s*(.+)$/i);
+    if (colonMatch) {
+      type = (colonMatch[1] ?? "other").toLowerCase();
+      titleRaw = colonMatch[2] ?? firstLine;
+    } else {
+      type = "other";
+      titleRaw = firstLine;
+    }
+  }
+
+  if (!VALID_THREAD_TYPES.has(type)) {
+    type = "other";
+  }
+
+  const title = normalizeTitle(titleRaw);
+  if (!title) {
+    return null;
+  }
+  return { type, title };
+}
+
+function normalizeTitle(title: string): string | null {
   let normalized = title.replace(/\s+/g, " ").trim();
   if (!normalized) {
     return null;

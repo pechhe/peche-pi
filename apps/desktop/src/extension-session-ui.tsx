@@ -28,8 +28,8 @@ export function ExtensionDialog({
   }
 
   return (
-    <div className="extension-dialog-backdrop">
-      <div className="extension-dialog" data-testid="extension-dialog">
+    <div className="extension-dialog-backdrop" onClick={() => onRespond({ requestId: dialog.requestId, cancelled: true })}>
+      <div className="extension-dialog" data-testid="extension-dialog" onClick={(e) => e.stopPropagation()}>
         <div className="extension-dialog__title">{dialog.title}</div>
         {dialog.kind === "confirm" ? <p className="extension-dialog__body">{dialog.message}</p> : null}
 

@@ -1,4 +1,4 @@
-import { useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from "react";
+import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from "react";
 import type { ComposerAttachment } from "./desktop-state";
 import type {
   ComposerSlashCommand,
@@ -8,11 +8,10 @@ import type {
 } from "./composer-commands";
 import { hasFilesInDataTransfer } from "./composer-attachments";
 import { FileIcon, ModelIcon, ReasoningIcon, SettingsIcon, SkillIcon, SparkIcon, StatusIcon } from "./icons";
-import { QueuedComposerMessages } from "./queued-composer-messages";
 import { openImageLightbox } from "./image-lightbox";
+import { playButtonClick } from "./button-click-sound";
 
 interface ComposerSurfaceProps {
-  readonly lastError?: string;
   readonly activeSlashCommand?: ComposerSlashCommand;
   readonly activeSlashCommandMeta?: string;
   readonly topNotice?: ReactNode;
@@ -20,8 +19,7 @@ interface ComposerSurfaceProps {
   readonly setComposerDraft: (draft: string) => void;
   readonly composerRef: RefObject<HTMLTextAreaElement | null>;
   readonly attachments: readonly ComposerAttachment[];
-  readonly queuedMessages: readonly import("./desktop-state").QueuedComposerMessage[];
-  readonly editingQueuedMessageId?: string;
+
   readonly slashSections: readonly ComposerSlashCommandSection[];
   readonly slashOptions: readonly ComposerSlashOption[];
   readonly selectedSlashCommand?: ComposerSlashCommand;
@@ -34,10 +32,6 @@ interface ComposerSurfaceProps {
   readonly onComposerPaste: (event: ClipboardEvent<HTMLDivElement>) => void;
   readonly onComposerDrop: (event: DragEvent<HTMLDivElement>) => void;
   readonly onRemoveAttachment: (attachmentId: string) => void;
-  readonly onEditQueuedMessage: (messageId: string) => void;
-  readonly onCancelQueuedEdit: () => void;
-  readonly onRemoveQueuedMessage: (messageId: string) => void;
-  readonly onSteerQueuedMessage: (messageId: string) => void;
   readonly onSelectSlashCommand: (command: ComposerSlashCommand) => void;
   readonly onSelectSlashOption: (option: ComposerSlashOption) => void;
   readonly showMentionMenu: boolean;
@@ -48,6 +42,7 @@ interface ComposerSurfaceProps {
   readonly textareaTestId: string;
   readonly textareaPlaceholder: string;
   readonly textareaClassName?: string;
+  readonly screenContent?: ReactNode;
   readonly screenFooter?: ReactNode;
   readonly footer: ReactNode;
 }
@@ -90,7 +85,7 @@ export function ComposerAttachments({
                 aria-label={`Remove ${attachment.name}`}
                 className="composer-attachment__remove"
                 type="button"
-                onClick={() => onRemoveAttachment(attachment.id)}
+                onClick={() => { playButtonClick(); onRemoveAttachment(attachment.id); }}
               >
                 ×
               </button>
@@ -105,7 +100,7 @@ export function ComposerAttachments({
                 aria-label={`Remove ${attachment.name}`}
                 className="composer-attachment__remove"
                 type="button"
-                onClick={() => onRemoveAttachment(attachment.id)}
+                onClick={() => { playButtonClick(); onRemoveAttachment(attachment.id); }}
               >
                 ×
               </button>
@@ -117,17 +112,31 @@ export function ComposerAttachments({
   );
 }
 
+// Cream mode uses a thin bar caret, so the leading-space hack that keeps the
+// placeholder clear of the block caret (other device modes) is unwanted there.
+function useComposerDeviceCream(): boolean {
+  const [isCream, setIsCream] = useState(
+    () => typeof document !== "undefined" && document.documentElement.classList.contains("composer-device--cream"),
+  );
+  useEffect(() => {
+    const root = document.documentElement;
+    const update = () => setIsCream(root.classList.contains("composer-device--cream"));
+    update();
+    const observer = new MutationObserver(update);
+    observer.observe(root, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
+  return isCream;
+}
+
 export function ComposerSurface({
-  lastError,
   activeSlashCommand,
   activeSlashCommandMeta,
   topNotice,
   composerDraft,
   setComposerDraft,
   composerRef,
-  attachments,
-  queuedMessages,
-  editingQueuedMessageId,
+  attachments: _attachments,
   slashSections,
   slashOptions,
   selectedSlashCommand,
@@ -139,11 +148,7 @@ export function ComposerSurface({
   onComposerKeyDown,
   onComposerPaste,
   onComposerDrop,
-  onRemoveAttachment,
-  onEditQueuedMessage,
-  onCancelQueuedEdit,
-  onRemoveQueuedMessage,
-  onSteerQueuedMessage,
+  onRemoveAttachment: _onRemoveAttachment,
   onSelectSlashCommand,
   onSelectSlashOption,
   showMentionMenu,
@@ -154,11 +159,14 @@ export function ComposerSurface({
   textareaTestId,
   textareaPlaceholder,
   textareaClassName,
+  screenContent,
   screenFooter,
   footer,
 }: ComposerSurfaceProps) {
   const [isDragActive, setIsDragActive] = useState(false);
   const dragDepthRef = useRef(0);
+  const isCream = useComposerDeviceCream();
+  const resolvedPlaceholder = isCream ? textareaPlaceholder.replace(/^ /, "") : textareaPlaceholder;
 
   const clearDragState = () => {
     dragDepthRef.current = 0;
@@ -174,7 +182,7 @@ export function ComposerSurface({
     setIsDragActive(true);
   };
 
-  const handleDragLeave = (event: DragEvent<HTMLDivElement>) => {
+  const handleDragLeave = (_event: DragEvent<HTMLDivElement>) => {
     if (!isDragActive) {
       return;
     }
@@ -248,23 +256,10 @@ export function ComposerSurface({
             aria-label={`Clear ${activeSlashCommand.title}`}
             className="composer__slash-intent-clear"
             type="button"
-            onClick={onClearSlashCommand}
+            onClick={() => { playButtonClick(); onClearSlashCommand(); }}
           >
             ×
           </button>
-        </div>
-      ) : null}
-      <QueuedComposerMessages
-        messages={queuedMessages}
-        editingQueuedMessageId={editingQueuedMessageId}
-        onEditMessage={onEditQueuedMessage}
-        onCancelEdit={onCancelQueuedEdit}
-        onRemoveMessage={onRemoveQueuedMessage}
-        onSteerMessage={onSteerQueuedMessage}
-      />
-      {lastError ? (
-        <div className="composer__error error-banner" data-testid="composer-error-banner">
-          {lastError}
         </div>
       ) : null}
       {showSlashMenu || (showSlashOptionMenu && selectedSlashCommand) ? (
@@ -286,7 +281,7 @@ export function ComposerSurface({
                       className={`slash-menu__item ${command.section === "runtime" ? "slash-menu__item--skill" : ""} ${selectedSlashCommand?.id === command.id ? "slash-menu__item--active" : ""}`}
                       key={command.id}
                       type="button"
-                      onClick={() => onSelectSlashCommand(command)}
+                      onClick={() => { playButtonClick(); onSelectSlashCommand(command); }}
                     >
                       <span className="slash-menu__icon" aria-hidden="true">
                         <SlashCommandIcon command={command} />
@@ -329,7 +324,7 @@ export function ComposerSurface({
                       className={`slash-menu__option ${selectedSlashOption?.value === option.value ? "slash-menu__option--active" : ""}`}
                       key={option.value}
                       type="button"
-                      onClick={() => onSelectSlashOption(option)}
+                      onClick={() => { playButtonClick(); onSelectSlashOption(option); }}
                     >
                       <span className="slash-menu__option-title">{option.label}</span>
                       <span className="slash-menu__option-description">{option.description}</span>
@@ -360,7 +355,7 @@ export function ComposerSurface({
                     className={`mention-menu__item ${index === selectedMentionIndex ? "mention-menu__item--active" : ""}`}
                     key={filePath}
                     type="button"
-                    onClick={() => onSelectMention(filePath)}
+                    onClick={() => { playButtonClick(); onSelectMention(filePath); }}
                   >
                     {dirPart ? <span className="mention-menu__dirname">{dirPart}</span> : null}
                     <span className="mention-menu__filename">{namePart}</span>
@@ -370,19 +365,23 @@ export function ComposerSurface({
             </div>
           </div>
         ) : null}
-          <textarea
-            aria-label={textareaLabel}
-            className={textareaClassName}
-            data-testid={textareaTestId}
-            ref={composerRef}
-            value={composerDraft}
-            onChange={(event) => {
-              setComposerDraft(event.target.value);
-            }}
-            onKeyDown={onComposerKeyDown}
-            placeholder={textareaPlaceholder}
-          />
-          {screenFooter}
+          {screenContent ?? (
+            <>
+              <textarea
+                aria-label={textareaLabel}
+                className={textareaClassName}
+                data-testid={textareaTestId}
+                ref={composerRef}
+                value={composerDraft}
+                onChange={(event) => {
+                  setComposerDraft(event.target.value);
+                }}
+                onKeyDown={onComposerKeyDown}
+                placeholder={resolvedPlaceholder}
+              />
+              {screenFooter}
+            </>
+          )}
         </div>
         <div className="composer__bar">{footer}</div>
       </div>
