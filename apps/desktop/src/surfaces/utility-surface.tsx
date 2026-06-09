@@ -93,6 +93,8 @@ export interface UtilitySurfaceProps {
   readonly onCloseShortcutsSheet: () => void;
   readonly globalSearch: ReturnType<typeof useGlobalSearch>;
   readonly onGlobalSearchSelect: (result: ReturnType<typeof useGlobalSearch>["results"][number]) => void;
+  /** Restores focus to the composer after search closes. */
+  readonly restoreComposerFocus?: () => void;
 
   // View-specific children
   readonly content: ReactNode;
@@ -141,6 +143,7 @@ export function UtilitySurface(props: UtilitySurfaceProps) {
     onCloseShortcutsSheet,
     globalSearch,
     onGlobalSearchSelect,
+    restoreComposerFocus,
     content,
   } = props;
 
@@ -165,6 +168,7 @@ export function UtilitySurface(props: UtilitySurfaceProps) {
           onActiveIndexChange={globalSearch.setActiveIndex}
           onSelect={onGlobalSearchSelect}
           onClose={globalSearch.close}
+          restoreFocus={restoreComposerFocus}
         />
       ) : null}
       {shortcutsSheetOpen ? (

@@ -56,7 +56,7 @@ export function onUpdateStateChange(listener: (state: UpdateState) => void): voi
 }
 
 /** Get current state (for initial renderer hydration). */
-export function getUpdateState(): UpdateState {
+function getUpdateState(): UpdateState {
   return currentState;
 }
 

@@ -10,12 +10,14 @@
 
 import type { Automation } from "../src/desktop-state.ts";
 import { AutomationStore } from "./automation-store.ts";
-import type { SessionDriver, WorkspaceRef } from "@pi-gui/session-driver/types";
 
 export interface AutomationSchedulerDeps {
   readonly store: AutomationStore;
-  readonly sessionDriver: SessionDriver;
-  readonly getWorkspaceRef: (workspaceId: string) => WorkspaceRef | undefined;
+  /**
+   * Create a background thread for the automation (handles worktree creation,
+   * model/thinking, auto-title, and the initial prompt). Returns the session id.
+   */
+  readonly startAutomationThread: (automation: Automation) => Promise<string | undefined>;
   /** Called after an automation fires and a session is created. */
   readonly onAutomationFired: (automation: Automation, sessionId: string) => void;
   /** Called when state needs to be refreshed in the renderer. */
@@ -27,6 +29,8 @@ const CHECK_INTERVAL_MS = 60_000; // 1 minute
 export class AutomationScheduler {
   private readonly deps: AutomationSchedulerDeps;
   private intervalHandle: ReturnType<typeof setInterval> | null = null;
+  /** Re-entrancy guard: prevents overlapping check passes from double-firing. */
+  private checking = false;
 
   constructor(deps: AutomationSchedulerDeps) {
     this.deps = deps;
@@ -66,35 +70,37 @@ export class AutomationScheduler {
   }
 
   private async checkAndFire(): Promise<void> {
-    const dueAutomations = this.deps.store.getDueAutomations();
-    for (const automation of dueAutomations) {
-      await this.fireAutomation(automation);
+    // Guard against overlapping passes (startup catch-up, the 60s interval,
+    // checkNow, fireNow). Without this, a pass that starts while a previous
+    // pass is still awaiting createSession would re-fire the same automation.
+    if (this.checking) return;
+    this.checking = true;
+    try {
+      const dueAutomations = this.deps.store.getDueAutomations();
+      for (const automation of dueAutomations) {
+        // Claim the window BEFORE the slow createSession/sendUserMessage awaits.
+        // getDueAutomations() dedups on lastRunAt, so claiming up front stops a
+        // second pass from seeing this automation as still due.
+        await this.deps.store.markRan(automation.id);
+        await this.fireAutomation(automation);
+      }
+    } finally {
+      this.checking = false;
     }
   }
 
   private async fireAutomation(automation: Automation): Promise<string | undefined> {
-    const workspaceRef = this.deps.getWorkspaceRef(automation.workspaceId);
-    if (!workspaceRef) return undefined;
-
     try {
-      const session = await this.deps.sessionDriver.createSession(workspaceRef, {
-        title: `⚡ ${automation.name}`,
-        initialModel: automation.model ? { provider: automation.model.provider, modelId: automation.model.modelId } : undefined,
-        initialThinkingLevel: automation.thinkingLevel,
-      });
-
-      await this.deps.sessionDriver.sendUserMessage(
-        { workspaceId: workspaceRef.workspaceId, sessionId: session.ref.sessionId },
-        { text: automation.prompt },
-      );
+      const sessionId = await this.deps.startAutomationThread(automation);
+      if (!sessionId) return undefined;
 
       // Update lastRunAt
       await this.deps.store.markRan(automation.id);
 
-      this.deps.onAutomationFired(automation, session.ref.sessionId);
+      this.deps.onAutomationFired(automation, sessionId);
       this.deps.onStateChanged();
 
-      return session.ref.sessionId;
+      return sessionId;
     } catch (error) {
       console.error(`[automation-scheduler] Failed to fire automation "${automation.name}":`, error);
       return undefined;

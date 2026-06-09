@@ -62,6 +62,7 @@ export interface KeyboardShortcutDeps {
   readonly onOpenExtensions: (workspaceId?: string) => void;
   readonly onOpenAutomations: (workspaceId?: string) => void;
   readonly onOpenContext: (workspaceId?: string) => void;
+  readonly onCopyLastResponse: () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -102,6 +103,7 @@ export function useKeyboardShortcuts({
   onOpenExtensions,
   onOpenAutomations,
   onOpenContext,
+  onCopyLastResponse,
 }: KeyboardShortcutDeps): void {
   // Sidebar keyboard navigation state (Cmd+Shift+Arrow)
   const pendingNavIndexRef = useRef<number>(-1);
@@ -139,31 +141,19 @@ export function useKeyboardShortcuts({
       }
     };
 
+    const wsId = () => selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id;
+    const commandHandlers = new Map<PiDesktopCommand, () => boolean>([
+      [desktopCommands.openSettings, () => { openSettings(wsId()); return true; }],
+      [desktopCommands.openNewThread, () => { openNewThreadSurface(wsId()); return true; }],
+      [desktopCommands.toggleTerminal, () => { toggleTerminal(); return true; }],
+      [desktopCommands.toggleSidebar, () => handleTogglePrimarySidebar()],
+      [desktopCommands.commitAndPush, () => { window.dispatchEvent(new CustomEvent("pi:commit-and-push")); return true; }],
+      [desktopCommands.setBuildMode, () => { playRotary(); onSetComposerMode("build"); return true; }],
+      [desktopCommands.setPlanMode, () => { playRotary(); onSetComposerMode("plan"); return true; }],
+    ]);
     const handleCommand = (command: PiDesktopCommand): boolean => {
-      if (command === desktopCommands.openSettings) {
-        openSettings(selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id);
-        return true;
-      } else if (command === desktopCommands.openNewThread) {
-        openNewThreadSurface(selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id);
-        return true;
-      } else if (command === desktopCommands.toggleTerminal) {
-        toggleTerminal();
-        return true;
-      } else if (command === desktopCommands.toggleSidebar) {
-        return handleTogglePrimarySidebar();
-      } else if (command === desktopCommands.commitAndPush) {
-        window.dispatchEvent(new CustomEvent("pi:commit-and-push"));
-        return true;
-      } else if (command === desktopCommands.setBuildMode) {
-        playRotary();
-        onSetComposerMode("build");
-        return true;
-      } else if (command === desktopCommands.setPlanMode) {
-        playRotary();
-        onSetComposerMode("plan");
-        return true;
-      }
-      return false;
+      const handler = commandHandlers.get(command);
+      return handler ? handler() : false;
     };
 
     const removeCommandListener = window.piApp?.onCommand?.(handleCommand);
@@ -192,6 +182,20 @@ export function useKeyboardShortcuts({
       ["l", () => { playRotary(); focusComposer(); }],
       ["p", () => { playRotary(); onSetComposerMode("plan"); }],
       ["b", () => { playRotary(); onSetComposerMode("build"); }],
+      ["1", () => { playRotary(); modelSelectorRef.current?.selectSliderSlot(0); }],
+      ["2", () => { playRotary(); modelSelectorRef.current?.selectSliderSlot(1); }],
+      ["3", () => { playRotary(); modelSelectorRef.current?.selectSliderSlot(2); }],
+      ["4", () => { playRotary(); modelSelectorRef.current?.openModelDropdown(); }],
+      ["ArrowUp", () => { playRotary(); modelSelectorRef.current?.cycleThinkingLevel(1); }],
+      ["ArrowDown", () => { playRotary(); modelSelectorRef.current?.cycleThinkingLevel(-1); }],
+      ["[", () => {
+        const target = navigationHistory.goBack();
+        if (target) { navigateToEntry(target); }
+      }],
+      ["]", () => {
+        const target = navigationHistory.goForward();
+        if (target) { navigateToEntry(target); }
+      }],
     ]);
     const modShiftKeyMap = new Map<string, ShortcutHandler>([
       ["a", () => { toggleAdvisorPanel?.(); }],
@@ -200,6 +204,7 @@ export function useKeyboardShortcuts({
       ["Digit3", () => { playRotary(); onOpenExtensions(selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id); }],
       ["Digit4", () => { playRotary(); onOpenAutomations(selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id); }],
       ["Digit5", () => { playRotary(); onOpenContext(selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id); }],
+      ["c", () => { onCopyLastResponse(); }],
     ]);
 
     const handleKeyDown = (event: globalThis.KeyboardEvent) => {
@@ -246,47 +251,6 @@ export function useKeyboardShortcuts({
           if (handler) {
             event.preventDefault();
             handler();
-            return;
-          }
-
-          // Mod+1/2/3 → model slot, Mod+4 → model dropdown
-          const digit = parseInt(event.key);
-          if (digit >= 1 && digit <= 3) {
-            event.preventDefault();
-            playRotary();
-            modelSelectorRef.current?.selectSliderSlot(digit - 1);
-            return;
-          }
-          if (digit === 4) {
-            event.preventDefault();
-            playRotary();
-            modelSelectorRef.current?.openModelDropdown();
-            return;
-          }
-
-          // Mod+ArrowUp/Down → thinking level
-          if (event.key === "ArrowUp") {
-            event.preventDefault();
-            playRotary();
-            modelSelectorRef.current?.cycleThinkingLevel(1);
-            return;
-          }
-          if (event.key === "ArrowDown") {
-            event.preventDefault();
-            playRotary();
-            modelSelectorRef.current?.cycleThinkingLevel(-1);
-            return;
-          }
-
-          // Mod+[ / Mod+] → navigation history
-          if (event.key === "[" || event.key === "]") {
-            const target = event.key === "["
-              ? navigationHistory.goBack()
-              : navigationHistory.goForward();
-            if (target) {
-              event.preventDefault();
-              navigateToEntry(target);
-            }
             return;
           }
         }

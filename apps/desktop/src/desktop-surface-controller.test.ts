@@ -92,16 +92,16 @@ describe("canToggleSidebar", () => {
     expect(canToggleSidebar("kanban")).toBe(true);
   });
 
-  it("returns false for settings view", () => {
-    expect(canToggleSidebar("settings")).toBe(false);
+  it("returns true for settings view", () => {
+    expect(canToggleSidebar("settings")).toBe(true);
   });
 
-  it("returns false for skills view", () => {
-    expect(canToggleSidebar("skills")).toBe(false);
+  it("returns true for skills view", () => {
+    expect(canToggleSidebar("skills")).toBe(true);
   });
 
-  it("returns false for extensions view", () => {
-    expect(canToggleSidebar("extensions")).toBe(false);
+  it("returns true for extensions view", () => {
+    expect(canToggleSidebar("extensions")).toBe(true);
   });
 });
 
@@ -321,18 +321,18 @@ describe("command-based shortcuts", () => {
     expect(intent).toEqual({ type: "toggle-sidebar", visible: false });
   });
 
-  it("toggle-sidebar returns null for settings view", () => {
+  it("toggle-sidebar returns visible for settings view", () => {
     const surface = makeSurface({ activeView: "settings" });
     const input = makeInput({ command: "toggle-sidebar" });
     const intent = interpretSurfaceIntent(surface, input);
-    expect(intent).toBeNull();
+    expect(intent).toEqual({ type: "toggle-sidebar", visible: false });
   });
 
-  it("toggle-sidebar returns null for skills view", () => {
+  it("toggle-sidebar returns visible for skills view", () => {
     const surface = makeSurface({ activeView: "skills" });
     const input = makeInput({ command: "toggle-sidebar" });
     const intent = interpretSurfaceIntent(surface, input);
-    expect(intent).toBeNull();
+    expect(intent).toEqual({ type: "toggle-sidebar", visible: false });
   });
 
   it("commit-and-push returns commit-and-push intent", () => {

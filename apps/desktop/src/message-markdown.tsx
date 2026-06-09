@@ -1,7 +1,8 @@
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { SKIP, visit } from "unist-util-visit";
+import { CheckIcon, CopyIcon } from "./icons";
 
 const REMARK_PLUGINS = [remarkGfm];
 
@@ -70,18 +71,40 @@ function readStreamFx(): string | undefined {
   }
 }
 
-const MARKDOWN_COMPONENTS = {
-  code: ({ className, children }: { className?: string; children?: React.ReactNode }) => {
-    const language = className?.replace(/^language-/, "");
-    const code = String(children).replace(/\n$/, "");
-    if (!className) {
-      return <code>{code}</code>;
-    }
-    return (
+function CodeBlock({ className, children }: { className?: string; children?: React.ReactNode }) {
+  const language = className?.replace(/^language-/, "");
+  const code = String(children).replace(/\n$/, "");
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(() => {
+    void navigator.clipboard.writeText(code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, [code]);
+
+  return (
+    <div className="code-block">
       <pre data-language={language}>
         <code className={className}>{code}</code>
       </pre>
-    );
+      <button
+        className="code-block__copy"
+        type="button"
+        aria-label={copied ? "Copied" : "Copy code"}
+        onClick={handleCopy}
+      >
+        {copied ? <CheckIcon /> : <CopyIcon />}
+      </button>
+    </div>
+  );
+}
+
+const MARKDOWN_COMPONENTS = {
+  code: ({ className, children }: { className?: string; children?: React.ReactNode }) => {
+    if (!className) {
+      return <code>{String(children).replace(/\n$/, "")}</code>;
+    }
+    return <CodeBlock className={className}>{children}</CodeBlock>;
   },
   a: ({ href, children }: { href?: string; children?: React.ReactNode }) => (
     <a href={href} rel="noreferrer" target="_blank">

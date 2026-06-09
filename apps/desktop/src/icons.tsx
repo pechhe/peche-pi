@@ -196,6 +196,14 @@ export function CopyIcon() {
   );
 }
 
+export function CheckIcon() {
+  return (
+    <Icon>
+      <path d="M20 6 9 17l-5-5" />
+    </Icon>
+  );
+}
+
 export function SparkIcon() {
   return (
     <Icon>
@@ -306,6 +314,15 @@ export function WorktreeIcon() {
       <path d="M15 6a9 9 0 0 0-9 9V3" />
       <circle cx="18" cy="6" r="3" />
       <circle cx="6" cy="18" r="3" />
+    </Icon>
+  );
+}
+
+export function ClockIcon() {
+  return (
+    <Icon>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
     </Icon>
   );
 }

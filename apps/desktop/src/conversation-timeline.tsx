@@ -3,7 +3,7 @@ import type { TranscriptMessage } from "./desktop-state";
 import { ThreadSearchBar } from "./thread-search";
 import { TimelineItem } from "./timeline-item";
 import { WorkingLabel } from "./working-label";
-import { groupTranscript, type TimelineRow } from "./timeline-grouping";
+import { groupTranscript, type TimelineRow } from "./timeline-model";
 import type { LiveEditStats, UndoEditOp, UndoEditsResult } from "./ipc";
 import { buildTurnUndoOpsMap } from "./timeline-item";
 import { playButtonClick } from "./button-click-sound";
@@ -37,6 +37,7 @@ interface ConversationTimelineProps {
   readonly onJumpToLatest: () => void;
   readonly onContentHeightChange: () => void;
   readonly onViewFileInDiff?: (path: string) => void;
+  readonly onRevealInFinder?: (path: string) => void;
   readonly onUndoEdits?: (ops: readonly UndoEditOp[]) => Promise<UndoEditsResult>;
   readonly onRedoEdits?: (ops: readonly UndoEditOp[]) => Promise<UndoEditsResult>;
   /** Called when the collected all-undo-ops changes (for thread-level undo). */
@@ -66,6 +67,7 @@ export function ConversationTimeline({
   onJumpToLatest,
   onContentHeightChange,
   onViewFileInDiff,
+  onRevealInFinder,
   onUndoEdits,
   onRedoEdits,
   onAllUndoOpsChange,
@@ -371,6 +373,7 @@ export function ConversationTimeline({
           onToggleBurst={toggleBurst}
           onToggleReasoning={toggleReasoning}
           onViewFileInDiff={onViewFileInDiff}
+          onRevealInFinder={onRevealInFinder}
           onUndoEdits={onUndoEdits}
           onRedoEdits={onRedoEdits}
           turnUndoOps={turnUndoOps}
@@ -397,6 +400,7 @@ export function ConversationTimeline({
               onToggleBurst={toggleBurst}
               onToggleReasoning={toggleReasoning}
               onViewFileInDiff={onViewFileInDiff}
+              onRevealInFinder={onRevealInFinder}
               onUndoEdits={onUndoEdits}
               onRedoEdits={onRedoEdits}
               turnUndoOps={turnUndoOps}
@@ -439,6 +443,7 @@ function VirtualizedTranscriptList({
   onToggleBurst,
   onToggleReasoning,
   onViewFileInDiff,
+  onRevealInFinder,
   onUndoEdits,
   onRedoEdits,
   turnUndoOps,
@@ -465,6 +470,7 @@ function VirtualizedTranscriptList({
   readonly onToggleBurst: (burstId: string) => void;
   readonly onToggleReasoning: (reasoningId: string) => void;
   readonly onViewFileInDiff?: (path: string) => void;
+  readonly onRevealInFinder?: (path: string) => void;
   readonly onUndoEdits?: (ops: readonly UndoEditOp[]) => Promise<UndoEditsResult>;
   readonly onRedoEdits?: (ops: readonly UndoEditOp[]) => Promise<UndoEditsResult>;
   readonly turnUndoOps?: { byEditedFilesId: ReadonlyMap<string, readonly UndoEditOp[]>; byActivityId: ReadonlyMap<string, readonly UndoEditOp[]> };
@@ -555,6 +561,7 @@ function VirtualizedTranscriptList({
             onToggleBurst={onToggleBurst}
             onToggleReasoning={onToggleReasoning}
             onViewFileInDiff={onViewFileInDiff}
+            onRevealInFinder={onRevealInFinder}
             onUndoEdits={onUndoEdits}
             onRedoEdits={onRedoEdits}
             turnUndoOps={turnUndoOps}
@@ -593,6 +600,7 @@ interface MeasuredTimelineItemProps {
   readonly onToggleBurst: (burstId: string) => void;
   readonly onToggleReasoning: (reasoningId: string) => void;
   readonly onViewFileInDiff?: (path: string) => void;
+  readonly onRevealInFinder?: (path: string) => void;
   readonly onUndoEdits?: (ops: readonly UndoEditOp[]) => Promise<UndoEditsResult>;
   readonly onRedoEdits?: (ops: readonly UndoEditOp[]) => Promise<UndoEditsResult>;
   readonly streamingAssistantId?: string;
@@ -617,6 +625,7 @@ const MeasuredTimelineItem = memo(function MeasuredTimelineItem({
   onToggleBurst,
   onToggleReasoning,
   onViewFileInDiff,
+  onRevealInFinder,
   onUndoEdits,
   onRedoEdits,
   streamingAssistantId,
@@ -669,6 +678,7 @@ const MeasuredTimelineItem = memo(function MeasuredTimelineItem({
         onToggleBurst={onToggleBurst}
         onToggleReasoning={onToggleReasoning}
         onViewFileInDiff={onViewFileInDiff}
+        onRevealInFinder={onRevealInFinder}
         onUndoEdits={onUndoEdits}
         onRedoEdits={onRedoEdits}
         streamingAssistantId={streamingAssistantId}
@@ -774,6 +784,7 @@ function sameMeasuredTimelineItemProps(
     previous.onToggleBurst !== next.onToggleBurst ||
     previous.onToggleReasoning !== next.onToggleReasoning ||
     previous.onViewFileInDiff !== next.onViewFileInDiff ||
+    previous.onRevealInFinder !== next.onRevealInFinder ||
     previous.onUndoEdits !== next.onUndoEdits ||
     previous.onRedoEdits !== next.onRedoEdits ||
     previous.turnUndoOps !== next.turnUndoOps ||

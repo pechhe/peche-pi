@@ -70,11 +70,9 @@ import { useSkillsExtensionsHandlers } from "./hooks/use-skills-extensions";
 import { useNavigationHistory } from "./hooks/use-navigation-history";
 import { useNewThreadState } from "./hooks/use-new-thread-state";
 
-import { useRalphLoop, type RalphLaunch } from "./hooks/use-ralph-loop";
 import { useSelfHealTranscript } from "./hooks/use-self-heal-transcript";
 import { useSidebarWidth } from "./hooks/use-sidebar-width";
 import { ExtensionDialog } from "./extension-session-ui";
-import { RalphLaunchDialog } from "./ralph-launch-dialog";
 import { SubagentLiveProvider } from "./subagent-live";
 import { FLEET_WIDGET_KEY, parseFleet } from "./subagent-fleet";
 import { TreeModal } from "./tree-modal";
@@ -464,8 +462,6 @@ export default function App() {
   // auto-generated one. Pruned once the real title lands.
   const [newThreadTitleFallback, setNewThreadTitleFallback] = useState<Readonly<Record<string, string>>>({});
   const [extensionsWorkspaceId, setExtensionsWorkspaceId] = useState("");
-  const [ralphLaunch, setRalphLaunch] = useState<RalphLaunch | null>(null);
-
   const [themeMode, setThemeMode] = useState<"system" | "light" | "dark" | "dracula">("system");
   const [buttonSoundSettings, setButtonSoundSettings] = useState<ButtonSoundSettings>(
     () => ({ ...DEFAULT_BUTTON_SOUND_SETTINGS })
@@ -1255,6 +1251,10 @@ export default function App() {
     setShowDiffPanel(true);
     setDiffFileRequest({ path, nonce: Date.now() });
   }, []);
+  const handleRevealInFinder = useCallback((filePath: string) => {
+    if (!api || !selectedWorkspace) return;
+    void api.showFileInFolder(selectedWorkspace.id, filePath);
+  }, [api, selectedWorkspace]);
 
   const [shortcutsSheetOpen, setShortcutsSheetOpen] = useState(false);
   const [pendingSidebarSelection, setPendingSidebarSelection] = useState<SidebarNavEntry | null>(null);
@@ -1816,21 +1816,14 @@ export default function App() {
     onOpenExtensions: openExtensions,
     onOpenAutomations: openAutomations,
     onOpenContext: openContext,
+    onCopyLastResponse: () => {
+      const lastAssistant = [...activeTranscript].reverse().find((msg) => msg.kind === "message" && msg.role === "assistant");
+      if (lastAssistant && lastAssistant.kind === "message") {
+        void navigator.clipboard.writeText(lastAssistant.text);
+        showToast({ variant: "success", message: "Copied last response", autoDismissMs: 2000 });
+      }
+    },
   });
-
-  const { loopControl, beginRalphLoop, runRalphLoop } = useRalphLoop(
-    snapshot,
-    selectedSession,
-    selectedWorkspace,
-    api!,
-    setSnapshot,
-    updateSnapshot,
-    resolvedSessionProvider,
-    resolvedSessionModelId,
-    resolvedSessionThinkingLevel,
-    ralphLaunch,
-    setRalphLaunch,
-  );
 
   if (!api || !snapshot) {
     return (
@@ -2299,6 +2292,7 @@ export default function App() {
     onCloseShortcutsSheet: () => setShortcutsSheetOpen(false),
     globalSearch,
     onGlobalSearchSelect: handleGlobalSearchSelect,
+    restoreComposerFocus: focusComposer,
   } as const;
 
   if (snapshot.activeView === "settings") {
@@ -2461,6 +2455,7 @@ export default function App() {
           onActiveIndexChange={globalSearch.setActiveIndex}
           onSelect={handleGlobalSearchSelect}
           onClose={globalSearch.close}
+          restoreFocus={focusComposer}
         />
       ) : null}
       {shortcutsSheetOpen ? (
@@ -2504,6 +2499,11 @@ export default function App() {
           onOpenAgents={openAgents}
           onOpenSearch={globalSearch.open}
           threadTypeBySession={snapshot.threadTypeBySession}
+          plans={snapshot.plans}
+          onStartPlan={(planId, modelConfig) => void api.startPlan(planId, modelConfig)}
+          onPausePlan={(planId) => void api.pausePlan(planId)}
+          onCancelPlan={(planId) => void api.cancelPlan(planId)}
+          runtime={rootRuntime}
         />
       )}
 
@@ -2633,6 +2633,7 @@ export default function App() {
                   onJumpToLatest={timelineScroll.jumpToLatest}
                   onContentHeightChange={timelineScroll.handleTimelineContentHeightChange}
                   onViewFileInDiff={handleViewFileInDiff}
+                  onRevealInFinder={handleRevealInFinder}
                   onUndoEdits={settingsHandlers.handleUndoEdits}
                   onRedoEdits={settingsHandlers.handleRedoEdits}
                   onAllUndoOpsChange={handleAllUndoOpsChange}
@@ -2679,8 +2680,6 @@ export default function App() {
               onExecutePlan={handleExecutePlan}
               onPlanSubmitted={handlePlanSubmitted}
               runningLabel={runningLabel}
-              loopControl={loopControl}
-              beginRalphLoop={beginRalphLoop}
               hasSnapshot={Boolean(snapshot)}
               persistedComposerDraft={persistedComposerDraft}
               composerDraftSyncNonce={snapshot?.composerDraftSyncNonce ?? 0}
@@ -2717,27 +2716,6 @@ export default function App() {
             )}
             {activeExtensionDialog ? (
               <ExtensionDialog dialog={activeExtensionDialog} onRespond={handleRespondToExtensionDialog} />
-            ) : null}
-            {ralphLaunch ? (
-              <RalphLaunchDialog
-                planTitle={ralphLaunch.plan.title}
-                runtime={selectedModelRuntime}
-                provider={ralphLaunch.provider}
-                modelId={ralphLaunch.modelId}
-                thinkingLevel={ralphLaunch.thinkingLevel}
-                maxIterations={ralphLaunch.maxIterations}
-                onSetModel={(provider, modelId) =>
-                  setRalphLaunch((prev) => (prev ? { ...prev, provider, modelId } : prev))
-                }
-                onSetThinking={(thinkingLevel) =>
-                  setRalphLaunch((prev) => (prev ? { ...prev, thinkingLevel } : prev))
-                }
-                onSetMaxIterations={(maxIterations) =>
-                  setRalphLaunch((prev) => (prev ? { ...prev, maxIterations } : prev))
-                }
-                onCancel={() => setRalphLaunch(null)}
-                onRun={runRalphLoop}
-              />
             ) : null}
             {treeModalState.open ? (
               <TreeModal
@@ -2796,6 +2774,7 @@ export default function App() {
             name={subagentPanel.name}
             api={api}
             onClose={() => setSubagentPanel(null)}
+            ConversationTimelineComponent={ConversationTimeline}
           />
         ) : null}
         {advisorState.visible ? (

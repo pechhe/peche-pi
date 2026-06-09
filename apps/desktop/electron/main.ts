@@ -21,7 +21,7 @@ import path from "node:path";
 const graphifyWatchProcesses = new Map<string, number>();
 import { pathToFileURL } from "node:url";
 import { DesktopAppStore } from "./app-store";
-import { getChangedFiles, getFileDiff, getWorkspaceGitInfo, redoEdits, stageFile, undoEdits } from "./app-store-diff";
+import { getChangedFiles, getFileDiff, getWorkspaceGitInfo, redoEdits, stageFile, undoEdits } from "./workspace-review";
 import { configureCommitPushLogDir, executeCommitPush } from "./commit-push-service";
 import {
   configurePrLogDir,
@@ -29,7 +29,7 @@ import {
   generatePrDraft,
   getWorkspacePrInfo,
 } from "./pr-service";
-import { listWorkspaceFiles } from "./app-store-files";
+import { listWorkspaceFiles } from "./workspace-review";
 import { MAIN_DEV_RELOAD_MARKER } from "./dev-reload-main-probe";
 import { importLoginShellEnv } from "./login-shell-env";
 import { NotificationManager } from "./notification-manager";
@@ -133,7 +133,7 @@ async function getGraphifyProjectMapStatusForWorkspace(workspaceId: string, work
       currentCommit,
       nodeCount: graph.nodes?.length,
       edgeCount: graph.edges?.length ?? graph.links?.length,
-      communityCount: communityCountFromReport ? Number(communityCountFromReport) : (Array.isArray(graph.communities) ? graph.communities.length : typeof graph.communities === "object" && graph.communities ? Object.keys(graph.communities).length : undefined),
+      communityCount: communityCountFromReport ? Number(communityCountFromReport) : countGraphifyCommunities(graph),
       communities: extractGraphifyCommunities(reportPreview),
       reportPreview,
     };
@@ -150,6 +150,12 @@ async function getGraphifyProjectMapStatusForWorkspace(workspaceId: string, work
       error: error instanceof Error ? error.message : String(error),
     };
   }
+}
+
+function countGraphifyCommunities(graph: { communities?: readonly unknown[] | Record<string, unknown> }): number | undefined {
+  if (Array.isArray(graph.communities)) return graph.communities.length;
+  if (typeof graph.communities === "object" && graph.communities) return Object.keys(graph.communities).length;
+  return undefined;
 }
 
 function extractBuiltCommit(report?: string): string | undefined {
@@ -759,13 +765,16 @@ app.whenReady().then(async () => {
   store.state = { ...store.state, automations: automationStore.getAll() };
   const automationScheduler = new AutomationScheduler({
     store: automationStore,
-    sessionDriver: store.driver,
-    getWorkspaceRef: (workspaceId) => {
-      const state = store.state;
-      const ws = state.workspaces.find((w) => w.id === workspaceId);
-      if (!ws) return undefined;
-      return { workspaceId: ws.id, path: ws.path, displayName: ws.name };
-    },
+    startAutomationThread: (automation) =>
+      store.startAutomationThread({
+        rootWorkspaceId: automation.workspaceId,
+        environment: automation.environment,
+        prompt: automation.prompt,
+        name: automation.name,
+        provider: automation.model?.provider,
+        modelId: automation.model?.modelId,
+        thinkingLevel: automation.thinkingLevel,
+      }),
     onAutomationFired: (_automation, _sessionId) => {
       // Session is already created by the scheduler; store refresh happens via onStateChanged.
     },
@@ -872,6 +881,12 @@ app.whenReady().then(async () => {
         const workspacePath = store.getWorkspacePath(workspaceId);
         if (!workspacePath) throw new Error(`Unknown workspace: ${workspaceId}`);
         await shell.openPath(workspacePath);
+      },
+      showFileInFolder: async (_event: unknown, workspaceId: string, filePath: string) => {
+        const workspacePath = store.getWorkspacePath(workspaceId);
+        if (!workspacePath) throw new Error(`Unknown workspace: ${workspaceId}`);
+        const absolute = path.isAbsolute(filePath) ? filePath : path.join(workspacePath, filePath);
+        shell.showItemInFolder(absolute);
       },
       createWorktree: (_event: unknown, input: CreateWorktreeInput) => store.createWorktree(input),
       removeWorktree: (_event: unknown, input: RemoveWorktreeInput) => store.removeWorktree(input),
@@ -1157,6 +1172,11 @@ app.whenReady().then(async () => {
         await store.writeChatAgentsMd(chatId, content);
       },
 
+      // -- Plan orchestrator --
+      startPlan: async (_event: unknown, planId: string, modelConfig?: { provider?: string; modelId?: string; thinkingLevel?: string }) => store.startPlan(planId, modelConfig),
+      pausePlan: async (_event: unknown, planId: string) => store.pausePlan(planId),
+      cancelPlan: async (_event: unknown, planId: string) => store.cancelPlan(planId),
+
       // -- Handoff / Advisor --
       buildHandoffPayload: async (_event: unknown, input: { workspaceId: string; sessionId: string; scope: string; quotedText?: string; userNote?: string; framing?: string }) => {
         const sessionRef = { workspaceId: input.workspaceId, sessionId: input.sessionId };
@@ -1390,7 +1410,7 @@ app.whenReady().then(async () => {
       },
 
       // -- Automation --
-      automationCreate: async (_event: unknown, input: { name: string; prompt: string; schedule: import("../src/desktop-state.ts").AutomationSchedule; workspaceId: string; model?: { provider: string; modelId: string }; thinkingLevel?: string; enabled?: boolean }) => {
+      automationCreate: async (_event: unknown, input: { name?: string; prompt: string; schedule: import("../src/desktop-state.ts").AutomationSchedule; workspaceId: string; environment?: import("../src/desktop-state.ts").NewThreadEnvironment; model?: { provider: string; modelId: string }; thinkingLevel?: string; enabled?: boolean }) => {
         await automationStore.create(input);
         // Write back into the store's canonical state so later emit() pushes
         // (from session events etc.) don't clobber the renderer with a stale

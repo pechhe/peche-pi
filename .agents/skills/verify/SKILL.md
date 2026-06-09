@@ -57,6 +57,20 @@ Do not add IPC/state shortcuts for visible behavior unless the product surface d
 For other packages, inspect the nearest `package.json`, test config, and path-scoped instructions.
 Prefer package-local typecheck and test commands over repo-wide sweeps when the change is narrow.
 
+## Visual Validation (Frontend Changes)
+
+When changed files affect visible UI (renderer, components, styles, layouts),
+consider visual validation in addition to automated tests:
+
+1. Start the dev server if needed (`pnpm dev` or equivalent).
+2. Use `agent-browser` to navigate to the relevant page/route.
+3. Screenshot the affected area and inspect for regressions.
+4. Compare against expected behavior described in the change.
+
+This complements — does not replace — the Electron test lanes above.
+Use when: layout changes, new components, CSS tweaks, responsive behavior,
+or when automated tests don't cover the visual surface.
+
 ## What To Report
 
 - Exact commands run

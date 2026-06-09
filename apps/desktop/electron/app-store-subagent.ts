@@ -41,6 +41,22 @@ function getSubagentGlobalAgentsDir(): string {
   return join(process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent"), "agents");
 }
 
+function parseBoolField(fields: Map<string, string>, key: string): boolean | undefined {
+  const val = fields.get(key);
+  if (val === "true") return true;
+  if (val === "false") return false;
+  return undefined;
+}
+
+function optionalBool(value: boolean | undefined, key: string): Record<string, boolean> {
+  return value !== undefined ? { [key]: value } : {};
+}
+
+function optionalStr(fields: Map<string, string>, key: string): Record<string, string> {
+  const v = fields.get(key);
+  return v ? { [key]: v } : {};
+}
+
 function parseSubagentAgentFile(filePath: string, raw: string, scope: "project" | "global"): SubagentAgentRecord {
   const nameFromFile = basename(filePath, ".md");
   const frontmatter = raw.match(/^---\n([\s\S]*?)\n---\n?/);
@@ -58,19 +74,23 @@ function parseSubagentAgentFile(filePath: string, raw: string, scope: "project" 
     ?.split(",")
     .map((tool) => tool.trim())
     .filter(Boolean);
+  const enabled = parseBoolField(fields, "enabled");
+  const isAsync = parseBoolField(fields, "async");
+  const autoExit = parseBoolField(fields, "auto-exit");
+  const allowModelOverride = parseBoolField(fields, "allow-model-override");
   return {
     id: filePath,
     name: fields.get("name") || nameFromFile,
-    ...(fields.get("description") ? { description: fields.get("description") } : {}),
-    ...(fields.get("model") ? { model: fields.get("model") } : {}),
-    ...(fields.get("thinking") ? { thinking: fields.get("thinking") } : {}),
+    ...optionalStr(fields, "description"),
+    ...optionalStr(fields, "model"),
+    ...optionalStr(fields, "thinking"),
     ...(tools && tools.length > 0 ? { tools } : {}),
-    ...(fields.get("enabled") === "true" ? { enabled: true } : fields.get("enabled") === "false" ? { enabled: false } : {}),
+    ...optionalBool(enabled, "enabled"),
     ...(mode === "interactive" || mode === "background" ? { mode } : {}),
-    ...(fields.get("async") === "true" ? { async: true } : fields.get("async") === "false" ? { async: false } : {}),
-    ...(fields.get("auto-exit") === "true" ? { autoExit: true } : fields.get("auto-exit") === "false" ? { autoExit: false } : {}),
+    ...optionalBool(isAsync, "async"),
+    ...optionalBool(autoExit, "autoExit"),
     ...(sessionMode === "standalone" || sessionMode === "lineage-only" || sessionMode === "fork" ? { sessionMode } : {}),
-    ...(fields.get("allow-model-override") === "true" ? { allowModelOverride: true } : fields.get("allow-model-override") === "false" ? { allowModelOverride: false } : {}),
+    ...optionalBool(allowModelOverride, "allowModelOverride"),
     ...(systemPromptMode === "replace" || systemPromptMode === "append" || systemPromptMode === "prepend" ? { systemPromptMode } : {}),
     filePath,
     scope,

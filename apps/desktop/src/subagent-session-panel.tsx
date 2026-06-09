@@ -12,7 +12,7 @@
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import type { PiDesktopApi } from "./ipc";
 import type { TranscriptMessage } from "./timeline-types";
-import { ConversationTimeline } from "./conversation-timeline";
+import type { ConversationTimeline } from "./conversation-timeline";
 import { useThreadSearch } from "./hooks/use-thread-search";
 import { subagentEntriesToTranscript } from "./subagent-session-converter";
 import { CloseIcon } from "./icons";
@@ -44,9 +44,10 @@ interface SubagentSessionPanelProps {
   readonly name: string;
   readonly api: PiDesktopApi;
   readonly onClose: () => void;
+  readonly ConversationTimelineComponent: typeof ConversationTimeline;
 }
 
-export function SubagentSessionPanel({ sessionFile, name, api, onClose }: SubagentSessionPanelProps) {
+export function SubagentSessionPanel({ sessionFile, name, api, onClose, ConversationTimelineComponent }: SubagentSessionPanelProps) {
   const [transcript, setTranscript] = useState<readonly TranscriptMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const paneRef = useRef<HTMLDivElement | null>(null);
@@ -87,7 +88,7 @@ export function SubagentSessionPanel({ sessionFile, name, api, onClose }: Subage
         </button>
       </div>
       <div className="subagent-session-panel__body">
-        <ConversationTimeline
+        <ConversationTimelineComponent
           transcript={transcript}
           isTranscriptLoading={loading && transcript.length === 0}
           timelinePaneRef={paneRef}

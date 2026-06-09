@@ -126,6 +126,7 @@ const desktopIpc = {
   removeWorkspace: "pi-gui:remove-workspace",
   reorderWorkspaces: "pi-gui:reorder-workspaces",
   openWorkspaceInFinder: "pi-gui:open-workspace-in-finder",
+  showFileInFolder: "pi-gui:show-file-in-folder",
   createWorktree: "pi-gui:create-worktree",
   removeWorktree: "pi-gui:remove-worktree",
   openSkillInFinder: "pi-gui:open-skill-in-finder",
@@ -207,6 +208,8 @@ const desktopIpc = {
   getSessionTree: "pi-gui:get-session-tree",
   navigateSessionTree: "pi-gui:navigate-session-tree",
   toggleWindowMaximize: "pi-gui:toggle-window-maximize",
+  openOverlay: "pi-gui:open-overlay",
+  closeOverlay: "pi-gui:close-overlay",
   listWorkspaceFiles: "pi-gui:list-workspace-files",
   getChangedFiles: "pi-gui:get-changed-files",
   getWorkspaceGitInfo: "pi-gui:get-workspace-git-info",
@@ -225,6 +228,9 @@ const desktopIpc = {
   renameChat: "pi-gui:rename-chat",
   getChatAgentsMd: "pi-gui:get-chat-agents-md",
   writeChatAgentsMd: "pi-gui:write-chat-agents-md",
+  startPlan: "pi-gui:start-plan",
+  pausePlan: "pi-gui:pause-plan",
+  cancelPlan: "pi-gui:cancel-plan",
   generatePrDraft: "pi-gui:generate-pr-draft",
   prCreate: "pi-gui:pr-create",
   getContextSnapshot: "pi-gui:get-context-snapshot",
@@ -287,6 +293,8 @@ export const desktopIpcContracts: readonly IpcContractEntry[] = [
 
   // -- Window --
   { methodName: "toggleWindowMaximize", channel: desktopIpc.toggleWindowMaximize, direction: "renderer-to-main", kind: "invoke", adapter: "window" },
+  { methodName: "openOverlay", channel: desktopIpc.openOverlay, direction: "renderer-to-main", kind: "invoke", adapter: "window" },
+  { methodName: "closeOverlay", channel: desktopIpc.closeOverlay, direction: "renderer-to-main", kind: "invoke", adapter: "window" },
 
   // -- Theme --
   { methodName: "getThemeMode", channel: desktopIpc.getThemeMode, direction: "renderer-to-main", kind: "invoke", adapter: "theme" },
@@ -313,6 +321,7 @@ export const desktopIpcContracts: readonly IpcContractEntry[] = [
   { methodName: "removeWorkspace", channel: desktopIpc.removeWorkspace, direction: "renderer-to-main", kind: "invoke", adapter: "workspace" },
   { methodName: "reorderWorkspaces", channel: desktopIpc.reorderWorkspaces, direction: "renderer-to-main", kind: "invoke", adapter: "workspace" },
   { methodName: "openWorkspaceInFinder", channel: desktopIpc.openWorkspaceInFinder, direction: "renderer-to-main", kind: "invoke", adapter: "workspace" },
+  { methodName: "showFileInFolder", channel: desktopIpc.showFileInFolder, direction: "renderer-to-main", kind: "invoke", adapter: "workspace" },
   { methodName: "createWorktree", channel: desktopIpc.createWorktree, direction: "renderer-to-main", kind: "invoke", adapter: "workspace" },
   { methodName: "removeWorktree", channel: desktopIpc.removeWorktree, direction: "renderer-to-main", kind: "invoke", adapter: "workspace" },
   { methodName: "openSkillInFinder", channel: desktopIpc.openSkillInFinder, direction: "renderer-to-main", kind: "invoke", adapter: "workspace" },
@@ -461,6 +470,11 @@ export const desktopIpcContracts: readonly IpcContractEntry[] = [
   { methodName: "renameChat", channel: desktopIpc.renameChat, direction: "renderer-to-main", kind: "invoke", adapter: "chat" },
   { methodName: "getChatAgentsMd", channel: desktopIpc.getChatAgentsMd, direction: "renderer-to-main", kind: "invoke", adapter: "chat" },
   { methodName: "writeChatAgentsMd", channel: desktopIpc.writeChatAgentsMd, direction: "renderer-to-main", kind: "invoke", adapter: "chat" },
+
+  // -- Plan Orchestrator --
+  { methodName: "startPlan", channel: desktopIpc.startPlan, direction: "renderer-to-main", kind: "invoke", adapter: "chat" },
+  { methodName: "pausePlan", channel: desktopIpc.pausePlan, direction: "renderer-to-main", kind: "invoke", adapter: "chat" },
+  { methodName: "cancelPlan", channel: desktopIpc.cancelPlan, direction: "renderer-to-main", kind: "invoke", adapter: "chat" },
 
   // -- Handoff / Advisor --
   { methodName: "buildHandoffPayload", channel: desktopIpc.buildHandoffPayload, direction: "renderer-to-main", kind: "invoke", adapter: "session" },

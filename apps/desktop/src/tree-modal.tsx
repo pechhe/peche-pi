@@ -170,38 +170,24 @@ export function TreeModal({
     }
 
     const currentIndex = Math.max(0, displayRows.findIndex((row) => row.node.id === selectedId));
-    if (event.key === "ArrowDown") {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
       cancelAutoScroll();
-      setSelectedId(displayRows[Math.min(displayRows.length - 1, currentIndex + 1)]?.node.id ?? selectedId);
-      return;
-    }
-    if (event.key === "ArrowUp") {
-      event.preventDefault();
-      cancelAutoScroll();
-      setSelectedId(displayRows[Math.max(0, currentIndex - 1)]?.node.id ?? selectedId);
+      const nextIndex = event.key === "ArrowDown"
+        ? Math.min(displayRows.length - 1, currentIndex + 1)
+        : Math.max(0, currentIndex - 1);
+      setSelectedId(displayRows[nextIndex]?.node.id ?? selectedId);
       return;
     }
     if (
-      event.key === "ArrowLeft" &&
+      (event.key === "ArrowLeft" || event.key === "ArrowRight") &&
       !searching &&
       selectedRow?.hasChildren &&
-      selectedRow.expanded
+      selectedRow.expanded === (event.key === "ArrowLeft")
     ) {
       event.preventDefault();
       cancelAutoScroll();
-      setExpandedIds((current) => ({ ...current, [selectedRow.node.id]: false }));
-      return;
-    }
-    if (
-      event.key === "ArrowRight" &&
-      !searching &&
-      selectedRow?.hasChildren &&
-      !selectedRow.expanded
-    ) {
-      event.preventDefault();
-      cancelAutoScroll();
-      setExpandedIds((current) => ({ ...current, [selectedRow.node.id]: true }));
+      setExpandedIds((current) => ({ ...current, [selectedRow.node.id]: event.key === "ArrowRight" }));
       return;
     }
     if (event.key === "Enter") {
@@ -731,25 +717,22 @@ function buildTreePrefix(row: TreeRow): string {
   return chars.join("");
 }
 
+const ROLE_DISPLAY: Record<string, { prefix: string; fallback: string }> = {
+  user: { prefix: "user", fallback: "(empty)" },
+  assistant: { prefix: "assistant", fallback: "(no content)" },
+  bashExecution: { prefix: "[bash]", fallback: "(no command)" },
+  branchSummary: { prefix: "[branch summary]", fallback: "(empty)" },
+  compactionSummary: { prefix: "[compaction]", fallback: "(empty)" },
+};
+
 function formatTreeNodeDisplayText(node: SessionTreeNodeSnapshot): string {
   switch (node.kind) {
-    case "message":
-      switch (node.role) {
-        case "user":
-          return `user: ${node.preview ?? "(empty)"}`;
-        case "assistant":
-          return `assistant: ${node.preview ?? "(no content)"}`;
-        case "toolResult":
-          return node.preview ?? "[tool]";
-        case "bashExecution":
-          return `[bash]: ${node.preview ?? "(no command)"}`;
-        case "branchSummary":
-          return `[branch summary]: ${node.preview ?? "(empty)"}`;
-        case "compactionSummary":
-          return `[compaction]: ${node.preview ?? "(empty)"}`;
-        default:
-          return `[${node.role ?? "message"}]${node.preview ? ` ${node.preview}` : ""}`;
-      }
+    case "message": {
+      if (node.role === "toolResult") return node.preview ?? "[tool]";
+      const entry = ROLE_DISPLAY[node.role ?? ""];
+      if (entry) return `${entry.prefix}: ${node.preview ?? entry.fallback}`;
+      return `[${node.role ?? "message"}]${node.preview ? ` ${node.preview}` : ""}`;
+    }
     case "custom_message":
       return `[${node.customType ?? "custom"}]: ${node.preview ?? "(empty)"}`;
     case "compaction":

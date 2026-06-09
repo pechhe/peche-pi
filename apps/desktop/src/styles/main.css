@@ -974,6 +974,7 @@ body.pi-thread-handoff .timeline-item--just-sent .timeline-item__bubble {
   gap: 6px;
   max-width: 760px;
   color: var(--muted-soft);
+  contain: content;
 }
 
 .timeline-thinking__header {
@@ -1213,6 +1214,28 @@ body.pi-thread-handoff .timeline-item--just-sent .timeline-item__bubble {
   flex-shrink: 0;
 }
 
+.timeline-edited-files__row-wrapper {
+  display: flex;
+  align-items: center;
+}
+
+.timeline-edited-files__row-wrapper .timeline-edited-files__row {
+  flex: 1;
+  min-width: 0;
+}
+
+.timeline-edited-files__reveal {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  margin-right: 8px;
+  color: var(--muted-soft);
+}
+
+.timeline-edited-files__reveal:hover {
+  color: var(--ink);
+}
+
 .timeline-activity--error {
   color: var(--error-ink);
 }
@@ -1330,6 +1353,17 @@ body.pi-thread-handoff .timeline-item--just-sent .timeline-item__bubble {
 }
 
 .timeline-tool__view-in-diff:hover {
+  color: var(--ink);
+}
+
+.timeline-tool__reveal-in-finder {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  color: var(--muted-soft);
+}
+
+.timeline-tool__reveal-in-finder:hover {
   color: var(--ink);
 }
 
@@ -2261,8 +2295,19 @@ body.pi-thread-handoff .timeline-item--just-sent .timeline-item__bubble {
 .message__content {
   color: var(--text-strong);
   display: grid;
+  /* minmax(0, 1fr) lets the single column shrink below its content size.
+   * Without it the implicit track sizes to the widest child (a <pre> with a
+   * long unbroken line), blowing the whole message column wide. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 9px;
   line-height: 1.65;
+}
+
+/* Grid items default to min-width:auto and refuse to shrink below content
+ * width, so a long code line forces horizontal overflow on the column.
+ * min-width:0 lets the <pre>'s own overflow:auto scroll kick in instead. */
+.message__content > * {
+  min-width: 0;
 }
 
 /* Streaming variant: markdown-parsed text + inline caret, so we override
@@ -2419,6 +2464,78 @@ body.pi-thread-handoff .timeline-item--just-sent .timeline-item__bubble {
 
 .message__content pre code {
   color: inherit;
+}
+
+/* Code block with copy button */
+
+.code-block {
+  position: relative;
+}
+
+.code-block pre {
+  margin: 0;
+}
+
+.code-block__copy {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: none;
+  background: rgba(255, 255, 255, 0.7);
+  color: #5a6580;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.code-block:hover .code-block__copy {
+  opacity: 1;
+}
+
+.code-block__copy:hover {
+  background: rgba(255, 255, 255, 0.95);
+  color: #25304a;
+}
+
+:root.dark .code-block__copy {
+  background: rgba(0, 0, 0, 0.4);
+  color: #a0a8c0;
+}
+
+:root.dark .code-block__copy:hover {
+  background: rgba(0, 0, 0, 0.65);
+  color: #e4e4e7;
+}
+
+/* Assistant message copy button */
+
+.timeline-item--assistant {
+  position: relative;
+}
+
+.timeline-item__copy {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  color: var(--muted-soft);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.timeline-item--assistant:hover .timeline-item__copy {
+  opacity: 1;
+}
+
+.timeline-item__copy:hover {
+  color: var(--ink-strong);
 }
 
 .message__content blockquote {
@@ -8325,65 +8442,7 @@ mark.thread-find-active {
   box-shadow: none;
 }
 
-/* Locked Ralph loop thread: control bar replacing the composer. */
-.composer--loop {
-  padding: 12px 16px;
-}
 
-.loop-control-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 14px 16px;
-  border-radius: 16px;
-  border: 1px solid #dfe4ee;
-  background: #f8f9fc;
-}
-
-.loop-control-bar__status {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.loop-control-bar__title {
-  font-size: 13px;
-  font-weight: 640;
-  color: var(--text-strong);
-}
-
-.loop-control-bar__detail {
-  font-size: 13px;
-  color: var(--muted-strong);
-}
-
-.loop-control-bar__hint {
-  font-size: 12px;
-  color: var(--muted-soft);
-}
-
-.loop-control-bar__actions {
-  display: inline-flex;
-  gap: 8px;
-  flex-shrink: 0;
-}
-
-.loop-control-bar__button {
-  padding: 8px 14px;
-  border-radius: 999px;
-  border: 1px solid #cfd7ea;
-  background: #eef2ff;
-  color: var(--text-strong);
-  font-size: 13px;
-  font-weight: 560;
-  cursor: pointer;
-}
-
-.loop-control-bar__button:hover {
-  background: #e2e8ff;
-}
 
 /* Ralph loop launch dialog fields. */
 .ralph-launch__field {
@@ -8409,27 +8468,7 @@ mark.thread-find-active {
   font-size: 13px;
 }
 
-/* "Begin Ralph loop" banner above the composer when a plan is ready. */
-.composer__begin-loop {
-  display: flex;
-  justify-content: center;
-  margin: 0 0 10px;
-}
 
-.composer__begin-loop-button {
-  padding: 8px 18px;
-  border-radius: 999px;
-  border: none;
-  background: var(--accent, #4f46e5);
-  color: #fff;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.composer__begin-loop-button:hover {
-  filter: brightness(1.05);
-}
 
 /* ── pi-subagents: inline tool cards (B) ───────────────────────────── */
 /* Per-agent-type identity. `--sa-accent` keys the colour ramp; the default

@@ -91,36 +91,56 @@ export function useTimelineScroll({
     pendingPinnedBottomBehaviorRef.current = "auto";
   }, []);
 
+  // Coalesce multiple scroll-to-bottom requests per frame into a single
+  // rAF callback. During streaming, content height changes fire
+  // handleTimelineContentHeightChange many times per frame; without
+  // coalescing, each call starts its own 6-frame rAF alignment loop and
+  // they fight each other — visible as high-frequency scroll oscillation.
+  const scrollPendingRef = useRef(false);
+
+  const flushScrollToBottom = useCallback(() => {
+    scrollPendingRef.current = false;
+    const pane = timelinePaneRef.current;
+    if (!pane) return;
+
+    pane.scrollTop = pane.scrollHeight;
+    pinnedToBottomRef.current = true;
+    lastTimelineScrollTopBySessionRef.current.set(selectedSessionKey, pane.scrollTop);
+    lastTimelinePinnedBySessionRef.current.set(selectedSessionKey, true);
+    setShowJumpToLatest(false);
+
+    // One follow-up frame to catch late layout (e.g. ResizeObserver settling).
+    window.requestAnimationFrame(() => {
+      if (!pinnedToBottomRef.current && !preserveBottomOnNextPaneResizeRef.current) return;
+      const remaining = pane.scrollHeight - pane.scrollTop - pane.clientHeight;
+      if (remaining > 1) {
+        pane.scrollTop = pane.scrollHeight;
+      }
+    });
+  }, [selectedSessionKey]);
+
   const scrollTimelineToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
     const pane = timelinePaneRef.current;
     if (!pane) return;
 
-    const align = (remainingChecks: number) => {
-      if (behavior === "auto") {
-        pane.scrollTop = pane.scrollHeight;
-      } else {
-        pane.scrollTo({ top: pane.scrollHeight, behavior });
+    if (behavior === "auto") {
+      // Coalesce: schedule one rAF flush regardless of how many callers
+      // request a scroll-to-bottom this frame.
+      if (!scrollPendingRef.current) {
+        scrollPendingRef.current = true;
+        window.requestAnimationFrame(flushScrollToBottom);
       }
-      pinnedToBottomRef.current = true;
-      lastTimelineScrollTopBySessionRef.current.set(selectedSessionKey, pane.scrollTop);
-      lastTimelinePinnedBySessionRef.current.set(selectedSessionKey, true);
-      setShowJumpToLatest(false);
+      return;
+    }
 
-      if (remainingChecks <= 0) return;
-
-      window.requestAnimationFrame(() => {
-        if (!pinnedToBottomRef.current && !preserveBottomOnNextPaneResizeRef.current) {
-          return;
-        }
-        const remaining = pane.scrollHeight - pane.scrollTop - pane.clientHeight;
-        if (remaining > 1 || remainingChecks > 1) {
-          align(remainingChecks - 1);
-        }
-      });
-    };
-
-    align(6);
-  }, [selectedSessionKey]);
+    // Smooth scroll (e.g. "Jump to latest" button): do it immediately, no
+    // coalescing — the user explicitly requested this.
+    pane.scrollTo({ top: pane.scrollHeight, behavior });
+    pinnedToBottomRef.current = true;
+    lastTimelineScrollTopBySessionRef.current.set(selectedSessionKey, pane.scrollTop);
+    lastTimelinePinnedBySessionRef.current.set(selectedSessionKey, true);
+    setShowJumpToLatest(false);
+  }, [selectedSessionKey, flushScrollToBottom]);
 
   const requestPinnedBottomAlignment = useCallback((
     behavior: ScrollBehavior = "auto",

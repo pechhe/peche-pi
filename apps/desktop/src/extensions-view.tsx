@@ -50,13 +50,45 @@ export function ExtensionsView({
   const [autoAnalyze, setAutoAnalyze] = useState(true);
   const [analysisModel, setAnalysisModel] = useState(defaultAnalysisModel);
   const extensions = useMemo(() => runtime?.extensions ?? [], [runtime?.extensions]);
+
+  // Merge extensions from the same source (e.g. npm package with commands + tools entry points)
+  const mergedExtensions = useMemo(() => {
+    const bySource = new Map<string, RuntimeExtensionRecord[]>();
+    for (const ext of extensions) {
+      const key = ext.sourceInfo.source || ext.path;
+      const group = bySource.get(key);
+      if (group) {
+        group.push(ext);
+      } else {
+        bySource.set(key, [ext]);
+      }
+    }
+    return [...bySource.values()].flatMap((group) => {
+      if (group.length === 0) return [];
+      if (group.length === 1) return [group[0]!];
+      // Merge: use first entry as base, combine commands/tools/flags/shortcuts/diagnostics
+      const primary = group[0]!;
+      return [{
+        path: primary.path,
+        displayName: primary.displayName,
+        enabled: primary.enabled,
+        sourceInfo: primary.sourceInfo,
+        commands: [...new Set(group.flatMap((e) => e.commands))].sort(),
+        tools: [...new Set(group.flatMap((e) => e.tools))].sort(),
+        flags: [...new Set(group.flatMap((e) => e.flags))].sort(),
+        shortcuts: [...new Set(group.flatMap((e) => e.shortcuts))].sort(),
+        diagnostics: group.flatMap((e) => e.diagnostics),
+      } satisfies RuntimeExtensionRecord];
+    });
+  }, [extensions]);
+
   const filteredExtensions = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     if (!normalized) {
-      return extensions;
+      return mergedExtensions;
     }
 
-    return extensions.filter((extension) =>
+    return mergedExtensions.filter((extension) =>
       [
         extension.displayName,
         extension.path,
@@ -70,7 +102,7 @@ export function ExtensionsView({
         ...extension.diagnostics.map((diagnostic) => diagnostic.message),
       ].some((value) => value.toLowerCase().includes(normalized)),
     );
-  }, [extensions, query]);
+  }, [mergedExtensions, query]);
   const globalExtensions = useMemo(
     () => filteredExtensions.filter((extension) => extension.sourceInfo.scope === "user"),
     [filteredExtensions],

@@ -11,8 +11,8 @@ import type {
   WorkspaceRecord,
   WorkspaceSessionTarget,
 } from "../src/desktop-state.ts";
-import { isMetaActivity } from "../src/timeline-grouping.ts";
-import { listRalphPlans } from "./ralph-plans.ts";
+import { isMetaActivity } from "../src/timeline-model.ts";
+
 
 const _LEGACY_TRANSCRIPT_HISTORY_LIMIT = 180;
 
@@ -47,7 +47,7 @@ export function buildWorkspaceRecords(
             branchName: linkedWorktreeBranchName(workspace, worktrees, rootWorkspaceId),
           }
         : {}),
-      ralphPlans: listRalphPlans(workspace.path),
+
       sessions: sessions
         .filter((session) => session.workspaceId === workspace.workspaceId)
         .map((session) =>

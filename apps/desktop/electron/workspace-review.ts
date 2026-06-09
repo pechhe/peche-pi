@@ -7,6 +7,7 @@
  * use fakes. Path validation is centralized at the privileged seam.
  */
 
+import { execFile } from "node:child_process";
 import path from "node:path";
 import type { UndoEditOp, UndoEditsResult } from "../src/ipc";
 
@@ -102,8 +103,6 @@ export interface WorkspaceReviewModule {
 // ---------------------------------------------------------------------------
 // Default git adapter (real git via child_process)
 // ---------------------------------------------------------------------------
-
-import { execFile } from "node:child_process";
 
 export const defaultGitAdapter: GitAdapter = {
   async execGit(args, cwd) {
@@ -298,4 +297,59 @@ async function applyEditReplacements(
   }
   await fsWriteFile(absolute, content, "utf8");
   return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Singleton convenience re-exports (used by main.ts)
+// ---------------------------------------------------------------------------
+
+const _defaultReview = createWorkspaceReviewModule();
+
+export const getWorkspaceGitInfo = (workspacePath: string) => _defaultReview.getWorkspaceGitInfo(workspacePath);
+export const getChangedFiles = (workspacePath: string) => _defaultReview.getChangedFiles(workspacePath);
+export const getFileDiff = (workspacePath: string, filePath: string) => _defaultReview.getFileDiff(workspacePath, filePath);
+export const stageFile = (workspacePath: string, filePath: string) => _defaultReview.stageFile(workspacePath, filePath);
+export const undoEdits = (workspacePath: string, ops: readonly UndoEditOp[]) => _defaultReview.undoEdits(workspacePath, ops);
+export const redoEdits = (workspacePath: string, ops: readonly UndoEditOp[]) => _defaultReview.redoEdits(workspacePath, ops);
+
+// ---------------------------------------------------------------------------
+// Workspace file listing (migrated from app-store-files.ts)
+// ---------------------------------------------------------------------------
+
+const _fileCache = new Map<string, { files: string[]; timestamp: number }>();
+const _CACHE_TTL_MS = 30_000;
+const _CACHE_MAX_ENTRIES = 20;
+
+export function listWorkspaceFiles(workspacePath: string): Promise<string[]> {
+  const cached = _fileCache.get(workspacePath);
+  if (cached && Date.now() - cached.timestamp < _CACHE_TTL_MS) {
+    return Promise.resolve(cached.files);
+  }
+
+  return new Promise((resolve) => {
+    execFile(
+      "git",
+      ["ls-files", "--cached", "--others", "--exclude-standard"],
+      { cwd: workspacePath, maxBuffer: 5 * 1024 * 1024 },
+      (error, stdout) => {
+        if (error) {
+          resolve([]);
+          return;
+        }
+        const files = stdout
+          .split("\n")
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .sort();
+        if (_fileCache.size >= _CACHE_MAX_ENTRIES) {
+          const oldest = _fileCache.keys().next().value;
+          if (oldest !== undefined) {
+            _fileCache.delete(oldest);
+          }
+        }
+        _fileCache.set(workspacePath, { files, timestamp: Date.now() });
+        resolve(files);
+      },
+    );
+  });
 }

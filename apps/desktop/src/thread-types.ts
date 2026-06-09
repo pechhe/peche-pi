@@ -23,7 +23,7 @@ const THREAD_TYPE_META: Record<ThreadType, ThreadTypeMeta> = {
   other:     { label: "Other",      hue: 220, saturation: 10, lightness: 55 },
 };
 
-export function threadTypeMeta(type: ThreadType): ThreadTypeMeta {
+function threadTypeMeta(type: ThreadType): ThreadTypeMeta {
   return THREAD_TYPE_META[type] ?? THREAD_TYPE_META.other;
 }
 
@@ -45,4 +45,4 @@ export function parseThreadType(raw: string): ThreadType {
 }
 
 /** All valid thread type keys, for validation / UI pickers. */
-export const ALL_THREAD_TYPES: readonly ThreadType[] = ["bug", "feature", "refactor", "investigate", "other"];
+const ALL_THREAD_TYPES: readonly ThreadType[] = ["bug", "feature", "refactor", "investigate", "other"];

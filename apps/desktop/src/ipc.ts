@@ -59,6 +59,7 @@ export const desktopIpc = {
   removeWorkspace: "pi-gui:remove-workspace",
   reorderWorkspaces: "pi-gui:reorder-workspaces",
   openWorkspaceInFinder: "pi-gui:open-workspace-in-finder",
+  showFileInFolder: "pi-gui:show-file-in-folder",
   createWorktree: "pi-gui:create-worktree",
   removeWorktree: "pi-gui:remove-worktree",
   openSkillInFinder: "pi-gui:open-skill-in-finder",
@@ -160,6 +161,9 @@ export const desktopIpc = {
   getWorkspacePrInfo: "pi-gui:get-workspace-pr-info",
   startChat: "pi-gui:start-chat",
   selectChat: "pi-gui:select-chat",
+  startPlan: "pi-gui:start-plan",
+  pausePlan: "pi-gui:pause-plan",
+  cancelPlan: "pi-gui:cancel-plan",
   archiveChat: "pi-gui:archive-chat",
   unarchiveChat: "pi-gui:unarchive-chat",
   removeChat: "pi-gui:remove-chat",
@@ -241,6 +245,7 @@ export const piDesktopApiIpcBridge = {
   removeWorkspace: { kind: "invoke", channel: desktopIpc.removeWorkspace },
   reorderWorkspaces: { kind: "invoke", channel: desktopIpc.reorderWorkspaces },
   openWorkspaceInFinder: { kind: "invoke", channel: desktopIpc.openWorkspaceInFinder },
+  showFileInFolder: { kind: "invoke", channel: desktopIpc.showFileInFolder },
   createWorktree: { kind: "invoke", channel: desktopIpc.createWorktree },
   removeWorktree: { kind: "invoke", channel: desktopIpc.removeWorktree },
   openSkillInFinder: { kind: "invoke", channel: desktopIpc.openSkillInFinder },
@@ -364,6 +369,9 @@ export const piDesktopApiIpcBridge = {
   automationFireNow: { kind: "invoke", channel: desktopIpc.automationFireNow },
   startChat: { kind: "invoke", channel: desktopIpc.startChat },
   selectChat: { kind: "invoke", channel: desktopIpc.selectChat },
+  startPlan: { kind: "invoke", channel: desktopIpc.startPlan },
+  pausePlan: { kind: "invoke", channel: desktopIpc.pausePlan },
+  cancelPlan: { kind: "invoke", channel: desktopIpc.cancelPlan },
   archiveChat: { kind: "invoke", channel: desktopIpc.archiveChat },
   unarchiveChat: { kind: "invoke", channel: desktopIpc.unarchiveChat },
   removeChat: { kind: "invoke", channel: desktopIpc.removeChat },
@@ -436,54 +444,26 @@ export interface DesktopShortcutInput {
   readonly code?: string;
 }
 
+const shortcutTable: ReadonlyArray<{
+  readonly shift: boolean;
+  readonly match: (input: DesktopShortcutInput) => boolean;
+  readonly command: PiDesktopCommand;
+}> = [
+  { shift: false, match: (i) => i.key === "," || i.code === "Comma", command: desktopCommands.openSettings },
+  { shift: false, match: (i) => i.key.toLowerCase() === "j" || i.code === "KeyJ", command: desktopCommands.toggleTerminal },
+  { shift: false, match: (i) => i.key.toLowerCase() === "s" || i.code === "KeyS", command: desktopCommands.toggleSidebar },
+  { shift: false, match: (i) => i.key.toLowerCase() === "n" || i.code === "KeyN", command: desktopCommands.openNewThread },
+  { shift: true, match: (i) => i.key.toLowerCase() === "o" || i.code === "KeyO", command: desktopCommands.openNewThread },
+  { shift: true, match: (i) => i.key.toLowerCase() === "k" || i.code === "KeyK", command: desktopCommands.commitAndPush },
+  { shift: false, match: (i) => i.key.toLowerCase() === "b" || i.code === "KeyB", command: desktopCommands.setBuildMode },
+  { shift: false, match: (i) => i.key.toLowerCase() === "p" || i.code === "KeyP", command: desktopCommands.setPlanMode },
+];
+
 export function getDesktopCommandFromShortcut(input: DesktopShortcutInput): PiDesktopCommand | undefined {
-  if (!input.modifier) {
-    return undefined;
+  if (!input.modifier) return undefined;
+  for (const entry of shortcutTable) {
+    if (entry.shift === input.shift && entry.match(input)) return entry.command;
   }
-
-  const lowerKey = input.key.toLowerCase();
-  const isComma = input.key === "," || input.code === "Comma";
-  const isS = lowerKey === "s" || input.code === "KeyS";
-  const isJ = lowerKey === "j" || input.code === "KeyJ";
-  const isN = lowerKey === "n" || input.code === "KeyN";
-  const isShiftO = input.shift && (lowerKey === "o" || input.code === "KeyO");
-  const isShiftK = input.shift && (lowerKey === "k" || input.code === "KeyK");
-
-  if (!input.shift && isComma) {
-    return desktopCommands.openSettings;
-  }
-
-  if (!input.shift && isJ) {
-    return desktopCommands.toggleTerminal;
-  }
-
-  if (!input.shift && isS) {
-    return desktopCommands.toggleSidebar;
-  }
-
-  if (!input.shift && isN) {
-    return desktopCommands.openNewThread;
-  }
-
-  if (isShiftO) {
-    return desktopCommands.openNewThread;
-  }
-
-  if (isShiftK) {
-    return desktopCommands.commitAndPush;
-  }
-
-  const isB = lowerKey === "b" || input.code === "KeyB";
-  const isP = lowerKey === "p" || input.code === "KeyP";
-
-  if (!input.shift && isB) {
-    return desktopCommands.setBuildMode;
-  }
-
-  if (!input.shift && isP) {
-    return desktopCommands.setPlanMode;
-  }
-
   return undefined;
 }
 
@@ -737,6 +717,7 @@ export interface PiDesktopApi {
   removeWorkspace(workspaceId: string): Promise<DesktopAppState>;
   reorderWorkspaces(workspaceOrder: readonly string[]): Promise<DesktopAppState>;
   openWorkspaceInFinder(workspaceId: string): Promise<void>;
+  showFileInFolder(workspaceId: string, filePath: string): Promise<void>;
   createWorktree(input: CreateWorktreeInput): Promise<DesktopAppState>;
   removeWorktree(input: RemoveWorktreeInput): Promise<DesktopAppState>;
   openSkillInFinder(workspaceId: string, filePath: string): Promise<void>;
@@ -875,6 +856,9 @@ export interface PiDesktopApi {
   getWorkspacePrInfo(workspaceId: string): Promise<WorkspacePrInfo>;
   startChat(input: StartChatInput): Promise<DesktopAppState>;
   selectChat(chatId: string): Promise<DesktopAppState>;
+  startPlan(planId: string, modelConfig?: { provider?: string; modelId?: string; thinkingLevel?: string }): Promise<DesktopAppState>;
+  pausePlan(planId: string): Promise<DesktopAppState>;
+  cancelPlan(planId: string): Promise<DesktopAppState>;
   archiveChat(chatId: string): Promise<DesktopAppState>;
   unarchiveChat(chatId: string): Promise<DesktopAppState>;
   removeChat(chatId: string): Promise<DesktopAppState>;
@@ -898,8 +882,8 @@ export interface PiDesktopApi {
   getSessionTranscript(workspaceId: string, sessionId: string): Promise<readonly TranscriptMessage[]>;
   getSubagentSessionEntries(sessionFilePath: string): Promise<readonly unknown[]>;
   searchTranscriptText(sessionKeys: readonly string[], query: string): Promise<readonly TranscriptSearchMatch[]>;
-  automationCreate(input: { name: string; prompt: string; schedule: import("./desktop-state").AutomationSchedule; workspaceId: string; model?: { provider: string; modelId: string }; thinkingLevel?: string; enabled?: boolean }): Promise<DesktopAppState>;
-  automationUpdate(id: string, patch: Partial<Pick<import("./desktop-state").Automation, "name" | "prompt" | "schedule" | "model" | "thinkingLevel" | "enabled">>): Promise<DesktopAppState>;
+  automationCreate(input: { name?: string; prompt: string; schedule: import("./desktop-state").AutomationSchedule; workspaceId: string; environment?: import("./desktop-state").NewThreadEnvironment; model?: { provider: string; modelId: string }; thinkingLevel?: string; enabled?: boolean }): Promise<DesktopAppState>;
+  automationUpdate(id: string, patch: Partial<Pick<import("./desktop-state").Automation, "name" | "prompt" | "schedule" | "workspaceId" | "environment" | "model" | "thinkingLevel" | "enabled">>): Promise<DesktopAppState>;
   automationDelete(id: string): Promise<DesktopAppState>;
   automationList(): Promise<DesktopAppState>;
   automationFireNow(id: string): Promise<DesktopAppState>;

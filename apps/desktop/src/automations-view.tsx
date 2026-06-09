@@ -1,16 +1,29 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
 import type {
   Automation,
+  AutomationFrequency,
   AutomationSchedule,
-  AutomationSchedulePreset,
+  NewThreadEnvironment,
   WorkspaceRecord,
 } from "./desktop-state";
 import { automationScheduleLabel } from "./desktop-state";
-import { AutomationIcon, AutomationRunIcon, ComposeIcon, SettingsIcon } from "./icons";
+import {
+  AutomationIcon,
+  AutomationRunIcon,
+  ChevronDownIcon,
+  ClockIcon,
+  CloseIcon,
+  ComposeIcon,
+  ModelIcon,
+  MonitorIcon,
+  ProjectIcon,
+  ReasoningIcon,
+  SettingsIcon,
+  WorktreeIcon,
+} from "./icons";
 import { playButtonClick, playButtonSecondary } from "./button-click-sound";
 import { formatRelativeTime } from "./string-utils";
-import { ModelSelector, type ModelSelectorHandle } from "./model-selector";
 
 interface AutomationsViewProps {
   readonly automations: readonly Automation[];
@@ -26,10 +39,11 @@ interface AutomationsViewProps {
 }
 
 export interface CreateAutomationInput {
-  name: string;
+  name?: string;
   prompt: string;
   schedule: AutomationSchedule;
   workspaceId: string;
+  environment: NewThreadEnvironment;
   model?: { provider: string; modelId: string };
   thinkingLevel?: string;
   enabled?: boolean;

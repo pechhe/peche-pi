@@ -79,6 +79,12 @@ export function ShortcutsSheet({ platform, onClose }: ShortcutsSheetProps) {
       ],
     },
     {
+      title: "Thread",
+      rows: [
+        { keys: [`${mod}${shift}C`], label: "Copy last response" },
+      ],
+    },
+    {
       title: "Help",
       rows: [{ keys: [`${mod}/`], label: "Toggle this sheet" }],
     },

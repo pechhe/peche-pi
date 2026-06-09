@@ -8,10 +8,48 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
-import type { Automation, AutomationSchedule } from "../src/desktop-state.ts";
+import type { Automation, AutomationSchedule, NewThreadEnvironment } from "../src/desktop-state.ts";
+import { scheduleToCron } from "../src/desktop-state.ts";
 
 interface StoredAutomationData {
   readonly automations: readonly Automation[];
+}
+
+/**
+ * Migrate a persisted automation from older shapes to the current one:
+ *  - legacy schedule `{ kind: "preset"|"cron", ... }` → `{ frequency, time, dayOfWeek? }`
+ *  - missing `environment` → "local"
+ */
+function migrateAutomation(raw: Record<string, unknown>): Automation {
+  return {
+    ...(raw as unknown as Automation),
+    schedule: migrateSchedule(raw.schedule),
+    environment: ((raw.environment as NewThreadEnvironment) ?? "local"),
+  };
+}
+
+function migrateSchedule(raw: unknown): AutomationSchedule {
+  const s = raw as Record<string, unknown> | undefined;
+  // Already in new shape.
+  if (s && typeof s.frequency === "string") {
+    return {
+      frequency: s.frequency as AutomationSchedule["frequency"],
+      time: typeof s.time === "string" ? s.time : "09:00",
+      ...(typeof s.dayOfWeek === "number" ? { dayOfWeek: s.dayOfWeek } : {}),
+    };
+  }
+  // Legacy preset.
+  if (s && s.kind === "preset") {
+    switch (s.preset) {
+      case "hourly": return { frequency: "hourly", time: "00:00" };
+      case "every-evening": return { frequency: "daily", time: "18:00" };
+      case "every-morning":
+      case "weekdays-morning":
+      default: return { frequency: "daily", time: "09:00" };
+    }
+  }
+  // Legacy cron or anything unrecognised → safe default.
+  return { frequency: "daily", time: "09:00" };
 }
 
 export class AutomationStore {
@@ -25,8 +63,8 @@ export class AutomationStore {
   async load(): Promise<Automation[]> {
     try {
       const raw = await readFile(this.filePath, "utf8");
-      const data = JSON.parse(raw) as StoredAutomationData;
-      this.cachedAutomations = [...data.automations];
+      const data = JSON.parse(raw) as { automations: readonly Record<string, unknown>[] };
+      this.cachedAutomations = (data.automations ?? []).map(migrateAutomation);
     } catch {
       this.cachedAutomations = [];
     }
@@ -53,10 +91,11 @@ export class AutomationStore {
   }
 
   async create(input: {
-    name: string;
+    name?: string;
     prompt: string;
     schedule: AutomationSchedule;
     workspaceId: string;
+    environment?: NewThreadEnvironment;
     model?: { provider: string; modelId: string };
     thinkingLevel?: string;
     enabled?: boolean;
@@ -64,10 +103,11 @@ export class AutomationStore {
     const now = new Date().toISOString();
     const automation: Automation = {
       id: randomUUID(),
-      name: input.name,
+      name: input.name ?? "",
       prompt: input.prompt,
       schedule: input.schedule,
       workspaceId: input.workspaceId,
+      environment: input.environment ?? "local",
       model: input.model,
       thinkingLevel: input.thinkingLevel,
       enabled: input.enabled ?? true,
@@ -97,6 +137,7 @@ export class AutomationStore {
       prompt: patch.prompt ?? existing.prompt,
       schedule: patch.schedule ?? existing.schedule,
       workspaceId: patch.workspaceId ?? existing.workspaceId,
+      environment: patch.environment ?? existing.environment,
       model: patch.model ?? existing.model,
       thinkingLevel: patch.thinkingLevel ?? existing.thinkingLevel,
       enabled: patch.enabled ?? existing.enabled,
@@ -144,16 +185,8 @@ export class AutomationStore {
 
 // ── Cron helpers (lightweight, no dependency) ──────────
 
-const PRESET_CRON: Record<string, string> = {
-  "every-morning": "0 9 * * *",
-  "every-evening": "0 18 * * *",
-  "weekdays-morning": "0 9 * * 1-5",
-  "hourly": "0 * * * *",
-};
-
 export function resolveCron(schedule: AutomationSchedule): string {
-  if (schedule.kind === "preset") return PRESET_CRON[schedule.preset] ?? "0 9 * * *";
-  return schedule.expression;
+  return scheduleToCron(schedule);
 }
 
 /**

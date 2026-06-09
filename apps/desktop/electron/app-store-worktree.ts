@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import { sessionKey } from "@pi-gui/pi-sdk-driver";
 import type { WorktreeCatalogEntry } from "@pi-gui/catalogs";
 import type { WorkspaceRef } from "@pi-gui/session-driver";
-import type { CreateWorktreeInput, DesktopAppState, RemoveWorktreeInput, StartChatInput, StartThreadInput } from "../src/desktop-state";
+import type { CreateWorktreeInput, DesktopAppState, RemoveWorktreeInput, StartAutomationThreadInput, StartChatInput, StartThreadInput } from "../src/desktop-state";
 import { sendMessageToSession } from "./app-store-composer";
 import { reduce } from "./app-state-reducer";
 import type { CreateWorktreeOptions } from "./worktree-manager";
@@ -167,6 +167,84 @@ export async function startThread(store: AppStoreInternals, input: StartThreadIn
     __dbg("returning state");
     return state;
   });
+}
+
+/**
+ * Fire a scheduled automation as a new background thread.
+ *
+ * Mirrors `startThread` (worktree creation, model/thinking, auto-title) but
+ * does NOT change selection or navigate — a scheduled fire must not hijack the
+ * user's current view. Returns the created session id.
+ */
+export async function startAutomationThread(
+  store: AppStoreInternals,
+  input: StartAutomationThreadInput,
+): Promise<string | undefined> {
+  await store.initialize();
+  const rootWorkspace = store.workspaceRefFromState(input.rootWorkspaceId);
+  if (!rootWorkspace) return undefined;
+
+  let targetWorkspace = rootWorkspace;
+  if (input.environment === "worktree") {
+    const worktreeOptions = buildWorktreeOptions(store, rootWorkspace, undefined, undefined, input.prompt);
+    const created = await store.worktreeManager.createWorktree(rootWorkspace, worktreeOptions);
+    const synced = await store.driver.syncWorkspace(created.path, created.displayName);
+    targetWorkspace = synced.workspace;
+  }
+
+  const prompt = input.prompt?.trim() ?? "";
+  const createOptions = (await store.buildCreateSessionOptions(targetWorkspace.workspaceId)) ?? {};
+  const initialModel =
+    input.provider && input.modelId
+      ? { provider: input.provider, modelId: input.modelId }
+      : createOptions.initialModel;
+  const initialThinkingLevel = input.thinkingLevel ?? createOptions.initialThinkingLevel;
+
+  // A named automation pins its title (⚡ prefix). An unnamed one gets the
+  // placeholder so the auto-title generator can name it like a normal thread.
+  const name = input.name?.trim();
+  const title = name ? `⚡ ${name}` : NEW_THREAD_PLACEHOLDER_TITLE;
+
+  const session = await store.driver.createSession(targetWorkspace, {
+    ...createOptions,
+    title,
+    ...(initialModel ? { initialModel } : {}),
+    ...(initialThinkingLevel ? { initialThinkingLevel } : {}),
+  });
+  const key = sessionKey(session.ref);
+  store.sessionState.transcriptCache.set(key, []);
+  store.sessionState.loadedTranscriptKeys.add(key);
+  store.updateSessionConfig(session.ref, session.config);
+
+  let autoTitle: { requestToken: string; signal: AbortSignal } | undefined;
+  if (!name && prompt) {
+    const controller = new AbortController();
+    const requestToken = randomUUID();
+    store.setPendingAutoTitle(session.ref, { requestToken, cancel: () => controller.abort() });
+    autoTitle = { requestToken, signal: controller.signal };
+  }
+
+  // Surface the new session without touching selection/active view.
+  await store.refreshState({ refreshWorktrees: input.environment === "worktree" });
+
+  if (prompt) {
+    void sendMessageToSession(store, session.ref, prompt, [], {
+      rollbackOptimisticMessageOnError: false,
+    }).catch((error) => {
+      void store.withError(error);
+    });
+  }
+  if (autoTitle) {
+    void generateAndApplyAutoTitle(store, session.ref, targetWorkspace, {
+      prompt,
+      requestToken: autoTitle.requestToken,
+      signal: autoTitle.signal,
+      ...(initialModel ? { model: initialModel } : {}),
+      ...(initialThinkingLevel ? { thinkingLevel: initialThinkingLevel } : {}),
+    });
+  }
+
+  return session.ref.sessionId;
 }
 
 export async function startChat(store: AppStoreInternals, input: StartChatInput): Promise<DesktopAppState> {

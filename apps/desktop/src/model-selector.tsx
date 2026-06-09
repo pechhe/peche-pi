@@ -209,6 +209,13 @@ export const ModelSelector = forwardRef<ModelSelectorHandle, ModelSelectorProps>
       });
     };
 
+    const restoreComposerFocus = () => {
+      const textarea = containerRef.current
+        ?.closest(".composer__surface")
+        ?.querySelector<HTMLTextAreaElement>("textarea");
+      textarea?.focus();
+    };
+
     const handleSelectModel = (option: ComposerModelOption, pinToOut = false) => {
       const key = modelKey(option.providerId, option.modelId);
       const optionSliderIndex = pinnedModelOptions.findIndex((m) => modelKey(m.providerId, m.modelId) === key);
@@ -217,6 +224,10 @@ export const ModelSelector = forwardRef<ModelSelectorHandle, ModelSelectorProps>
       }
       setVisualModelKey(key);
       setOpen("none");
+      // Dropdown autoFocus stole focus from the composer; hand it back so the
+      // user can keep typing after picking a model. rAF runs after the dropdown
+      // unmounts, otherwise focus lands on the about-to-be-removed input.
+      window.requestAnimationFrame(restoreComposerFocus);
 
       if (option.providerId === provider && option.modelId === modelId) return;
 

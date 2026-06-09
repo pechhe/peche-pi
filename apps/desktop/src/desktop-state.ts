@@ -5,11 +5,16 @@ export type SessionStatus = "idle" | "running" | "failed";
 
 // ── Automation types ─────────────────────────────────────
 
-export type AutomationSchedulePreset = "every-morning" | "every-evening" | "weekdays-morning" | "hourly";
+export type AutomationFrequency = "hourly" | "daily" | "weekly";
 
-export type AutomationSchedule =
-  | { readonly kind: "preset"; readonly preset: AutomationSchedulePreset }
-  | { readonly kind: "cron"; readonly expression: string };
+/** Simplified recurring schedule: a frequency plus a time-of-day. */
+export interface AutomationSchedule {
+  readonly frequency: AutomationFrequency;
+  /** "HH:MM" 24h. For hourly only the minute is used. */
+  readonly time: string;
+  /** 0 (Sun) – 6 (Sat). Only used for weekly. */
+  readonly dayOfWeek?: number;
+}
 
 export interface Automation {
   readonly id: string;
@@ -17,6 +22,7 @@ export interface Automation {
   readonly prompt: string;
   readonly schedule: AutomationSchedule;
   readonly workspaceId: string;
+  readonly environment: NewThreadEnvironment;
   readonly model?: { readonly provider: string; readonly modelId: string };
   readonly thinkingLevel?: string;
   readonly enabled: boolean;
@@ -34,37 +40,52 @@ export interface AutomationRun {
   readonly completedAt?: string;
 }
 
-export const AUTOMATION_PRESET_CRON: Record<AutomationSchedulePreset, string> = {
-  "every-morning": "0 9 * * *",
-  "every-evening": "0 18 * * *",
-  "weekdays-morning": "0 9 * * 1-5",
-  "hourly": "0 * * * *",
-};
+const DAY_LABELS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+function parseScheduleTime(time: string): { hour: number; minute: number } {
+  const [h, m] = (time ?? "").split(":");
+  const hour = Number.parseInt(h ?? "0", 10);
+  const minute = Number.parseInt(m ?? "0", 10);
+  return {
+    hour: Number.isFinite(hour) ? Math.max(0, Math.min(23, hour)) : 0,
+    minute: Number.isFinite(minute) ? Math.max(0, Math.min(59, minute)) : 0,
+  };
+}
+
+/** Convert a simplified schedule into a 5-field cron expression. */
+export function scheduleToCron(schedule: AutomationSchedule): string {
+  const { hour, minute } = parseScheduleTime(schedule.time);
+  switch (schedule.frequency) {
+    case "hourly":
+      return `${minute} * * * *`;
+    case "daily":
+      return `${minute} ${hour} * * *`;
+    case "weekly":
+      return `${minute} ${hour} * * ${schedule.dayOfWeek ?? 1}`;
+  }
+}
+
+function formatScheduleTime(time: string): string {
+  const { hour, minute } = parseScheduleTime(time);
+  return `${hour}:${minute.toString().padStart(2, "0")}`;
+}
 
 export function automationScheduleLabel(schedule: AutomationSchedule): string {
-  switch (schedule.kind) {
-    case "preset":
-      switch (schedule.preset) {
-        case "every-morning": return "Every morning";
-        case "every-evening": return "Every evening";
-        case "weekdays-morning": return "Weekday mornings";
-        case "hourly": return "Hourly";
-      }
-    case "cron":
-      return schedule.expression;
+  switch (schedule.frequency) {
+    case "hourly":
+      return "Hourly";
+    case "daily":
+      return `Daily at ${formatScheduleTime(schedule.time)}`;
+    case "weekly": {
+      const day = DAY_LABELS[schedule.dayOfWeek ?? 1] ?? "Monday";
+      return `${day}s at ${formatScheduleTime(schedule.time)}`;
+    }
   }
 }
 
 /** Returns the next scheduled run Date for a given automation schedule. */
-export function nextAutomationRun(schedule: AutomationSchedule): Date {
-  const now = new Date();
-  let cronExpr: string;
-  if (schedule.kind === "preset") {
-    cronExpr = AUTOMATION_PRESET_CRON[schedule.preset];
-  } else {
-    cronExpr = schedule.expression;
-  }
-  return nextCronRun(cronExpr, now);
+function nextAutomationRun(schedule: AutomationSchedule): Date {
+  return nextCronRun(scheduleToCron(schedule), new Date());
 }
 
 /** Naive next-run for common cron patterns. Handles minute, hour, day-of-week fields. */
@@ -143,6 +164,8 @@ export function countAutomationsNext24h(automations: readonly Automation[]): num
 
 export type { TranscriptMessage } from "./timeline-types";
 import type { TranscriptMessage } from "./timeline-types";
+import type { PlanRecord, PlanSummary } from "./plan-types";
+export type { PlanRecord, PlanSummary, PlanIssueRecord, PlanStatus, PlanIssueStatus } from "./plan-types";
 
 export type AppView = "threads" | "new-thread" | "skills" | "extensions" | "settings" | "context" | "queue" | "kanban" | "automations" | "agents" | "graph";
 export type WorkspaceKind = "primary" | "worktree";
@@ -285,35 +308,7 @@ export interface SessionContextUsage {
   readonly contextWindow: number;
 }
 
-/**
- * A runnable, incomplete Ralph plan (a `.ralph/` bundle) discovered in a
- * workspace. Surfaced in the new-thread Ralph picker so a plan can be launched
- * as a loop.
- */
-export interface RalphPlanSummary {
-  /** Human title taken from `.ralph/plan.md`'s first heading. */
-  readonly title: string;
-  readonly totalItems: number;
-  readonly doneItems: number;
-  /** Prompt reference passed to `/ralph-loop` bundle mode. */
-  readonly promptRef: string;
-  /** Pre-filled max-iterations (from a prior loop run, else the ralph default). */
-  readonly defaultMaxIterations: number;
-}
 
-/**
- * Status of a Ralph loop owning the selected workspace, read from
- * `.ralph/loop.md`. Drives the loop thread's locked composer + control bar.
- */
-export interface RalphLoopStatus {
-  readonly running: boolean;
-  readonly iteration: number;
-  readonly maxIterations: number;
-  readonly stopReason?: string;
-  readonly sessionId?: string;
-  /** True when the selected session is the loop's current active iteration. */
-  readonly isSelectedSessionActive: boolean;
-}
 
 export interface SessionRecord {
   readonly id: string;
@@ -393,8 +388,7 @@ export interface WorkspaceRecord {
   readonly rootWorkspaceId?: string;
   readonly branchName?: string;
   readonly sessions: readonly SessionRecord[];
-  /** Incomplete Ralph plans found in this workspace, launchable as loops. */
-  readonly ralphPlans?: readonly RalphPlanSummary[];
+
 }
 
 export interface CreateWorktreeInput {
@@ -408,6 +402,16 @@ export type StartThreadInput = {
   readonly environment: NewThreadEnvironment;
   readonly prompt?: string;
   readonly attachments?: readonly ComposerAttachment[];
+  readonly provider?: string;
+  readonly modelId?: string;
+  readonly thinkingLevel?: string;
+};
+
+export type StartAutomationThreadInput = {
+  readonly rootWorkspaceId: string;
+  readonly environment: NewThreadEnvironment;
+  readonly prompt: string;
+  readonly name?: string;
   readonly provider?: string;
   readonly modelId?: string;
   readonly thinkingLevel?: string;
@@ -472,11 +476,11 @@ export interface DesktopAppState {
   readonly selectedChatId: string;
   readonly automations: readonly Automation[];
   readonly automationFilterWorkspaceId?: string;
-  readonly selectedLoopStatus?: RalphLoopStatus;
-  // True when the selected chat is the one that wrote the workspace's Ralph
-  // plan; scopes the "Begin Ralph loop" banner to the creating chat.
-  readonly selectedSessionCreatedRalphPlan?: boolean;
+  /** Plans discovered in workspaces. Each plan has nested issue sessions. */
+  readonly plans?: readonly PlanRecord[];
   readonly threadTypeBySession: Readonly<Record<string, string>>;
+  /** Maps sessionId → planId for sessions that are plan issues. */
+  readonly planIdBySession: Readonly<Record<string, string>>;
   readonly revision: number;
   readonly lastError?: string;
 }
@@ -591,6 +595,7 @@ export function createEmptyDesktopAppState(): DesktopAppState {
     automations: [],
     automationFilterWorkspaceId: undefined,
     threadTypeBySession: {},
+    planIdBySession: {},
     revision: 0,
   };
 }

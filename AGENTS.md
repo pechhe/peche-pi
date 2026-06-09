@@ -26,10 +26,27 @@ These rules apply for the full session.
 - Keep `pi-sdk-driver` thin over `pi-mono`; don’t fork or reimplement `pi` runtime behavior unless necessary.
 
 ## Graphify Project Map
-- This repo has `graphify-out/` built. Prefer Graphify for architecture, ownership, cross-file, community, and “where does X fit?” questions.
-- Use `graphify_query` first for broad architectural questions, `graphify_explain` for a named concept/community, and `graphify_path` for connections between concepts.
-- Use Cymbal for symbol lookup, refs, impact, and targeted source reads. Use grep/rg for exact strings, configs, logs, and non-code text.
-- Treat Graphify as stale if built commit differs from current commit; update with `graphify_update` before relying on it for recent changes.
+
+This repo has `graphify-out/` built. Graphify is useful but **lane-sensitive** — route each question to the call that actually works, or it returns junk and wastes a turn.
+
+### Routing (do this, in order)
+1. **"What are the modules / overall architecture / where does X fit?"** → READ `graphify-out/GRAPH_REPORT.md` directly. It lists 60+ named community hubs (e.g. "Desktop Session State", "Session Supervisor", "Timeline Management"). Do **NOT** use `graphify_query` for this — its BFS anchors on words in your question and returns junk (e.g. "main" → package.json fields).
+2. **"How does <thing> flow / connect across files?"** → `graphify_query` — but anchor the question on a **concrete symbol or file name that exists in the code** (e.g. `session`, `applyTimelineEvent`, `app-store.ts`), not vague nouns. This is Graphify's strongest lane and beats grep for cross-package file discovery.
+3. **Explain one named concept** → `graphify_explain({ concept })` — the `concept` MUST be an **exact node/community label** copied from `GRAPH_REPORT.md` (Title Case, e.g. `Desktop Session State`). Made-up labels return "no node found".
+4. **Connection between two named things** → `graphify_path` — both endpoints must be exact node labels.
+
+### Gotchas (why it silently fails)
+- `graphify_query` start-node selection is fuzzy word-match on the question. Vague/common words anchor on the wrong nodes. Name a real symbol.
+- `graphify_explain` / `graphify_path` need labels that exist verbatim. Pull them from `GRAPH_REPORT.md` first; don't guess.
+- If a Graphify call returns junk or "no node found", do **not** retry blindly — fall back to the routing above (report read, or Cymbal/grep).
+
+### Tool boundaries
+- **Cymbal** — symbol lookup, refs, impact, impls, targeted source reads.
+- **grep/rg** — exact strings, configs, logs, non-code text.
+- **Graphify** — only the lanes above.
+
+### Staleness
+- Graph built from commit `b303f487`. If `git rev-parse HEAD` differs, run `graphify_update .` (no API cost) before trusting cross-file results.
 
 ## Dev Workflow
 
@@ -118,3 +135,17 @@ cd apps/desktop && npx tsc -p tsconfig.electron.json --noEmit  # main process
 ## Source Of Truth
 - Root `AGENTS.md` is the repo instruction source of truth.
 - Root `CLAUDE.md` should remain a symlink to `AGENTS.md`.
+
+## Agent skills
+
+### Issue tracker
+
+Issues and PRDs live in GitHub Issues. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default canonical labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context layout — one `CONTEXT.md` + `docs/adr/` at repo root. See `docs/agents/domain.md`.

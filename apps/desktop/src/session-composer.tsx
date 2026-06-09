@@ -15,7 +15,7 @@ import {
   type SetStateAction,
 } from "react";
 import type { RuntimeCommandRecord, RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
-import { ComposerPanel, type BeginRalphLoopProps, type LoopControlProps } from "./composer-panel";
+import { ComposerPanel } from "./composer-panel";
 import type { ComposerMode } from "./composer-mode";
 import { parseTreeComposerCommand } from "./composer-commands";
 import { readComposerAttachmentsFromFiles, extractImageFilesFromClipboardData, extractFilesFromDataTransfer } from "./composer-attachments";
@@ -93,9 +93,6 @@ interface SessionComposerProps {
   /** Notify the host that a plan-mode message was just submitted. */
   readonly onPlanSubmitted: () => void;
   readonly runningLabel: string;
-  readonly loopControl?: LoopControlProps;
-  readonly beginRalphLoop?: BeginRalphLoopProps;
-
   // Draft persistence + cross-session sync (from snapshot).
   readonly hasSnapshot: boolean;
   readonly persistedComposerDraft: string;
@@ -165,8 +162,6 @@ const SessionComposerInner = forwardRef<SessionComposerHandle, SessionComposerPr
     onExecutePlan,
     onPlanSubmitted,
     runningLabel,
-    loopControl,
-    beginRalphLoop,
     hasSnapshot,
     persistedComposerDraft,
     composerDraftSyncNonce,
@@ -552,8 +547,6 @@ const SessionComposerInner = forwardRef<SessionComposerHandle, SessionComposerPr
   return (
     <ComposerPanel
       key={selectedSessionKey}
-      loopControl={loopControl}
-      beginRalphLoop={beginRalphLoop}
       activeSlashCommand={slashMenu.activeSlashFlow?.command}
       activeSlashCommandMeta={slashMenu.activeSlashFlow?.command?.description}
       attachments={composerAttachments}
@@ -680,8 +673,7 @@ function sameSessionComposerProps(
     previous.onExecutePlan === next.onExecutePlan &&
     previous.onPlanSubmitted === next.onPlanSubmitted &&
     previous.runningLabel === next.runningLabel &&
-    previous.loopControl === next.loopControl &&
-    previous.beginRalphLoop === next.beginRalphLoop &&
+
     previous.hasSnapshot === next.hasSnapshot &&
     previous.persistedComposerDraft === next.persistedComposerDraft &&
     previous.composerDraftSyncNonce === next.composerDraftSyncNonce &&

@@ -60,8 +60,8 @@ import {
   type RemoveWorktreeInput,
   type SelectedTranscriptRecord,
   type SessionRecord,
-  type RalphLoopStatus,
   type StartChatInput,
+  type StartAutomationThreadInput,
   type StartThreadInput,
   type SubagentSettingsRecord,
   type TranscriptMessage,
@@ -106,8 +106,6 @@ import * as workspace from "./app-store-workspace";
 import * as worktree from "./app-store-worktree";
 import * as composer from "./app-store-composer";
 import { isSessionActivelyViewed } from "./session-visibility";
-import { loadLoopTranscript, resolveSelectedLoopStatus, resolveSelectedSessionCreatedRalphPlan } from "./app-store-ralph";
-import * as review from "./app-store-review";
 import { applySubagentEnvironment } from "./app-store-subagent";
 import * as subagent from "./app-store-subagent";
 import { launchSessionInDefaultTerminal } from "./external-terminal";
@@ -617,6 +615,10 @@ export class DesktopAppStore implements AppStoreInternals {
     return worktree.startThread(this, input);
   }
 
+  async startAutomationThread(input: StartAutomationThreadInput): Promise<string | undefined> {
+    return worktree.startAutomationThread(this, input);
+  }
+
   async createSession(input: CreateSessionInput): Promise<DesktopAppState> {
     return workspace.createSession(this, input);
   }
@@ -759,7 +761,13 @@ export class DesktopAppStore implements AppStoreInternals {
   }
 
   async setCommitPushModel(workspaceId: string, model: string): Promise<DesktopAppState> {
-    return review.setCommitPushModel(this, workspaceId, model);
+    const next = reduce(this.state, { type: "settings/setCommitPushModel", commitPushModel: model });
+    if (next === this.state) {
+      return this.emit();
+    }
+    this.state = next;
+    await this.persistUiState();
+    return this.emit();
   }
 
   private agentSettingsPath(): string {
@@ -1746,19 +1754,20 @@ Return ONLY a JSON array of configuration fields, no explanation.`;
         await this.reloadSubagentAgentsForWorkspace(workspace.id, workspace.path);
       }
 
+      // Discover plans in all workspaces
+      try {
+        const orchestrator = require("./plan-orchestrator");
+        for (const workspace of workspaces) {
+          orchestrator.discoverAndRegisterPlans(this, workspace.path, workspace.id);
+        }
+      } catch {
+        // Plan discovery is optional
+      }
+
       const activeView = options.activeView ?? this.state.activeView;
       const composerDraftSync = this.resolveComposerDraftSync(selectedWorkspaceId, selectedSessionId, options);
-      const selectedLoopStatus = this.resolveSelectedLoopStatus(workspaces, selectedWorkspaceId, selectedSessionId);
-      const selectedSessionCreatedRalphPlan = await this.resolveSelectedSessionCreatedRalphPlan(
-        workspaces,
-        selectedWorkspaceId,
-        selectedSessionId,
-        selectedLoopStatus,
-      );
       this.state = {
         ...this.state,
-        selectedLoopStatus,
-        selectedSessionCreatedRalphPlan,
         workspaces,
         worktreesByWorkspace,
         selectedWorkspaceId,
@@ -1779,6 +1788,8 @@ Return ONLY a JSON array of configuration fields, no explanation.`;
         queuedComposerMessages: this.resolveQueuedComposerMessages(selectedWorkspaceId, selectedSessionId),
         editingQueuedMessageId: this.resolveEditingQueuedMessageId(selectedWorkspaceId, selectedSessionId),
         lastError: this.resolveSelectedSessionError(selectedWorkspaceId, selectedSessionId, options.clearLastError),
+        plans: this.state.plans,
+        planIdBySession: this.state.planIdBySession,
         automations: this.automationStoreRef ? this.automationStoreRef.getAll() : this.state.automations,
         revision: this.state.revision + 1,
       };
@@ -1848,26 +1859,7 @@ Return ONLY a JSON array of configuration fields, no explanation.`;
     await this.ensureSessionSubscribed(sessionRef);
   }
 
-  private loadLoopTranscript(sessionRef: SessionRef): Promise<TranscriptMessage[] | null> {
-    return loadLoopTranscript(this, sessionRef);
-  }
 
-  private resolveSelectedLoopStatus(
-    workspaces: readonly { id: string; path: string }[],
-    selectedWorkspaceId: string,
-    selectedSessionId: string,
-  ): RalphLoopStatus | undefined {
-    return resolveSelectedLoopStatus(this, workspaces, selectedWorkspaceId, selectedSessionId);
-  }
-
-  private resolveSelectedSessionCreatedRalphPlan(
-    workspaces: readonly WorkspaceRecord[],
-    selectedWorkspaceId: string,
-    selectedSessionId: string,
-    selectedLoopStatus: RalphLoopStatus | undefined,
-  ): Promise<boolean> {
-    return resolveSelectedSessionCreatedRalphPlan(this, workspaces, selectedWorkspaceId, selectedSessionId, selectedLoopStatus);
-  }
 
   private async ensureTranscriptLoaded(sessionRef: SessionRef): Promise<void> {
     const key = sessionKey(sessionRef);
@@ -1878,7 +1870,7 @@ Return ONLY a JSON array of configuration fields, no explanation.`;
     const cachedTranscript = await this.readPersistedTranscript(key);
     const transcript = cachedTranscript
       ? await this.resolveLoadedTranscript(sessionRef, cachedTranscript)
-      : (await this.loadLoopTranscript(sessionRef)) ?? (await this.driver.getTranscript(sessionRef));
+      : await this.driver.getTranscript(sessionRef);
 
     if (!cachedTranscript || cachedTranscript.format === "legacy") {
       await this.writePersistedTranscript(key, transcript);
@@ -1891,7 +1883,7 @@ Return ONLY a JSON array of configuration fields, no explanation.`;
   async reloadTranscriptFromDriver(sessionRef: SessionRef): Promise<void> {
     const key = sessionKey(sessionRef);
     const transcript =
-      (await this.loadLoopTranscript(sessionRef)) ?? (await this.driver.getTranscript(sessionRef));
+      await this.driver.getTranscript(sessionRef);
     this.sessionState.loadedTranscriptKeys.add(key);
     this.sessionState.transcriptCache.set(key, transcript);
     void this.writePersistedTranscript(key, transcript);
@@ -2538,6 +2530,46 @@ Return ONLY a JSON array of configuration fields, no explanation.`;
 
   async startChat(input: StartChatInput): Promise<DesktopAppState> {
     return worktree.startChat(this, input);
+  }
+
+  // ── Plan orchestrator ─────────────────────────────────
+
+  async startPlan(planId: string, modelConfig?: { provider?: string; modelId?: string; thinkingLevel?: string }): Promise<DesktopAppState> {
+    await this.initialize();
+    const plan = this.state.plans?.find((p) => p.id === planId);
+    if (!plan) {
+      return this.withError(`Unknown plan: ${planId}`);
+    }
+    return this.withErrorHandling(async () => {
+      const orchestrator = require("./plan-orchestrator");
+      orchestrator.startPlanExecution(this, plan.directoryPath, plan.workspaceId, modelConfig);
+      return this.emit();
+    });
+  }
+
+  async pausePlan(planId: string): Promise<DesktopAppState> {
+    await this.initialize();
+    const orchestrator = require("./plan-orchestrator");
+    const handle = orchestrator.getActiveOrchestrator(planId);
+    if (handle) {
+      handle.pause();
+    }
+    return this.emit();
+  }
+
+  async cancelPlan(planId: string): Promise<DesktopAppState> {
+    await this.initialize();
+    const orchestrator = require("./plan-orchestrator");
+    const handle = orchestrator.getActiveOrchestrator(planId);
+    if (handle) {
+      handle.cancel();
+    }
+    return this.emit();
+  }
+
+  async discoverPlans(workspacePath: string, workspaceId: string): Promise<void> {
+    const orchestrator = require("./plan-orchestrator");
+    orchestrator.discoverAndRegisterPlans(this, workspacePath, workspaceId);
   }
 
   async selectChat(chatId: string): Promise<DesktopAppState> {

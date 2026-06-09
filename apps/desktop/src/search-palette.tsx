@@ -42,6 +42,8 @@ interface SearchPaletteProps {
   readonly onActiveIndexChange: (index: number) => void;
   readonly onSelect: (result: GlobalSearchResult) => void;
   readonly onClose: () => void;
+  /** Called after the exit animation finishes and the palette is about to unmount. */
+  readonly restoreFocus?: () => void;
 }
 
 export function SearchPalette({
@@ -57,10 +59,15 @@ export function SearchPalette({
   onActiveIndexChange,
   onSelect,
   onClose,
+  restoreFocus,
 }: SearchPaletteProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [closing, setClosing] = useState(false);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Ref-stable so requestClose deps don't churn when the caller's
+  // focusComposer is intentionally re-created every render.
+  const restoreFocusRef = useRef(restoreFocus);
+  restoreFocusRef.current = restoreFocus;
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -74,7 +81,12 @@ export function SearchPalette({
   const requestClose = useCallback(() => {
     if (closeTimer.current) return;
     setClosing(true);
-    closeTimer.current = setTimeout(onClose, 160);
+    closeTimer.current = setTimeout(() => {
+      onClose();
+      // The palette autoFocus stole focus from the composer; hand it back
+      // after the exit animation so the user can keep typing.
+      restoreFocusRef.current?.();
+    }, 160);
   }, [onClose]);
 
   const activeResult = results[activeIndex];
