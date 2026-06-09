@@ -1319,12 +1319,17 @@ const ThreadSessionRow = memo(function ThreadSessionRow({
 
   return (
     <div
-      className={`session-row ${active ? "session-row--active" : ""} ${pending ? "session-row--pending" : ""} ${entering ? "session-row--entering" : ""} ${completing ? "session-row--completing" : ""}`}
+      className={`session-row ${thread.environment.kind === "worktree" ? "session-row--worktree" : ""} ${active ? "session-row--active" : ""} ${pending ? "session-row--pending" : ""} ${entering ? "session-row--entering" : ""} ${completing ? "session-row--completing" : ""}`}
       data-sidebar-indicator={indicatorVariant}
       data-session-id={thread.session.id}
       style={accentVars}
       onClick={onSelect}
     >
+      {thread.environment.kind === "worktree" ? (
+        <span className="session-row__workspace-icon" aria-hidden="true" title="Worktree">
+          <WorktreeIcon />
+        </span>
+      ) : null}
       <button className="session-row__select" onClick={onSelect} type="button">
         <span className="session-row__leading" aria-hidden="true">
           {indicatorVariant === "running" ? (
@@ -1349,11 +1354,6 @@ const ThreadSessionRow = memo(function ThreadSessionRow({
         </span>
       </button>
       <span className="session-row__trailing">
-        {thread.environment.kind === "worktree" ? (
-          <span className="session-row__workspace-icon" aria-hidden="true" title="Worktree">
-            <WorktreeIcon />
-          </span>
-        ) : null}
         <span className="session-row__time">{snoozed && snoozeTimeLeft ? snoozeTimeLeft : formatRelativeTime(thread.session.updatedAt)}</span>
         <span className="session-row__actions">
           {!archived && !snoozed && !toTest && onMarkToTest ? (
