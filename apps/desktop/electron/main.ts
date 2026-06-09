@@ -5,6 +5,7 @@ import {
   dialog,
   Menu,
   nativeImage,
+  screen,
   shell,
   type MenuItemConstructorOptions,
   type MessageBoxOptions,
@@ -62,6 +63,7 @@ import type { GenerateThreadTitleOptions } from "@pi-gui/pi-sdk-driver";
 import type { WorkspaceRef } from "@pi-gui/session-driver";
 import { buildHandoffPayload, summarizeTranscript } from "./handoff-core";
 import type { BuildHandoffPayloadInput, CreateSeededSessionInput } from "./handoff-core";
+import { OverlayWindowManager, type OverlayBrowserWindow } from "./overlay-window-manager";
 
 const isDev = Boolean(process.env.ELECTRON_RENDERER_URL);
 const windowTestMode = resolveWindowTestMode();
@@ -69,6 +71,7 @@ const devReloadMarkersEnabled = process.env.PI_APP_DEV_RELOAD_MARKERS === "1";
 let store: DesktopAppStore;
 const themeManager = new ThemeManager();
 let mainWindow: BrowserWindow | null = null;
+let overlayManager: OverlayWindowManager | undefined;
 let notificationManager: NotificationManager | undefined;
 let notificationPermissionService: NotificationPermissionService | undefined;
 let terminalService: TerminalService | undefined;
@@ -371,6 +374,25 @@ function createWindow(): BrowserWindow {
   return window;
 }
 
+function resolveOverlayUrl(): string {
+  if (isDev) {
+    return `${process.env.ELECTRON_RENDERER_URL as string}#overlay`;
+  }
+  const indexPath = path.join(__dirname, "..", "renderer", "index.html");
+  return `${pathToFileURL(indexPath).toString()}#overlay`;
+}
+
+function createOverlayWindowManager(): OverlayWindowManager {
+  return new OverlayWindowManager({
+    createWindow: (options) => new BrowserWindow(options) as unknown as OverlayBrowserWindow,
+    getWorkArea: () => screen.getPrimaryDisplay().workArea,
+    preloadPath: path.join(__dirname, "..", "preload", "preload.js"),
+    resolveOverlayUrl,
+    subscribeToState: (listener) => store.subscribe(listener),
+    getState: () => store.getState(),
+  });
+}
+
 function attachStatePublisher(window: BrowserWindow): void {
   const webContentsId = window.webContents.id;
   stopPublishingState?.();
@@ -425,6 +447,7 @@ function attachStatePublisher(window: BrowserWindow): void {
     store.setLiveEditStatsListener(undefined);
     if (mainWindow === window) {
       mainWindow = null;
+      overlayManager?.close();
     }
     terminalFocusedWebContentsIds.delete(webContentsId);
     terminalService?.dispose();
@@ -864,6 +887,13 @@ app.whenReady().then(async () => {
         if (!window) return;
         if (window.isMaximized()) { window.unmaximize(); return; }
         window.maximize();
+      },
+      openOverlay: () => {
+        overlayManager ??= createOverlayWindowManager();
+        overlayManager.open();
+      },
+      closeOverlay: () => {
+        overlayManager?.close();
       },
 
       // -- Store (state) --

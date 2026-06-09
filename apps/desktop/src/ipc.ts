@@ -141,6 +141,8 @@ export const desktopIpc = {
   getSessionTree: "pi-gui:get-session-tree",
   navigateSessionTree: "pi-gui:navigate-session-tree",
   toggleWindowMaximize: "pi-gui:toggle-window-maximize",
+  openOverlay: "pi-gui:open-overlay",
+  closeOverlay: "pi-gui:close-overlay",
   listWorkspaceFiles: "pi-gui:list-workspace-files",
   getChangedFiles: "pi-gui:get-changed-files",
   getWorkspaceGitInfo: "pi-gui:get-workspace-git-info",
@@ -364,6 +366,8 @@ export const piDesktopApiIpcBridge = {
   getSubagentSessionEntries: { kind: "invoke", channel: desktopIpc.getSubagentSessionEntries },
   searchTranscriptText: { kind: "invoke", channel: desktopIpc.searchTranscriptText },
   toggleWindowMaximize: { kind: "invoke", channel: desktopIpc.toggleWindowMaximize },
+  openOverlay: { kind: "invoke", channel: desktopIpc.openOverlay },
+  closeOverlay: { kind: "invoke", channel: desktopIpc.closeOverlay },
   automationCreate: { kind: "invoke", channel: desktopIpc.automationCreate },
   automationUpdate: { kind: "invoke", channel: desktopIpc.automationUpdate },
   automationDelete: { kind: "invoke", channel: desktopIpc.automationDelete },
@@ -894,6 +898,8 @@ export interface PiDesktopApi {
   triggerRestartToInstall(): Promise<void>;
 
   toggleWindowMaximize(): Promise<void>;
+  openOverlay(): Promise<void>;
+  closeOverlay(): Promise<void>;
   openExternal(url: string): Promise<void>;
   getThemeMode(): Promise<"system" | "light" | "dark" | "dracula">;
   getResolvedTheme(): Promise<"light" | "dark">;
