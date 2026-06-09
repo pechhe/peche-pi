@@ -73,6 +73,7 @@ import { useNewThreadState } from "./hooks/use-new-thread-state";
 import { useSelfHealTranscript } from "./hooks/use-self-heal-transcript";
 import { useSidebarWidth } from "./hooks/use-sidebar-width";
 import { ExtensionDialog } from "./extension-session-ui";
+import { TerminalCustomOverlay } from "./terminal-custom-overlay";
 import { SubagentLiveProvider } from "./subagent-live";
 import { SubagentTimelineProvider } from "./subagent-timeline";
 import { FLEET_WIDGET_KEY, parseFleet } from "./subagent-fleet";
@@ -781,7 +782,7 @@ export default function App() {
   useEffect(() => {
     if (!api || !newThreadRootWorkspaceId || snapshot?.activeView !== "new-thread") return;
     void api.listBranches(newThreadRootWorkspaceId).then((result) => {
-      const list = result?.branches ?? [];
+      const list = (result?.branches ?? []).filter((b) => !b.isRemote);
       setNewThreadBranches(list);
       setNewThreadCurrentBranch(result?.currentBranch ?? "");
       setNewThreadIsDirty(result?.isDirty ?? false);
@@ -1109,6 +1110,7 @@ export default function App() {
   const activeHostDialog = selectedExtensionUi?.pendingDialogs[0];
   const activeQuestionnaireRequest = activeHostDialog?.kind === "questionnaire" ? activeHostDialog : undefined;
   const activeExtensionDialog = activeHostDialog?.kind !== "questionnaire" ? activeHostDialog : undefined;
+  const activeTerminalCustom = selectedExtensionUi?.pendingTerminalCustom;
   const persistedComposerDraft = snapshot?.composerDraft ?? "";
   // Drop "done" guards once the snapshot confirms the session is archived (or
   // gone), so the real backend state takes over from the optimistic override.
@@ -2069,7 +2071,8 @@ export default function App() {
       | { readonly requestId: string; readonly value: string }
       | { readonly requestId: string; readonly confirmed: boolean }
       | { readonly requestId: string; readonly answers: readonly { readonly id: string; readonly value: string; readonly label: string; readonly wasCustom: boolean; readonly index?: number }[] }
-      | { readonly requestId: string; readonly cancelled: true },
+      | { readonly requestId: string; readonly cancelled: true }
+      | { readonly requestId: string; readonly terminalInput: string },
   ) => {
     if (!selectedWorkspace || !selectedSession) {
       return;
@@ -2080,6 +2083,15 @@ export default function App() {
     ).then(() => {
       focusComposer();
     });
+  };
+
+  const handleTerminalCustomInput = (requestId: string, data: string) => {
+    if (!selectedWorkspace || !selectedSession) {
+      return;
+    }
+    void updateSnapshot(api, setSnapshot, () =>
+      api.respondToHostUiRequest(selectedWorkspace.id, selectedSession.id, { requestId, terminalInput: data }),
+    );
   };
 
   const handleUnarchiveSession = (target: { workspaceId: string; sessionId: string }) => {
@@ -2884,6 +2896,9 @@ export default function App() {
             )}
             {activeExtensionDialog ? (
               <ExtensionDialog dialog={activeExtensionDialog} onRespond={handleRespondToExtensionDialog} />
+            ) : null}
+            {activeTerminalCustom ? (
+              <TerminalCustomOverlay request={activeTerminalCustom} onInput={handleTerminalCustomInput} />
             ) : null}
             {treeModalState.open ? (
               <TreeModal
