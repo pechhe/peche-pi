@@ -208,7 +208,7 @@ export function EnvironmentWidget(props: EnvironmentWidgetProps) {
                   setBranchPickerOpen(true);
                   try {
                     const result = await api.listBranches(rootWorkspace.id);
-                    setBranchList(result.branches.filter((b) => !b.isRemote));
+                    setBranchList(result.branches.filter((b) => !b.isRemote && !b.name.startsWith("origin/") && !b.name.includes("HEAD")));
                   } catch {
                     setBranchList([]);
                   } finally {
