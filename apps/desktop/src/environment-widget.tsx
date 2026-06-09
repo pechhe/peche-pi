@@ -182,6 +182,7 @@ export function EnvironmentWidget(props: EnvironmentWidgetProps) {
               api={api}
               sessionStatus={sessionStatus}
               shortcutLabel={commitShortcut}
+              branchHint={selectedWorktree?.name}
             />
           </div>
 

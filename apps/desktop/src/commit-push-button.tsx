@@ -24,6 +24,7 @@ interface CommitPushButtonProps {
   readonly disabled?: boolean;
   readonly sessionStatus?: string;
   readonly shortcutLabel: string;
+  readonly branchHint?: string;
 }
 
 interface GitInfo {
@@ -43,6 +44,7 @@ export function CommitPushButton({
   disabled,
   sessionStatus,
   shortcutLabel,
+  branchHint,
 }: CommitPushButtonProps) {
   const [busy, setBusy] = useState(false);
   const [gitInfo, setGitInfo] = useState<GitInfo>({ isGitRepo: false, changedCount: 0 });
@@ -103,7 +105,7 @@ export function CommitPushButton({
     // eslint-disable-next-line no-console
     console.info("[commit-push] invoke", { workspaceId, model: commitPushModel });
     try {
-      const result = await api.commitPushExecute(workspaceId);
+      const result = await api.commitPushExecute(workspaceId, branchHint);
       if (result.success) {
         // eslint-disable-next-line no-console
         console.info("[commit-push] success", result);
@@ -125,7 +127,7 @@ export function CommitPushButton({
       refreshGitInfo();
       refreshPrInfo();
     }
-  }, [api, busy, commitPushModel, gitInfo.isGitRepo, refreshGitInfo, refreshPrInfo, workspaceId]);
+  }, [api, branchHint, busy, commitPushModel, gitInfo.isGitRepo, refreshGitInfo, refreshPrInfo, workspaceId]);
 
   // Trigger via global shortcut event (dispatched by App.tsx Cmd+Shift+K handler)
   useEffect(() => {

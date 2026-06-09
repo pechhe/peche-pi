@@ -1162,7 +1162,7 @@ app.whenReady().then(async () => {
         store.uninstallExtension(source, local),
       checkExtensionUpdates: async () =>
         store.checkExtensionUpdates(),
-      commitPushExecute: async (_event: unknown, workspaceId: string) => {
+      commitPushExecute: async (_event: unknown, workspaceId: string, branchHint?: string) => {
         const workspacePath = store.getWorkspacePath(workspaceId);
         if (!workspacePath) {
           console.error(JSON.stringify({ tag: "commit-push", step: "ipc.unknown_workspace", workspaceId }));
@@ -1172,10 +1172,10 @@ app.whenReady().then(async () => {
         const modelString = configuredModel ?? "deepseek:deepseek-chat";
         console.error(JSON.stringify({
           tag: "commit-push", step: "ipc.invoke", workspaceId, workspacePath,
-          configuredModel, effectiveModel: modelString, usingDefault: !configuredModel,
+          configuredModel, effectiveModel: modelString, usingDefault: !configuredModel, branchHint,
         }));
         const getApiKey = (providerId: string) => store.getProviderApiKey(providerId);
-        return executeCommitPush(workspacePath, modelString, getApiKey);
+        return executeCommitPush(workspacePath, modelString, getApiKey, branchHint);
       },
       listBranches: async (_event: unknown, workspaceId: string) => {
         const workspacePath = store.getWorkspacePath(workspaceId);

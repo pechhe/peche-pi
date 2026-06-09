@@ -6,6 +6,8 @@ import {
   parseProviderAndModel,
   resolveProviderConfig,
 } from "./llm-helpers";
+import { ensureCommitBranch } from "./lazy-branch";
+import { hasUpstream } from "./pr-service";
 
 export interface CommitPushResult {
   readonly success: boolean;
@@ -160,6 +162,7 @@ export async function executeCommitPush(
   workspacePath: string,
   modelString: string,
   getApiKey: (providerId: string) => Promise<string | undefined>,
+  branchHint?: string,
 ): Promise<CommitPushResult> {
   const started = Date.now();
   log("start", { workspacePath, modelString });
@@ -232,11 +235,39 @@ export async function executeCommitPush(
   }
   log("commit_ok", { commitMessage });
 
-  // 7. Push
-  const { stdout: pushOut, stderr: pushErr, code: pushCode } = await execGit(
-    ["push"],
-    workspacePath,
-  );
+  // 7. Ensure we're on a named branch (lazy-create if detached) then push
+  let branchName: string;
+  let branchCreated = false;
+  try {
+    const result = await ensureCommitBranch(workspacePath, branchHint || "work");
+    branchName = result.branch;
+    branchCreated = result.created;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    log("branch_failed", { error: msg });
+    return {
+      success: false,
+      message: `[push] Committed (${commitMessage}) but branch creation failed: ${msg.slice(0, 300)}`,
+      commitMessage,
+    };
+  }
+  log("branch_state", { branchName, branchCreated });
+
+  let pushOut: string;
+  let pushErr: string;
+  let pushCode: number;
+
+  if (branchCreated || !(await hasUpstream(workspacePath))) {
+    const result = await execGit(["push", "-u", "origin", branchName], workspacePath);
+    pushOut = result.stdout;
+    pushErr = result.stderr;
+    pushCode = result.code;
+  } else {
+    const result = await execGit(["push"], workspacePath);
+    pushOut = result.stdout;
+    pushErr = result.stderr;
+    pushCode = result.code;
+  }
 
   if (pushCode === 0) {
     log("push_ok", { durationMs: Date.now() - started, pushOut, pushErr });

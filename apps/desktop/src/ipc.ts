@@ -893,7 +893,7 @@ export interface PiDesktopApi {
   stageFile(workspaceId: string, filePath: string): Promise<void>;
   undoEdits(workspaceId: string, ops: readonly UndoEditOp[]): Promise<UndoEditsResult>;
   redoEdits(workspaceId: string, ops: readonly UndoEditOp[]): Promise<UndoEditsResult>;
-  commitPushExecute(workspaceId: string): Promise<{ readonly success: boolean; readonly message: string; readonly commitMessage?: string }>;
+  commitPushExecute(workspaceId: string, branchHint?: string): Promise<{ readonly success: boolean; readonly message: string; readonly commitMessage?: string }>;
   setCommitPushModel(workspaceId: string, model: string): Promise<DesktopAppState>;
   getSmartCompactSettings(): Promise<SmartCompactSettings>;
   setSmartCompactSettings(settings: Partial<SmartCompactSettings>): Promise<SmartCompactSettings>;

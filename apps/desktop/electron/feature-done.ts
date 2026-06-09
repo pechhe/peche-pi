@@ -14,6 +14,7 @@
 import path from "node:path";
 import { execGit, execGh, isGitRepo } from "./git-runner";
 import { createPullRequest, generatePrDraft, getDefaultBranch, getHeadBranch, hasUpstream } from "./pr-service";
+import { ensureCommitBranch } from "./lazy-branch";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -48,20 +49,6 @@ export interface FeatureDoneInput {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 50);
-}
-
-async function isDetachedHead(cwd: string): Promise<boolean> {
-  const { stdout, code } = await execGit(["symbolic-ref", "HEAD", "--quiet"], cwd);
-  // symbolic-ref fails (code 1) when HEAD is detached
-  return code !== 0 || !stdout.startsWith("refs/heads/");
-}
 
 async function getConflictedFiles(cwd: string): Promise<string[]> {
   const { stdout } = await execGit(["diff", "--name-only", "--diff-filter=U"], cwd);
@@ -108,22 +95,14 @@ export async function featureDone(input: FeatureDoneInput): Promise<FeatureDoneR
   }
 
   // 1. Check HEAD state, create branch if detached
-  let branchName = await getHeadBranch(workspacePath);
-  if (await isDetachedHead(workspacePath)) {
-    const slug = slugify(threadTitle) || "feature";
-    // Avoid collisions with existing branches
-    let candidate = slug;
-    let suffix = 1;
-    while (true) {
-      const { code } = await execGit(["rev-parse", "--verify", `refs/heads/${candidate}`], workspacePath);
-      if (code !== 0) break; // branch doesn't exist, good
-      candidate = `${slug}-${++suffix}`;
-    }
-    const checkout = await execGit(["checkout", "-b", candidate], workspacePath);
-    if (checkout.code !== 0) {
-      return { status: "error", message: `Failed to create branch "${candidate}": ${checkout.stderr}` };
-    }
-    branchName = candidate;
+  let branchResult;
+  try {
+    branchResult = await ensureCommitBranch(workspacePath, threadTitle);
+  } catch (err) {
+    return { status: "error", message: err instanceof Error ? err.message : String(err) };
+  }
+  const branchName = branchResult.branch;
+  if (branchResult.created) {
     log("branch_created", { branchName });
   }
 
