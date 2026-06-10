@@ -2800,7 +2800,6 @@ export default function App() {
           onToggleTerminal={toggleTerminal}
           externalTerminalAvailable={Boolean(selectedSessionKey) && selectedSession?.status !== "running"}
           onOpenExternalTerminal={openExternalTerminal}
-          showDiffPanel={showDiffPanel}
           onToggleDiffPanel={toggleDiffPanel}
           showContextPanel={showContextPanel}
           onToggleContextPanel={openContext}
@@ -3139,7 +3138,6 @@ export default function App() {
           rootWorkspace={rootWorkspace}
           activeWorktrees={activeWorktrees}
           wsMenu={wsMenu}
-          showDiffPanel={showDiffPanel}
           onToggleDiffPanel={toggleDiffPanel}
           onFeatureDone={handleFeatureDone}
           featureDoneState={featureDoneState}

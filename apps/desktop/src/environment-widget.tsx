@@ -14,7 +14,6 @@ interface EnvironmentPanelProps {
   readonly rootWorkspace: WorkspaceRecord | undefined;
   readonly activeWorktrees: readonly WorktreeRecord[];
   readonly wsMenu: WorkspaceMenuState;
-  readonly showDiffPanel: boolean;
   readonly onToggleDiffPanel: () => void;
   readonly onFeatureDone?: () => void;
   readonly featureDoneState?: "idle" | "working" | "done" | "error";
@@ -35,7 +34,6 @@ export function EnvironmentPanel(props: EnvironmentPanelProps) {
     rootWorkspace,
     activeWorktrees,
     wsMenu,
-    showDiffPanel,
     onToggleDiffPanel,
     onFeatureDone,
     featureDoneState,
@@ -210,7 +208,7 @@ export function EnvironmentPanel(props: EnvironmentPanelProps) {
         type="button"
         onClick={() => {
           playButtonClick();
-          if (!showDiffPanel) onToggleDiffPanel();
+          onToggleDiffPanel();
         }}
       >
         <span className="environment-panel__row-left">
@@ -291,6 +289,17 @@ export function EnvironmentPanel(props: EnvironmentPanelProps) {
               <>
                 <span className="environment-widget__detached-badge">no branch yet</span>
                 <span className="environment-widget__base-branch">base: {displayBranch}</span>
+                {!branchCreateOpen && (
+                  <button
+                    className="environment-panel__branch-create-icon"
+                    data-testid="env-worktree-create-branch"
+                    type="button"
+                    title="Create new branch"
+                    onClick={() => { playButtonClick(); setBranchCreateOpen(true); }}
+                  >
+                    ＋
+                  </button>
+                )}
               </>
             ) : (
               <span>{displayBranch}</span>
@@ -453,6 +462,76 @@ export function EnvironmentPanel(props: EnvironmentPanelProps) {
         </div>
       ) : null}
       </div>
+
+      {/* Inline branch creation for detached worktrees */}
+      {isWorktree && isDetached && branchCreateOpen ? (
+        <div className="environment-panel__branch-create-row">
+          <input
+            className="environment-panel__branch-option"
+            data-testid="env-branch-create-input"
+            type="text"
+            placeholder="new-branch-name"
+            autoFocus
+            value={branchCreateName}
+            onChange={(e) => setBranchCreateName(e.target.value)}
+            onKeyDown={async (e) => {
+              if (e.key !== "Enter") return;
+              const name = branchCreateName.trim();
+              if (!name) return;
+              setCheckoutInProgress(true);
+              playButtonClick();
+              try {
+                const result = await api.createBranch(selectedWorkspace.id, name);
+                if (result.success) {
+                  setBranchCreateOpen(false);
+                  setBranchCreateName("");
+                } else {
+                  showToast({ variant: "error", message: result.message });
+                }
+              } catch (err) {
+                showToast({ variant: "error", message: `Create failed: ${err instanceof Error ? err.message : String(err)}` });
+              } finally {
+                setCheckoutInProgress(false);
+              }
+            }}
+          />
+          <button
+            className="environment-panel__branch-option"
+            data-testid="env-branch-create-confirm"
+            type="button"
+            disabled={checkoutInProgress}
+            onClick={async () => {
+              const name = branchCreateName.trim();
+              if (!name) return;
+              setCheckoutInProgress(true);
+              playButtonClick();
+              try {
+                const result = await api.createBranch(selectedWorkspace.id, name);
+                if (result.success) {
+                  setBranchCreateOpen(false);
+                  setBranchCreateName("");
+                } else {
+                  showToast({ variant: "error", message: result.message });
+                }
+              } catch (err) {
+                showToast({ variant: "error", message: `Create failed: ${err instanceof Error ? err.message : String(err)}` });
+              } finally {
+                setCheckoutInProgress(false);
+              }
+            }}
+          >
+            Create
+          </button>
+          <button
+            className="environment-panel__branch-option environment-panel__branch-option--cancel"
+            data-testid="env-branch-create-cancel"
+            type="button"
+            onClick={() => { setBranchCreateOpen(false); setBranchCreateName(""); }}
+          >
+            Cancel
+          </button>
+        </div>
+      ) : null}
 
       {/* Commit or push row */}
       <div className="environment-panel__row environment-panel__row--commit" data-testid="env-row-commit-push">
