@@ -3118,7 +3118,6 @@ export default function App() {
           selectedWorkspace={selectedWorkspace}
           selectedWorktree={selectedWorktree}
           rootWorkspace={rootWorkspace}
-          activeWorktrees={activeWorktrees}
           wsMenu={wsMenu}
           onToggleDiffPanel={toggleDiffPanel}
           onFeatureDone={handleFeatureDone}

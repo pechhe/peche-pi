@@ -540,10 +540,10 @@ export interface LiveEditStats {
 }
 
 export interface CreatePrInput {
-  readonly title: string;
-  readonly body: string;
+  readonly title?: string;
+  readonly body?: string;
   readonly base: string;
-  readonly draft: boolean;
+  readonly draft?: boolean;
 }
 
 export interface CreatePrResult {

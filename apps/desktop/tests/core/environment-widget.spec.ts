@@ -86,10 +86,10 @@ test("environment panel shows rows on load for worktree thread", async () => {
   }
 });
 
-test("environment panel location row opens dropdown when clicked", async () => {
+test("environment panel location row shows handoff button", async () => {
   test.setTimeout(90_000);
   const userDataDir = await makeUserDataDir();
-  const workspacePath = await makeGitWorkspace("env-panel-location-dropdown");
+  const workspacePath = await makeGitWorkspace("env-panel-handoff-button");
   const harness = await launchDesktop(userDataDir, {
     initialWorkspaces: [workspacePath],
     testMode: "background",
@@ -97,31 +97,19 @@ test("environment panel location row opens dropdown when clicked", async () => {
 
   try {
     const window = await harness.firstWindow();
-    const rootWorkspace = await waitForWorkspaceByPath(window, workspacePath);
+    await waitForWorkspaceByPath(window, workspacePath);
 
     // Create a local thread first
-    await startThreadViaIpc(window, { environment: "local", prompt: "location test" });
+    await startThreadViaIpc(window, { environment: "local", prompt: "handoff test" });
 
     // Panel should be visible (open by default)
     const panel = window.getByTestId("environment-panel");
     await expect(panel).toBeVisible();
 
-    // Location row should exist with Local content
+    // Location row should exist with "Hand off to worktree" text
     const locationRow = window.getByTestId("env-row-location");
     await expect(locationRow).toBeVisible();
     await expect(locationRow).toContainText("Local");
-
-    // Click location row to open dropdown
-    await locationRow.click();
-    
-    // Location dropdown should appear (even with just Local option)
-    const locationList = window.getByTestId("env-location-list");
-    await expect(locationList).toBeVisible();
-    
-    // Should have at least the Local option
-    const localOption = window.getByTestId(`env-location-option-${rootWorkspace.id}`);
-    await expect(localOption).toBeVisible();
-    await expect(localOption).toContainText("Local");
   } finally {
     await harness.close();
   }

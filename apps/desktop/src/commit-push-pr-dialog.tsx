@@ -18,47 +18,17 @@ export function CommitPushPrDialog({
   onClose,
   onSuccess,
 }: CommitPushPrDialogProps) {
-  const [loadingDraft, setLoadingDraft] = useState(true);
-  const [draftMessage, setDraftMessage] = useState<string | undefined>(undefined);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
-  const [base, setBase] = useState(defaultBase);
-  const [draft, setDraft] = useState(false);
+  const [base] = useState(defaultBase);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const titleInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Fetch draft on mount. Never blocks dialog rendering.
   useEffect(() => {
-    let active = true;
-    setLoadingDraft(true);
-    void api
-      .generatePrDraft(workspaceId, defaultBase || undefined)
-      .then((result) => {
-        if (!active) return;
-        setTitle(result.title);
-        setBody(result.body);
-        setDraftMessage(result.message);
-        setLoadingDraft(false);
-      })
-      .catch((err) => {
-        if (!active) return;
-        setDraftMessage(err instanceof Error ? err.message : "Failed to generate draft.");
-        setLoadingDraft(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [api, workspaceId, defaultBase]);
-
-  // Focus title once it has content.
-  useEffect(() => {
-    if (!loadingDraft) {
-      titleInputRef.current?.focus();
-      titleInputRef.current?.select();
-    }
-  }, [loadingDraft]);
+    titleInputRef.current?.focus();
+  }, []);
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Escape" && !submitting) {
@@ -69,10 +39,6 @@ export function CommitPushPrDialog({
 
   const handleSubmit = async () => {
     if (submitting) return;
-    if (!title.trim()) {
-      setError("Title is required.");
-      return;
-    }
     if (!base.trim()) {
       setError("Base branch is required.");
       return;
@@ -81,10 +47,9 @@ export function CommitPushPrDialog({
     setError(undefined);
     try {
       const result = await api.prCreate(workspaceId, {
-        title: title.trim(),
-        body,
+        title: title.trim() || undefined,
+        body: body.trim() || undefined,
         base: base.trim(),
-        draft,
       });
       if (result.success) {
         onSuccess(result.url);
@@ -109,20 +74,19 @@ export function CommitPushPrDialog({
     >
       <div
         aria-modal="true"
-        className="tree-modal pr-dialog"
+        className="tree-modal pr-dialog pr-dialog--compact"
         data-testid="pr-dialog"
         ref={dialogRef}
         role="dialog"
         tabIndex={-1}
         onKeyDown={handleKeyDown}
       >
-        <div className="tree-modal__header">
-          <div>
-            <div className="tree-modal__eyebrow">Pull request</div>
-            <h2 className="tree-modal__title">Create PR</h2>
-            <div className="tree-modal__meta" style={{ marginTop: 4 }}>
+        <div className="pr-dialog__header">
+          <div className="pr-dialog__branch-info">
+            <span className="pr-dialog__branch-icon">⑂</span>
+            <span className="pr-dialog__branch-text">
               {headBranch ? `${headBranch} → ${base || defaultBase}` : ""}
-            </div>
+            </span>
           </div>
           <button
             aria-label="Close PR dialog"
@@ -141,91 +105,41 @@ export function CommitPushPrDialog({
           </div>
         ) : null}
 
-        {draftMessage && !error ? (
-          <div className="tree-modal__hint" data-testid="pr-dialog-draft-message">
-            {draftMessage}
-          </div>
-        ) : null}
-
         <div className="pr-dialog__form">
-          <label className="pr-dialog__field">
-            <span className="pr-dialog__label">Title</span>
-            <input
-              aria-label="PR title"
-              className="pr-dialog__input"
-              data-testid="pr-dialog-title"
-              disabled={loadingDraft || submitting}
-              placeholder={loadingDraft ? "Generating draft…" : "PR title"}
-              ref={titleInputRef}
-              type="text"
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-            />
-          </label>
+          <input
+            aria-label="PR title"
+            className="pr-dialog__input"
+            data-testid="pr-dialog-title"
+            disabled={submitting}
+            placeholder="Title"
+            ref={titleInputRef}
+            type="text"
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+          />
 
-          <label className="pr-dialog__field">
-            <span className="pr-dialog__label">Body</span>
-            <textarea
-              aria-label="PR body"
-              className="pr-dialog__textarea"
-              data-testid="pr-dialog-body"
-              disabled={loadingDraft || submitting}
-              placeholder={loadingDraft ? "Generating draft…" : "Markdown body"}
-              rows={14}
-              value={body}
-              onChange={(event) => setBody(event.target.value)}
-            />
-          </label>
-
-          <div className="pr-dialog__row">
-            <label className="pr-dialog__field pr-dialog__field--inline">
-              <span className="pr-dialog__label">Base</span>
-              <input
-                aria-label="Base branch"
-                className="pr-dialog__input"
-                data-testid="pr-dialog-base"
-                disabled={submitting}
-                type="text"
-                value={base}
-                onChange={(event) => setBase(event.target.value)}
-              />
-            </label>
-            <label className="pr-dialog__checkbox">
-              <input
-                checked={draft}
-                data-testid="pr-dialog-draft"
-                disabled={submitting}
-                type="checkbox"
-                onChange={(event) => setDraft(event.target.checked)}
-              />
-              <span>Open as draft</span>
-            </label>
-          </div>
+          <textarea
+            aria-label="PR body"
+            className="pr-dialog__textarea"
+            data-testid="pr-dialog-body"
+            disabled={submitting}
+            placeholder="Description (leave empty to generate)"
+            rows={6}
+            value={body}
+            onChange={(event) => setBody(event.target.value)}
+          />
         </div>
 
-        <div className="tree-modal__footer">
-          <div className="tree-modal__hint">
-            {submitting ? "Creating pull request…" : "Submits via `gh pr create`. Pushes upstream if needed."}
-          </div>
-          <div className="tree-modal__actions">
-            <button
-              className="button button--secondary"
-              disabled={submitting}
-              type="button"
-              onClick={onClose}
-            >
-              Cancel
-            </button>
-            <button
-              className="button button--primary"
-              data-testid="pr-dialog-submit"
-              disabled={submitting || loadingDraft || !title.trim() || !base.trim()}
-              type="button"
-              onClick={handleSubmit}
-            >
-              {submitting ? "Creating…" : "Create pull request"}
-            </button>
-          </div>
+        <div className="pr-dialog__footer">
+          <button
+            className="button button--primary pr-dialog__submit"
+            data-testid="pr-dialog-submit"
+            disabled={submitting || !base.trim()}
+            type="button"
+            onClick={handleSubmit}
+          >
+            {submitting ? "Creating…" : "Create PR"}
+          </button>
         </div>
       </div>
     </div>

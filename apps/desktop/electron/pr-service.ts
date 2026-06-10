@@ -398,7 +398,7 @@ export async function createPullRequest(
   workspacePath: string,
   input: CreatePrInput,
 ): Promise<CreatePrResult> {
-  log("create.start", { base: input.base, draft: input.draft, titleLen: input.title.length });
+  log("create.start", { base: input.base, draft: input.draft, titleLen: (input.title ?? "").length });
 
   if (!(await isGitRepo(workspacePath))) {
     return { success: false, message: "Not a git repository." };
@@ -407,11 +407,21 @@ export async function createPullRequest(
     return { success: false, message: "GitHub CLI (gh) not found on PATH." };
   }
 
-  if (!input.title.trim()) {
-    return { success: false, message: "Title is required." };
-  }
   if (!input.base.trim()) {
     return { success: false, message: "Base branch is required." };
+  }
+
+  // Auto-generate title/body if not provided.
+  let title = input.title?.trim() ?? "";
+  let body = input.body ?? "";
+  if (!title) {
+    try {
+      const draft = await generatePrDraft(workspacePath, "deepseek:deepseek-chat", input.base, async () => undefined);
+      title = draft.title || (await getHeadBranch(workspacePath));
+      body = body || draft.body;
+    } catch {
+      title = await getHeadBranch(workspacePath);
+    }
   }
 
   // gh requires upstream to exist. If the branch was just committed locally
@@ -434,9 +444,9 @@ export async function createPullRequest(
     "--base",
     input.base,
     "--title",
-    input.title,
+    title,
     "--body",
-    input.body,
+    body,
   ];
   if (input.draft) args.push("--draft");
 
