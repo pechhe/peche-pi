@@ -51,6 +51,9 @@ export default defineConfig(({ command }) => {
       ],
       resolve: {
         tsconfigPaths: true,
+        alias: {
+          "@": path.resolve(projectRoot, "src"),
+        },
       },
       server: {
         port: devPort,

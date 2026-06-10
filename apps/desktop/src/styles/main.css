@@ -50,26 +50,12 @@
   grid-template-rows: auto minmax(0, 1fr);
 }
 
+/* Electron drag regions — layout/skin handled by Tailwind in topbar.tsx */
 .topbar {
   -webkit-app-region: drag;
-  padding: 12px 18px 10px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  border-bottom: 1px solid color-mix(in srgb, var(--line) 45%, transparent);
-  background: var(--main);
-}
-
-.topbar__title {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
 }
 
 .topbar__env-toggle {
-  margin-left: 4px;
   -webkit-app-region: no-drag;
 }
 
@@ -738,38 +724,10 @@
   cursor: default;
 }
 
-.topbar__workspace,
-.topbar__session {
-  font-size: 15px;
-  font-weight: 580;
-  letter-spacing: -0.02em;
-}
-
-.topbar__workspace {
-  color: var(--muted-soft);
-}
-
-.topbar__session {
-  color: var(--muted-strong);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .topbar__session--clickable {
   -webkit-app-region: no-drag;
-  cursor: pointer;
 }
 
-.topbar__session--clickable:hover {
-  opacity: 0.8;
-}
-
-.topbar__separator {
-  color: var(--muted-soft);
-}
-
-.topbar__actions,
 .empty-panel__actions {
   display: flex;
   align-items: center;
@@ -791,58 +749,6 @@
   width: 30px;
   height: 30px;
   border-radius: 10px;
-  color: var(--muted-soft);
-}
-
-.view-settings {
-  position: relative;
-  display: grid;
-  place-items: center;
-}
-
-.view-settings__menu {
-  position: absolute;
-  top: calc(100% + 8px);
-  right: 0;
-  z-index: 60;
-  min-width: 240px;
-  padding: 6px;
-  border-radius: 14px;
-  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
-  background: var(--surface);
-  box-shadow: 0 22px 56px rgba(20, 27, 45, 0.18);
-  display: grid;
-  gap: 2px;
-}
-
-.view-settings__item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 9px 11px;
-  border-radius: 10px;
-  cursor: pointer;
-}
-
-.view-settings__item:hover {
-  background: color-mix(in srgb, var(--line) 35%, transparent);
-}
-
-.view-settings__item > span {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-}
-
-.view-settings__item strong {
-  font-size: 13px;
-  font-weight: 580;
-  color: var(--muted-strong);
-}
-
-.view-settings__item small {
-  font-size: 11px;
   color: var(--muted-soft);
 }
 

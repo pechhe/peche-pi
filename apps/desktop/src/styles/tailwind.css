@@ -6,6 +6,7 @@
 @layer theme, base, components, utilities;
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities);
+@import "tw-animate-css";
 
 /*
  * Dark-mode variant: `.dark` and `.dracula` on <html> both count as dark.
