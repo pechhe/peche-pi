@@ -26,6 +26,7 @@ interface EnvironmentPanelProps {
   readonly selectedRuntime?: RuntimeSnapshot;
   readonly api: PiDesktopApi;
   readonly sessionStatus?: string;
+  readonly style?: import("react").CSSProperties;
 }
 
 export function EnvironmentPanel(props: EnvironmentPanelProps) {
@@ -47,6 +48,7 @@ export function EnvironmentPanel(props: EnvironmentPanelProps) {
     selectedRuntime,
     api,
     sessionStatus,
+    style,
   } = props;
 
   const [branchPickerOpen, setBranchPickerOpen] = useState(false);
@@ -105,7 +107,7 @@ export function EnvironmentPanel(props: EnvironmentPanelProps) {
   const commitShortcut = api.platform === "darwin" ? "⌘⇧K" : "Ctrl+Shift+K";
 
   return (
-    <div className="environment-panel" data-testid="environment-panel">
+    <div className="environment-panel" data-testid="environment-panel" style={style}>
       {/* Header */}
       <div className="environment-panel__header">
         <span className="environment-panel__title">Environment</span>
