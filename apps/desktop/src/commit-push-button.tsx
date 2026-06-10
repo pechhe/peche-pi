@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
 import { CommitPushPrDialog } from "./commit-push-pr-dialog";
-import type { PiDesktopApi, WorkspacePrInfo } from "./ipc";
+import { CommitDialog } from "./commit-dialog";
+import type { PiDesktopApi, PrMergeStatus, WorkspacePrInfo } from "./ipc";
 import { showToast } from "./toast";
 import { playButtonClick } from "./button-click-sound";
 import type { CommitPushMode } from "./desktop-state";
@@ -28,6 +29,9 @@ interface CommitPushButtonProps {
   readonly shortcutLabel: string;
   readonly branchHint?: string;
   readonly onSetCommitPushMode?: (mode: CommitPushMode) => void;
+  readonly onAutoShip?: () => void;
+  readonly autoShipState?: "idle" | "working" | "done" | "error";
+  readonly onCommitSuccess?: () => void;
 }
 
 interface GitInfo {
@@ -50,6 +54,9 @@ export function CommitPushButton({
   shortcutLabel,
   branchHint,
   onSetCommitPushMode,
+  onAutoShip,
+  autoShipState,
+  onCommitSuccess,
 }: CommitPushButtonProps) {
   const [showSettings, setShowSettings] = useState(false);
   const workflowMode = commitPushMode ?? "semi-auto";
@@ -70,6 +77,10 @@ export function CommitPushButton({
   const [gitInfo, setGitInfo] = useState<GitInfo>({ isGitRepo: false, changedCount: 0 });
   const [prInfo, setPrInfo] = useState<WorkspacePrInfo | undefined>(undefined);
   const [prDialogOpen, setPrDialogOpen] = useState(false);
+  const [commitDialogOpen, setCommitDialogOpen] = useState(false);
+  const [mergeStatus, setMergeStatus] = useState<PrMergeStatus | undefined>(undefined);
+  const [checkingMerge, setCheckingMerge] = useState(false);
+  const [merging, setMerging] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   const refreshGitInfo = useCallback(() => {
@@ -130,6 +141,7 @@ export function CommitPushButton({
         // eslint-disable-next-line no-console
         console.info("[commit-push] success", result);
         showToast({ variant: "success", message: result.message });
+        onCommitSuccess?.();
       } else {
         // eslint-disable-next-line no-console
         console.error("[commit-push] failed", result);
@@ -147,7 +159,7 @@ export function CommitPushButton({
       refreshGitInfo();
       refreshPrInfo();
     }
-  }, [api, branchHint, busy, commitPushModel, gitInfo.isGitRepo, refreshGitInfo, refreshPrInfo, workspaceId]);
+  }, [api, branchHint, busy, commitPushModel, gitInfo.isGitRepo, onCommitSuccess, refreshGitInfo, refreshPrInfo, workspaceId]);
 
   // Trigger via global shortcut event (dispatched by App.tsx Cmd+Shift+K handler)
   useEffect(() => {
@@ -157,6 +169,50 @@ export function CommitPushButton({
     window.addEventListener(SHORTCUT_EVENT, handler);
     return () => window.removeEventListener(SHORTCUT_EVENT, handler);
   }, [handleCommitPush]);
+
+  const checkMergeStatus = useCallback(async () => {
+    if (!prInfo?.prNumber || !workspaceId) return;
+    setCheckingMerge(true);
+    try {
+      const result = await api.checkPrMergeStatus(workspaceId, prInfo.prNumber);
+      setMergeStatus(result.status);
+    } catch {
+      setMergeStatus("unknown");
+    } finally {
+      setCheckingMerge(false);
+    }
+  }, [api, prInfo?.prNumber, workspaceId]);
+
+  const handleMerge = useCallback(async () => {
+    if (!prInfo?.prNumber || !workspaceId || merging) return;
+    setMerging(true);
+    try {
+      const result = await api.mergePr(workspaceId, prInfo.prNumber);
+      if (result.success) {
+        showToast({ variant: "success", message: "Pull request merged." });
+        refreshPrInfo();
+        setMergeStatus(undefined);
+      } else {
+        showToast({ variant: "error", message: result.message });
+      }
+    } catch (err) {
+      showToast({
+        variant: "error",
+        message: err instanceof Error ? err.message : "Failed to merge PR.",
+      });
+    } finally {
+      setMerging(false);
+    }
+  }, [api, merging, prInfo?.prNumber, refreshPrInfo, workspaceId]);
+
+  // Check merge status when PR info changes and we have an open PR
+  useEffect(() => {
+    if (prInfo?.prState === "open" && prInfo.prNumber) {
+      void checkMergeStatus();
+    } else {
+      setMergeStatus(undefined);
+    }
+  }, [prInfo?.prState, prInfo?.prNumber, checkMergeStatus]);
 
   const handleCreatePrOneClick = useCallback(async () => {
     if (!prInfo) return;
@@ -195,25 +251,40 @@ export function CommitPushButton({
   // nothing to PR, so show a passive link to the merged PR rather than
   // re-offering "Create PR". `closed` (PR closed unmerged) still routes to
   // create-pr since opening a fresh PR is the expected next step there.
+  // If the PR was merged or closed, treat it as "create-pr" since the user
+  // likely has new changes to PR. The merged-pr state is only useful when
+  // there's nothing new to do.
   const mode: ButtonMode = hasChanges || !ghAvailable
     ? "commit-push"
     : prState === "open"
       ? "view-pr"
-      : prState === "merged"
-        ? "merged-pr"
+      : prState === "merged" || prState === "closed"
+        ? "create-pr"
         : "create-pr";
   const isPill = mode !== "commit-push" || hasChanges;
 
+  const viewPrClass = mergeStatus === "mergeable"
+    ? "commit-push commit-push--mergeable"
+    : mergeStatus === "conflicts"
+      ? "commit-push commit-push--conflicts"
+      : "commit-push commit-push--view-pr";
+
   const modeClass: Record<ButtonMode, string> = {
     "commit-push": hasChanges ? "commit-push commit-push--dirty" : "commit-push",
-    "view-pr": "commit-push commit-push--view-pr",
+    "view-pr": viewPrClass,
     "merged-pr": "commit-push commit-push--view-pr",
     "create-pr": "commit-push commit-push--create-pr",
   };
   const containerClass = modeClass[mode];
 
   const modeAction: Record<ButtonMode, () => void> = {
-    "commit-push": () => { void handleCommitPush(); },
+    "commit-push": () => {
+      if (workflowMode === "manual") {
+        setCommitDialogOpen(true);
+      } else {
+        void handleCommitPush();
+      }
+    },
     "create-pr": () => {
       if (workflowMode === "manual") {
         setPrDialogOpen(true);
@@ -221,27 +292,71 @@ export function CommitPushButton({
         void handleCreatePrOneClick();
       }
     },
-    "view-pr": () => { if (prInfo?.prUrl) void api.openExternal(prInfo.prUrl); },
+    "view-pr": () => {
+      if (mergeStatus === "mergeable") {
+        void handleMerge();
+      } else if (mergeStatus === "conflicts") {
+        if (prInfo?.prUrl) void api.openExternal(prInfo.prUrl);
+      } else {
+        if (prInfo?.prUrl) void api.openExternal(prInfo.prUrl);
+      }
+    },
     "merged-pr": () => { if (prInfo?.prUrl) void api.openExternal(prInfo.prUrl); },
   };
   const handlePrimaryClick = () => {
-    if (busy || disabled) return;
-    modeAction[mode]();
+    if (busy || disabled || autoShipState === "working") return;
+    if (workflowMode === "auto-ship" && onAutoShip) {
+      onAutoShip();
+    } else {
+      modeAction[mode]();
+    }
   };
 
+  const viewPrLabel = checkingMerge
+    ? "Checking…"
+    : mergeStatus === "mergeable"
+      ? "Merge PR"
+      : mergeStatus === "conflicts"
+        ? "View PR (conflicts)"
+        : prInfo?.prNumber ? `View PR #${prInfo.prNumber}` : "View PR";
+
+  const autoShipLabel = autoShipState === "working"
+    ? "Shipping…"
+    : autoShipState === "done"
+      ? "Shipped ✓"
+      : "Ship";
+
+  const commitLabel = workflowMode === "manual"
+    ? (hasChanges ? `Commit or Push (${gitInfo.changedCount} changed)` : "Commit or Push")
+    : workflowMode === "auto-ship"
+      ? autoShipLabel
+      : (hasChanges ? `Commit & Push (${gitInfo.changedCount} changed)` : "Commit & Push");
+
   const modeLabel: Record<ButtonMode, string> = {
-    "commit-push": hasChanges
-      ? `Commit & Push (${gitInfo.changedCount} changed)`
-      : "Commit & Push",
-    "view-pr": prInfo?.prNumber ? `View PR #${prInfo.prNumber}` : "View PR",
+    "commit-push": commitLabel,
+    "view-pr": viewPrLabel,
     "merged-pr": prInfo?.prNumber ? `View PR #${prInfo.prNumber} (merged)` : "View merged PR",
     "create-pr": "Create PR",
   };
   const primaryLabel = modeLabel[mode];
 
+  const viewPrTooltip = checkingMerge
+    ? "Checking merge status…"
+    : mergeStatus === "mergeable"
+      ? "Merge pull request"
+      : mergeStatus === "conflicts"
+        ? "View PR (has conflicts)"
+        : prInfo?.prNumber ? `View PR #${prInfo.prNumber}` : "View PR";
+
+  const autoShipTooltip = autoShipState === "working"
+    ? "Shipping…"
+    : autoShipState === "done"
+      ? "Shipped"
+      : "Ship all changes";
+
   const modeTooltip: Record<ButtonMode, string> = {
-    "commit-push": "Commit & Push",
-    "view-pr": prInfo?.prNumber ? `View PR #${prInfo.prNumber}` : "View PR",
+    "commit-push": workflowMode === "auto-ship" ? autoShipTooltip : "Commit & Push",
+    "view-pr": viewPrTooltip,
     "merged-pr": prInfo?.prNumber ? `Merged — view PR #${prInfo.prNumber}` : "Merged — view PR",
     "create-pr": "Create pull request",
   };
@@ -254,10 +369,10 @@ export function CommitPushButton({
           aria-label={primaryLabel}
           className={`commit-push__button${busy ? " commit-push__button--busy" : ""}${isPill ? " commit-push__button--pill" : " icon-button topbar__icon"}`}
           type="button"
-          disabled={disabled || busy}
+          disabled={disabled || busy || checkingMerge || merging || autoShipState === "working"}
           onClick={() => { playButtonClick(); handlePrimaryClick(); }}
         >
-          {busy ? (
+          {busy || merging || checkingMerge || autoShipState === "working" ? (
             <span className="commit-push__spinner" />
           ) : (
             <GitCommitIcon />
@@ -300,17 +415,16 @@ export function CommitPushButton({
                 {([
                   { value: "manual" as const, label: "Manual", desc: "Full control over commit, push, and PR" },
                   { value: "semi-auto" as const, label: "Semi-automatic", desc: "One-click commit+push and PR creation" },
-                  { value: "auto-ship" as const, label: "Auto-ship", desc: "One button does everything (coming soon)", disabled: true },
+                  { value: "auto-ship" as const, label: "Auto-ship", desc: "One button: commit, push, PR, and merge" },
                 ]).map((opt) => (
                   <label
                     key={opt.value}
-                    className={`commit-push__settings-option${opt.disabled ? " commit-push__settings-option--disabled" : ""}`}
+                    className="commit-push__settings-option"
                   >
                     <input
                       type="radio"
                       name="commit-push-mode"
                       checked={commitPushMode === opt.value}
-                      disabled={opt.disabled}
                       onChange={() => onSetCommitPushMode(opt.value)}
                     />
                     <div>
@@ -336,6 +450,18 @@ export function CommitPushButton({
               variant: "success",
               message: url ? `Pull request created: ${url}` : "Pull request created.",
             });
+            refreshPrInfo();
+          }}
+        />
+      ) : null}
+      {commitDialogOpen ? (
+        <CommitDialog
+          api={api}
+          branchName={branchHint || "main"}
+          workspaceId={workspaceId}
+          onClose={() => setCommitDialogOpen(false)}
+          onSuccess={() => {
+            refreshGitInfo();
             refreshPrInfo();
           }}
         />
