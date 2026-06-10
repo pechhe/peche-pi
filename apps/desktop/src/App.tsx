@@ -3132,7 +3132,6 @@ export default function App() {
             }}
           />
         ) : null}
-      </main>
       {environmentPanelOpen && selectedWorkspace ? (
         <EnvironmentPanel
           selectedWorkspace={selectedWorkspace}
@@ -3154,6 +3153,8 @@ export default function App() {
           sessionStatus={selectedSession?.status}
         />
       ) : null}
+
+      </main>
       {/* Rendered last so its -webkit-app-region:no-drag wins over the topbar's
           drag region when the sidebar is collapsed. Electron computes draggable
           regions in DOM order, not z-index, so an earlier no-drag toggle gets
