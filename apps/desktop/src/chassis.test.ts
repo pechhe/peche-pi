@@ -1,7 +1,13 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { parseChassisState, toggleStickyActivation, type ChassisAction } from "./chassis.ts";
+import {
+  parseChassisFile,
+  parseChassisState,
+  resolveFolderState,
+  toggleStickyActivation,
+  type ChassisAction,
+} from "./chassis.ts";
 
 describe("parseChassisState", () => {
   it("returns valid one-shot/submit actions", () => {
@@ -115,6 +121,54 @@ describe("parseChassisState", () => {
     assert.deepEqual(parseChassisState("not json{"), { actions: [], dropped: 0 });
     assert.deepEqual(parseChassisState("{}"), { actions: [], dropped: 0 });
     assert.deepEqual(parseChassisState(JSON.stringify({ actions: "x" })), { actions: [], dropped: 0 });
+  });
+});
+
+describe("parseChassisFile (per-folder, v2)", () => {
+  const submit = (id: string) => ({
+    id, label: id, trigger: "oneShot", effect: { type: "submit", text: "/" + id },
+  });
+
+  it("parses folder-keyed definitions + activation, validating each folder's actions", () => {
+    const raw = JSON.stringify({
+      version: 2,
+      folders: {
+        "/a": { actions: [submit("x")], activeStickyId: null },
+        "/b": {
+          actions: [
+            { id: "w", label: "W", trigger: "sticky", effect: { type: "wrap", template: "{{input}}" } },
+            "garbage",
+          ],
+          activeStickyId: "w",
+        },
+      },
+    });
+    const file = parseChassisFile(raw);
+    assert.deepEqual(file["/a"]!.actions.map((a) => a.id), ["x"]);
+    assert.equal(file["/a"]!.activeStickyId, null);
+    assert.deepEqual(file["/b"]!.actions.map((a) => a.id), ["w"]);
+    assert.equal(file["/b"]!.activeStickyId, "w");
+  });
+
+  it("nulls an activeStickyId that does not match any surviving action", () => {
+    const raw = JSON.stringify({
+      version: 2,
+      folders: { "/a": { actions: [submit("x")], activeStickyId: "ghost" } },
+    });
+    assert.equal(parseChassisFile(raw)["/a"]!.activeStickyId, null);
+  });
+
+  it("returns empty record for invalid JSON / non-v2 shapes, never throwing", () => {
+    assert.deepEqual(parseChassisFile("nope{"), {});
+    assert.deepEqual(parseChassisFile(JSON.stringify({ version: 1, actions: [] })), {});
+    assert.deepEqual(parseChassisFile("{}"), {});
+  });
+});
+
+describe("resolveFolderState (fallback)", () => {
+  it("falls back to an empty set + no activation for an unconfigured folder", () => {
+    const file = parseChassisFile(JSON.stringify({ version: 2, folders: {} }));
+    assert.deepEqual(resolveFolderState(file, "/unknown"), { actions: [], activeStickyId: null });
   });
 });
 

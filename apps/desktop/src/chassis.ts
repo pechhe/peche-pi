@@ -39,6 +39,18 @@ export interface ParsedChassisState {
   readonly dropped: number;
 }
 
+/** Per-folder Chassis state: the folder's action definitions + its sticky activation. */
+export interface ChassisFolderState {
+  readonly actions: ChassisAction[];
+  /** Id of the active sticky action in this folder, or null. Never per-thread. */
+  readonly activeStickyId: string | null;
+}
+
+/** Folder-keyed Chassis file (schema v2): map from project-folder path → folder state. */
+export type ChassisFile = Record<string, ChassisFolderState>;
+
+const EMPTY_FOLDER_STATE: ChassisFolderState = { actions: [], activeStickyId: null };
+
 function parseAction(value: unknown): ChassisAction | null {
   if (typeof value !== "object" || value === null) return null;
   const v = value as Record<string, unknown>;
@@ -83,6 +95,16 @@ function parseAction(value: unknown): ChassisAction | null {
   return null;
 }
 
+function parseActionList(rawActions: unknown): ChassisAction[] {
+  if (!Array.isArray(rawActions)) return [];
+  const actions: ChassisAction[] = [];
+  for (const entry of rawActions) {
+    const action = parseAction(entry);
+    if (action) actions.push(action);
+  }
+  return actions;
+}
+
 export function parseChassisState(raw: string): ParsedChassisState {
   let parsed: unknown;
   try {
@@ -93,12 +115,50 @@ export function parseChassisState(raw: string): ParsedChassisState {
   if (typeof parsed !== "object" || parsed === null) return { actions: [], dropped: 0 };
   const rawActions = (parsed as Record<string, unknown>).actions;
   if (!Array.isArray(rawActions)) return { actions: [], dropped: 0 };
-  const actions: ChassisAction[] = [];
-  let dropped = 0;
-  for (const entry of rawActions) {
-    const action = parseAction(entry);
-    if (action) actions.push(action);
-    else dropped += 1;
+  const actions = parseActionList(rawActions);
+  return { actions, dropped: rawActions.length - actions.length };
+}
+
+/**
+ * Parse the folder-keyed Chassis file (schema v2). Each folder's actions are
+ * validated (malformed entries dropped); an activeStickyId that no longer
+ * matches a surviving action is nulled. Invalid JSON or non-v2 shapes yield an
+ * empty record — never throws.
+ */
+export function parseChassisFile(raw: string): ChassisFile {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return {};
   }
-  return { actions, dropped };
+  if (typeof parsed !== "object" || parsed === null) return {};
+  const p = parsed as Record<string, unknown>;
+  if (p.version !== 2 || typeof p.folders !== "object" || p.folders === null) return {};
+  const out: Record<string, ChassisFolderState> = {};
+  for (const [folderPath, value] of Object.entries(p.folders as Record<string, unknown>)) {
+    if (typeof value !== "object" || value === null) continue;
+    const v = value as Record<string, unknown>;
+    const actions = parseActionList(v.actions);
+    const rawActive = typeof v.activeStickyId === "string" ? v.activeStickyId : null;
+    const activeStickyId = actions.some((a) => a.id === rawActive) ? rawActive : null;
+    out[folderPath] = { actions, activeStickyId };
+  }
+  return out;
+}
+
+/** Resolve a folder's state, falling back to an empty set + no activation. */
+export function resolveFolderState(file: ChassisFile, folderPath: string): ChassisFolderState {
+  return file[folderPath] ?? EMPTY_FOLDER_STATE;
+}
+
+/** Serialize a folder-keyed Chassis file (schema v2), revalidating every folder. */
+export function serializeChassisFile(file: ChassisFile): string {
+  const folders: Record<string, ChassisFolderState> = {};
+  for (const [folderPath, state] of Object.entries(file)) {
+    const actions = parseActionList(state.actions);
+    const activeStickyId = actions.some((a) => a.id === state.activeStickyId) ? state.activeStickyId : null;
+    folders[folderPath] = { actions, activeStickyId };
+  }
+  return `${JSON.stringify({ version: 2, folders }, null, 2)}\n`;
 }
