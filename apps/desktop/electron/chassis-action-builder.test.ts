@@ -215,9 +215,10 @@ describe("buildChassisActionCandidate — no-session guarantee", () => {
     // This function uses only: fetch, validateChassisActionCandidate, resolveProviderConfig.
     // It never imports or calls any session-creation code.
     // Verification: the module's imports contain no session-driver references.
-    const moduleSource = await import("node:fs/promises").then((fs) =>
-      fs.readFile(new URL("./chassis-action-builder.ts", import.meta.url), "utf8"),
-    );
+    const fs = await import("node:fs/promises");
+    const p = await import("node:path");
+    const modulePath = p.default.resolve(process.cwd(), "electron/chassis-action-builder.ts");
+    const moduleSource = await fs.readFile(modulePath, "utf8");
     assert.ok(!moduleSource.includes("session-driver"), "Must not import session-driver");
     assert.ok(!moduleSource.includes("createSession"), "Must not call createSession");
     assert.ok(!moduleSource.includes("startThread"), "Must not call startThread");
