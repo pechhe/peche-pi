@@ -538,7 +538,7 @@
 .environment-panel__menu {
   position: absolute;
   top: 0;
-  right: calc(100% + 10px);
+  left: calc(100% + 10px);
   width: var(--env-panel-width, 300px);
   padding: 6px;
   border-radius: 12px;
