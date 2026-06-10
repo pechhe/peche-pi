@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { CommitPushMode, WorkspaceRecord, WorktreeRecord } from "./desktop-state";
 import type { WorkspaceMenuState } from "./hooks/use-workspace-menu";
 import type { BranchInfo, PiDesktopApi } from "./ipc";
@@ -55,16 +55,17 @@ export function EnvironmentPanel(props: EnvironmentPanelProps) {
   const [diffInsertions, setDiffInsertions] = useState(0);
   const [diffDeletions, setDiffDeletions] = useState(0);
 
-  useEffect(() => {
+  const refreshDiffStat = useCallback(() => {
     if (!selectedWorkspace) return;
-    let cancelled = false;
     api.getWorkspaceDiffStat(selectedWorkspace.id).then((stat) => {
-      if (cancelled) return;
       setDiffInsertions(stat.insertions);
       setDiffDeletions(stat.deletions);
     }).catch(() => { /* ignore */ });
-    return () => { cancelled = true; };
   }, [selectedWorkspace, api]);
+
+  useEffect(() => {
+    refreshDiffStat();
+  }, [refreshDiffStat]);
 
   // Close branch picker on outside click
   useEffect(() => {
@@ -421,8 +422,11 @@ export function EnvironmentPanel(props: EnvironmentPanelProps) {
           shortcutLabel={commitShortcut}
           branchHint={selectedWorktree?.branchName}
           onSetCommitPushMode={onSetCommitPushMode}
+          onAutoShip={onFeatureDone}
+          autoShipState={featureDoneState}
+          onCommitSuccess={refreshDiffStat}
         />
-        {onFeatureDone ? (
+        {onFeatureDone && commitPushMode === "auto-ship" ? (
           <button
             className="environment-panel__ship-btn"
             data-testid="env-row-ship-button"

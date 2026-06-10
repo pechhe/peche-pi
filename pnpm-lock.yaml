@@ -8,6 +8,7 @@ overrides:
   undici: 6.26.0
   fast-uri: 3.1.2
   '@xmldom/xmldom': 0.9.10
+  plist: 3.1.1
   protobufjs: 7.6.3
   '@protobufjs/utf8': 1.1.1
   ws: 8.21.0
@@ -2624,8 +2625,8 @@ packages:
     engines: {node: '>=18'}
     hasBin: true
 
-  plist@3.1.0:
-    resolution: {integrity: sha512-uysumyrvkUX0rX/dEVqt8gC3sTBzd4zoWfLeS29nb53imdaXVvLINYXTI2GNqzaMuvacNx4uJQ8+b3zXR0pkgQ==}
+  plist@3.1.1:
+    resolution: {integrity: sha512-ZIfcLJC+7E7FBFnDxm9MPmt7D+DidyQ26lewieO75AdhA2ayMtsJSES0iWzqJQbcVRSrTufQoy0DR94xHue0oA==}
     engines: {node: '>=10.4.0'}
 
   postcss@8.5.15:
@@ -3662,7 +3663,7 @@ snapshots:
       fs-extra: 10.1.0
       isbinaryfile: 4.0.10
       minimist: 1.2.8
-      plist: 3.1.0
+      plist: 3.1.1
     transitivePeerDependencies:
       - supports-color
 
@@ -3685,7 +3686,7 @@ snapshots:
       dir-compare: 4.2.0
       fs-extra: 11.3.5
       minimatch: 9.0.9
-      plist: 3.1.0
+      plist: 3.1.1
     transitivePeerDependencies:
       - supports-color
 
@@ -4414,7 +4415,7 @@ snapshots:
       lazy-val: 1.0.5
       minimatch: 10.2.5
       pkijs: 3.4.0
-      plist: 3.1.0
+      plist: 3.1.1
       proper-lockfile: 4.1.2
       resedit: 1.7.2
       semver: 7.7.4
@@ -6039,7 +6040,7 @@ snapshots:
     optionalDependencies:
       fsevents: 2.3.2
 
-  plist@3.1.0:
+  plist@3.1.1:
     dependencies:
       '@xmldom/xmldom': 0.9.10
       base64-js: 1.5.1

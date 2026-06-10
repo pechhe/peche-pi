@@ -42,8 +42,11 @@ import type { ChassisAction } from "./chassis";
 import { toggleStickyActivation } from "./chassis";
 import { deriveModelOnboardingState } from "./model-onboarding";
 import { getDefaultLayout } from "./composer-layout";
+import { EditLayoutStateContext, EditLayoutActionsContext } from "./edit-layout-context";
+import { useEditLayoutController } from "./use-edit-layout";
+import { ComposerLayoutToolbar, ComposerLayoutPalette, ComposerLayoutInspector } from "./composer-layout-editor";
 import { type ModelSelectorHandle } from "./model-selector";
-import { UtilitySurface, SettingsSurface, SkillsSurface, ExtensionsSurface, AutomationsSurface, ContextSurface, AgentsSurface, TestingSurface, ComposerLayoutSurface } from "./surfaces/utility-surface";
+import { UtilitySurface, SettingsSurface, SkillsSurface, ExtensionsSurface, AutomationsSurface, ContextSurface, AgentsSurface, TestingSurface } from "./surfaces/utility-surface";
 import { GraphSurface } from "./surfaces/graph-surface";
 import { type SettingsSection } from "./settings-view";
 import { NewThreadView } from "./new-thread-view";
@@ -455,6 +458,8 @@ export default function App() {
   const [chassisActions, setChassisActions] = useState<ChassisAction[]>([]);
   const [activeStickyId, setActiveStickyId] = useState<string | null>(null);
   const [composerLayout, setComposerLayout] = useState<import("./composer-layout").ComposerLayoutData | null>(null);
+  const [composerLayoutEditMode, setComposerLayoutEditMode] = useState(false);
+  const editLayoutController = useEditLayoutController(composerLayout || getDefaultLayout());
   const [settingsWorkspaceId, setSettingsWorkspaceId] = useState("");
   const [skillsWorkspaceId, setSkillsWorkspaceId] = useState("");
   const [skillsQuery, setSkillsQuery] = useState("");
@@ -483,6 +488,18 @@ export default function App() {
   const [zoomHudPercent, setZoomHudPercent] = useState<number | null>(null);
   const prevZoomFactorRef = useRef<number | null>(null);
   const zoomHudTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // When entering composer-layout view, activate inline edit mode and switch back to previous view
+  useEffect(() => {
+    if (snapshot?.activeView === "composer-layout") {
+      setComposerLayoutEditMode(true);
+      // Restore the previous view (the user was in before Settings)
+      const restoreView = previousActiveViewRef.current && previousActiveViewRef.current !== "settings"
+        ? previousActiveViewRef.current
+        : "new-thread";
+      setActiveView(restoreView);
+    }
+  }, [snapshot?.activeView]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch smart compact settings on mount
   // Preload button click audio buffers so first Enter press has no latency
@@ -2675,19 +2692,8 @@ export default function App() {
     );
   }
 
-  if (snapshot.activeView === "composer-layout") {
-    return (
-      <UtilitySurface {...utilityShellProps} content={
-        <ComposerLayoutSurface
-          composerLayout={composerLayout || getDefaultLayout()}
-          deviceMode={snapshot.composerDeviceMode}
-          api={api!}
-          setSnapshot={setSnapshot}
-          updateSnapshot={updateSnapshot}
-          onBack={() => setActiveView("settings")}
-        />
-      } />
-    );
+  if (snapshot?.activeView === "composer-layout") {
+    return null; // Will re-render after useEffect fires
   }
 
   const shellClassName = `shell${snapshot.sidebarCollapsed ? " shell--sidebar-collapsed" : ""}${sidebarResize.isResizing ? " shell--sidebar-resizing" : ""}`;
@@ -2696,8 +2702,9 @@ export default function App() {
     ? undefined
     : ({ ["--sidebar-width" as string]: `${sidebarResize.width}px` } as React.CSSProperties);
 
-  return (
-    <div className={shellClassName} style={shellStyle}>
+  // Wrap shell content with edit layout context when edit mode is active
+  const shellContent = (
+    <>
       {globalSearch.isOpen ? (
         <SearchPalette
           query={globalSearch.query}
@@ -3148,6 +3155,44 @@ export default function App() {
       ) : null}
       <ImageLightbox />
       {import.meta.env.DEV && <Agentation />}
+    </>
+  );
+
+  // Wrap with edit layout context when edit mode is active
+  if (composerLayoutEditMode) {
+    const editLayoutState = {
+      ...editLayoutController.state,
+      active: true,
+    };
+    const editLayoutActions = {
+      ...editLayoutController.actions,
+      save: () => {
+        const validated = editLayoutController.save();
+        void api!.setComposerLayout(validated).then(() => {
+          setComposerLayout(validated);
+          setComposerLayoutEditMode(false);
+        });
+      },
+      deactivate: () => setComposerLayoutEditMode(false),
+    };
+
+    return (
+      <div className={shellClassName} style={shellStyle}>
+        <EditLayoutStateContext.Provider value={editLayoutState}>
+          <EditLayoutActionsContext.Provider value={editLayoutActions}>
+            <ComposerLayoutToolbar />
+            <ComposerLayoutPalette />
+            <ComposerLayoutInspector />
+            {shellContent}
+          </EditLayoutActionsContext.Provider>
+        </EditLayoutStateContext.Provider>
+      </div>
+    );
+  }
+
+  return (
+    <div className={shellClassName} style={shellStyle}>
+      {shellContent}
     </div>
   );
 }

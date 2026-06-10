@@ -13,7 +13,7 @@
 
 import path from "node:path";
 import { execGit, execGh, isGitRepo } from "./git-runner";
-import { createPullRequest, generatePrDraft, getDefaultBranch, hasUpstream } from "./pr-service";
+import { createPullRequest, generatePrDraft, getDefaultBranch, hasUpstream, mergePr } from "./pr-service";
 import { ensureCommitBranch } from "./lazy-branch";
 
 // ---------------------------------------------------------------------------
@@ -162,6 +162,32 @@ export async function featureDone(input: FeatureDoneInput): Promise<FeatureDoneR
     await execGit(["commit", "--no-edit"], workspacePath).catch(() => {});
     await execGit(["push"], workspacePath);
     log("merge_clean", { branchName });
+
+    // 6b. Merge the PR on GitHub
+    if (prResult.number) {
+      const mergeResult = await mergePr(workspacePath, prResult.number);
+      if (mergeResult.success) {
+        log("pr_merged", { prNumber: prResult.number, url: mergeResult.url });
+        return {
+          status: "ok",
+          message: `PR merged: ${mergeResult.url ?? prResult.url ?? ""}`,
+          prUrl: mergeResult.url ?? prResult.url,
+          prNumber: prResult.number,
+          branchName,
+        };
+      } else {
+        // PR merge failed but local merge was clean — still report success
+        log("pr_merge_failed", { prNumber: prResult.number, error: mergeResult.message });
+        return {
+          status: "ok",
+          message: `PR created and mergeable (GitHub merge failed: ${mergeResult.message}): ${prResult.url ?? ""}`,
+          prUrl: prResult.url,
+          prNumber: prResult.number,
+          branchName,
+        };
+      }
+    }
+
     return {
       status: "ok",
       message: `PR created and mergeable: ${prResult.url ?? ""}`,
