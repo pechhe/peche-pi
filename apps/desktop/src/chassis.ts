@@ -8,7 +8,12 @@ export interface ChassisWrapEffect {
   readonly template: string;
 }
 
-export type ChassisEffect = ChassisSubmitEffect | ChassisWrapEffect;
+export interface ChassisReminderEffect {
+  readonly type: "reminder";
+  readonly text: string;
+}
+
+export type ChassisEffect = ChassisSubmitEffect | ChassisWrapEffect | ChassisReminderEffect;
 
 export const WRAP_INPUT_TOKEN = "{{input}}";
 
@@ -53,15 +58,27 @@ function parseAction(value: unknown): ChassisAction | null {
     };
   }
   if (v.trigger === "sticky") {
-    if (e.type !== "wrap" || typeof e.template !== "string") return null;
-    if (!e.template.includes(WRAP_INPUT_TOKEN)) return null;
-    return {
-      id: v.id,
-      label: v.label,
-      showLabel: v.showLabel !== false,
-      trigger: "sticky",
-      effect: { type: "wrap", template: e.template },
-    };
+    if (e.type === "wrap") {
+      if (typeof e.template !== "string" || !e.template.includes(WRAP_INPUT_TOKEN)) return null;
+      return {
+        id: v.id,
+        label: v.label,
+        showLabel: v.showLabel !== false,
+        trigger: "sticky",
+        effect: { type: "wrap", template: e.template },
+      };
+    }
+    if (e.type === "reminder") {
+      if (typeof e.text !== "string") return null;
+      return {
+        id: v.id,
+        label: v.label,
+        showLabel: v.showLabel !== false,
+        trigger: "sticky",
+        effect: { type: "reminder", text: e.text },
+      };
+    }
+    return null;
   }
   return null;
 }

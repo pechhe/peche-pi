@@ -68,6 +68,35 @@ describe("parseChassisState", () => {
     });
   });
 
+  it("accepts sticky/reminder actions with text", () => {
+    const raw = JSON.stringify({
+      version: 1,
+      actions: [
+        { id: "r1", label: "Standing rule", showLabel: true, trigger: "sticky",
+          effect: { type: "reminder", text: "Always write tests first." } },
+      ],
+    });
+    const { actions, dropped } = parseChassisState(raw);
+    assert.equal(dropped, 0);
+    assert.deepEqual(actions[0], {
+      id: "r1", label: "Standing rule", showLabel: true, trigger: "sticky",
+      effect: { type: "reminder", text: "Always write tests first." },
+    });
+  });
+
+  it("drops reminder effects whose text is missing or non-string", () => {
+    const raw = JSON.stringify({
+      version: 1,
+      actions: [
+        { id: "r-bad", label: "x", trigger: "sticky", effect: { type: "reminder" } },
+        { id: "r-bad2", label: "x", trigger: "sticky", effect: { type: "reminder", text: 5 } },
+      ],
+    });
+    const { actions, dropped } = parseChassisState(raw);
+    assert.deepEqual(actions.map((a) => a.id), []);
+    assert.equal(dropped, 2);
+  });
+
   it("drops mismatched trigger/effect pairings and wrap templates missing {{input}}", () => {
     const raw = JSON.stringify({
       version: 1,
