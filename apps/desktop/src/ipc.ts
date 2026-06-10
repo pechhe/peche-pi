@@ -161,6 +161,7 @@ export const desktopIpc = {
   commitPushExecute: "pi-gui:commit-push-execute",
   setCommitPushModel: "pi-gui:set-commit-push-model",
   setAutoShip: "pi-gui:set-auto-ship",
+  setCommitPushMode: "pi-gui:set-commit-push-mode",
   getSmartCompactSettings: "pi-gui:get-smart-compact-settings",
   setSmartCompactSettings: "pi-gui:set-smart-compact-settings",
   analyzeExtensionConfig: "pi-gui:analyze-extension-config",
@@ -358,6 +359,7 @@ export const piDesktopApiIpcBridge = {
   commitPushExecute: { kind: "invoke", channel: desktopIpc.commitPushExecute },
   setCommitPushModel: { kind: "invoke", channel: desktopIpc.setCommitPushModel },
   setAutoShip: { kind: "invoke", channel: desktopIpc.setAutoShip },
+  setCommitPushMode: { kind: "invoke", channel: desktopIpc.setCommitPushMode },
   getSmartCompactSettings: { kind: "invoke", channel: desktopIpc.getSmartCompactSettings },
   setSmartCompactSettings: { kind: "invoke", channel: desktopIpc.setSmartCompactSettings },
   analyzeExtensionConfig: { kind: "invoke", channel: desktopIpc.analyzeExtensionConfig },
@@ -551,6 +553,20 @@ export interface CreatePrResult {
   readonly message: string;
   readonly url?: string;
   readonly number?: number;
+}
+
+export type PrMergeStatus = "mergeable" | "conflicts" | "unknown";
+
+export interface PrMergeCheckResult {
+  readonly status: PrMergeStatus;
+  readonly url: string;
+  readonly number: number;
+}
+
+export interface PrMergeResult {
+  readonly success: boolean;
+  readonly message: string;
+  readonly url?: string;
 }
 
 export interface BranchInfo {
@@ -923,6 +939,7 @@ export interface PiDesktopApi {
   commitPushExecute(workspaceId: string, branchHint?: string): Promise<{ readonly success: boolean; readonly message: string; readonly commitMessage?: string }>;
   setCommitPushModel(workspaceId: string, model: string): Promise<DesktopAppState>;
   setAutoShip(value: boolean): Promise<DesktopAppState>;
+  setCommitPushMode(mode: string): Promise<DesktopAppState>;
   getSmartCompactSettings(): Promise<SmartCompactSettings>;
   setSmartCompactSettings(settings: Partial<SmartCompactSettings>): Promise<SmartCompactSettings>;
   analyzeExtensionConfig(extensionPath: string, model?: string): Promise<ExtensionConfigSchema>;
@@ -942,6 +959,9 @@ export interface PiDesktopApi {
   writeChatAgentsMd(chatId: string, content: string): Promise<void>;
   generatePrDraft(workspaceId: string, baseBranch?: string): Promise<PrDraftResult>;
   prCreate(workspaceId: string, input: CreatePrInput): Promise<CreatePrResult>;
+  checkPrMergeStatus(workspaceId: string, prNumber: number): Promise<PrMergeCheckResult>;
+  mergePr(workspaceId: string, prNumber: number): Promise<PrMergeResult>;
+  openPrInBrowser(workspaceId: string, prNumber: number): Promise<void>;
   listBranches(workspaceId: string): Promise<BranchListResult>;
   checkoutBranch(workspaceId: string, branchName: string): Promise<{ readonly success: boolean; readonly message: string }>;
   createBranch(workspaceId: string, branchName: string): Promise<{ readonly success: boolean; readonly message: string }>;

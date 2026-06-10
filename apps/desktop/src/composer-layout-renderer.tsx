@@ -1,4 +1,4 @@
-import { memo, type CSSProperties } from "react";
+import { memo, useCallback, type CSSProperties } from "react";
 import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
 import type { ComposerLayoutData, ComposerControlUnitRenderProps } from "./composer-layout";
 import { controlUnitRegistry, getEffectiveControlStyle, REQUIRED_UNIT_IDS } from "./composer-layout";
@@ -8,6 +8,7 @@ import type { ChassisAction } from "./chassis";
 import type { ModelSelectorHandle } from "./model-selector";
 import { ArrowUpIcon, StopSquareIcon } from "./icons";
 import { playClick } from "./button-click-sound";
+import { useEditLayoutState, useEditLayoutActions } from "./edit-layout-context";
 
 interface ComposerLayoutRendererProps {
   readonly layout: ComposerLayoutData;
@@ -192,7 +193,87 @@ export const ComposerLayoutLegacyRow = memo(function ComposerLayoutLegacyRow(
 ) {
   // For the legacy row, we ignore the grid layout and render linearly
   const { layout, ...renderProps } = props;
-  
+
+  const editLayoutState = useEditLayoutState();
+  const editLayoutActions = useEditLayoutActions();
+
+  const handleDragStart = useCallback((e: React.DragEvent, unitId: string) => {
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", unitId);
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent, targetIndex: number) => {
+    e.preventDefault();
+    if (!editLayoutActions || !editLayoutState.workingLayout) return;
+    const unitId = e.dataTransfer.getData("text/plain");
+    if (!unitId) return;
+    // Determine new row/col from drop position among non-send placements
+    const sorted = [...editLayoutState.workingLayout.placements]
+      .filter(p => p.unitId !== "builtin:send")
+      .sort((a, b) => a.row !== b.row ? a.row - b.row : a.col - b.col);
+    const targetPlacement = sorted[targetIndex];
+    if (targetPlacement) {
+      editLayoutActions.moveUnit(unitId, targetPlacement.row, targetPlacement.col);
+    }
+  }, [editLayoutActions, editLayoutState.workingLayout]);
+
+  const handleClick = useCallback((unitId: string) => {
+    if (editLayoutActions) {
+      editLayoutActions.selectUnit(unitId);
+    }
+  }, [editLayoutActions]);
+
+  if (editLayoutState.active) {
+    return (
+      <span className="composer__controls">
+        {layout.placements
+          .filter(p => p.unitId !== "builtin:send")
+          .sort((a, b) => {
+            if (a.row !== b.row) return a.row - b.row;
+            return a.col - b.col;
+          })
+          .map((placement, index) => {
+            const unit = controlUnitRegistry.get(placement.unitId);
+            if (!unit) return null;
+
+            const effectiveStyle = getEffectiveControlStyle(placement, { showLabel: true });
+            const chassisAction = placement.unitId.startsWith("chassis:")
+              ? props.chassisActions?.find(a => `chassis:${a.id}` === placement.unitId)
+              : undefined;
+
+            const isSelected = editLayoutState.selectedUnitId === placement.unitId;
+
+            return (
+              <span key={placement.unitId}>
+                {index > 0 && <span className="composer__controls-sep">{" \u00b7 "}</span>}
+                <span
+                  className={`composer-layout-editor__inline-cell${isSelected ? " composer-layout-editor__cell--selected" : ""}`}
+                  data-unit-id={placement.unitId}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, placement.unitId)}
+                  onDragOver={handleDragOver}
+                  onDrop={(e) => handleDrop(e, index)}
+                  onClick={() => handleClick(placement.unitId)}
+                >
+                  {unit.render({
+                    ...renderProps,
+                    chassisAction,
+                    showLabel: effectiveStyle.showLabel,
+                    color: effectiveStyle.color,
+                  } as any)}
+                </span>
+              </span>
+            );
+          })}
+      </span>
+    );
+  }
+
   return (
     <span className="composer__controls">
       {layout.placements

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import type { PiDesktopApi } from "./ipc";
+import type { PiDesktopApi, PrMergeStatus } from "./ipc";
 
 interface CommitPushPrDialogProps {
   readonly workspaceId: string;
@@ -26,6 +26,13 @@ export function CommitPushPrDialog({
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const titleInputRef = useRef<HTMLInputElement | null>(null);
 
+  // Post-creation state
+  const [prNumber, setPrNumber] = useState<number | undefined>(undefined);
+  const [prUrl, setPrUrl] = useState<string | undefined>(undefined);
+  const [mergeStatus, setMergeStatus] = useState<PrMergeStatus | undefined>(undefined);
+  const [checkingMerge, setCheckingMerge] = useState(false);
+  const [merging, setMerging] = useState(false);
+
   useEffect(() => {
     titleInputRef.current?.focus();
   }, []);
@@ -51,7 +58,21 @@ export function CommitPushPrDialog({
         body: body.trim() || undefined,
         base: base.trim(),
       });
-      if (result.success) {
+      if (result.success && result.number) {
+        setPrNumber(result.number);
+        setPrUrl(result.url);
+        onSuccess(result.url);
+        // Check merge status
+        setCheckingMerge(true);
+        try {
+          const status = await api.checkPrMergeStatus(workspaceId, result.number);
+          setMergeStatus(status.status);
+        } catch {
+          setMergeStatus("unknown");
+        } finally {
+          setCheckingMerge(false);
+        }
+      } else if (result.success) {
         onSuccess(result.url);
         onClose();
       } else {
@@ -64,11 +85,36 @@ export function CommitPushPrDialog({
     }
   };
 
+  const handleMerge = async () => {
+    if (!prNumber || merging) return;
+    setMerging(true);
+    setError(undefined);
+    try {
+      const result = await api.mergePr(workspaceId, prNumber);
+      if (result.success) {
+        onClose();
+      } else {
+        setError(result.message);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to merge PR.");
+    } finally {
+      setMerging(false);
+    }
+  };
+
+  const handleOpenInBrowser = async () => {
+    if (!prNumber) return;
+    await api.openPrInBrowser(workspaceId, prNumber);
+  };
+
+  const created = prNumber !== undefined;
+
   return (
     <div
       className="tree-modal-backdrop"
       onMouseDown={(event) => {
-        if (event.target !== event.currentTarget || submitting) return;
+        if (event.target !== event.currentTarget || submitting || merging) return;
         onClose();
       }}
     >
@@ -91,7 +137,7 @@ export function CommitPushPrDialog({
           <button
             aria-label="Close PR dialog"
             className="tree-modal__close"
-            disabled={submitting}
+            disabled={submitting || merging}
             type="button"
             onClick={onClose}
           >
@@ -105,41 +151,99 @@ export function CommitPushPrDialog({
           </div>
         ) : null}
 
-        <div className="pr-dialog__form">
-          <input
-            aria-label="PR title"
-            className="pr-dialog__input"
-            data-testid="pr-dialog-title"
-            disabled={submitting}
-            placeholder="Title"
-            ref={titleInputRef}
-            type="text"
-            value={title}
-            onChange={(event) => setTitle(event.target.value)}
-          />
+        {!created ? (
+          <div className="pr-dialog__form">
+            <input
+              aria-label="PR title"
+              className="pr-dialog__input"
+              data-testid="pr-dialog-title"
+              disabled={submitting}
+              placeholder="Title"
+              ref={titleInputRef}
+              type="text"
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+            />
 
-          <textarea
-            aria-label="PR body"
-            className="pr-dialog__textarea"
-            data-testid="pr-dialog-body"
-            disabled={submitting}
-            placeholder="Description (leave empty to generate)"
-            rows={6}
-            value={body}
-            onChange={(event) => setBody(event.target.value)}
-          />
-        </div>
+            <textarea
+              aria-label="PR body"
+              className="pr-dialog__textarea"
+              data-testid="pr-dialog-body"
+              disabled={submitting}
+              placeholder="Description (leave empty to generate)"
+              rows={6}
+              value={body}
+              onChange={(event) => setBody(event.target.value)}
+            />
+          </div>
+        ) : (
+          <div className="pr-dialog__status">
+            <div className="pr-dialog__status-row">
+              <span className="pr-dialog__status-label">PR #{prNumber} created</span>
+              {prUrl ? (
+                <a
+                  className="pr-dialog__status-link"
+                  href={prUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  View on GitHub
+                </a>
+              ) : null}
+            </div>
+            {checkingMerge ? (
+              <div className="pr-dialog__status-hint">Checking merge status…</div>
+            ) : mergeStatus === "mergeable" ? (
+              <div className="pr-dialog__status-row pr-dialog__status-row--success">
+                <span className="pr-dialog__status-badge pr-dialog__status-badge--green">✓ Ready to merge</span>
+              </div>
+            ) : mergeStatus === "conflicts" ? (
+              <div className="pr-dialog__status-row pr-dialog__status-row--warn">
+                <span className="pr-dialog__status-badge pr-dialog__status-badge--red">✗ Has conflicts</span>
+              </div>
+            ) : null}
+          </div>
+        )}
 
         <div className="pr-dialog__footer">
-          <button
-            className="button button--primary pr-dialog__submit"
-            data-testid="pr-dialog-submit"
-            disabled={submitting || !base.trim()}
-            type="button"
-            onClick={handleSubmit}
-          >
-            {submitting ? "Creating…" : "Create PR"}
-          </button>
+          {!created ? (
+            <button
+              className="button button--primary pr-dialog__submit"
+              data-testid="pr-dialog-submit"
+              disabled={submitting || !base.trim()}
+              type="button"
+              onClick={handleSubmit}
+            >
+              {submitting ? "Creating…" : "Create PR"}
+            </button>
+          ) : mergeStatus === "mergeable" ? (
+            <button
+              className="button button--primary pr-dialog__submit"
+              data-testid="pr-dialog-merge"
+              disabled={merging}
+              type="button"
+              onClick={handleMerge}
+            >
+              {merging ? "Merging…" : "Merge"}
+            </button>
+          ) : mergeStatus === "conflicts" ? (
+            <button
+              className="button button--primary pr-dialog__submit"
+              data-testid="pr-dialog-open"
+              type="button"
+              onClick={handleOpenInBrowser}
+            >
+              Open in GitHub
+            </button>
+          ) : (
+            <button
+              className="button button--secondary pr-dialog__submit"
+              type="button"
+              onClick={onClose}
+            >
+              Close
+            </button>
+          )}
         </div>
       </div>
     </div>

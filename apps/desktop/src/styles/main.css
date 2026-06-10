@@ -4407,6 +4407,66 @@ body.pi-thread-handoff .timeline-item--just-sent .timeline-item__bubble {
   min-width: 100px;
 }
 
+.pr-dialog__status {
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pr-dialog__status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pr-dialog__status-row--success {
+  margin-top: 4px;
+}
+
+.pr-dialog__status-row--warn {
+  margin-top: 4px;
+}
+
+.pr-dialog__status-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-strong);
+}
+
+.pr-dialog__status-link {
+  font-size: 13px;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.pr-dialog__status-link:hover {
+  text-decoration: underline;
+}
+
+.pr-dialog__status-hint {
+  font-size: 13px;
+  color: var(--muted-soft);
+}
+
+.pr-dialog__status-badge {
+  font-size: 13px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: 6px;
+}
+
+.pr-dialog__status-badge--green {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.pr-dialog__status-badge--red {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
 .commit-push__gear {
   width: 24px;
   height: 24px;
@@ -4422,6 +4482,91 @@ body.pi-thread-handoff .timeline-item--just-sent .timeline-item__bubble {
   max-height: 300px;
   overflow-y: auto;
   z-index: 60;
+}
+
+.commit-push__settings {
+  position: relative;
+}
+
+.commit-push__settings-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted-soft);
+  transition: color 0.15s, background 0.15s;
+}
+
+.commit-push__settings-btn:hover {
+  color: var(--text-strong);
+  background: var(--hover-bg);
+}
+
+.commit-push__settings-popover {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 6px;
+  min-width: 280px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  z-index: 100;
+  padding: 12px;
+}
+
+.commit-push__settings-title {
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--muted-soft);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0 4px 8px;
+}
+
+.commit-push__settings-options {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.commit-push__settings-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.commit-push__settings-option:hover {
+  background: var(--hover-bg);
+}
+
+.commit-push__settings-option--disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.commit-push__settings-option input[type="radio"] {
+  margin-top: 2px;
+  accent-color: var(--accent);
+}
+
+.commit-push__settings-option-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-strong);
+}
+
+.commit-push__settings-option-desc {
+  font-size: 12px;
+  color: var(--muted-soft);
+  margin-top: 1px;
 }
 
 /* ── Handoff Dialog ───────────────────────────── */
