@@ -45,7 +45,7 @@ import type { DesktopAppState, ThemeMode } from "../src/desktop-state";
 import { buildContextSnapshot, readContextFiles } from "./context-snapshot";
 import type { ComposerMode } from "../src/composer-mode";
 import { desktopIpc, getDesktopCommandFromShortcut, type CavemanConfigSnapshot, type CavemanLevel, type GraphifyCommunitySummary, type GraphifyProjectMapStatus, type GraphifyRunResult, type UndoEditOp } from "../src/ipc";
-import { parseChassisState, type ChassisAction } from "../src/chassis";
+import { parseChassisFile, resolveFolderState, serializeChassisFile, type ChassisAction, type ChassisFile, type ChassisFolderState } from "../src/chassis";
 import { registerMainHandlers, type MainHandlerAdapters } from "./desktop-ipc-seam-main";
 import { SUPPORTED_COMPOSER_IMAGE_TYPES } from "../src/composer-attachments";
 import type {
@@ -1005,8 +1005,9 @@ app.whenReady().then(async () => {
         await writeCavemanConfig(next);
         return next;
       },
-      getChassisActions: () => readChassisActions(),
-      setChassisActions: (_event: unknown, actions: ChassisAction[]) => writeChassisActions(actions),
+      getChassisFolder: (_event: unknown, folderPath: string) => getChassisFolder(folderPath),
+      setChassisFolderActions: (_event: unknown, folderPath: string, actions: ChassisAction[]) => setChassisFolderActions(folderPath, actions),
+      setChassisActivation: (_event: unknown, folderPath: string, activeStickyId: string | null) => setChassisActivation(folderPath, activeStickyId),
       setSessionThinkingLevel: (_event: unknown, workspaceId: string, sessionId: string, thinkingLevel: unknown) =>
         store.setSessionThinkingLevel({ workspaceId, sessionId }, thinkingLevel as never),
 
@@ -1877,20 +1878,38 @@ const CHASSIS_STATE_PATH = path.join(
   "state.json",
 );
 
-async function readChassisActions(): Promise<ChassisAction[]> {
+async function readChassisFile(): Promise<ChassisFile> {
   try {
-    return parseChassisState(await readFile(CHASSIS_STATE_PATH, "utf8")).actions;
+    return parseChassisFile(await readFile(CHASSIS_STATE_PATH, "utf8"));
   } catch {
-    return [];
+    return {};
   }
 }
 
-async function writeChassisActions(actions: ChassisAction[]): Promise<ChassisAction[]> {
+async function writeChassisFile(file: ChassisFile): Promise<void> {
   await mkdir(path.dirname(CHASSIS_STATE_PATH), { recursive: true });
-  // Re-validate through the parser so a malformed entry can never be persisted.
-  const normalized = parseChassisState(JSON.stringify({ version: 1, actions })).actions;
-  await writeFile(CHASSIS_STATE_PATH, `${JSON.stringify({ version: 1, actions: normalized }, null, 2)}\n`, "utf8");
-  return normalized;
+  // serializeChassisFile re-validates, so a malformed entry can never be persisted.
+  await writeFile(CHASSIS_STATE_PATH, serializeChassisFile(file), "utf8");
+}
+
+async function getChassisFolder(folderPath: string): Promise<ChassisFolderState> {
+  return resolveFolderState(await readChassisFile(), folderPath);
+}
+
+async function setChassisFolderActions(folderPath: string, actions: ChassisAction[]): Promise<ChassisFolderState> {
+  const file = await readChassisFile();
+  const current = resolveFolderState(file, folderPath);
+  const next: ChassisFile = { ...file, [folderPath]: { actions, activeStickyId: current.activeStickyId } };
+  await writeChassisFile(next);
+  return resolveFolderState(await readChassisFile(), folderPath);
+}
+
+async function setChassisActivation(folderPath: string, activeStickyId: string | null): Promise<ChassisFolderState> {
+  const file = await readChassisFile();
+  const current = resolveFolderState(file, folderPath);
+  const next: ChassisFile = { ...file, [folderPath]: { actions: current.actions, activeStickyId } };
+  await writeChassisFile(next);
+  return resolveFolderState(await readChassisFile(), folderPath);
 }
 
 async function promptForText(message: string, placeholder = ""): Promise<string> {

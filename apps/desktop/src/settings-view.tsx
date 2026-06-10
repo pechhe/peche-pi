@@ -74,6 +74,7 @@ interface SettingsViewProps {
   readonly onOpenKanban: () => void;
   readonly chassisActions?: readonly import("./chassis").ChassisAction[];
   readonly refreshChassisActions?: () => void;
+  readonly chassisFolderPath?: string;
 }
 
 export function SettingsView({
@@ -136,6 +137,7 @@ export function SettingsView({
   onOpenKanban,
   chassisActions,
   refreshChassisActions,
+  chassisFolderPath,
 }: SettingsViewProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [noResults, setNoResults] = useState(false);
@@ -348,6 +350,7 @@ export function SettingsView({
                     chassisActions={chassisActions ?? []}
                     refreshChassisActions={refreshChassisActions}
                     runtime={runtime}
+                    chassisFolderPath={chassisFolderPath}
                   />
                 </div>
               </div>
@@ -446,6 +449,7 @@ export function SettingsView({
                     chassisActions={chassisActions ?? []}
                     refreshChassisActions={refreshChassisActions}
                     runtime={runtime}
+                    chassisFolderPath={chassisFolderPath}
                   />
                 </div>
               ) : null}

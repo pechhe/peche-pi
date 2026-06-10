@@ -11,6 +11,8 @@ interface SettingsActionsSectionProps {
   readonly chassisActions: readonly ChassisAction[];
   readonly refreshChassisActions?: () => void;
   readonly runtime?: RuntimeSnapshot;
+  /** Active project folder; Chassis Actions are scoped per folder (#51). */
+  readonly chassisFolderPath?: string;
 }
 
 export function SettingsActionsSection({
@@ -18,6 +20,7 @@ export function SettingsActionsSection({
   chassisActions,
   refreshChassisActions,
   runtime,
+  chassisFolderPath,
 }: SettingsActionsSectionProps) {
   const [label, setLabel] = useState("");
   const [payload, setPayload] = useState("");
@@ -41,7 +44,7 @@ export function SettingsActionsSection({
   }, [runtime]);
 
   const handleCreate = () => {
-    if (!api || !label.trim() || !payload.trim()) return;
+    if (!api || !chassisFolderPath || !label.trim() || !payload.trim()) return;
     if (trigger === "sticky") {
       if (!payload.includes(WRAP_INPUT_TOKEN)) {
         setTemplateError(`Template must contain ${WRAP_INPUT_TOKEN}`);
@@ -54,7 +57,7 @@ export function SettingsActionsSection({
         trigger: "sticky",
         effect: { type: "wrap", template: payload.trim() },
       };
-      void api.setChassisActions([...chassisActions, newAction]).then(() => {
+      void api.setChassisFolderActions(chassisFolderPath, [...chassisActions, newAction]).then(() => {
         setLabel("");
         setPayload("");
         setShowLabel(true);
@@ -70,7 +73,7 @@ export function SettingsActionsSection({
         trigger: "oneShot",
         effect: { type: "submit", text: payload.trim() },
       };
-      void api.setChassisActions([...chassisActions, newAction]).then(() => {
+      void api.setChassisFolderActions(chassisFolderPath, [...chassisActions, newAction]).then(() => {
         setLabel("");
         setPayload("");
         setShowLabel(true);
@@ -90,7 +93,7 @@ export function SettingsActionsSection({
     setEditingId(action.id);
     setEditLabel(action.label);
     setEditPayload(
-      action.effect.type === "submit" ? action.effect.text : action.effect.template,
+      action.effect.type === "wrap" ? (action.effect as import("./chassis").ChassisWrapEffect).template : action.effect.text,
     );
     setEditShowLabel(action.showLabel);
     setEditTrigger(action.trigger);
@@ -98,7 +101,7 @@ export function SettingsActionsSection({
   };
 
   const handleSaveEdit = (action: ChassisAction) => {
-    if (!api || !editLabel.trim() || !editPayload.trim()) return;
+    if (!api || !chassisFolderPath || !editLabel.trim() || !editPayload.trim()) return;
     if (editTrigger === "sticky" && !editPayload.includes(WRAP_INPUT_TOKEN)) {
       setEditTemplateError(`Template must contain ${WRAP_INPUT_TOKEN}`);
       return;
@@ -120,7 +123,7 @@ export function SettingsActionsSection({
             effect: { type: "submit", text: editPayload.trim() },
           };
     void api
-      .setChassisActions(chassisActions.map((a) => (a.id === action.id ? updated : a)))
+      .setChassisFolderActions(chassisFolderPath, chassisActions.map((a) => (a.id === action.id ? updated : a)))
       .then(() => {
         setEditingId(null);
         refreshChassisActions?.();
@@ -128,13 +131,23 @@ export function SettingsActionsSection({
   };
 
   const handleDelete = (id: string) => {
-    if (!api) return;
+    if (!api || !chassisFolderPath) return;
     void api
-      .setChassisActions(chassisActions.filter((a) => a.id !== id))
+      .setChassisFolderActions(chassisFolderPath, chassisActions.filter((a) => a.id !== id))
       .then(() => {
         refreshChassisActions?.();
       });
   };
+
+  if (!chassisFolderPath) {
+    return (
+      <SettingsGroup title="Actions" description="One-shot buttons or sticky wrap toggles that send prompts.">
+        <SettingsRow title="Actions">
+          <span data-testid="chassis-actions-no-folder">Open a project folder to configure actions.</span>
+        </SettingsRow>
+      </SettingsGroup>
+    );
+  }
 
   return (
     <SettingsGroup title="Actions" description="One-shot buttons or sticky wrap toggles that send prompts.">

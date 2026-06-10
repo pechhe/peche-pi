@@ -407,6 +407,7 @@ export interface SettingsSurfaceProps {
   readonly onOpenKanban: () => void;
   readonly chassisActions?: readonly import("../chassis").ChassisAction[];
   readonly refreshChassisActions?: () => void;
+  readonly chassisFolderPath?: string;
 }
 
 export function SettingsSurface(props: SettingsSurfaceProps) {
@@ -443,6 +444,7 @@ export function SettingsSurface(props: SettingsSurfaceProps) {
     onOpenKanban,
     chassisActions,
     refreshChassisActions,
+    chassisFolderPath,
   } = props;
 
   return (
@@ -546,6 +548,7 @@ export function SettingsSurface(props: SettingsSurfaceProps) {
         }}
         chassisActions={chassisActions}
         refreshChassisActions={refreshChassisActions}
+        chassisFolderPath={chassisFolderPath}
       />
     </>
   );

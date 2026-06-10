@@ -23,15 +23,21 @@ test("sticky wrap action renders as a toggle", async () => {
   await writeFile(
     join(chassisDir, "state.json"),
     JSON.stringify({
-      actions: [
-        {
-          id: "wrap-explain",
-          label: "Explain",
-          showLabel: true,
-          trigger: "sticky",
-          effect: { type: "wrap", template: "Explain step by step:\n{{input}}" },
+      version: 2,
+      folders: {
+        [workspacePath]: {
+          actions: [
+            {
+              id: "wrap-explain",
+              label: "Explain",
+              showLabel: true,
+              trigger: "sticky",
+              effect: { type: "wrap", template: "Explain step by step:\n{{input}}" },
+            },
+          ],
+          activeStickyId: null,
         },
-      ],
+      },
     }),
     "utf8",
   );
@@ -80,15 +86,21 @@ test("sticky activation is app-global across threads", async () => {
   await writeFile(
     join(chassisDir, "state.json"),
     JSON.stringify({
-      actions: [
-        {
-          id: "wrap-explain",
-          label: "Explain",
-          showLabel: true,
-          trigger: "sticky",
-          effect: { type: "wrap", template: "Explain:\n{{input}}" },
+      version: 2,
+      folders: {
+        [workspacePath]: {
+          actions: [
+            {
+              id: "wrap-explain",
+              label: "Explain",
+              showLabel: true,
+              trigger: "sticky",
+              effect: { type: "wrap", template: "Explain:\n{{input}}" },
+            },
+          ],
+          activeStickyId: null,
         },
-      ],
+      },
     }),
     "utf8",
   );
@@ -135,22 +147,28 @@ test("only one sticky wrap can be active at a time", async () => {
   await writeFile(
     join(chassisDir, "state.json"),
     JSON.stringify({
-      actions: [
-        {
-          id: "wrap-explain",
-          label: "Explain",
-          showLabel: true,
-          trigger: "sticky",
-          effect: { type: "wrap", template: "Explain:\n{{input}}" },
+      version: 2,
+      folders: {
+        [workspacePath]: {
+          actions: [
+            {
+              id: "wrap-explain",
+              label: "Explain",
+              showLabel: true,
+              trigger: "sticky",
+              effect: { type: "wrap", template: "Explain:\n{{input}}" },
+            },
+            {
+              id: "wrap-review",
+              label: "Review",
+              showLabel: true,
+              trigger: "sticky",
+              effect: { type: "wrap", template: "Review this:\n{{input}}" },
+            },
+          ],
+          activeStickyId: null,
         },
-        {
-          id: "wrap-review",
-          label: "Review",
-          showLabel: true,
-          trigger: "sticky",
-          effect: { type: "wrap", template: "Review this:\n{{input}}" },
-        },
-      ],
+      },
     }),
     "utf8",
   );

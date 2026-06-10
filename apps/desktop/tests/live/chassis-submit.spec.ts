@@ -23,9 +23,10 @@ test("clicking a chassis action sends its payload and preserves the composer dra
   await writeFile(
     join(chassisDir, "state.json"),
     JSON.stringify({
-      actions: [
+      version: 2,
+      folders: { [workspacePath]: { actions: [
         { id: "security-scan", label: "Security audit", showLabel: true, trigger: "oneShot", effect: { type: "submit", text: "/security-scan" } },
-      ],
+      ], activeStickyId: null } },
     }),
     "utf8",
   );
@@ -74,9 +75,10 @@ test("clicking a chassis action works when the session is idle", async () => {
   await writeFile(
     join(chassisDir, "state.json"),
     JSON.stringify({
-      actions: [
+      version: 2,
+      folders: { [workspacePath]: { actions: [
         { id: "ping-action", label: "Ping", showLabel: true, trigger: "oneShot", effect: { type: "submit", text: "/ping" } },
-      ],
+      ], activeStickyId: null } },
     }),
     "utf8",
   );

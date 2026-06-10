@@ -10,9 +10,12 @@ import {
   type PiAppWindow,
 } from "../helpers/electron-app";
 
-async function readPersistedActions(agentDir: string) {
+async function readPersistedActions(agentDir: string, folderPath: string) {
   const raw = await readFile(join(agentDir, "chassis", "state.json"), "utf8");
-  return JSON.parse(raw) as { actions: Array<{ id: string; label: string; showLabel: boolean; trigger: string; effect: { type: string; text?: string; template?: string } }> };
+  const parsed = JSON.parse(raw) as {
+    folders?: Record<string, { actions: Array<{ id: string; label: string; showLabel: boolean; trigger: string; effect: { type: string; text?: string; template?: string } }>; activeStickyId: string | null }>;
+  };
+  return parsed.folders?.[folderPath] ?? { actions: [], activeStickyId: null };
 }
 
 async function navigateToSettingsActions(window: Awaited<ReturnType<Awaited<ReturnType<typeof launchDesktop>>["firstWindow"]>>) {
@@ -39,9 +42,10 @@ test("edit action: update label + payload, persists and updates composer button"
   await writeFile(
     join(chassisDir, "state.json"),
     JSON.stringify({
-      actions: [
+      version: 2,
+      folders: { [workspacePath]: { actions: [
         { id: actionId, label: "Original label", showLabel: true, trigger: "oneShot", effect: { type: "submit", text: "/original" } },
-      ],
+      ], activeStickyId: null } },
     }),
     "utf8",
   );
@@ -85,7 +89,7 @@ test("edit action: update label + payload, persists and updates composer button"
     await expect(row).toContainText("/updated-command");
 
     // Persisted state.json should reflect the update
-    const persisted = await readPersistedActions(agentDir);
+    const persisted = await readPersistedActions(agentDir, workspacePath);
     expect(persisted.actions).toHaveLength(1);
     expect(persisted.actions[0].id).toBe(actionId);
     expect(persisted.actions[0].label).toBe("Updated label");
@@ -123,10 +127,11 @@ test("delete action: removed from list, state.json, and composer", async () => {
   await writeFile(
     join(chassisDir, "state.json"),
     JSON.stringify({
-      actions: [
+      version: 2,
+      folders: { [workspacePath]: { actions: [
         { id: "keep-action", label: "Keep me", showLabel: true, trigger: "oneShot", effect: { type: "submit", text: "/keep" } },
         { id: "delete-action", label: "Delete me", showLabel: true, trigger: "oneShot", effect: { type: "submit", text: "/delete" } },
-      ],
+      ], activeStickyId: null } },
     }),
     "utf8",
   );
@@ -157,7 +162,7 @@ test("delete action: removed from list, state.json, and composer", async () => {
     await expect(window.getByTestId("chassis-action-row-keep-action")).toBeVisible();
 
     // Persisted state.json should not contain the deleted action
-    const persisted = await readPersistedActions(agentDir);
+    const persisted = await readPersistedActions(agentDir, workspacePath);
     expect(persisted.actions).toHaveLength(1);
     expect(persisted.actions[0].id).toBe("keep-action");
 
@@ -189,9 +194,10 @@ test("edit showLabel off: composer hides title, aria-label persists; on: title v
   await writeFile(
     join(chassisDir, "state.json"),
     JSON.stringify({
-      actions: [
+      version: 2,
+      folders: { [workspacePath]: { actions: [
         { id: actionId, label: "Visible Title", showLabel: true, trigger: "oneShot", effect: { type: "submit", text: "/test" } },
-      ],
+      ], activeStickyId: null } },
     }),
     "utf8",
   );
@@ -226,7 +232,7 @@ test("edit showLabel off: composer hides title, aria-label persists; on: title v
     await expect(window.getByTestId(`chassis-action-edit-${actionId}`)).toBeVisible({ timeout: 10_000 });
 
     // Persisted: showLabel=false
-    const persistedOff = await readPersistedActions(agentDir);
+    const persistedOff = await readPersistedActions(agentDir, workspacePath);
     expect(persistedOff.actions[0].showLabel).toBe(false);
 
     // Composer: title text should be hidden, but aria-label still present
@@ -261,7 +267,7 @@ test("edit showLabel off: composer hides title, aria-label persists; on: title v
     await expect(window.getByTestId(`chassis-action-edit-${actionId}`)).toBeVisible({ timeout: 10_000 });
 
     // Persisted: showLabel=true
-    const persistedOn = await readPersistedActions(agentDir);
+    const persistedOn = await readPersistedActions(agentDir, workspacePath);
     expect(persistedOn.actions[0].showLabel).toBe(true);
 
     // Composer: title text visible again

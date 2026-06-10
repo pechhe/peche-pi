@@ -452,7 +452,7 @@ export default function App() {
   const [settingsSection, setSettingsSection] = useState<SettingsSection>("general");
   const [cavemanLevel, setCavemanLevel] = useState<CavemanLevel>("off");
   const [chassisActions, setChassisActions] = useState<ChassisAction[]>([]);
-  const [activeWrapId, setActiveWrapId] = useState<string | null>(null);
+  const [activeStickyId, setActiveStickyId] = useState<string | null>(null);
   const [settingsWorkspaceId, setSettingsWorkspaceId] = useState("");
   const [skillsWorkspaceId, setSkillsWorkspaceId] = useState("");
   const [skillsQuery, setSkillsQuery] = useState("");
@@ -575,8 +575,6 @@ export default function App() {
       setCavemanLevel(config.enabled ? config.defaultLevel : "off");
     });
 
-    void piApi.getChassisActions().then(setChassisActions).catch(() => {});
-
     void piApi.getResolvedTheme().then((theme) => {
       document.documentElement.classList.toggle("dark", theme === "dark");
     });
@@ -657,6 +655,9 @@ export default function App() {
   }, [api, snapshot?.selectedWorkspaceId]);
 
   const selectedWorkspace = snapshot ? (getSelectedWorkspace(snapshot) ?? snapshot.workspaces[0]) : undefined;
+  // Chassis Actions are scoped per project folder (#51): the active workspace path keys
+  // both the action definitions and the sticky activation.
+  const chassisFolderPath = selectedWorkspace?.path;
   const selectedSession = snapshot ? getSelectedSession(snapshot) : undefined;
   const globalSearch = useGlobalSearch({ state: snapshot, selectedWorkspace, selectedSession });
   const chats = snapshot?.chats ?? [];
@@ -906,6 +907,30 @@ export default function App() {
     );
   }, [api, selectedSessionKey, setSnapshot]);
 
+  // Load the active folder's actions + persisted sticky activation, and reload
+  // whenever the active folder changes (folder switch swaps buttons + toggles).
+  useEffect(() => {
+    const piApi = window.piApp;
+    if (!piApi || !chassisFolderPath) {
+      setChassisActions([]);
+      setActiveStickyId(null);
+      return;
+    }
+    void piApi.getChassisFolder(chassisFolderPath).then((state) => {
+      setChassisActions(state.actions);
+      setActiveStickyId(state.activeStickyId);
+    }).catch(() => {});
+  }, [chassisFolderPath]);
+
+  const refreshChassisActions = useCallback(() => {
+    const piApi = window.piApp;
+    if (!piApi || !chassisFolderPath) return;
+    void piApi.getChassisFolder(chassisFolderPath).then((state) => {
+      setChassisActions(state.actions);
+      setActiveStickyId(state.activeStickyId);
+    }).catch(() => {});
+  }, [chassisFolderPath]);
+
   const handleRunChassisAction = useCallback((action: ChassisAction) => {
     if (!api || action.effect.type !== "submit") return;
     const text = action.effect.text;
@@ -913,20 +938,20 @@ export default function App() {
   }, [api, setSnapshot]);
 
   const handleToggleChassisWrap = useCallback((action: ChassisAction) => {
-    setActiveWrapId((prev) => toggleStickyActivation(prev, action.id));
-  }, []);
+    const piApi = window.piApp;
+    if (!piApi || !chassisFolderPath) return;
+    const next = toggleStickyActivation(activeStickyId, action.id);
+    setActiveStickyId(next);
+    void piApi.setChassisActivation(chassisFolderPath, next)
+      .then((state) => setActiveStickyId(state.activeStickyId))
+      .catch(() => {});
+  }, [chassisFolderPath, activeStickyId]);
 
   const activeWrapTemplate = useMemo(() => {
-    if (!activeWrapId) return null;
-    const active = chassisActions.find((a) => a.id === activeWrapId);
+    if (!activeStickyId) return null;
+    const active = chassisActions.find((a) => a.id === activeStickyId);
     return active && active.trigger === "sticky" && active.effect.type === "wrap" ? active.effect.template : null;
-  }, [activeWrapId, chassisActions]);
-
-  const refreshChassisActions = useCallback(() => {
-    const piApi = window.piApp;
-    if (!piApi) return;
-    void piApi.getChassisActions().then(setChassisActions).catch(() => {});
-  }, []);
+  }, [activeStickyId, chassisActions]);
 
   // Mark a session's plan as ready to execute when its plan-mode run finishes
   // (running -> idle). Edge-detecting on the prior snapshot status dedupes and
@@ -2521,6 +2546,7 @@ export default function App() {
           onOpenKanban={openKanbanView}
           chassisActions={chassisActions}
           refreshChassisActions={refreshChassisActions}
+          chassisFolderPath={chassisFolderPath}
         />
       } />
     );
@@ -2821,7 +2847,7 @@ export default function App() {
               onSubmit={handleStartThread}
               chassisActions={chassisActions}
               onRunChassisAction={handleRunChassisAction}
-              activeWrapId={activeWrapId}
+              activeWrapId={activeStickyId}
               onToggleChassisWrap={handleToggleChassisWrap}
             />
           ) : (
@@ -2936,7 +2962,7 @@ export default function App() {
               onUnarchiveSession={handleUnarchiveSession}
               chassisActions={chassisActions}
               onRunChassisAction={handleRunChassisAction}
-              activeWrapId={activeWrapId}
+              activeWrapId={activeStickyId}
               onToggleChassisWrap={handleToggleChassisWrap}
               activeWrapTemplate={activeWrapTemplate}
             />
@@ -2950,7 +2976,7 @@ export default function App() {
                 composerMode={pendingThreadStart?.composerMode ?? "build"}
                 chassisActions={chassisActions}
                 onRunChassisAction={handleRunChassisAction}
-                activeWrapId={activeWrapId}
+                activeWrapId={activeStickyId}
                 onToggleChassisWrap={handleToggleChassisWrap}
               />
             )}

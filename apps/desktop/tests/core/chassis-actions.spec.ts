@@ -18,9 +18,15 @@ test("persists chassis actions to disk and survives app restart", async () => {
   await writeFile(
     join(chassisDir, "state.json"),
     JSON.stringify({
-      actions: [
-        { id: actionId, label: "Security audit", showLabel: true, trigger: "oneShot", effect: { type: "submit", text: "/security-scan" } },
-      ],
+      version: 2,
+      folders: {
+        [workspacePath]: {
+          actions: [
+            { id: actionId, label: "Security audit", showLabel: true, trigger: "oneShot", effect: { type: "submit", text: "/security-scan" } },
+          ],
+          activeStickyId: null,
+        },
+      },
     }),
     "utf8",
   );
@@ -36,11 +42,11 @@ test("persists chassis actions to disk and survives app restart", async () => {
     const window = await firstRun.firstWindow();
 
     // Verify the action is available via IPC
-    const actions = await window.evaluate(async () => {
+    const actions = await window.evaluate(async (folderPath) => {
       const app = (window as PiAppWindow).piApp;
       if (!app) throw new Error("piApp unavailable");
-      return app.getChassisActions();
-    });
+      return (await app.getChassisFolder(folderPath)).actions;
+    }, workspacePath);
     expect(actions).toHaveLength(1);
     expect(actions[0].label).toBe("Security audit");
 
@@ -64,11 +70,11 @@ test("persists chassis actions to disk and survives app restart", async () => {
     const window = await secondRun.firstWindow();
 
     // Verify the action survived restart via IPC
-    const persistedActions = await window.evaluate(async () => {
+    const persistedActions = await window.evaluate(async (folderPath) => {
       const app = (window as PiAppWindow).piApp;
       if (!app) throw new Error("piApp unavailable");
-      return app.getChassisActions();
-    });
+      return (await app.getChassisFolder(folderPath)).actions;
+    }, workspacePath);
     expect(persistedActions).toHaveLength(1);
     expect(persistedActions[0].label).toBe("Security audit");
     expect(persistedActions[0].effect.text).toBe("/security-scan");
@@ -138,9 +144,15 @@ test("action button renders on new-thread surface", async () => {
   await writeFile(
     join(chassisDir, "state.json"),
     JSON.stringify({
-      actions: [
-        { id: "test-action-1", label: "Test action", showLabel: true, trigger: "oneShot", effect: { type: "submit", text: "/test" } },
-      ],
+      version: 2,
+      folders: {
+        [workspacePath]: {
+          actions: [
+            { id: "test-action-1", label: "Test action", showLabel: true, trigger: "oneShot", effect: { type: "submit", text: "/test" } },
+          ],
+          activeStickyId: null,
+        },
+      },
     }),
     "utf8",
   );
@@ -177,12 +189,18 @@ test("malformed chassis/state.json is gracefully handled", async () => {
   await writeFile(
     join(chassisDir, "state.json"),
     JSON.stringify({
-      actions: [
-        { id: "valid-1", label: "Valid", showLabel: true, trigger: "oneShot", effect: { type: "submit", text: "/valid" } },
-        { label: "No id", trigger: "oneShot", effect: { type: "submit", text: "/bad" } },
-        { id: "bad-trigger", label: "Bad trigger", trigger: "sticky", effect: { type: "submit", text: "/bad" } },
-        "not-an-object",
-      ],
+      version: 2,
+      folders: {
+        [workspacePath]: {
+          actions: [
+            { id: "valid-1", label: "Valid", showLabel: true, trigger: "oneShot", effect: { type: "submit", text: "/valid" } },
+            { label: "No id", trigger: "oneShot", effect: { type: "submit", text: "/bad" } },
+            { id: "bad-trigger", label: "Bad trigger", trigger: "sticky", effect: { type: "submit", text: "/bad" } },
+            "not-an-object",
+          ],
+          activeStickyId: null,
+        },
+      },
     }),
     "utf8",
   );

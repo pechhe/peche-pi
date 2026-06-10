@@ -62,7 +62,7 @@ test("command picker lists seeded skill and fills payload on select", async () =
 
     // Verify persisted payload in state.json
     const stateRaw = await readFile(join(agentDir, "chassis", "state.json"), "utf8");
-    const state = JSON.parse(stateRaw);
+    const state = JSON.parse(stateRaw).folders[workspacePath];
     expect(state.actions).toHaveLength(1);
     expect(state.actions[0].effect.text).toBe("/skill:demo-skill");
     expect(state.actions[0].label).toBe("Run demo");
@@ -125,7 +125,7 @@ test("free-text payload still works without using the picker", async () => {
 
     // Verify persisted payload
     const stateRaw = await readFile(join(agentDir, "chassis", "state.json"), "utf8");
-    const state = JSON.parse(stateRaw);
+    const state = JSON.parse(stateRaw).folders[workspacePath];
     expect(state.actions).toHaveLength(1);
     expect(state.actions[0].effect.text).toBe("/custom-slash foo bar");
     expect(state.actions[0].label).toBe("Custom command");

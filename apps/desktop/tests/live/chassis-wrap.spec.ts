@@ -21,7 +21,8 @@ test("wrap template frames the sent message when toggle is ON", async () => {
   await writeFile(
     join(chassisDir, "state.json"),
     JSON.stringify({
-      actions: [
+      version: 2,
+      folders: { [workspacePath]: { actions: [
         {
           id: "wrap-explain",
           label: "Explain",
@@ -29,7 +30,7 @@ test("wrap template frames the sent message when toggle is ON", async () => {
           trigger: "sticky",
           effect: { type: "wrap", template: "Explain step by step:\n{{input}}" },
         },
-      ],
+      ], activeStickyId: null } },
     }),
     "utf8",
   );
@@ -82,7 +83,8 @@ test("raw text is sent when wrap toggle is OFF", async () => {
   await writeFile(
     join(chassisDir, "state.json"),
     JSON.stringify({
-      actions: [
+      version: 2,
+      folders: { [workspacePath]: { actions: [
         {
           id: "wrap-explain",
           label: "Explain",
@@ -90,7 +92,7 @@ test("raw text is sent when wrap toggle is OFF", async () => {
           trigger: "sticky",
           effect: { type: "wrap", template: "Explain step by step:\n{{input}}" },
         },
-      ],
+      ], activeStickyId: null } },
     }),
     "utf8",
   );
