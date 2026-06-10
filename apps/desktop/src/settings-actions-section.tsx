@@ -151,7 +151,7 @@ export function SettingsActionsSection({
 
   if (!chassisFolderPath) {
     return (
-      <SettingsGroup title="Actions" description="One-shot buttons or sticky wrap toggles that send prompts.">
+      <SettingsGroup title="Actions" description="One-shot buttons, sticky wrap toggles, or sticky reminders that send prompts.">
         <SettingsRow title="Actions">
           <span data-testid="chassis-actions-no-folder">Open a project folder to configure actions.</span>
         </SettingsRow>
@@ -160,7 +160,7 @@ export function SettingsActionsSection({
   }
 
   return (
-    <SettingsGroup title="Actions" description="One-shot buttons or sticky wrap toggles that send prompts.">
+    <SettingsGroup title="Actions" description="One-shot buttons, sticky wrap toggles, or sticky reminders that send prompts.">
       <SettingsRow title="Create action">
         <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
           <input

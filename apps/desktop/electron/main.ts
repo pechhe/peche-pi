@@ -793,6 +793,8 @@ app.whenReady().then(async () => {
   await automationStore.load();
   store.automationStoreRef = automationStore;
   await store.initialize();
+  // Install the chassis-reminder companion extension (#49).
+  await installChassisReminderExtension();
   // Inject automations into the initial state (initializeInternal doesn't call refreshState)
   store.state = { ...store.state, automations: automationStore.getAll() };
   const automationScheduler = new AutomationScheduler({
@@ -1910,6 +1912,96 @@ async function setChassisActivation(folderPath: string, activeStickyId: string |
   const next: ChassisFile = { ...file, [folderPath]: { actions: current.actions, activeStickyId } };
   await writeChassisFile(next);
   return resolveFolderState(await readChassisFile(), folderPath);
+}
+
+// ── Chassis Reminder companion extension install (#49) ─────────────────────
+// Writes the extension to ~/.pi/agent/extensions/ so pi auto-discovers it.
+// Uses a version marker to avoid overwriting user edits.
+
+const CHASSIS_REMINDER_VERSION = 1;
+const CHASSIS_REMINDER_MARKER = `// chassis-reminder v${CHASSIS_REMINDER_VERSION}`;
+
+const CHASSIS_REMINDER_SOURCE = `${CHASSIS_REMINDER_MARKER}
+/**
+ * Chassis Reminder — injects active folder reminder at session start.
+ * Auto-installed by Peche Pi desktop app. Safe to edit; version marker
+ * prevents auto-overwrite on next launch.
+ */
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { homedir } from "node:os";
+
+function getAgentDir(): string {
+  return process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent");
+}
+
+function parseFolder(raw: unknown): { actions: Array<{ id: string; effect: { type: string; text?: string } }>; activeStickyId: string | null } | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const v = raw as Record<string, unknown>;
+  const actions: Array<{ id: string; effect: { type: string; text?: string } }> = [];
+  if (Array.isArray(v.actions)) {
+    for (const entry of v.actions) {
+      if (typeof entry !== "object" || entry === null) continue;
+      const a = entry as Record<string, unknown>;
+      if (typeof a.id !== "string" || !a.id) continue;
+      const eff = a.effect;
+      if (typeof eff !== "object" || eff === null) continue;
+      const e = eff as Record<string, unknown>;
+      if (typeof e.type !== "string") continue;
+      actions.push({ id: a.id, effect: { type: e.type, text: e.text as string | undefined } });
+    }
+  }
+  const rawActive = typeof v.activeStickyId === "string" ? v.activeStickyId : null;
+  const activeStickyId = actions.some((a) => a.id === rawActive) ? rawActive : null;
+  return { actions, activeStickyId };
+}
+
+function resolveActiveReminder(raw: string, folderPath: string): string | undefined {
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw); } catch { return undefined; }
+  if (typeof parsed !== "object" || parsed === null) return undefined;
+  const p = parsed as Record<string, unknown>;
+  if (p.version !== 2 || typeof p.folders !== "object" || p.folders === null) return undefined;
+  const folders = p.folders as Record<string, unknown>;
+  const folder = parseFolder(folders[folderPath]);
+  if (!folder || !folder.activeStickyId) return undefined;
+  const action = folder.actions.find((a) => a.id === folder.activeStickyId);
+  if (!action || action.effect.type !== "reminder") return undefined;
+  const text = action.effect.text;
+  return typeof text === "string" && text.length > 0 ? text : undefined;
+}
+
+export default function chassisReminderExtension(pi: ExtensionAPI): void {
+  pi.on("before_agent_start", async (_event, ctx) => {
+    const cwd = ctx.cwd;
+    if (!cwd) return undefined;
+    const statePath = join(getAgentDir(), "chassis", "state.json");
+    let raw: string;
+    try { raw = await readFile(statePath, "utf8"); } catch { return undefined; }
+    const reminderText = resolveActiveReminder(raw, cwd);
+    if (!reminderText) return undefined;
+    return {
+      message: { customType: "chassis-reminder", content: reminderText, display: false },
+    };
+  });
+}
+`;
+
+async function installChassisReminderExtension(): Promise<void> {
+  const agentDir = process.env.PI_CODING_AGENT_DIR ?? path.join(homedir(), ".pi", "agent");
+  const extDir = path.join(agentDir, "extensions");
+  const extPath = path.join(extDir, "chassis-reminder.ts");
+  try {
+    const existing = await readFile(extPath, "utf8");
+    if (existing.includes(CHASSIS_REMINDER_MARKER)) return; // user edited or already current
+    // File exists but was user-modified — don't overwrite.
+    return;
+  } catch {
+    // File doesn't exist — install it.
+  }
+  await mkdir(extDir, { recursive: true });
+  await writeFile(extPath, CHASSIS_REMINDER_SOURCE, "utf8");
 }
 
 async function promptForText(message: string, placeholder = ""): Promise<string> {
