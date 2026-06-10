@@ -5,6 +5,7 @@ import type { BranchInfo, PiDesktopApi } from "./ipc";
 import { playButtonClick } from "./button-click-sound";
 import { DiffIcon, MonitorIcon, WorktreeIcon, ChevronDownIcon } from "./icons";
 import { CommitPushButton } from "./commit-push-button";
+import { HandoffDialog } from "./handoff-dialog";
 import { showToast } from "./toast";
 import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
 
@@ -12,7 +13,6 @@ interface EnvironmentPanelProps {
   readonly selectedWorkspace: WorkspaceRecord | undefined;
   readonly selectedWorktree: WorktreeRecord | undefined;
   readonly rootWorkspace: WorkspaceRecord | undefined;
-  readonly activeWorktrees: readonly WorktreeRecord[];
   readonly wsMenu: WorkspaceMenuState;
   readonly onToggleDiffPanel: () => void;
   readonly onFeatureDone?: () => void;
@@ -28,7 +28,6 @@ export function EnvironmentPanel(props: EnvironmentPanelProps) {
     selectedWorkspace,
     selectedWorktree,
     rootWorkspace,
-    activeWorktrees,
     wsMenu,
     onToggleDiffPanel,
     onFeatureDone,
@@ -45,7 +44,7 @@ export function EnvironmentPanel(props: EnvironmentPanelProps) {
   const [checkoutInProgress, setCheckoutInProgress] = useState(false);
   const [branchCreateOpen, setBranchCreateOpen] = useState(false);
   const [branchCreateName, setBranchCreateName] = useState("");
-  const [locationPickerOpen, setLocationPickerOpen] = useState(false);
+  const [handoffOpen, setHandoffOpen] = useState(false);
   const [branchSearch, setBranchSearch] = useState("");
 
   // Diff stats
@@ -63,21 +62,16 @@ export function EnvironmentPanel(props: EnvironmentPanelProps) {
     return () => { cancelled = true; };
   }, [selectedWorkspace, api]);
 
-  // Close branch/location pickers on outside click
+  // Close branch picker on outside click
   useEffect(() => {
-    if (!branchPickerOpen && !locationPickerOpen) return;
+    if (!branchPickerOpen) return;
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target as Node;
       if (document.querySelector("[data-testid='env-branch-list']")?.contains(target)) return;
-      if (document.querySelector("[data-testid='env-location-list']")?.contains(target)) return;
       setBranchPickerOpen(false);
-      setLocationPickerOpen(false);
     };
     const handleKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setBranchPickerOpen(false);
-        setLocationPickerOpen(false);
-      }
+      if (event.key === "Escape") setBranchPickerOpen(false);
     };
     document.addEventListener("pointerdown", handlePointerDown);
     document.addEventListener("keydown", handleKeyDown);
@@ -85,12 +79,11 @@ export function EnvironmentPanel(props: EnvironmentPanelProps) {
       document.removeEventListener("pointerdown", handlePointerDown);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [branchPickerOpen, locationPickerOpen]);
+  }, [branchPickerOpen]);
 
   if (!selectedWorkspace) return null;
 
   const isWorktree = selectedWorkspace.kind === "worktree";
-  const location = isWorktree ? "worktree" : "local";
   const branchName = isWorktree ? selectedWorktree?.branchName : selectedWorkspace.branchName;
   const isDetached = isWorktree && !branchName;
   const baseBranch = rootWorkspace?.branchName;
@@ -125,63 +118,39 @@ export function EnvironmentPanel(props: EnvironmentPanelProps) {
         </span>
       </button>
 
-      {/* Location row + menu */}
-      <div className="environment-panel__menu-anchor">
-      <button
-        className="environment-panel__row environment-panel__row--location"
-        data-testid="env-row-location"
-        type="button"
-        onClick={() => {
-          playButtonClick();
-          setBranchPickerOpen(false);
-          setLocationPickerOpen((prev) => !prev);
-        }}
-      >
+      {/* Location row + handoff button */}
+      <div className="environment-panel__row environment-panel__row--location" data-testid="env-row-location">
         <span className="environment-panel__row-left">
           {isWorktree ? <WorktreeIcon /> : <MonitorIcon />}
           <span>{isWorktree ? "Worktree" : "Local"}</span>
         </span>
-        <ChevronDownIcon />
-      </button>
-
-      {locationPickerOpen && rootWorkspace ? (
-        <div className="environment-panel__menu" data-testid="env-location-list">
-          <button
-            className={`environment-panel__branch-option${!isWorktree ? " environment-panel__branch-option--current" : ""}`}
-            data-testid={`env-location-option-${rootWorkspace.id}`}
-            type="button"
-            onClick={() => {
-              playButtonClick();
-              wsMenu.selectWorkspace(rootWorkspace.id);
-              setLocationPickerOpen(false);
-            }}
-          >
-            {!isWorktree ? "✓ " : ""}Local
-          </button>
-          {activeWorktrees.map((wt) => {
-            const isCurrent = selectedWorktree?.id === wt.id;
-            const label = wt.branchName ?? `detached • ${wt.id.slice(0, 7)}`;
-            return (
-              <button
-                key={wt.id}
-                className={`environment-panel__branch-option${isCurrent ? " environment-panel__branch-option--current" : ""}`}
-                data-testid={`env-location-option-${wt.linkedWorkspaceId}`}
-                type="button"
-                onClick={() => {
-                  playButtonClick();
-                  if (wt.linkedWorkspaceId) {
-                    wsMenu.selectWorkspace(wt.linkedWorkspaceId);
-                  }
-                  setLocationPickerOpen(false);
-                }}
-              >
-                {isCurrent ? "✓ " : ""}{label}
-              </button>
-            );
-          })}
-        </div>
-      ) : null}
+        <button
+          className="environment-panel__handoff-btn"
+          data-testid="env-handoff-button"
+          type="button"
+          onClick={() => {
+            playButtonClick();
+            setBranchPickerOpen(false);
+            setHandoffOpen(true);
+          }}
+        >
+          Hand off
+        </button>
       </div>
+
+      {handoffOpen && rootWorkspace ? (
+        <HandoffDialog
+          mode={isWorktree ? "local" : "worktree"}
+          branchName={branchName ?? displayBranch}
+          localWorkspace={rootWorkspace}
+          api={api}
+          onClose={() => setHandoffOpen(false)}
+          onSuccess={() => {
+            setHandoffOpen(false);
+            wsMenu.selectWorkspace(rootWorkspace.id);
+          }}
+        />
+      ) : null}
 
       {/* Branch row + menu */}
       <div className="environment-panel__menu-anchor">
@@ -222,7 +191,6 @@ export function EnvironmentPanel(props: EnvironmentPanelProps) {
               return;
             }
             if (!rootWorkspace) return;
-            setLocationPickerOpen(false);
             setBranchLoading(true);
             setBranchPickerOpen(true);
             setBranchSearch("");
@@ -437,16 +405,16 @@ export function EnvironmentPanel(props: EnvironmentPanelProps) {
         </div>
       ) : null}
 
-      {/* Commit/push + Ship row */}
+      {/* Commit/push + Autoship row */}
       <div className="environment-panel__row environment-panel__row--commit" data-testid="env-row-commit-push">
         <CommitPushButton
-          workspaceId={rootWorkspace?.id ?? ""}
+          workspaceId={selectedWorkspace.id}
           runtime={selectedRuntime}
           commitPushModel={commitPushModel}
           api={api}
           sessionStatus={sessionStatus}
           shortcutLabel={commitShortcut}
-          branchHint={selectedWorktree?.name}
+          branchHint={selectedWorktree?.branchName}
         />
         {onFeatureDone ? (
           <button
@@ -457,12 +425,12 @@ export function EnvironmentPanel(props: EnvironmentPanelProps) {
             onClick={() => {
               playButtonClick();
               const confirmed = window.confirm(
-                "Ship will commit and push all changes, then create or update a pull request. Continue?"
+                "Autoship will commit and push all changes, then create or update a pull request. Continue?"
               );
               if (confirmed) onFeatureDone();
             }}
           >
-            {featureDoneState === "working" ? "Shipping…" : featureDoneState === "done" ? "Shipped ✓" : "⚙ Ship"}
+            {featureDoneState === "working" ? "Autoshipping…" : featureDoneState === "done" ? "Autoshipped ✓" : "⚙ Autoship"}
           </button>
         ) : null}
       </div>

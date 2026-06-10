@@ -456,6 +456,36 @@
 
 
 
+.environment-panel__row--location {
+  cursor: default;
+}
+
+.environment-panel__handoff-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted-strong);
+  font-size: 11px;
+  font-weight: 550;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.environment-panel__handoff-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(210, 215, 226, 0.85);
+}
+
+:root.dark .environment-panel__handoff-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
 .environment-panel__row--commit {
   cursor: default;
   padding: 4px 4px;
@@ -655,19 +685,25 @@
 
 .environment-panel__ship-btn {
   flex-shrink: 0;
-  padding: 8px 12px;
-  border-radius: 8px;
-  border: 1px solid color-mix(in srgb, var(--success-ink, #30a46c) 30%, transparent);
-  background: color-mix(in srgb, var(--success-ink, #30a46c) 8%, transparent);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px 0 8px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--success-ink, #30a46c) 55%, transparent);
+  background: color-mix(in srgb, var(--success-ink, #30a46c) 14%, var(--surface) 86%);
   color: var(--success-ink, #30a46c);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
+  line-height: 1;
   cursor: pointer;
-  transition: background 140ms ease;
+  transition: background 0.12s ease, border-color 0.12s ease;
 }
 
 .environment-panel__ship-btn:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--success-ink, #30a46c) 14%, transparent);
+  background: color-mix(in srgb, var(--success-ink, #30a46c) 22%, var(--surface) 78%);
+  border-color: color-mix(in srgb, var(--success-ink, #30a46c) 70%, transparent);
 }
 
 .environment-panel__ship-btn:disabled {
@@ -4283,65 +4319,92 @@ body.pi-thread-handoff .timeline-item--just-sent .timeline-item__bubble {
 /* ── PR dialog ────────────────────────────────────── */
 
 .pr-dialog {
-  width: min(720px, 100%);
-  max-height: min(820px, calc(100vh - 48px));
+  width: min(480px, 100%);
+  max-height: min(400px, calc(100vh - 48px));
+}
+
+.pr-dialog--compact {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.pr-dialog__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px 12px;
+}
+
+.pr-dialog__branch-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted-soft);
+  font-size: 13px;
+}
+
+.pr-dialog__branch-icon {
+  font-size: 14px;
 }
 
 .pr-dialog__form {
-  display: grid;
-  gap: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0 20px;
   overflow: auto;
 }
 
-.pr-dialog__field {
-  display: grid;
-  gap: 6px;
+.pr-dialog__input {
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-strong);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 500;
 }
 
-.pr-dialog__field--inline {
-  flex: 1;
-}
-
-.pr-dialog__label {
+.pr-dialog__input::placeholder {
   color: var(--muted-soft);
-  font-size: 12px;
-  font-weight: 650;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
 }
 
-.pr-dialog__input,
+.pr-dialog__input:focus {
+  outline: none;
+}
+
 .pr-dialog__textarea {
   width: 100%;
   padding: 10px 12px;
-  border-radius: 12px;
-  border: 1px solid #d9e0ec;
-  background: #f8fafc;
+  border: none;
+  background: transparent;
   color: var(--text-strong);
   font: inherit;
-}
-
-.pr-dialog__textarea {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 12.5px;
+  font-size: 14px;
   line-height: 1.5;
-  resize: vertical;
-  min-height: 220px;
+  resize: none;
+  min-height: 80px;
 }
 
-.pr-dialog__row {
+.pr-dialog__textarea::placeholder {
+  color: var(--muted-soft);
+}
+
+.pr-dialog__textarea:focus {
+  outline: none;
+}
+
+.pr-dialog__footer {
   display: flex;
-  align-items: flex-end;
-  gap: 16px;
+  justify-content: flex-end;
+  padding: 12px 20px 16px;
+  border-top: 1px solid var(--border);
 }
 
-.pr-dialog__checkbox {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--text-strong);
-  font-size: 13px;
-  padding-bottom: 10px;
+.pr-dialog__submit {
+  min-width: 100px;
 }
 
 .commit-push__gear {
@@ -4359,6 +4422,92 @@ body.pi-thread-handoff .timeline-item--just-sent .timeline-item__bubble {
   max-height: 300px;
   overflow-y: auto;
   z-index: 60;
+}
+
+/* ── Handoff Dialog ───────────────────────────── */
+
+.handoff-dialog {
+  width: min(480px, 100%);
+  max-height: min(400px, calc(100vh - 48px));
+}
+
+.handoff-dialog__body {
+  display: grid;
+  gap: 14px;
+  padding: 0 24px;
+}
+
+.handoff-dialog__description {
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.handoff-dialog__description strong {
+  color: var(--text-strong);
+  font-weight: 600;
+}
+
+.handoff-dialog__workspace-info {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.handoff-dialog__workspace-info strong {
+  color: var(--text-strong);
+  font-weight: 600;
+}
+
+.handoff-dialog__field {
+  display: grid;
+  gap: 6px;
+}
+
+.handoff-dialog__label {
+  color: var(--muted-soft);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.handoff-dialog__input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid #d9e0ec;
+  background: #f8fafc;
+  color: var(--text-strong);
+  font: inherit;
+}
+
+.handoff-dialog__submit {
+  width: 100%;
+  margin: 16px 24px 24px;
+  width: calc(100% - 48px);
+  padding: 12px 16px;
+  border-radius: 12px;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.handoff-dialog__submit:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 85%, #000 15%);
+}
+
+.handoff-dialog__submit:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 /* ── Toast (singleton, composer-attached) ───────────────────── */
