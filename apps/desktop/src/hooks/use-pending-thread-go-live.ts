@@ -80,6 +80,10 @@ function runComposerSlide(fromRect: DOMRect, motion: ThreadTransitionMotion): vo
   if (Math.abs(dx) < 1 && Math.abs(dy) < 1) {
     return;
   }
+  // Hide the footer until the slide animation's first frame so there's no
+  // flash of the footer at the hero position (even a single-frame mismatch
+  // between the departing hero and the arriving footer is visible).
+  el.style.opacity = "0";
   if (motion === "spring") {
     runSpringSlide(el, dx, dy);
   } else if (motion === "dock") {
@@ -92,6 +96,7 @@ function runComposerSlide(fromRect: DOMRect, motion: ThreadTransitionMotion): vo
 function runCurveSlide(el: HTMLElement, dx: number, dy: number, easing: string, durationMs: number): void {
   el.style.transition = "none";
   el.style.transform = `translate(${dx}px, ${dy}px)`;
+  el.style.opacity = "1";
   void el.offsetHeight;
   requestAnimationFrame(() => {
     el.style.transition = `transform ${durationMs}ms ${easing}`;
@@ -102,6 +107,7 @@ function runCurveSlide(el: HTMLElement, dx: number, dy: number, easing: string, 
       }
       el.style.transition = "";
       el.style.transform = "";
+      el.style.opacity = "";
       el.removeEventListener("transitionend", cleanup);
     };
     el.addEventListener("transitionend", cleanup);
@@ -119,6 +125,7 @@ function runSpringSlide(el: HTMLElement, dx: number, dy: number): void {
   const animation = el.animate(keyframes, { duration, easing: "linear" });
   const finish = () => {
     el.style.transform = "";
+    el.style.opacity = "";
   };
   animation.onfinish = finish;
   animation.oncancel = finish;
@@ -150,6 +157,7 @@ function buildSpringKeyframes(dx: number, dy: number): { keyframes: Keyframe[]; 
   samples.push(0);
   const keyframes = samples.map((sample) => ({
     transform: `translate(${dx * sample}px, ${dy * sample}px)`,
+    opacity: 1,
   }));
   return { keyframes, duration: Math.max(elapsed, stepMs) };
 }
