@@ -46,6 +46,7 @@ import { buildContextSnapshot, readContextFiles } from "./context-snapshot";
 import type { ComposerMode } from "../src/composer-mode";
 import { desktopIpc, getDesktopCommandFromShortcut, type CavemanConfigSnapshot, type CavemanLevel, type GraphifyCommunitySummary, type GraphifyProjectMapStatus, type GraphifyRunResult, type UndoEditOp } from "../src/ipc";
 import { parseChassisFile, resolveFolderState, serializeChassisFile, type ChassisAction, type ChassisFile, type ChassisFolderState } from "../src/chassis";
+import { buildChassisActionCandidate } from "./chassis-action-builder.ts";
 import { registerMainHandlers, type MainHandlerAdapters } from "./desktop-ipc-seam-main";
 import { SUPPORTED_COMPOSER_IMAGE_TYPES } from "../src/composer-attachments";
 import type {
@@ -1010,6 +1011,10 @@ app.whenReady().then(async () => {
       getChassisFolder: (_event: unknown, folderPath: string) => getChassisFolder(folderPath),
       setChassisFolderActions: (_event: unknown, folderPath: string, actions: ChassisAction[]) => setChassisFolderActions(folderPath, actions),
       setChassisActivation: (_event: unknown, folderPath: string, activeStickyId: string | null) => setChassisActivation(folderPath, activeStickyId),
+      buildChassisActionCandidate: async (_event: unknown, input: { messages: ReadonlyArray<{ readonly role: "user" | "assistant"; readonly content: string }>; availableCommands?: ReadonlyArray<{ readonly label: string; readonly command: string }>; modelString?: string }) => {
+        const getApiKey = (providerId: string) => store.getProviderApiKey(providerId);
+        return buildChassisActionCandidate(input, getApiKey);
+      },
       setSessionThinkingLevel: (_event: unknown, workspaceId: string, sessionId: string, thinkingLevel: unknown) =>
         store.setSessionThinkingLevel({ workspaceId, sessionId }, thinkingLevel as never),
 

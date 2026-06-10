@@ -1,5 +1,5 @@
 import type { RuntimeSettingsSnapshot } from "@pi-gui/session-driver/runtime-types";
-import type { ChassisAction, ChassisFolderState } from "./chassis";
+import type { ChassisAction, ChassisActionCandidate, ChassisFolderState } from "./chassis";
 import type {
   NavigateSessionTreeOptions,
   NavigateSessionTreeResult,
@@ -92,6 +92,7 @@ export const desktopIpc = {
   getCavemanConfig: "pi-gui:get-caveman-config",
   setCavemanDefaultLevel: "pi-gui:set-caveman-default-level",
   setCavemanOnLevel: "pi-gui:set-caveman-on-level",
+  buildChassisActionCandidate: "pi-gui:chassis-build-candidate",
   setSessionModel: "pi-gui:set-session-model",
   setSessionThinkingLevel: "pi-gui:set-session-thinking-level",
   loginProvider: "pi-gui:login-provider",
@@ -291,6 +292,7 @@ export const piDesktopApiIpcBridge = {
   getCavemanConfig: { kind: "invoke", channel: desktopIpc.getCavemanConfig },
   setCavemanDefaultLevel: { kind: "invoke", channel: desktopIpc.setCavemanDefaultLevel },
   setCavemanOnLevel: { kind: "invoke", channel: desktopIpc.setCavemanOnLevel },
+  buildChassisActionCandidate: { kind: "invoke", channel: desktopIpc.buildChassisActionCandidate },
   setSessionModel: { kind: "invoke", channel: desktopIpc.setSessionModel },
   setSessionThinkingLevel: { kind: "invoke", channel: desktopIpc.setSessionThinkingLevel },
   loginProvider: { kind: "invoke", channel: desktopIpc.loginProvider },
@@ -809,6 +811,15 @@ export interface PiDesktopApi {
   getChassisFolder(folderPath: string): Promise<ChassisFolderState>;
   setChassisFolderActions(folderPath: string, actions: ChassisAction[]): Promise<ChassisFolderState>;
   setChassisActivation(folderPath: string, activeStickyId: string | null): Promise<ChassisFolderState>;
+  buildChassisActionCandidate(input: {
+    readonly messages: ReadonlyArray<{ readonly role: "user" | "assistant"; readonly content: string }>;
+    readonly availableCommands?: ReadonlyArray<{ readonly label: string; readonly command: string }>;
+    readonly modelString?: string;
+  }): Promise<{
+    readonly assistantMessage: string;
+    readonly candidate: ChassisActionCandidate | null;
+    readonly validationError?: string;
+  }>;
   setSessionModel(
     workspaceId: string,
     sessionId: string,

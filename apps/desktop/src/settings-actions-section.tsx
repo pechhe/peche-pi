@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import type { ChassisAction } from "./chassis";
+import { useCallback, useMemo, useRef, useState } from "react";
+import type { ChassisAction, ChassisActionCandidate } from "./chassis";
 import { WRAP_INPUT_TOKEN } from "./chassis";
 import { buildSlashCommandSections } from "./composer-commands";
 import type { PiDesktopApi } from "./ipc";
@@ -36,6 +36,78 @@ export function SettingsActionsSection({
   const [editTrigger, setEditTrigger] = useState<"oneShot" | "sticky">("oneShot");
   const [editStickyType, setEditStickyType] = useState<"wrap" | "reminder">("wrap");
   const [editTemplateError, setEditTemplateError] = useState<string | null>(null);
+
+  // ── Builder (Composer Layout Builder, #55) ──────────────────────────────
+  interface BuilderMessage {
+    readonly role: "user" | "assistant";
+    readonly content: string;
+  }
+  const [builderOpen, setBuilderOpen] = useState(false);
+  const [builderMessages, setBuilderMessages] = useState<BuilderMessage[]>([]);
+  const [builderInput, setBuilderInput] = useState("");
+  const [builderLoading, setBuilderLoading] = useState(false);
+  const [builderCandidate, setBuilderCandidate] = useState<ChassisActionCandidate | null>(null);
+  const [builderError, setBuilderError] = useState<string | null>(null);
+  const builderEndRef = useRef<HTMLDivElement>(null);
+
+  const availableCommands = useMemo(() => {
+    const sections = buildSlashCommandSections("/", runtime, []);
+    return sections
+      .flatMap((s) => s.items)
+      .filter((cmd) => cmd.runtimeCommand)
+      .map((cmd) => ({ label: cmd.title, command: cmd.command }));
+  }, [runtime]);
+
+  const handleBuilderSend = useCallback(async () => {
+    if (!api || !builderInput.trim() || builderLoading) return;
+    const userMsg: BuilderMessage = { role: "user", content: builderInput.trim() };
+    const nextMessages = [...builderMessages, userMsg];
+    setBuilderMessages(nextMessages);
+    setBuilderInput("");
+    setBuilderLoading(true);
+    setBuilderError(null);
+    setBuilderCandidate(null);
+    try {
+      const result = await api.buildChassisActionCandidate({
+        messages: nextMessages,
+        availableCommands,
+      });
+      const assistantMsg: BuilderMessage = { role: "assistant", content: result.assistantMessage };
+      setBuilderMessages([...nextMessages, assistantMsg]);
+      setBuilderCandidate(result.candidate);
+      if (result.validationError) {
+        setBuilderError(result.validationError);
+      }
+    } catch (err) {
+      setBuilderError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBuilderLoading(false);
+      requestAnimationFrame(() => builderEndRef.current?.scrollIntoView({ behavior: "smooth" }));
+    }
+  }, [api, builderInput, builderMessages, builderLoading, availableCommands]);
+
+  const handleBuilderAccept = useCallback(async () => {
+    if (!api || !chassisFolderPath || !builderCandidate) return;
+    const newAction: ChassisAction = {
+      id: crypto.randomUUID(),
+      ...builderCandidate,
+    };
+    await api.setChassisFolderActions(chassisFolderPath, [...chassisActions, newAction]);
+    setBuilderCandidate(null);
+    setBuilderMessages([]);
+    refreshChassisActions?.();
+  }, [api, chassisFolderPath, builderCandidate, chassisActions, refreshChassisActions]);
+
+  const handleBuilderDecline = useCallback(() => {
+    setBuilderCandidate(null);
+  }, []);
+
+  const handleBuilderReset = useCallback(() => {
+    setBuilderMessages([]);
+    setBuilderCandidate(null);
+    setBuilderError(null);
+    setBuilderInput("");
+  }, []);
 
   const runtimeCommands = useMemo(() => {
     const sections = buildSlashCommandSections("/", runtime, []);
@@ -160,6 +232,151 @@ export function SettingsActionsSection({
   }
 
   return (
+    <>
+    {/* ── Builder panel (#55) ──────────────────────────────────────────── */}
+    <SettingsGroup title="Action Builder" description="Describe a Chassis Action in plain language and let your configured model propose one.">
+      <SettingsRow title="Builder">
+        <div style={{ width: "100%" }}>
+          <button
+            type="button"
+            className="button button--secondary"
+            data-testid="chassis-builder-toggle"
+            onClick={() => setBuilderOpen(!builderOpen)}
+          >
+            {builderOpen ? "Close builder" : "Open builder"}
+          </button>
+        </div>
+        {builderOpen ? (
+          <div data-testid="chassis-builder-panel" style={{ width: "100%", marginTop: "0.5rem" }}>
+            {/* Messages */}
+            <div
+              data-testid="chassis-builder-messages"
+              style={{
+                maxHeight: "240px",
+                overflowY: "auto",
+                border: "1px solid var(--color-border, #444)",
+                borderRadius: "6px",
+                padding: "0.5rem",
+                marginBottom: "0.5rem",
+                fontSize: "0.85em",
+              }}
+            >
+              {builderMessages.length === 0 ? (
+                <div style={{ color: "var(--color-text-muted, #888)", fontStyle: "italic" }}>
+                  Describe what you want — e.g. "a button that runs /review" or "a sticky toggle that wraps prompts with a caveman instruction".
+                </div>
+              ) : (
+                builderMessages.map((msg, i) => (
+                  <div
+                    key={i}
+                    data-testid={`chassis-builder-msg-${i}`}
+                    style={{
+                      marginBottom: "0.5rem",
+                      padding: "0.35rem 0.5rem",
+                      borderRadius: "4px",
+                      background: msg.role === "user"
+                        ? "var(--color-bg-active, rgba(255,255,255,0.06))"
+                        : "transparent",
+                    }}
+                  >
+                    <strong>{msg.role === "user" ? "You" : "Assistant"}:</strong> {msg.content}
+                  </div>
+                ))
+              )}
+              {builderLoading ? (
+                <div data-testid="chassis-builder-loading" style={{ color: "var(--color-text-muted, #888)", fontStyle: "italic" }}>
+                  Thinking…
+                </div>
+              ) : null}
+              <div ref={builderEndRef} />
+            </div>
+
+            {/* Candidate card */}
+            {builderCandidate ? (
+              <div
+                data-testid="chassis-builder-candidate"
+                style={{
+                  border: "1px solid var(--color-accent, #4a9eff)",
+                  borderRadius: "6px",
+                  padding: "0.75rem",
+                  marginBottom: "0.5rem",
+                }}
+              >
+                <div style={{ fontWeight: 600, marginBottom: "0.25rem" }}>
+                  Candidate: {builderCandidate.label}
+                </div>
+                <div style={{ fontSize: "0.85em", color: "var(--color-text-secondary, #aaa)", marginBottom: "0.5rem" }}>
+                  {builderCandidate.trigger === "oneShot"
+                    ? `One-shot → sends: "${builderCandidate.effect.type === "submit" ? builderCandidate.effect.text : ""}"`
+                    : builderCandidate.effect.type === "wrap"
+                      ? `Sticky wrap → template: "${builderCandidate.effect.template}"`
+                      : `Sticky reminder → "${builderCandidate.effect.type === "reminder" ? builderCandidate.effect.text : ""}"`}
+                </div>
+                <div style={{ display: "flex", gap: "0.5rem" }}>
+                  <button
+                    type="button"
+                    className="button button--secondary"
+                    data-testid="chassis-builder-accept"
+                    onClick={handleBuilderAccept}
+                  >
+                    Accept
+                  </button>
+                  <button
+                    type="button"
+                    className="button button--ghost"
+                    data-testid="chassis-builder-decline"
+                    onClick={handleBuilderDecline}
+                  >
+                    Decline
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            {/* Error */}
+            {builderError ? (
+              <div data-testid="chassis-builder-error" style={{ color: "var(--color-error, #e74c3c)", fontSize: "0.85em", marginBottom: "0.5rem" }}>
+                {builderError}
+              </div>
+            ) : null}
+
+            {/* Input */}
+            <div style={{ display: "flex", gap: "0.5rem" }}>
+              <input
+                type="text"
+                data-testid="chassis-builder-input"
+                placeholder="Describe your action…"
+                value={builderInput}
+                onChange={(e) => setBuilderInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void handleBuilderSend(); } }}
+                disabled={builderLoading}
+                style={{ flex: 1 }}
+              />
+              <button
+                type="button"
+                className="button button--secondary"
+                data-testid="chassis-builder-send"
+                disabled={!builderInput.trim() || builderLoading}
+                onClick={() => void handleBuilderSend()}
+              >
+                Send
+              </button>
+              {builderMessages.length > 0 ? (
+                <button
+                  type="button"
+                  className="button button--ghost"
+                  data-testid="chassis-builder-reset"
+                  onClick={handleBuilderReset}
+                >
+                  Reset
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+      </SettingsRow>
+    </SettingsGroup>
+
     <SettingsGroup title="Actions" description="One-shot buttons, sticky wrap toggles, or sticky reminders that send prompts.">
       <SettingsRow title="Create action">
         <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
@@ -390,5 +607,6 @@ export function SettingsActionsSection({
         ))
       ) : null}
     </SettingsGroup>
+    </>
   );
 }

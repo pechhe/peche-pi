@@ -160,6 +160,7 @@ const desktopIpc = {
   getChassisFolder: "pi-gui:get-chassis-folder",
   setChassisFolderActions: "pi-gui:set-chassis-folder-actions",
   setChassisActivation: "pi-gui:set-chassis-activation",
+  buildChassisActionCandidate: "pi-gui:chassis-build-candidate",
   setSessionModel: "pi-gui:set-session-model",
   setSessionThinkingLevel: "pi-gui:set-session-thinking-level",
   loginProvider: "pi-gui:login-provider",
@@ -382,6 +383,7 @@ export const desktopIpcContracts: readonly IpcContractEntry[] = [
   { methodName: "getChassisFolder", channel: desktopIpc.getChassisFolder, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
   { methodName: "setChassisFolderActions", channel: desktopIpc.setChassisFolderActions, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
   { methodName: "setChassisActivation", channel: desktopIpc.setChassisActivation, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
+  { methodName: "buildChassisActionCandidate", channel: desktopIpc.buildChassisActionCandidate, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
   { methodName: "setSessionModel", channel: desktopIpc.setSessionModel, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
   { methodName: "setSessionThinkingLevel", channel: desktopIpc.setSessionThinkingLevel, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
 

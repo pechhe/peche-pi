@@ -15,6 +15,14 @@ export interface ChassisReminderEffect {
 
 export type ChassisEffect = ChassisSubmitEffect | ChassisWrapEffect | ChassisReminderEffect;
 
+/** Candidate produced by the Composer Layout Builder — same as ChassisAction but without id. */
+export interface ChassisActionCandidate {
+  readonly label: string;
+  readonly showLabel: boolean;
+  readonly trigger: "oneShot" | "sticky";
+  readonly effect: ChassisEffect;
+}
+
 export const WRAP_INPUT_TOKEN = "{{input}}";
 
 export interface ChassisAction {
@@ -103,6 +111,51 @@ function parseActionList(rawActions: unknown): ChassisAction[] {
     if (action) actions.push(action);
   }
   return actions;
+}
+
+/**
+ * Validate a raw object as a Chassis Action Candidate (without id).
+ * Used by the Composer Layout Builder to gate model output.
+ * Returns the typed candidate or a human-readable error string.
+ */
+export function validateChassisActionCandidate(
+  value: unknown,
+): { readonly valid: true; readonly action: Omit<ChassisAction, "id"> } | { readonly valid: false; readonly error: string } {
+  if (typeof value !== "object" || value === null) {
+    return { valid: false, error: "Candidate must be a JSON object." };
+  }
+  const v = value as Record<string, unknown>;
+  if (typeof v.label !== "string" || v.label.length === 0) {
+    return { valid: false, error: "Candidate must have a non-empty \"label\" string." };
+  }
+  const showLabel = v.showLabel !== false;
+  const effect = v.effect;
+  if (typeof effect !== "object" || effect === null) {
+    return { valid: false, error: "Candidate must have an \"effect\" object." };
+  }
+  const e = effect as Record<string, unknown>;
+  if (v.trigger === "oneShot") {
+    if (e.type !== "submit" || typeof e.text !== "string") {
+      return { valid: false, error: "oneShot trigger requires effect.type=\"submit\" and a \"text\" string." };
+    }
+    return { valid: true, action: { label: v.label, showLabel, trigger: "oneShot", effect: { type: "submit", text: e.text } } };
+  }
+  if (v.trigger === "sticky") {
+    if (e.type === "wrap") {
+      if (typeof e.template !== "string" || !e.template.includes(WRAP_INPUT_TOKEN)) {
+        return { valid: false, error: `sticky/wrap effect.template must be a string containing ${WRAP_INPUT_TOKEN}.` };
+      }
+      return { valid: true, action: { label: v.label, showLabel, trigger: "sticky", effect: { type: "wrap", template: e.template } } };
+    }
+    if (e.type === "reminder") {
+      if (typeof e.text !== "string") {
+        return { valid: false, error: "sticky/reminder effect must have a \"text\" string." };
+      }
+      return { valid: true, action: { label: v.label, showLabel, trigger: "sticky", effect: { type: "reminder", text: e.text } } };
+    }
+    return { valid: false, error: 'sticky trigger requires effect.type "wrap" or "reminder".' };
+  }
+  return { valid: false, error: 'trigger must be "oneShot" or "sticky".' };
 }
 
 export function parseChassisState(raw: string): ParsedChassisState {
