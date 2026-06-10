@@ -5,6 +5,7 @@ import type { BranchInfo, PiDesktopApi } from "./ipc";
 import { playButtonClick } from "./button-click-sound";
 import { DiffIcon, MonitorIcon, WorktreeIcon, ChevronDownIcon } from "./icons";
 import { CommitPushButton } from "./commit-push-button";
+import { HandoffDialog } from "./handoff-dialog";
 import { showToast } from "./toast";
 import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
 
@@ -437,16 +438,16 @@ export function EnvironmentPanel(props: EnvironmentPanelProps) {
         </div>
       ) : null}
 
-      {/* Commit/push + Ship row */}
+      {/* Commit/push + Autoship row */}
       <div className="environment-panel__row environment-panel__row--commit" data-testid="env-row-commit-push">
         <CommitPushButton
-          workspaceId={rootWorkspace?.id ?? ""}
+          workspaceId={selectedWorkspace.id}
           runtime={selectedRuntime}
           commitPushModel={commitPushModel}
           api={api}
           sessionStatus={sessionStatus}
           shortcutLabel={commitShortcut}
-          branchHint={selectedWorktree?.name}
+          branchHint={selectedWorktree?.branchName}
         />
         {onFeatureDone ? (
           <button
@@ -457,12 +458,12 @@ export function EnvironmentPanel(props: EnvironmentPanelProps) {
             onClick={() => {
               playButtonClick();
               const confirmed = window.confirm(
-                "Ship will commit and push all changes, then create or update a pull request. Continue?"
+                "Autoship will commit and push all changes, then create or update a pull request. Continue?"
               );
               if (confirmed) onFeatureDone();
             }}
           >
-            {featureDoneState === "working" ? "Shipping…" : featureDoneState === "done" ? "Shipped ✓" : "⚙ Ship"}
+            {featureDoneState === "working" ? "Autoshipping…" : featureDoneState === "done" ? "Autoshipped ✓" : "⚙ Autoship"}
           </button>
         ) : null}
       </div>

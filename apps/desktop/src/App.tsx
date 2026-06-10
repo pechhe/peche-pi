@@ -1512,37 +1512,37 @@ export default function App() {
   }, [settingsHandlers]);
 
   const handleFeatureDone = useCallback(async () => {
-    if (!rootWorkspace || !selectedSession || !api) return;
+    if (!selectedWorkspace || !selectedSession || !api) return;
     const title = selectedSession.title || "feature";
     const modelString = snapshot?.commitPushModel ?? "deepseek:deepseek-chat";
     setFeatureDoneState("working");
     try {
       const result = await api.featureDone({
-        workspaceId: rootWorkspace.id,
+        workspaceId: selectedWorkspace.id,
         threadTitle: title,
         modelString,
       });
       if (result.status === "ok") {
         setFeatureDoneState("done");
-        showToast({ variant: "success", message: `Feature shipped — ${result.message}` });
+        showToast({ variant: "success", message: `Feature autoshipped — ${result.message}` });
       } else if (result.status === "conflicts" && result.handoffPrompt) {
         setFeatureDoneState("done");
         showToast({ variant: "success", message: "Merge conflicts found — spawning resolver thread…" });
         // Spawn a resolver thread in the same worktree
         await api.startThread({
-          rootWorkspaceId: rootWorkspace.id,
+          rootWorkspaceId: selectedWorkspace.id,
           environment: "local",
           prompt: result.handoffPrompt,
         });
       } else {
         setFeatureDoneState("error");
-        showToast({ variant: "error", message: `Ship failed — ${result.message}` });
+        showToast({ variant: "error", message: `Autoship failed — ${result.message}` });
       }
     } catch (err) {
       setFeatureDoneState("error");
-      showToast({ variant: "error", message: `Ship failed — ${String(err)}` });
+      showToast({ variant: "error", message: `Autoship failed — ${String(err)}` });
     }
-  }, [api, rootWorkspace, selectedSession, snapshot?.commitPushModel]);
+  }, [api, selectedWorkspace, selectedSession, snapshot?.commitPushModel]);
 
   const toggleEnvironmentPanel = useCallback(() => {
     setEnvironmentPanelOpen((prev) => {
