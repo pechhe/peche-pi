@@ -207,7 +207,8 @@ export function EnvironmentPanel(props: EnvironmentPanelProps) {
         type="button"
         onClick={() => {
           playButtonClick();
-          setLocationPickerOpen(!locationPickerOpen);
+          setBranchPickerOpen(false);
+          setLocationPickerOpen((prev) => !prev);
         }}
       >
         <span className="environment-panel__row-left">
@@ -284,6 +285,7 @@ export function EnvironmentPanel(props: EnvironmentPanelProps) {
               return;
             }
             if (!rootWorkspace) return;
+            setLocationPickerOpen(false);
             setBranchLoading(true);
             setBranchPickerOpen(true);
             setBranchSearch("");
