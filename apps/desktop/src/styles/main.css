@@ -18,7 +18,7 @@
      so it never auto-places into the sidebar's reserved column. */
   grid-column: 2;
   min-width: 0;
-  overflow: hidden;
+  /* overflow managed by children */
   position: relative;
 }
 
@@ -66,6 +66,11 @@
   align-items: center;
   gap: 6px;
   min-width: 0;
+}
+
+.topbar__env-toggle {
+  margin-left: 4px;
+  -webkit-app-region: no-drag;
 }
 
 .environment-picker,
