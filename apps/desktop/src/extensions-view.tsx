@@ -248,9 +248,9 @@ export function ExtensionsView({
 
       {/* Install section */}
       {onInstallExtension ? (
-        <section className="extension-install-section" style={{ margin: "0 24px 16px", padding: "16px", borderRadius: "8px", background: "var(--surface-1, rgba(0,0,0,0.05))" }}>
-          <h3 style={{ margin: "0 0 12px", fontSize: "14px", fontWeight: 600 }}>Install extension</h3>
-          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+        <section className="extension-install-section">
+          <h3 className="mt-0 mb-3 text-sm font-semibold text-foreground">Install extension</h3>
+          <div className="flex items-center gap-2">
             <input
               className="settings-text-input"
               type="text"
@@ -277,7 +277,7 @@ export function ExtensionsView({
               {isInstalling ? "Installing..." : "Install"}
             </button>
           </div>
-          <div style={{ display: "flex", gap: "16px", marginTop: "8px", fontSize: "12px", color: "var(--text-secondary)", flexWrap: "wrap" }}>
+          <div className="mt-2 flex flex-wrap gap-4 text-[12px] text-muted-foreground">
             <label style={{ display: "flex", alignItems: "center", gap: "4px" }}>
               <input
                 type="checkbox"
@@ -324,7 +324,7 @@ export function ExtensionsView({
               {installResult.message}
             </div>
           ) : null}
-          <div style={{ marginTop: "8px", fontSize: "11px", color: "var(--text-muted)" }}>
+          <div className="mt-2 text-[11px] text-muted-foreground/70">
             Examples: <code>npm:pi-smart-compact</code> · <code>git:github.com/user/repo</code> · <code>./local/path</code>
           </div>
         </section>
