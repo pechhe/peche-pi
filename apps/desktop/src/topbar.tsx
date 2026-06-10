@@ -33,7 +33,6 @@ interface TopbarProps {
   readonly onOpenGraph?: () => void;
   readonly environmentPanelOpen: boolean;
   readonly onToggleEnvironmentPanel: () => void;
-  readonly envToggleRef?: React.RefObject<HTMLButtonElement | null>;
 }
 
 export function Topbar(props: TopbarProps) {
@@ -60,7 +59,6 @@ export function Topbar(props: TopbarProps) {
     onSetTranscriptVerbose,
     environmentPanelOpen,
     onToggleEnvironmentPanel,
-    envToggleRef,
   } = props;
   const terminalShortcut = getDesktopShortcutLabel(api.platform, "J");
   const diffShortcut = getDesktopShortcutLabel(api.platform, "D");
@@ -245,7 +243,6 @@ export function Topbar(props: TopbarProps) {
           </div>
         ) : null}
         <button
-          ref={envToggleRef}
           aria-label="Toggle environment panel"
           className={`icon-button topbar__icon ${environmentPanelOpen ? "icon-button--active" : ""}`}
           type="button"

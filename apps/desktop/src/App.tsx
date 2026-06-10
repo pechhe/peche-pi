@@ -540,8 +540,6 @@ export default function App() {
   const [subagentPanel, setSubagentPanel] = useState<{ readonly sessionFile: string; readonly name: string } | null>(null);
   const [showDiffPanel, setShowDiffPanel] = useState(false);
   const [environmentPanelOpen, setEnvironmentPanelOpen] = useState<boolean>(() => { try { return localStorage.getItem("pi:env-panel-open") !== "false"; } catch { return true; } });
-  const envToggleRef = useRef<HTMLButtonElement>(null);
-  const [popoverPos, setPopoverPos] = useState<{ readonly left: number; readonly top: number } | null>(null);
 
   const [showContextPanel, setShowContextPanel] = useState(false);
   const [featureDoneState, setFeatureDoneState] = useState<"idle" | "working" | "done" | "error">("idle");
@@ -556,27 +554,7 @@ export default function App() {
   const [terminalHeight, setTerminalHeight] = useState(340);
   const [diffFileRequest, setDiffFileRequest] = useState<DiffPanelFileRequest | null>(null);
   const [diffRefreshNonce, _setDiffRefreshNonce] = useState(0);
-  const rightPanelOpen = showDiffPanel || showContextPanel || advisorState.visible || Boolean(subagentPanel);
 
-  // Popover mode: when right panel is open, position the card near the topbar toggle and dismiss on click-away.
-  useEffect(() => {
-    if (!environmentPanelOpen || !rightPanelOpen) { setPopoverPos(null); return; }
-    const btn = envToggleRef.current;
-    const shell = document.querySelector(".shell");
-    if (btn && shell) {
-      const btnRect = btn.getBoundingClientRect();
-      const shellRect = shell.getBoundingClientRect();
-      setPopoverPos({ left: btnRect.left - shellRect.left, top: btnRect.bottom - shellRect.top + 6 });
-    }
-    const handleMousedown = (e: MouseEvent) => {
-      if (
-        (() => { const p = document.querySelector("[data-testid=environment-panel]"); return p && !p.contains(e.target as Node); })() &&
-        envToggleRef.current && !envToggleRef.current.contains(e.target as Node)
-      ) { setEnvironmentPanelOpen(false); }
-    };
-    document.addEventListener("mousedown", handleMousedown);
-    return () => document.removeEventListener("mousedown", handleMousedown);
-  }, [environmentPanelOpen, rightPanelOpen]);
   const api = window.piApp;
   const sidebarToggleStateRef = useRef<{
     readonly api: typeof window.piApp;
@@ -2730,7 +2708,7 @@ export default function App() {
     );
   }
 
-  const shellClassName = `shell${snapshot.sidebarCollapsed ? " shell--sidebar-collapsed" : ""}${sidebarResize.isResizing ? " shell--sidebar-resizing" : ""}${environmentPanelOpen ? " shell--env-panel-open" : ""}`;
+  const shellClassName = `shell${snapshot.sidebarCollapsed ? " shell--sidebar-collapsed" : ""}${sidebarResize.isResizing ? " shell--sidebar-resizing" : ""}`;
 
   const shellStyle = snapshot.sidebarCollapsed
     ? undefined
@@ -2835,7 +2813,6 @@ export default function App() {
           onOpenGraph={() => setActiveView("graph")}
           environmentPanelOpen={environmentPanelOpen}
           onToggleEnvironmentPanel={toggleEnvironmentPanel}
-          envToggleRef={envToggleRef}
         />
 
         {showTerminalTakeover ? (
@@ -3158,7 +3135,6 @@ export default function App() {
       </main>
       {environmentPanelOpen && selectedWorkspace ? (
         <EnvironmentPanel
-          style={rightPanelOpen && popoverPos ? { left: popoverPos.left, top: popoverPos.top, right: "auto" } : undefined}
           selectedWorkspace={selectedWorkspace}
           selectedWorktree={selectedWorktree}
           rootWorkspace={rootWorkspace}

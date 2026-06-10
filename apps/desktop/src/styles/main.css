@@ -285,8 +285,7 @@
 .environment-panel {
   position: absolute;
   top: 56px;
-  right: 12px;
-  transition: right 160ms ease;
+  left: 12px;
   width: var(--env-panel-width, 300px);
   height: auto;
   max-height: calc(100% - 24px);
