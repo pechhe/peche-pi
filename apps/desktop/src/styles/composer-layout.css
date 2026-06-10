@@ -5,7 +5,9 @@
   grid-template-columns: repeat(12, 1fr);
   gap: 8px;
   align-items: center;
-  width: 100%;
+  /* No width:100% — let the grid shrink to content so controls stay compact
+     in the production composer (inline with the hint text). The editor
+     preview container supplies its own width. */
 }
 
 .composer-layout-cell {
