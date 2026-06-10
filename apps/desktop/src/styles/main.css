@@ -285,7 +285,8 @@
 .environment-panel {
   position: absolute;
   top: 56px;
-  right: 12px;
+  right: calc(var(--env-right-offset, 0px) + 12px);
+  transition: right 160ms ease;
   width: var(--env-panel-width, 300px);
   height: auto;
   max-height: calc(100% - 24px);
@@ -8001,7 +8002,7 @@ mark.thread-find-active {
 }
 
 .composer-device--modular .composer__screen {
-  contain: layout paint;
+  contain: layout;
   display: flex;
   min-height: 76px;
   flex-direction: column;

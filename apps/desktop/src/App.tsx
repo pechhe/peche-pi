@@ -2679,9 +2679,11 @@ export default function App() {
   }
 
   const shellClassName = `shell${snapshot.sidebarCollapsed ? " shell--sidebar-collapsed" : ""}${sidebarResize.isResizing ? " shell--sidebar-resizing" : ""}${environmentPanelOpen ? " shell--env-panel-open" : ""}`;
-  const shellStyle = snapshot.sidebarCollapsed
-    ? undefined
-    : ({ ["--sidebar-width" as string]: `${sidebarResize.width}px` } as React.CSSProperties);
+  const rightRailWidth = showDiffPanel ? 400 : advisorState.visible ? 420 : showContextPanel ? 460 : subagentPanel ? 480 : 0;
+  const shellStyle = {
+    ["--env-right-offset" as string]: `${rightRailWidth}px`,
+    ...(snapshot.sidebarCollapsed ? {} : { ["--sidebar-width" as string]: `${sidebarResize.width}px` }),
+  } as React.CSSProperties;
 
   return (
     <div className={shellClassName} style={shellStyle}>
@@ -2979,6 +2981,7 @@ export default function App() {
                 thinkingLevel={pendingThreadStart?.thinkingLevel}
                 cavemanLevel={pendingThreadStart?.cavemanLevel ?? cavemanLevel}
                 composerMode={pendingThreadStart?.composerMode ?? "build"}
+                prompt={pendingThreadStart?.prompt}
                 chassisActions={chassisActions}
                 onRunChassisAction={handleRunChassisAction}
                 activeWrapId={activeStickyId}
