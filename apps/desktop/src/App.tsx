@@ -52,6 +52,7 @@ import { Sidebar } from "./sidebar";
 import { SidebarToggleButton } from "./sidebar-toggle-button";
 import { playButtonClick, preloadSounds, DEFAULT_BUTTON_SOUND_SETTINGS, type ButtonSoundSettings } from "./button-click-sound";
 import { Topbar } from "./topbar";
+import { EnvironmentPanel } from "./environment-widget";
 import { TerminalPanel } from "./terminal-panel";
 import { ConversationTimeline } from "./conversation-timeline";
 import LoadingBar from "./loading-bar";
@@ -532,6 +533,7 @@ export default function App() {
   const lastErrorToastKeyRef = useRef("");
   const [subagentPanel, setSubagentPanel] = useState<{ readonly sessionFile: string; readonly name: string } | null>(null);
   const [showDiffPanel, setShowDiffPanel] = useState(false);
+  const [environmentPanelOpen, setEnvironmentPanelOpen] = useState<boolean>(() => { try { return localStorage.getItem("pi:env-panel-open") !== "false"; } catch { return true; } });
   const [showContextPanel, setShowContextPanel] = useState(false);
   const [featureDoneState, setFeatureDoneState] = useState<"idle" | "working" | "done" | "error">("idle");
   const [autoShipOverrides, setAutoShipOverrides] = useState<Map<string, boolean>>(new Map());
@@ -1485,6 +1487,14 @@ export default function App() {
       return next;
     });
   }, [selectedSession]);
+
+  const toggleEnvironmentPanel = useCallback(() => {
+    setEnvironmentPanelOpen((prev) => {
+      const next = !prev;
+      try { localStorage.setItem("pi:env-panel-open", String(next)); } catch { /* ignore */ }
+      return next;
+    });
+  }, []);
 
   const skillsExtensionsHandlers = useSkillsExtensionsHandlers({
     api,
@@ -2606,7 +2616,7 @@ export default function App() {
     );
   }
 
-  const shellClassName = `shell${snapshot.sidebarCollapsed ? " shell--sidebar-collapsed" : ""}${sidebarResize.isResizing ? " shell--sidebar-resizing" : ""}`;
+  const shellClassName = `shell${snapshot.sidebarCollapsed ? " shell--sidebar-collapsed" : ""}${sidebarResize.isResizing ? " shell--sidebar-resizing" : ""}${environmentPanelOpen ? " shell--env-panel-open" : ""}`;
   const shellStyle = snapshot.sidebarCollapsed
     ? undefined
     : ({ ["--sidebar-width" as string]: `${sidebarResize.width}px` } as React.CSSProperties);
@@ -2691,9 +2701,6 @@ export default function App() {
           selectedWorkspace={selectedWorkspace}
           selectedSession={selectedSession}
           selectedSessionTitle={displayedSessionTitle || selectedSession?.title}
-          selectedWorktree={selectedWorktree}
-          activeWorktrees={activeWorktrees}
-          wsMenu={wsMenu}
           api={api}
           terminalAvailable={Boolean(selectedSessionKey)}
           terminalVisible={isTerminalVisibleForSelectedThread}
@@ -2706,19 +2713,13 @@ export default function App() {
           onToggleContextPanel={openContext}
           showAdvisorPanel={advisorState.visible}
           onToggleAdvisorPanel={toggleAdvisorPanel}
-          selectedRuntime={rootRuntime}
-          commitPushModel={snapshot.commitPushModel}
           transcriptVerbose={transcriptVerbose}
           onSetTranscriptVerbose={(enabled) => {
             void updateSnapshot(api, setSnapshot, () => api.setTranscriptVerbose(enabled));
           }}
           onOpenGraph={() => setActiveView("graph")}
-          onFeatureDone={handleFeatureDone}
-          featureDoneState={featureDoneState}
-          autoShipEffective={autoShipEffective}
-          autoShipGlobal={autoShipGlobal}
-          autoShipOverride={autoShipOverride}
-          onSetAutoShipOverride={handleSetAutoShipOverride}
+          environmentPanelOpen={environmentPanelOpen}
+          onToggleEnvironmentPanel={toggleEnvironmentPanel}
         />
 
         {showTerminalTakeover ? (
@@ -3024,6 +3025,27 @@ export default function App() {
           />
         ) : null}
       </main>
+      {environmentPanelOpen && selectedWorkspace ? (
+        <EnvironmentPanel
+          selectedWorkspace={selectedWorkspace}
+          selectedWorktree={selectedWorktree}
+          rootWorkspace={rootWorkspace}
+          activeWorktrees={activeWorktrees}
+          wsMenu={wsMenu}
+          showDiffPanel={showDiffPanel}
+          onToggleDiffPanel={toggleDiffPanel}
+          onFeatureDone={handleFeatureDone}
+          featureDoneState={featureDoneState}
+          commitPushModel={snapshot.commitPushModel}
+          autoShipEffective={autoShipEffective}
+          autoShipGlobal={autoShipGlobal}
+          autoShipOverride={autoShipOverride}
+          onSetAutoShipOverride={handleSetAutoShipOverride}
+          selectedRuntime={rootRuntime}
+          api={api}
+          sessionStatus={selectedSession?.status}
+        />
+      ) : null}
       {/* Rendered last so its -webkit-app-region:no-drag wins over the topbar's
           drag region when the sidebar is collapsed. Electron computes draggable
           regions in DOM order, not z-index, so an earlier no-drag toggle gets

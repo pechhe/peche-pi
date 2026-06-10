@@ -1,5 +1,6 @@
 .shell {
   --sidebar-width: 292px;
+  --env-panel-width: 300px;
   /* Raw Chromium zoom factor, mirrored from app state by App.tsx. Used to keep
      chrome anchored to the native traffic lights (which never scale) at any
      zoom level. Default matches ZOOM_BASELINE in desktop-state.ts. */
@@ -32,6 +33,14 @@
 /* Grid relayouts once (instant), so main never reflows per frame. */
 .shell--sidebar-collapsed {
   grid-template-columns: 0 minmax(0, 1fr);
+}
+
+.shell--env-panel-open {
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr) var(--env-panel-width);
+}
+
+.shell--sidebar-collapsed.shell--env-panel-open {
+  grid-template-columns: 0 minmax(0, 1fr) var(--env-panel-width);
 }
 
 /* Sidebar slides off-canvas with a GPU transform (no layout cost). */

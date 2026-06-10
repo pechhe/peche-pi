@@ -520,6 +520,15 @@ export function InvestigateIcon() {
   );
 }
 
+export function PanelRightIcon() {
+  return (
+    <Icon>
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <path d="M15 3v18" />
+    </Icon>
+  );
+}
+
 export function OtherIcon() {
   return (
     <Icon>

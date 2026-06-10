@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
-import type { AppView, SessionRecord, WorkspaceRecord, WorktreeRecord } from "./desktop-state";
-import { AdvisorIcon, ContextIcon, DiffIcon, ExternalTerminalIcon, FolderIcon, SettingsIcon, TerminalIcon } from "./icons";
+import type { AppView, SessionRecord, WorkspaceRecord } from "./desktop-state";
+import { AdvisorIcon, ContextIcon, DiffIcon, ExternalTerminalIcon, FolderIcon, PanelRightIcon, SettingsIcon, TerminalIcon } from "./icons";
 import { playButtonClick } from "./button-click-sound";
 import { getDesktopShortcutLabel, type PiDesktopApi } from "./ipc";
 import { ProjectMapPopover } from "./project-map-popover";
-import type { WorkspaceMenuState } from "./hooks/use-workspace-menu";
-import { EnvironmentWidget } from "./environment-widget";
+
+
 import { UpdatePill } from "./update-pill";
-import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
+
 import { showToast } from "./toast";
 
 interface TopbarProps {
@@ -16,9 +16,6 @@ interface TopbarProps {
   readonly selectedWorkspace: WorkspaceRecord | undefined;
   readonly selectedSession: SessionRecord | undefined;
   readonly selectedSessionTitle: string | undefined;
-  readonly selectedWorktree: WorktreeRecord | undefined;
-  readonly activeWorktrees: readonly WorktreeRecord[];
-  readonly wsMenu: WorkspaceMenuState;
   readonly api: PiDesktopApi;
   readonly terminalAvailable: boolean;
   readonly terminalVisible: boolean;
@@ -31,17 +28,11 @@ interface TopbarProps {
   readonly onToggleContextPanel?: () => void;
   readonly showAdvisorPanel?: boolean;
   readonly onToggleAdvisorPanel?: () => void;
-  readonly selectedRuntime?: RuntimeSnapshot;
-  readonly commitPushModel?: string;
   readonly transcriptVerbose: boolean;
   readonly onSetTranscriptVerbose: (enabled: boolean) => void;
   readonly onOpenGraph?: () => void;
-  readonly onFeatureDone?: () => void;
-  readonly featureDoneState?: "idle" | "working" | "done" | "error";
-  readonly autoShipEffective?: boolean;
-  readonly autoShipGlobal?: boolean;
-  readonly autoShipOverride?: boolean;
-  readonly onSetAutoShipOverride?: (value: boolean | undefined) => void;
+  readonly environmentPanelOpen: boolean;
+  readonly onToggleEnvironmentPanel: () => void;
 }
 
 export function Topbar(props: TopbarProps) {
@@ -51,9 +42,6 @@ export function Topbar(props: TopbarProps) {
     selectedWorkspace,
     selectedSession,
     selectedSessionTitle,
-    selectedWorktree,
-    activeWorktrees,
-    wsMenu,
     api,
 
     terminalAvailable,
@@ -67,16 +55,10 @@ export function Topbar(props: TopbarProps) {
     onToggleContextPanel,
     showAdvisorPanel,
     onToggleAdvisorPanel,
-    selectedRuntime,
-    commitPushModel,
     transcriptVerbose,
     onSetTranscriptVerbose,
-    onFeatureDone,
-    featureDoneState,
-    autoShipEffective,
-    autoShipGlobal,
-    autoShipOverride,
-    onSetAutoShipOverride,
+    environmentPanelOpen,
+    onToggleEnvironmentPanel,
   } = props;
   const terminalShortcut = getDesktopShortcutLabel(api.platform, "J");
   const diffShortcut = getDesktopShortcutLabel(api.platform, "D");
@@ -117,27 +99,7 @@ export function Topbar(props: TopbarProps) {
         <span className="topbar__workspace">
           {rootWorkspace ? rootWorkspace.name : "Open a folder to begin"}
         </span>
-        {selectedWorkspace && activeView === "threads" ? (
-          <EnvironmentWidget
-            selectedWorkspace={selectedWorkspace}
-            selectedWorktree={selectedWorktree}
-            rootWorkspace={rootWorkspace}
-            activeWorktrees={activeWorktrees}
-            wsMenu={wsMenu}
-            showDiffPanel={showDiffPanel}
-            onToggleDiffPanel={onToggleDiffPanel}
-            onFeatureDone={onFeatureDone}
-            featureDoneState={featureDoneState}
-            commitPushModel={commitPushModel}
-            autoShipEffective={autoShipEffective}
-            autoShipGlobal={autoShipGlobal}
-            autoShipOverride={autoShipOverride}
-            onSetAutoShipOverride={onSetAutoShipOverride}
-            selectedRuntime={selectedRuntime}
-            api={api}
-            sessionStatus={selectedSession?.status}
-          />
-        ) : null}
+
         {selectedWorkspace && activeView === "threads" && selectedSession ? (
           <>
             <span className="topbar__separator">/</span>
@@ -280,6 +242,14 @@ export function Topbar(props: TopbarProps) {
             </span>
           </div>
         ) : null}
+        <button
+          aria-label="Toggle environment panel"
+          className={`icon-button topbar__icon ${environmentPanelOpen ? "icon-button--active" : ""}`}
+          type="button"
+          onClick={() => { playButtonClick(); onToggleEnvironmentPanel(); }}
+        >
+          <PanelRightIcon />
+        </button>
       </div>
     </header>
   );

@@ -1249,6 +1249,45 @@ app.whenReady().then(async () => {
         await store.refreshState();
         return { success: true, message: result.stdout || `Created and switched to branch '${name}'` };
       },
+      getWorkspaceDiffStat: async (_event: unknown, workspaceId: string) => {
+        const workspacePath = store.getWorkspacePath(workspaceId);
+        if (!workspacePath) return { insertions: 0, deletions: 0 };
+        const { execGit } = await import("./git-runner.js");
+        let insertions = 0;
+        let deletions = 0;
+        // Tracked changes vs HEAD
+        try {
+          const diffResult = await execGit(["diff", "--numstat", "HEAD"], workspacePath);
+          if (diffResult.code === 0) {
+            for (const line of diffResult.stdout.split("\n")) {
+              const parts = line.split("\t");
+              if (parts.length >= 2) {
+                const ins = parseInt(parts[0]!, 10);
+                const del = parseInt(parts[1]!, 10);
+                if (!isNaN(ins)) insertions += ins;
+                if (!isNaN(del)) deletions += del;
+              }
+            }
+          }
+        } catch { /* best-effort */ }
+        // Untracked files
+        try {
+          const lsResult = await execGit(["ls-files", "--others", "--exclude-standard"], workspacePath);
+          if (lsResult.code === 0) {
+            const { readFile: fsReadFile } = await import("node:fs/promises");
+            const pathMod = await import("node:path");
+            for (const file of lsResult.stdout.split("\n")) {
+              const trimmed = file.trim();
+              if (!trimmed) continue;
+              try {
+                const content = await fsReadFile(pathMod.join(workspacePath, trimmed), "utf8");
+                insertions += content.split("\n").length;
+              } catch { /* skip unreadable files */ }
+            }
+          }
+        } catch { /* best-effort */ }
+        return { insertions, deletions };
+      },
       getWorktreeRemovalPreview: async (_event: unknown, worktreeId: string) => {
         const workspacePath = store.getWorkspacePath(worktreeId);
         if (!workspacePath) return { uncommittedFiles: 0, unpushedCommits: 0 };

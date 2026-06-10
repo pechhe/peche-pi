@@ -928,6 +928,7 @@ export interface PiDesktopApi {
   listBranches(workspaceId: string): Promise<BranchListResult>;
   checkoutBranch(workspaceId: string, branchName: string): Promise<{ readonly success: boolean; readonly message: string }>;
   createBranch(workspaceId: string, branchName: string): Promise<{ readonly success: boolean; readonly message: string }>;
+  getWorkspaceDiffStat(workspaceId: string): Promise<{ readonly insertions: number; readonly deletions: number }>;
   featureDone(input: FeatureDoneInput): Promise<FeatureDoneResult>;
   getContextSnapshot(workspaceId: string, sessionId?: string): Promise<ContextSnapshot>;
   getGraphifyProjectMapStatus(workspaceId: string): Promise<GraphifyProjectMapStatus>;

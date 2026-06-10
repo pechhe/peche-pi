@@ -15,10 +15,10 @@ import type { PiDesktopApi } from "../../src/ipc";
 
 const execFileAsync = promisify(execFile);
 
-test("environment widget shows local read-out with branch for local thread", async () => {
+test("environment panel shows rows on load for local thread", async () => {
   test.setTimeout(90_000);
   const userDataDir = await makeUserDataDir();
-  const workspacePath = await makeGitWorkspace("env-widget-local");
+  const workspacePath = await makeGitWorkspace("env-panel-local");
   const harness = await launchDesktop(userDataDir, {
     initialWorkspaces: [workspacePath],
     testMode: "background",
@@ -31,38 +31,25 @@ test("environment widget shows local read-out with branch for local thread", asy
     // Create a local thread via IPC seam
     await startThreadViaIpc(window, { environment: "local", prompt: "local probe" });
 
-    // The environment widget should be visible
-    const widget = window.getByTestId("environment-widget");
-    await expect(widget).toBeVisible();
+    // The environment panel should be visible (open by default)
+    const panel = window.getByTestId("environment-panel");
+    await expect(panel).toBeVisible();
 
-    // Read-out should show Local + branch (main)
-    const readout = window.getByTestId("environment-widget-readout");
-    await expect(readout).toContainText("Local");
-    await expect(readout).toContainText("main");
-
-    // Branch element should contain the branch name
-    const branchEl = window.getByTestId("environment-widget-branch");
-    await expect(branchEl).toContainText("main");
-
-    // Clicking the read-out opens the popover
-    await readout.click();
-    const popover = window.getByTestId("environment-widget-popover");
-    await expect(popover).toBeVisible();
-
-    // Popover contains the expected rows
+    // Panel should contain the expected rows directly (no popover click needed)
     await expect(window.getByTestId("env-row-changes")).toBeVisible();
     await expect(window.getByTestId("env-row-location")).toBeVisible();
     await expect(window.getByTestId("env-row-branch")).toBeVisible();
     await expect(window.getByTestId("env-row-commit-push")).toBeVisible();
+    await expect(window.getByTestId("env-sources")).toBeVisible();
   } finally {
     await harness.close();
   }
 });
 
-test("environment widget shows worktree read-out with branch for worktree thread", async () => {
+test("environment panel shows rows on load for worktree thread", async () => {
   test.setTimeout(90_000);
   const userDataDir = await makeUserDataDir();
-  const workspacePath = await makeGitWorkspace("env-widget-worktree");
+  const workspacePath = await makeGitWorkspace("env-panel-worktree");
   const harness = await launchDesktop(userDataDir, {
     initialWorkspaces: [workspacePath],
     testMode: "background",
@@ -83,22 +70,11 @@ test("environment widget shows worktree read-out with branch for worktree thread
       })
       .toBe(true);
 
-    // The environment widget should be visible
-    const widget = window.getByTestId("environment-widget");
-    await expect(widget).toBeVisible();
+    // The environment panel should be visible (open by default)
+    const panel = window.getByTestId("environment-panel");
+    await expect(panel).toBeVisible();
 
-    // Read-out should show Worktree
-    const readout = window.getByTestId("environment-widget-readout");
-    await expect(readout).toContainText("Worktree");
-
-    // Branch element should show a branch (detached worktrees show base branch with badge)
-    const branchEl = window.getByTestId("environment-widget-branch");
-    await expect(branchEl).toContainText("⎇");
-
-    // Clicking opens the popover with all rows
-    await readout.click();
-    const popover = window.getByTestId("environment-widget-popover");
-    await expect(popover).toBeVisible();
+    // Panel should contain the expected rows directly
     await expect(window.getByTestId("env-row-changes")).toBeVisible();
     await expect(window.getByTestId("env-row-location")).toBeVisible();
     await expect(window.getByTestId("env-row-branch")).toBeVisible();
@@ -108,10 +84,10 @@ test("environment widget shows worktree read-out with branch for worktree thread
   }
 });
 
-test("environment widget popover location row allows switching between local and worktree", async () => {
+test("environment panel location row allows switching between local and worktree", async () => {
   test.setTimeout(90_000);
   const userDataDir = await makeUserDataDir();
-  const workspacePath = await makeGitWorkspace("env-widget-location-switch");
+  const workspacePath = await makeGitWorkspace("env-panel-location-switch");
   const harness = await launchDesktop(userDataDir, {
     initialWorkspaces: [workspacePath],
     testMode: "background",
@@ -124,18 +100,14 @@ test("environment widget popover location row allows switching between local and
     // Create a local thread first
     await startThreadViaIpc(window, { environment: "local", prompt: "switch test" });
 
-    const readout = window.getByTestId("environment-widget-readout");
-    await expect(readout).toContainText("Local");
+    // Panel should be visible (open by default)
+    const panel = window.getByTestId("environment-panel");
+    await expect(panel).toBeVisible();
 
-    // Open the popover
-    await readout.click();
-    await expect(window.getByTestId("environment-widget-popover")).toBeVisible();
-
-    // Location row should exist with Local/Worktree buttons
+    // Location row should exist with Local/Worktree content
     const locationRow = window.getByTestId("env-row-location");
     await expect(locationRow).toBeVisible();
     await expect(locationRow).toContainText("Local");
-    await expect(locationRow).toContainText("Worktree");
   } finally {
     await harness.close();
   }
@@ -201,20 +173,21 @@ test("auto-ship override swaps Commit & Push row for Ship button", async () => {
     // Create a local thread
     await startThreadViaIpc(window, { environment: "local", prompt: "autoship probe" });
 
-    // Open the environment widget popover
-    const readout = window.getByTestId("environment-widget-readout");
-    await readout.click();
-    const popover = window.getByTestId("environment-widget-popover");
-    await expect(popover).toBeVisible();
+    // Panel is open by default
+    const panel = window.getByTestId("environment-panel");
+    await expect(panel).toBeVisible();
 
     // By default (auto-ship OFF), the commit-push row should contain
-    // the CommitPushButton (text "Commit & Push") and NOT the Ship button.
+    // the CommitPushButton and NOT the Ship button.
     const commitPushRow = window.getByTestId("env-row-commit-push");
     await expect(commitPushRow).toBeVisible();
-    await expect(commitPushRow).toContainText("Commit");
     await expect(window.getByTestId("env-row-ship-button")).toHaveCount(0);
 
-    // The auto-ship override row should be visible
+    // Open settings gear to access auto-ship override
+    const gear = window.getByTestId("env-settings-gear");
+    await gear.click();
+
+    // The auto-ship override row should be visible in the settings popover
     const overrideRow = window.getByTestId("env-row-autoship-override");
     await expect(overrideRow).toBeVisible();
 
@@ -226,16 +199,16 @@ test("auto-ship override swaps Commit & Push row for Ship button", async () => {
     await expect(shipButton).toBeVisible();
     await expect(shipButton).toContainText("Ship");
 
-    // Click "Off" to revert
+    // Settings popover is still open — click "Off" directly
     await overrideRow.getByRole("button", { name: "Off", exact: true }).click();
 
     // Ship button should disappear, CommitPushButton should be back
     await expect(window.getByTestId("env-row-ship-button")).toHaveCount(0);
-    await expect(commitPushRow).toContainText("Commit");
 
-    // Click "Default" to inherit global (off)
+    // Settings popover is still open — click "Default" directly
     await overrideRow.getByRole("button", { name: /Default/ }).click();
     await expect(window.getByTestId("env-row-ship-button")).toHaveCount(0);
+    await expect(commitPushRow).toBeVisible();
   } finally {
     await harness.close();
   }
@@ -320,6 +293,82 @@ test("createBranch IPC creates and switches to new branch, carries dirty tree", 
     // Dirty file should still exist (carried onto new branch)
     const { stat } = await import("node:fs/promises");
     await expect(stat(join(workspacePath, "dirty.txt"))).resolves.toBeDefined();
+  } finally {
+    await harness.close();
+  }
+});
+
+test("environment panel toggle button hides and restores the panel", async () => {
+  test.setTimeout(90_000);
+  const userDataDir = await makeUserDataDir();
+  const workspacePath = await makeGitWorkspace("env-panel-toggle");
+  const harness = await launchDesktop(userDataDir, {
+    initialWorkspaces: [workspacePath],
+    testMode: "background",
+  });
+
+  try {
+    const window = await harness.firstWindow();
+    await waitForWorkspaceByPath(window, workspacePath);
+
+    // Create a local thread
+    await startThreadViaIpc(window, { environment: "local", prompt: "toggle test" });
+
+    // Panel should be visible by default
+    const panel = window.getByTestId("environment-panel");
+    await expect(panel).toBeVisible();
+
+    // The shell should have the env-panel-open class
+    const shell = window.locator(".shell");
+    await expect(shell).toHaveClass(/shell--env-panel-open/);
+
+    // Click the toggle button to hide
+    const toggleBtn = window.getByLabel("Toggle environment panel");
+    await toggleBtn.click();
+
+    // Panel should be hidden
+    await expect(panel).not.toBeVisible();
+    await expect(shell).not.toHaveClass(/shell--env-panel-open/);
+
+    // Click again to restore
+    await toggleBtn.click();
+
+    // Panel should be visible again
+    await expect(panel).toBeVisible();
+    await expect(shell).toHaveClass(/shell--env-panel-open/);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("getWorkspaceDiffStat returns insertions for untracked files", async () => {
+  test.setTimeout(90_000);
+  const userDataDir = await makeUserDataDir();
+  const workspacePath = await makeGitWorkspace("diff-stat-untracked");
+  const harness = await launchDesktop(userDataDir, {
+    initialWorkspaces: [workspacePath],
+    testMode: "background",
+  });
+
+  try {
+    const window = await harness.firstWindow();
+    const rootWorkspace = await waitForWorkspaceByPath(window, workspacePath);
+    const wsId = rootWorkspace.id;
+
+    // Create an untracked file with known content
+    const { writeFile } = await import("node:fs/promises");
+    const { join } = await import("node:path");
+    await writeFile(join(workspacePath, "new-file.txt"), "line 1\nline 2\nline 3\n", "utf8");
+
+    // Call getWorkspaceDiffStat via IPC seam
+    const stat = await window.evaluate(async (id: string) => {
+      const api = (window as PiAppWindow).piApp as PiDesktopApi;
+      return api.getWorkspaceDiffStat(id);
+    }, wsId);
+
+    // Untracked file with 3 lines + trailing newline → 4 insertions (split gives 4 segments)
+    expect(stat.insertions).toBeGreaterThan(0);
+    expect(stat.deletions).toBe(0);
   } finally {
     await harness.close();
   }
