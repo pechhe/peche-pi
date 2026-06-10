@@ -117,7 +117,6 @@ export const ComposerLayoutRenderer = memo(function ComposerLayoutRenderer({
         gridTemplateRows: `repeat(${rowCount}, auto)`,
         gap: "8px",
         alignItems: "center",
-        width: "100%",
       } as CSSProperties}
     >
       {layout.placements.map((placement) => {
