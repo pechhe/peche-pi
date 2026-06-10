@@ -2,7 +2,9 @@ import { type ClipboardEvent, type Dispatch, type DragEvent, type KeyboardEvent,
 import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
 import type { ComposerAttachment, QueuedComposerMessage, SessionExtensionDialogRecord, SessionRecord } from "./desktop-state";
 import type { ComposerMode } from "./composer-mode";
-import { ComposerControlRow } from "./composer-control-row";
+import { ComposerLayoutLegacyRow } from "./composer-layout-renderer";
+import { getDefaultLayout, mergeChassisActionsIntoLayout, validateComposerLayout, controlUnitRegistry, type ComposerLayoutData } from "./composer-layout";
+import { registerChassisActionUnits } from "./composer-builtin-units";
 import { ArrowUpIcon, StopSquareIcon } from "./icons";
 import type {
   ComposerSlashCommand,
@@ -81,6 +83,7 @@ interface ComposerPanelProps {
   readonly onRunChassisAction?: (action: import("./chassis").ChassisAction) => void;
   readonly activeWrapId?: string | null;
   readonly onToggleChassisWrap?: (action: import("./chassis").ChassisAction) => void;
+  readonly composerLayout?: ComposerLayoutData | null;
 }
 
 function resolveFallbackContextWindow(
@@ -106,6 +109,10 @@ function formatTokenCount(tokens: number): string {
   }
   return String(Math.round(tokens));
 }
+
+// Ensure built-in units are registered
+import "./composer-builtin-units";
+import { useEffect, useMemo } from "react";
 
 export function ComposerPanel({
   selectedSession,
@@ -166,7 +173,30 @@ export function ComposerPanel({
   onRunChassisAction,
   activeWrapId,
   onToggleChassisWrap,
+  composerLayout,
 }: ComposerPanelProps) {
+  // Register chassis actions as control units whenever they change
+  useEffect(() => {
+    if (chassisActions) {
+      registerChassisActionUnits(chassisActions);
+    }
+  }, [chassisActions]);
+
+  // Get effective layout - use provided layout or default
+  const effectiveLayout = useMemo(() => {
+    if (composerLayout) {
+      // Validate and merge chassis actions
+      const availableUnitIds = new Set([
+        ...controlUnitRegistry.getAll().map(u => u.id),
+        ...(chassisActions?.map(a => `chassis:${a.id}`) ?? []),
+      ]);
+      const validatedLayout = validateComposerLayout(composerLayout, availableUnitIds);
+      return mergeChassisActionsIntoLayout(validatedLayout, chassisActions ?? []);
+    } else {
+      // Use default layout and add chassis actions
+      return mergeChassisActionsIntoLayout(getDefaultLayout(), chassisActions ?? []);
+    }
+  }, [composerLayout, chassisActions]);
   const questionnaireContent = questionnaireRequest && onRespondToQuestionnaire
     ? <QuestionnaireComposer request={questionnaireRequest} onRespond={onRespondToQuestionnaire} />
     : undefined;
@@ -311,7 +341,8 @@ export function ComposerPanel({
                       ? `${runningLabel} · Enter to queue · Cmd+Enter to steer`
                       : "Enter to send · Shift+Enter for newline"}
                   </span>
-                  <ComposerControlRow
+                  <ComposerLayoutLegacyRow
+                    layout={effectiveLayout}
                     runtime={runtime}
                     provider={provider}
                     modelId={modelId}
@@ -319,14 +350,16 @@ export function ComposerPanel({
                     cavemanLevel={cavemanLevel}
                     composerMode={composerMode}
                     orchestratorMode={orchestratorMode}
-                    onToggleOrchestrator={onToggleOrchestrator}
+                    disabled={false}
                     modelSelectorRef={modelSelectorRef}
+                    showEmptyModelControl={true}
                     unselectedModelLabel={modelOnboarding.unselectedModelLabel}
                     emptyModelTitle={modelOnboarding.emptyModelTitle}
                     onSetComposerMode={onSetComposerMode}
                     onSetModel={onSetModel}
                     onSetThinking={onSetThinking}
                     onSetCavemanLevel={onSetCavemanLevel}
+                    onToggleOrchestrator={onToggleOrchestrator}
                     chassisActions={chassisActions}
                     onRunChassisAction={onRunChassisAction}
                     activeWrapId={activeWrapId}

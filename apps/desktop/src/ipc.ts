@@ -820,6 +820,8 @@ export interface PiDesktopApi {
     readonly candidate: ChassisActionCandidate | null;
     readonly validationError?: string;
   }>;
+  getComposerLayout(): Promise<import("./composer-layout").ComposerLayoutData | null>;
+  setComposerLayout(layout: import("./composer-layout").ComposerLayoutData): Promise<void>;
   setSessionModel(
     workspaceId: string,
     sessionId: string,

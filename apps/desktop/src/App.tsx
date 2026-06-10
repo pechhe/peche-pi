@@ -453,6 +453,7 @@ export default function App() {
   const [cavemanLevel, setCavemanLevel] = useState<CavemanLevel>("off");
   const [chassisActions, setChassisActions] = useState<ChassisAction[]>([]);
   const [activeStickyId, setActiveStickyId] = useState<string | null>(null);
+  const [composerLayout, setComposerLayout] = useState<import("./composer-layout").ComposerLayoutData | null>(null);
   const [settingsWorkspaceId, setSettingsWorkspaceId] = useState("");
   const [skillsWorkspaceId, setSkillsWorkspaceId] = useState("");
   const [skillsQuery, setSkillsQuery] = useState("");
@@ -2972,6 +2973,7 @@ export default function App() {
               activeWrapId={activeStickyId}
               onToggleChassisWrap={handleToggleChassisWrap}
               activeWrapTemplate={activeWrapTemplate}
+              composerLayout={composerLayout}
             />
             ) : (
               <PendingComposer

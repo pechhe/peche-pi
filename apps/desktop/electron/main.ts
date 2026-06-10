@@ -1015,6 +1015,8 @@ app.whenReady().then(async () => {
         const getApiKey = (providerId: string) => store.getProviderApiKey(providerId);
         return buildChassisActionCandidate(input, getApiKey);
       },
+      getComposerLayout: (_event: unknown) => getComposerLayout(),
+      setComposerLayout: (_event: unknown, layout: any) => setComposerLayout(layout as any),
       setSessionThinkingLevel: (_event: unknown, workspaceId: string, sessionId: string, thinkingLevel: unknown) =>
         store.setSessionThinkingLevel({ workspaceId, sessionId }, thinkingLevel as never),
 
@@ -1917,6 +1919,51 @@ async function setChassisActivation(folderPath: string, activeStickyId: string |
   const next: ChassisFile = { ...file, [folderPath]: { actions: current.actions, activeStickyId } };
   await writeChassisFile(next);
   return resolveFolderState(await readChassisFile(), folderPath);
+}
+
+// ── Composer Layout persistence ────────────────────────────────────────────
+
+// Local type definition for composer layout data
+interface ComposerLayoutData {
+  readonly version: 1;
+  readonly cols: 12;
+  readonly placements: ReadonlyArray<{
+    readonly unitId: string;
+    readonly row: number;
+    readonly col: number;
+    readonly colSpan: number;
+    readonly color?: string;
+    readonly showLabel?: boolean;
+  }>;
+}
+
+const COMPOSER_LAYOUT_PATH = path.join(
+  process.env.PI_CODING_AGENT_DIR ?? path.join(homedir(), ".pi", "agent"),
+  "chassis",
+  "layout.json",
+);
+
+async function readComposerLayoutFile(): Promise<ComposerLayoutData | null> {
+  try {
+    const raw = await readFile(COMPOSER_LAYOUT_PATH, "utf8");
+    const parsed = JSON.parse(raw);
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+async function writeComposerLayoutFile(layout: ComposerLayoutData): Promise<void> {
+  await mkdir(path.dirname(COMPOSER_LAYOUT_PATH), { recursive: true });
+  await writeFile(COMPOSER_LAYOUT_PATH, JSON.stringify(layout, null, 2), "utf8");
+}
+
+async function getComposerLayout(): Promise<ComposerLayoutData | null> {
+  return readComposerLayoutFile();
+}
+
+async function setComposerLayout(layout: ComposerLayoutData): Promise<void> {
+  await writeComposerLayoutFile(layout);
 }
 
 // ── Chassis Reminder companion extension install (#49) ─────────────────────

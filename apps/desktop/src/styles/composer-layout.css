@@ -1,0 +1,66 @@
+/* Composer Layout Grid Styles */
+
+.composer-layout-grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+}
+
+.composer-layout-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Ensure control units fill their cells */
+.composer-layout-cell > span,
+.composer-layout-cell > button {
+  width: 100%;
+}
+
+/* Send button cell gets special treatment */
+.composer-layout-cell--send {
+  justify-content: flex-end;
+}
+
+/* Control wrapper for consistent spacing */
+.composer-control-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+}
+
+/* Required controls have a subtle indicator */
+.composer-layout-cell[data-required] {
+  /* Could add a subtle visual indicator that these can't be removed */
+}
+
+/* Support for custom colors via CSS variable */
+.composer-layout-cell[style*="--control-color"] {
+  /* Custom color applied to child controls */
+}
+
+/* Legacy row layout for migration period */
+.composer__controls .composer-control-wrapper {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Device mode integration */
+.composer-device--modular .composer-layout-grid {
+  /* Grid adapts to modular device mode */
+}
+
+.composer-device--modular-metal .composer-layout-grid {
+  /* Grid adapts to metal device mode */
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .composer-layout-grid {
+    gap: 4px;
+  }
+}

@@ -130,6 +130,7 @@ interface SessionComposerProps {
   readonly activeWrapId?: string | null;
   readonly onToggleChassisWrap?: (action: import("./chassis").ChassisAction) => void;
   readonly activeWrapTemplate?: string | null;
+  readonly composerLayout?: import("./composer-layout").ComposerLayoutData | null;
 }
 
 function isNearBottom(element: HTMLDivElement): boolean {
@@ -193,6 +194,7 @@ const SessionComposerInner = forwardRef<SessionComposerHandle, SessionComposerPr
     activeWrapId,
     onToggleChassisWrap,
     activeWrapTemplate,
+    composerLayout,
   },
   ref,
 ) {
@@ -579,6 +581,7 @@ const SessionComposerInner = forwardRef<SessionComposerHandle, SessionComposerPr
       onRunChassisAction={onRunChassisAction}
       activeWrapId={activeWrapId}
       onToggleChassisWrap={onToggleChassisWrap}
+      composerLayout={composerLayout}
       onClearSlashCommand={slashMenu.resetSlashUi}
       onComposerKeyDown={handleComposerKeyDown}
       onComposerPaste={handleComposerPaste}
@@ -716,7 +719,8 @@ function sameSessionComposerProps(
     previous.onRunChassisAction === next.onRunChassisAction &&
     previous.activeWrapId === next.activeWrapId &&
     previous.onToggleChassisWrap === next.onToggleChassisWrap &&
-    previous.activeWrapTemplate === next.activeWrapTemplate
+    previous.activeWrapTemplate === next.activeWrapTemplate &&
+    previous.composerLayout === next.composerLayout
   );
 }
 
