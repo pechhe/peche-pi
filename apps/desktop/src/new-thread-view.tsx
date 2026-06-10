@@ -3,10 +3,10 @@ import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
 import type { ComposerAttachment, ThreadLocation, WorkspaceRecord, WorktreeRecord } from "./desktop-state";
 import type { BranchInfo } from "./ipc";
 import type { ComposerMode } from "./composer-mode";
-import { ComposerLayoutRenderer } from "./composer-layout-renderer";
+import { ComposerLayoutLegacyRow } from "./composer-layout-renderer";
 import { getDefaultLayout, mergeChassisActionsIntoLayout, validateComposerLayout, controlUnitRegistry } from "./composer-layout";
 import { registerChassisActionUnits } from "./composer-builtin-units";
-import { ChevronDownIcon, MonitorIcon, PiLogoMark, WorktreeIcon } from "./icons";
+import { ArrowUpIcon, ChevronDownIcon, MonitorIcon, PiLogoMark, WorktreeIcon } from "./icons";
 
 import { playClick } from "./button-click-sound";
 import {
@@ -590,7 +590,7 @@ function NewThreadComposerFooter({
         <div className="composer__footer-row">
           <div className="composer__hint new-thread__hint">
             <span className="composer__hint-prose">Enter to send · Shift+Enter for newline</span>
-            <ComposerLayoutRenderer
+            <ComposerLayoutLegacyRow
               layout={effectiveLayout}
               runtime={runtime}
               provider={provider}
@@ -614,12 +614,24 @@ function NewThreadComposerFooter({
               onRunChassisAction={onRunChassisAction}
               activeWrapId={activeWrapId}
               onToggleChassisWrap={onToggleChassisWrap}
-              onSubmit={onSubmit}
-              hasModelSelection={hasContent && !modelOnboarding.requiresModelSelection}
             />
           </div>
 
           <div className="composer__actions">
+            <span className="composer__key-mount composer__key-mount--send">
+              <button
+                aria-label="Start project"
+                className="button button--primary button--cta-icon composer__send"
+                data-testid="send"
+                type="button"
+                disabled={!hasContent || modelOnboarding.requiresModelSelection}
+                data-has-input={hasContent ? "" : undefined}
+                onPointerDown={() => { playClick("down"); }}
+                onClick={onSubmit}
+              >
+                <ArrowUpIcon />
+              </button>
+            </span>
           </div>
         </div>
       </div>

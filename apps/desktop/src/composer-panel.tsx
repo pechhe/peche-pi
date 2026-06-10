@@ -2,7 +2,7 @@ import { type ClipboardEvent, type Dispatch, type DragEvent, type KeyboardEvent,
 import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
 import type { ComposerAttachment, QueuedComposerMessage, SessionExtensionDialogRecord, SessionRecord } from "./desktop-state";
 import type { ComposerMode } from "./composer-mode";
-import { ComposerLayoutRenderer } from "./composer-layout-renderer";
+import { ComposerLayoutLegacyRow } from "./composer-layout-renderer";
 import { getDefaultLayout, mergeChassisActionsIntoLayout, validateComposerLayout, controlUnitRegistry, type ComposerLayoutData } from "./composer-layout";
 import { registerChassisActionUnits } from "./composer-builtin-units";
 
@@ -20,6 +20,7 @@ import type { ModelOnboardingState, ModelOnboardingSettingsSection } from "./mod
 import type { ModelSelectorHandle } from "./model-selector";
 import type { CavemanLevel, SmartCompactSettings } from "./ipc";
 import { QuestionnaireComposer } from "./questionnaire-composer";
+import { ArrowUpIcon, StopSquareIcon } from "./icons";
 import { playClick } from "./button-click-sound";
 
 interface ComposerPanelProps {
@@ -341,7 +342,7 @@ export function ComposerPanel({
                       ? `${runningLabel} · Enter to queue · Cmd+Enter to steer`
                       : "Enter to send · Shift+Enter for newline"}
                   </span>
-                  <ComposerLayoutRenderer
+                  <ComposerLayoutLegacyRow
                     layout={effectiveLayout}
                     runtime={runtime}
                     provider={provider}
@@ -364,9 +365,6 @@ export function ComposerPanel({
                     onRunChassisAction={onRunChassisAction}
                     activeWrapId={activeWrapId}
                     onToggleChassisWrap={onToggleChassisWrap}
-                    onSubmit={onSubmit}
-                    primaryActionIsStop={primaryActionIsStop}
-                    hasModelSelection={!modelOnboarding.requiresModelSelection}
                   />
                 </div>
                 <div className="composer__actions">
@@ -381,7 +379,20 @@ export function ComposerPanel({
                       Execute plan
                     </button>
                   ) : null}
-
+                  <span className="composer__key-mount composer__key-mount--send">
+                    <button
+                      aria-label={primaryActionIsStop ? "Stop run" : "Send message"}
+                      className="button button--primary button--cta-icon composer__send"
+                      data-testid="send"
+                      type="button"
+                      disabled={!primaryActionIsStop && modelOnboarding.requiresModelSelection}
+                      data-has-input={primaryActionIsStop || hasComposerInput ? "" : undefined}
+                      onPointerDown={() => { playClick("down"); }}
+                      onClick={onSubmit}
+                    >
+                      {primaryActionIsStop ? <StopSquareIcon /> : <ArrowUpIcon />}
+                    </button>
+                  </span>
                 </div>
               </div>
             </div>
