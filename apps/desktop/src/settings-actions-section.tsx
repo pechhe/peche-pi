@@ -21,6 +21,13 @@ export function SettingsActionsSection({
   const [trigger, setTrigger] = useState<"oneShot" | "sticky">("oneShot");
   const [templateError, setTemplateError] = useState<string | null>(null);
 
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editLabel, setEditLabel] = useState("");
+  const [editPayload, setEditPayload] = useState("");
+  const [editShowLabel, setEditShowLabel] = useState(true);
+  const [editTrigger, setEditTrigger] = useState<"oneShot" | "sticky">("oneShot");
+  const [editTemplateError, setEditTemplateError] = useState<string | null>(null);
+
   const handleCreate = () => {
     if (!api || !label.trim() || !payload.trim()) return;
     if (trigger === "sticky") {
@@ -65,6 +72,56 @@ export function SettingsActionsSection({
     if (templateError) {
       setTemplateError(null);
     }
+  };
+
+  const handleStartEdit = (action: ChassisAction) => {
+    setEditingId(action.id);
+    setEditLabel(action.label);
+    setEditPayload(
+      action.effect.type === "submit" ? action.effect.text : action.effect.template,
+    );
+    setEditShowLabel(action.showLabel);
+    setEditTrigger(action.trigger);
+    setEditTemplateError(null);
+  };
+
+  const handleSaveEdit = (action: ChassisAction) => {
+    if (!api || !editLabel.trim() || !editPayload.trim()) return;
+    if (editTrigger === "sticky" && !editPayload.includes(WRAP_INPUT_TOKEN)) {
+      setEditTemplateError(`Template must contain ${WRAP_INPUT_TOKEN}`);
+      return;
+    }
+    const updated: ChassisAction =
+      editTrigger === "sticky"
+        ? {
+            ...action,
+            label: editLabel.trim(),
+            showLabel: editShowLabel,
+            trigger: "sticky",
+            effect: { type: "wrap", template: editPayload.trim() },
+          }
+        : {
+            ...action,
+            label: editLabel.trim(),
+            showLabel: editShowLabel,
+            trigger: "oneShot",
+            effect: { type: "submit", text: editPayload.trim() },
+          };
+    void api
+      .setChassisActions(chassisActions.map((a) => (a.id === action.id ? updated : a)))
+      .then(() => {
+        setEditingId(null);
+        refreshChassisActions?.();
+      });
+  };
+
+  const handleDelete = (id: string) => {
+    if (!api) return;
+    void api
+      .setChassisActions(chassisActions.filter((a) => a.id !== id))
+      .then(() => {
+        refreshChassisActions?.();
+      });
   };
 
   return (
@@ -127,10 +184,121 @@ export function SettingsActionsSection({
       {chassisActions.length > 0 ? (
         chassisActions.map((action) => (
           <div key={action.id} data-testid={`chassis-action-row-${action.id}`}>
-            <SettingsRow
-              title={action.label}
-              description={action.trigger === "sticky" && action.effect.type === "wrap" ? action.effect.template : action.effect.type === "submit" ? action.effect.text : ""}
-            />
+            {editingId === action.id ? (
+              <SettingsRow title="Edit action">
+                <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+                  <input
+                    type="text"
+                    data-testid={`chassis-action-edit-label-${action.id}`}
+                    placeholder="Label"
+                    value={editLabel}
+                    onChange={(e) => setEditLabel(e.target.value)}
+                    style={{ flex: "1 1 120px", minWidth: 0 }}
+                  />
+                  <select
+                    data-testid={`chassis-action-edit-trigger-${action.id}`}
+                    value={editTrigger}
+                    onChange={(e) => {
+                      setEditTrigger(e.target.value as "oneShot" | "sticky");
+                      setEditTemplateError(null);
+                    }}
+                    style={{ flex: "0 0 auto" }}
+                  >
+                    <option value="oneShot">One-shot</option>
+                    <option value="sticky">Sticky wrap</option>
+                  </select>
+                  <input
+                    type="text"
+                    data-testid={`chassis-action-edit-payload-${action.id}`}
+                    placeholder={
+                      editTrigger === "sticky"
+                        ? `Wrap template with ${WRAP_INPUT_TOKEN}`
+                        : "Payload text"
+                    }
+                    value={editPayload}
+                    onChange={(e) => {
+                      setEditPayload(e.target.value);
+                      if (editTemplateError) setEditTemplateError(null);
+                    }}
+                    style={{ flex: "2 1 180px", minWidth: 0 }}
+                  />
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.25rem",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      data-testid={`chassis-action-edit-showlabel-${action.id}`}
+                      checked={editShowLabel}
+                      onChange={(e) => setEditShowLabel(e.target.checked)}
+                    />
+                    Show label
+                  </label>
+                  <button
+                    type="button"
+                    className="button button--secondary"
+                    data-testid={`chassis-action-save-${action.id}`}
+                    disabled={!editLabel.trim() || !editPayload.trim()}
+                    onClick={() => handleSaveEdit(action)}
+                  >
+                    Save
+                  </button>
+                  <button
+                    type="button"
+                    className="button button--ghost"
+                    onClick={() => setEditingId(null)}
+                  >
+                    Cancel
+                  </button>
+                </div>
+                {editTemplateError ? (
+                  <div
+                    data-testid="chassis-action-edit-template-error"
+                    style={{
+                      color: "var(--color-error, #e74c3c)",
+                      fontSize: "0.85em",
+                      marginTop: "0.25rem",
+                    }}
+                  >
+                    {editTemplateError}
+                  </div>
+                ) : null}
+              </SettingsRow>
+            ) : (
+              <SettingsRow
+                title={action.label}
+                description={
+                  action.trigger === "sticky" && action.effect.type === "wrap"
+                    ? action.effect.template
+                    : action.effect.type === "submit"
+                      ? action.effect.text
+                      : ""
+                }
+              >
+                <div style={{ display: "flex", gap: "0.5rem" }}>
+                  <button
+                    type="button"
+                    className="button button--secondary"
+                    data-testid={`chassis-action-edit-${action.id}`}
+                    onClick={() => handleStartEdit(action)}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    className="button button--ghost"
+                    data-testid={`chassis-action-delete-${action.id}`}
+                    onClick={() => handleDelete(action.id)}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </SettingsRow>
+            )}
           </div>
         ))
       ) : null}
