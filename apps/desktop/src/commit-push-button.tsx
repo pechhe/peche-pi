@@ -157,49 +157,43 @@ export function CommitPushButton({
         ? "merged-pr"
         : "create-pr";
   const isPill = mode !== "commit-push" || hasChanges;
-  const containerClass =
-    mode === "view-pr" || mode === "merged-pr"
-      ? "commit-push commit-push--view-pr"
-      : mode === "create-pr"
-        ? "commit-push commit-push--create-pr"
-        : hasChanges
-          ? "commit-push commit-push--dirty"
-          : "commit-push";
 
+  const modeClass: Record<ButtonMode, string> = {
+    "commit-push": hasChanges ? "commit-push commit-push--dirty" : "commit-push",
+    "view-pr": "commit-push commit-push--view-pr",
+    "merged-pr": "commit-push commit-push--view-pr",
+    "create-pr": "commit-push commit-push--create-pr",
+  };
+  const containerClass = modeClass[mode];
+
+  const modeAction: Record<ButtonMode, () => void> = {
+    "commit-push": () => { void handleCommitPush(); },
+    "create-pr": () => { setPrDialogOpen(true); },
+    "view-pr": () => { if (prInfo?.prUrl) void api.openExternal(prInfo.prUrl); },
+    "merged-pr": () => { if (prInfo?.prUrl) void api.openExternal(prInfo.prUrl); },
+  };
   const handlePrimaryClick = () => {
     if (busy || disabled) return;
-    if (mode === "commit-push") {
-      void handleCommitPush();
-      return;
-    }
-    if (mode === "create-pr") {
-      setPrDialogOpen(true);
-      return;
-    }
-    if ((mode === "view-pr" || mode === "merged-pr") && prInfo?.prUrl) {
-      void api.openExternal(prInfo.prUrl);
-    }
+    modeAction[mode]();
   };
 
-  const primaryLabel =
-    mode === "merged-pr"
-      ? prInfo?.prNumber ? `View PR #${prInfo.prNumber} (merged)` : "View merged PR"
-      : mode === "view-pr"
-      ? prInfo?.prNumber ? `View PR #${prInfo.prNumber}` : "View PR"
-      : mode === "create-pr"
-        ? "Create PR"
-        : hasChanges
-          ? `Commit & Push (${gitInfo.changedCount} changed)`
-          : "Commit & Push";
+  const modeLabel: Record<ButtonMode, string> = {
+    "commit-push": hasChanges
+      ? `Commit & Push (${gitInfo.changedCount} changed)`
+      : "Commit & Push",
+    "view-pr": prInfo?.prNumber ? `View PR #${prInfo.prNumber}` : "View PR",
+    "merged-pr": prInfo?.prNumber ? `View PR #${prInfo.prNumber} (merged)` : "View merged PR",
+    "create-pr": "Create PR",
+  };
+  const primaryLabel = modeLabel[mode];
 
-  const tooltipText =
-    mode === "merged-pr"
-      ? prInfo?.prNumber ? `Merged — view PR #${prInfo.prNumber}` : "Merged — view PR"
-      : mode === "view-pr"
-      ? prInfo?.prNumber ? `View PR #${prInfo.prNumber}` : "View PR"
-      : mode === "create-pr"
-        ? "Create pull request"
-        : "Commit & Push";
+  const modeTooltip: Record<ButtonMode, string> = {
+    "commit-push": "Commit & Push",
+    "view-pr": prInfo?.prNumber ? `View PR #${prInfo.prNumber}` : "View PR",
+    "merged-pr": prInfo?.prNumber ? `Merged — view PR #${prInfo.prNumber}` : "Merged — view PR",
+    "create-pr": "Create pull request",
+  };
+  const tooltipText = modeTooltip[mode];
 
   return (
     <div className={containerClass} ref={containerRef}>

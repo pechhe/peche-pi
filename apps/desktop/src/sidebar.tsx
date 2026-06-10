@@ -752,7 +752,6 @@ function WorkspaceGroupContent(
     onSnoozeSession,
     onUnsnoozeSession,
     onMarkToTestSession,
-    onUnmarkToTestSession,
     onNewThreadForWorkspace,
     dragHandleProps,
     pendingSidebarSelection,

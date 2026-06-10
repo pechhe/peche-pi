@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "license": "MIT",
-  "packageManager": "pnpm@10.25.0",
+  "packageManager": "pnpm@10.34.1",
   "scripts": {
     "dev": "pnpm --filter @pi-gui/desktop dev",
     "build": "pnpm -r --if-present build",
@@ -24,14 +24,19 @@
   },
   "pnpm": {
     "overrides": {
-      "react": "19.2.7",
-      "react-dom": "19.2.7"
+      "undici": "6.26.0",
+      "fast-uri": "3.1.2",
+      "@xmldom/xmldom": "0.9.10",
+      "protobufjs": "7.6.3",
+      "@protobufjs/utf8": "1.1.1",
+      "ws": "8.21.0",
+      "tmp": "0.2.7"
     }
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
-    "@types/node": "^24.0.0",
-    "fallow": "^2.88.2",
+    "@types/node": "^24.13.1",
+    "fallow": "^2.91.0",
     "typescript": "^5.9.3"
   },
   "workspaces": [

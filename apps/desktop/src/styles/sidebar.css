@@ -35,13 +35,7 @@
   grid-template-columns: 0 minmax(0, 1fr);
 }
 
-.shell--env-panel-open {
-  grid-template-columns: var(--sidebar-width) minmax(0, 1fr) var(--env-panel-width);
-}
 
-.shell--sidebar-collapsed.shell--env-panel-open {
-  grid-template-columns: 0 minmax(0, 1fr) var(--env-panel-width);
-}
 
 /* Sidebar slides off-canvas with a GPU transform (no layout cost). */
 .shell--sidebar-collapsed .sidebar {

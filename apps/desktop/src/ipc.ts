@@ -973,4 +973,6 @@ export interface PiDesktopApi {
   listGhMilestones(workspaceId?: string): Promise<DesktopAppState>;
   runGhMilestone(workspaceId: string, milestoneNumber: number): Promise<DesktopAppState>;
   cancelGhRun(): Promise<DesktopAppState>;
+  listGhLoops(workspaceId?: string): Promise<DesktopAppState>;
+  runGhLoop(workspaceId: string, loopNumber: number): Promise<DesktopAppState>;
 }

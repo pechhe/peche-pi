@@ -104,7 +104,7 @@ export interface WorkspaceReviewModule {
 // Default git adapter (real git via child_process)
 // ---------------------------------------------------------------------------
 
-export const defaultGitAdapter: GitAdapter = {
+const defaultGitAdapter: GitAdapter = {
   async execGit(args, cwd) {
     return new Promise((resolve) => {
       execFile("git", [...args], { cwd, maxBuffer: 5 * 1024 * 1024 }, (error, stdout, stderr) => {

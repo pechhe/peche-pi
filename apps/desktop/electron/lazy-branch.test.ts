@@ -19,10 +19,6 @@ function makeTempRepo(): string {
   return dir;
 }
 
-function gitRef(cwd: string): string {
-  return execSync("git symbolic-ref HEAD", { cwd, encoding: "utf-8" }).trim();
-}
-
 function gitBranch(cwd: string): string {
   return execSync("git rev-parse --abbrev-ref HEAD", { cwd, encoding: "utf-8" }).trim();
 }

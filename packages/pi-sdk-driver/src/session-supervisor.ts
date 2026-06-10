@@ -43,10 +43,7 @@ import { JsonCatalogStore, type SessionFileCatalogStorage } from "./json-catalog
 import {
   applyHostUiRequestToExtensionUiState,
 } from "./extension-ui-state.js";
-import {
-  createUnsupportedHostUiError,
-  parseUnsupportedHostUiErrorMessage,
-} from "./unsupported-host-ui.js";
+import { parseUnsupportedHostUiErrorMessage } from "./unsupported-host-ui.js";
 import { normalizeRuntimeCommandName, skillCommandName } from "./runtime-command-utils.js";
 import {
   buildSnapshot,
@@ -158,6 +155,9 @@ interface PromptTemplateAdapter {
 }
 
 const NEW_THREAD_PLACEHOLDER_TITLE = "New thread";
+// Render width handed to bridged terminal `custom` components. Fixed for now;
+// the xterm surface wraps/scrolls if the component renders wider.
+const TERMINAL_CUSTOM_COLS = 80;
 const PARK_FOR_TESTING_PROMPT =
   "Summarize for a test queue. Reply with ONLY a markdown table, no preamble. Two columns: | Feature | Test |. One row. Feature cell: max two sentences on what we built. Test cell: max two sentences on the quickest way to test it.";
 
@@ -355,6 +355,13 @@ export class SessionSupervisor {
 
   async respondToHostUiRequest(sessionRef: SessionRef, response: HostUiResponse): Promise<void> {
     const record = await this.ensureRecord(sessionRef);
+    // Keystroke for a live terminal-custom component: feed it and re-render
+    // without settling the pending request.
+    if ("terminalInput" in response) {
+      record.terminalCustomComponents.get(response.requestId)?.handleInput?.(response.terminalInput);
+      this.renderTerminalCustom(record, response.requestId);
+      return;
+    }
     const pending = record.pendingHostUiRequests.get(response.requestId);
     if (!pending) {
       return;
@@ -362,6 +369,101 @@ export class SessionSupervisor {
 
     record.pendingHostUiRequests.delete(response.requestId);
     pending.resolve(response);
+  }
+
+  // -- Terminal-only `custom` component bridge -----------------------------
+  //
+  // Renders an extension's terminal `custom` component into an xterm surface
+  // in the renderer. We drive the component (render/handleInput) with shim
+  // tui/theme/keybindings; output lines stream out via `terminalCustom`
+  // host UI requests, keystrokes return as `terminalInput` responses, and the
+  // component calls done() to settle the promise.
+  private driveTerminalCustom(record: ManagedSessionRecord, component: unknown): Promise<unknown> {
+    type TerminalCustomComponent = {
+      render(width: number): string[];
+      handleInput?(data: string): void;
+      invalidate?(): void;
+      dispose?(): void;
+    };
+    type TerminalCustomFactory = (
+      tui: unknown,
+      theme: unknown,
+      keybindings: unknown,
+      done: (result: unknown) => void,
+    ) => TerminalCustomComponent | Promise<TerminalCustomComponent>;
+
+    const factory = component as TerminalCustomFactory;
+    const requestId = crypto.randomUUID();
+
+    // Passthrough theme: extension styling calls return text unchanged. The
+    // xterm surface renders plain text; real ANSI colors are a follow-up.
+    const themeShim = {
+      fg: (_color: string, text: string) => text,
+      bg: (_color: string, text: string) => text,
+      bold: (text: string) => text,
+      italic: (text: string) => text,
+      underline: (text: string) => text,
+      inverse: (text: string) => text,
+      strikethrough: (text: string) => text,
+      getFgAnsi: () => "",
+      getBgAnsi: () => "",
+      getColorMode: () => "256color" as const,
+      getThinkingBorderColor: () => (s: string) => s,
+      getBashModeBorderColor: () => (s: string) => s,
+    };
+
+    return new Promise<unknown>((resolvePromise) => {
+      let settled = false;
+      const done = (result: unknown): void => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        const live = record.terminalCustomComponents.get(requestId);
+        live?.dispose?.();
+        record.terminalCustomComponents.delete(requestId);
+        record.pendingHostUiRequests.delete(requestId);
+        // Keep the surface up in a busy state: the command typically continues
+        // straight to another screen (e.g. step 2) or kicks off work. The next
+        // terminalCustom screen replaces this; otherwise the owning operation's
+        // end closes it (sendUserMessage / compactSession emit a closed frame).
+        this.emitHostUiRequest(record, { kind: "terminalCustom", requestId, lines: [], busy: true });
+        resolvePromise(result ?? undefined);
+      };
+
+      const tuiShim = { requestRender: () => this.renderTerminalCustom(record, requestId) };
+
+      Promise.resolve(factory(tuiShim, themeShim, {}, done))
+        .then((built) => {
+          if (settled) {
+            built.dispose?.();
+            return;
+          }
+          record.terminalCustomComponents.set(requestId, built);
+          // Register a pending entry so cancel (esc / session teardown) routes
+          // through respondToHostUiRequest and settles the promise.
+          record.pendingHostUiRequests.set(requestId, {
+            resolve: () => done(undefined),
+            reject: () => done(undefined),
+          });
+          this.renderTerminalCustom(record, requestId);
+        })
+        .catch(() => done(undefined));
+    });
+  }
+
+  private renderTerminalCustom(record: ManagedSessionRecord, requestId: string): void {
+    const live = record.terminalCustomComponents.get(requestId);
+    if (!live) {
+      return;
+    }
+    let lines: readonly string[];
+    try {
+      lines = live.render(TERMINAL_CUSTOM_COLS);
+    } catch {
+      return;
+    }
+    this.emitHostUiRequest(record, { kind: "terminalCustom", requestId, lines });
   }
 
   async createSession(workspace: WorkspaceRef, options?: CreateSessionOptions): Promise<SessionSnapshot> {
@@ -503,6 +605,14 @@ export class SessionSupervisor {
     await this.persistSnapshot(record);
     await this.emit(record, sessionUpdatedEvent(record, this.registry));
 
+    // Extension commands bypass the run lifecycle (no runId/"running" status),
+    // so the GUI has no signal they're working. Bracket their execution with a
+    // generic activity flag the renderer can spin on.
+    if (isExtensionCommand) {
+      record.extensionCommandActive = true;
+      this.emitHostUiRequest(record, { kind: "commandActivity", active: true });
+    }
+
     try {
       const images = queuedPromptImagesFromAttachments(input.attachments);
       const promptText = promptTextForQueuedDelivery(input.text, input.attachments);
@@ -548,6 +658,14 @@ export class SessionSupervisor {
       });
       await this.emit(record, sessionUpdatedEvent(record, this.registry));
       throw error;
+    } finally {
+      if (record.extensionCommandActive) {
+        record.extensionCommandActive = false;
+        this.emitHostUiRequest(record, { kind: "commandActivity", active: false });
+        // Close any terminal-custom surface still up (e.g. a busy spinner left
+        // after the final screen settled); closed clears it regardless of id.
+        this.emitHostUiRequest(record, { kind: "terminalCustom", requestId: "", lines: [], closed: true });
+      }
     }
   }
 
@@ -639,7 +757,15 @@ export class SessionSupervisor {
       throw new Error(`Session ${sessionKey(sessionRef)} is not active.`);
     }
 
-    await record.session.compact(customInstructions);
+    try {
+      await record.session.compact(customInstructions);
+    } finally {
+      // The before-compact hook may have driven a terminal-custom surface (e.g.
+      // smart-compact's pickers) that settled into a busy spinner. This path
+      // has no commandActivity bracket, so close it here — otherwise the
+      // full-screen busy overlay sticks and looks like a blank screen.
+      this.emitHostUiRequest(record, { kind: "terminalCustom", requestId: "", lines: [], closed: true });
+    }
     record.runningRunId = undefined;
     record.status = "idle";
     record.config = deriveSessionConfig(record.session.sessionManager);
@@ -983,11 +1109,11 @@ export class SessionSupervisor {
           title,
         });
       },
-      // pi-gui does not render arbitrary TUI custom components. Throwing a
-      // typed unsupported-host error allows extensions to catch and degrade,
-      // while uncaught command paths fail fast and are surfaced cleanly by
-      // the desktop host. Extensions that need a structured question flow
-      // should call `ctx.ui.questionnaire(...)` (pi-gui extension) instead.
+      // Terminal-only `custom` components are bridged into pi-gui: the
+      // supervisor drives the component's render()/handleInput() with shim
+      // tui/theme/keybindings and streams its output lines to an xterm surface
+      // in the renderer (see `terminalCustom` HostUiRequest). Questionnaire-
+      // shaped payloads still take the native fast-path below.
       custom: async (_component: unknown, props: unknown) => {
         // Heuristic bridge: if an extension passes a questionnaire-shaped
         // payload via the generic `custom` channel, route it through the
@@ -1014,7 +1140,7 @@ export class SessionSupervisor {
                   : undefined,
           );
         }
-        throw createUnsupportedHostUiError("custom");
+        return this.driveTerminalCustom(record, _component);
       },
       questionnaire: (input: {
         readonly title?: string;

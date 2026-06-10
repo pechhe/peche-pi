@@ -26,6 +26,7 @@ export function SettingsActionsSection({
   const [payload, setPayload] = useState("");
   const [showLabel, setShowLabel] = useState(true);
   const [trigger, setTrigger] = useState<"oneShot" | "sticky">("oneShot");
+  const [stickyType, setStickyType] = useState<"wrap" | "reminder">("wrap");
   const [templateError, setTemplateError] = useState<string | null>(null);
 
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -33,6 +34,7 @@ export function SettingsActionsSection({
   const [editPayload, setEditPayload] = useState("");
   const [editShowLabel, setEditShowLabel] = useState(true);
   const [editTrigger, setEditTrigger] = useState<"oneShot" | "sticky">("oneShot");
+  const [editStickyType, setEditStickyType] = useState<"wrap" | "reminder">("wrap");
   const [editTemplateError, setEditTemplateError] = useState<string | null>(null);
 
   const runtimeCommands = useMemo(() => {
@@ -46,22 +48,27 @@ export function SettingsActionsSection({
   const handleCreate = () => {
     if (!api || !chassisFolderPath || !label.trim() || !payload.trim()) return;
     if (trigger === "sticky") {
-      if (!payload.includes(WRAP_INPUT_TOKEN)) {
-        setTemplateError(`Template must contain ${WRAP_INPUT_TOKEN}`);
-        return;
+      if (stickyType === "wrap") {
+        if (!payload.includes(WRAP_INPUT_TOKEN)) {
+          setTemplateError(`Template must contain ${WRAP_INPUT_TOKEN}`);
+          return;
+        }
       }
       const newAction: ChassisAction = {
         id: crypto.randomUUID(),
         label: label.trim(),
         showLabel,
         trigger: "sticky",
-        effect: { type: "wrap", template: payload.trim() },
+        effect: stickyType === "reminder"
+          ? { type: "reminder", text: payload.trim() }
+          : { type: "wrap", template: payload.trim() },
       };
       void api.setChassisFolderActions(chassisFolderPath, [...chassisActions, newAction]).then(() => {
         setLabel("");
         setPayload("");
         setShowLabel(true);
         setTrigger("oneShot");
+        setStickyType("wrap");
         setTemplateError(null);
         refreshChassisActions?.();
       });
@@ -97,12 +104,13 @@ export function SettingsActionsSection({
     );
     setEditShowLabel(action.showLabel);
     setEditTrigger(action.trigger);
+    setEditStickyType(action.effect.type === "reminder" ? "reminder" : "wrap");
     setEditTemplateError(null);
   };
 
   const handleSaveEdit = (action: ChassisAction) => {
     if (!api || !chassisFolderPath || !editLabel.trim() || !editPayload.trim()) return;
-    if (editTrigger === "sticky" && !editPayload.includes(WRAP_INPUT_TOKEN)) {
+    if (editTrigger === "sticky" && editStickyType === "wrap" && !editPayload.includes(WRAP_INPUT_TOKEN)) {
       setEditTemplateError(`Template must contain ${WRAP_INPUT_TOKEN}`);
       return;
     }
@@ -113,7 +121,9 @@ export function SettingsActionsSection({
             label: editLabel.trim(),
             showLabel: editShowLabel,
             trigger: "sticky",
-            effect: { type: "wrap", template: editPayload.trim() },
+            effect: editStickyType === "reminder"
+              ? { type: "reminder", text: editPayload.trim() }
+              : { type: "wrap", template: editPayload.trim() },
           }
         : {
             ...action,
@@ -163,15 +173,23 @@ export function SettingsActionsSection({
           />
           <select
             data-testid="chassis-action-trigger"
-            value={trigger}
+            value={trigger === "sticky" && stickyType === "reminder" ? "sticky-reminder" : trigger}
             onChange={(e) => {
-              setTrigger(e.target.value as "oneShot" | "sticky");
+              const v = e.target.value;
+              if (v === "sticky-reminder") {
+                setTrigger("sticky");
+                setStickyType("reminder");
+              } else {
+                setTrigger(v as "oneShot" | "sticky");
+                setStickyType("wrap");
+              }
               setTemplateError(null);
             }}
             style={{ flex: "0 0 auto" }}
           >
             <option value="oneShot">One-shot</option>
             <option value="sticky">Sticky wrap</option>
+            <option value="sticky-reminder">Sticky reminder</option>
           </select>
           {trigger === "oneShot" && runtimeCommands.length > 0 ? (
             <select
@@ -193,7 +211,7 @@ export function SettingsActionsSection({
           <input
             type="text"
             data-testid="chassis-action-payload-input"
-            placeholder={trigger === "sticky" ? `Wrap template with ${WRAP_INPUT_TOKEN}` : "Payload text"}
+            placeholder={trigger === "sticky" ? (stickyType === "reminder" ? "Reminder text" : `Wrap template with ${WRAP_INPUT_TOKEN}`) : "Payload text"}
             value={payload}
             onChange={(e) => handlePayloadChange(e.target.value)}
             style={{ flex: "2 1 180px", minWidth: 0 }}
@@ -239,15 +257,23 @@ export function SettingsActionsSection({
                   />
                   <select
                     data-testid={`chassis-action-edit-trigger-${action.id}`}
-                    value={editTrigger}
+                    value={editTrigger === "sticky" && editStickyType === "reminder" ? "sticky-reminder" : editTrigger}
                     onChange={(e) => {
-                      setEditTrigger(e.target.value as "oneShot" | "sticky");
+                      const v = e.target.value;
+                      if (v === "sticky-reminder") {
+                        setEditTrigger("sticky");
+                        setEditStickyType("reminder");
+                      } else {
+                        setEditTrigger(v as "oneShot" | "sticky");
+                        setEditStickyType("wrap");
+                      }
                       setEditTemplateError(null);
                     }}
                     style={{ flex: "0 0 auto" }}
                   >
                     <option value="oneShot">One-shot</option>
                     <option value="sticky">Sticky wrap</option>
+                    <option value="sticky-reminder">Sticky reminder</option>
                   </select>
                   {editTrigger === "oneShot" && runtimeCommands.length > 0 ? (
                     <select
@@ -271,7 +297,7 @@ export function SettingsActionsSection({
                     data-testid={`chassis-action-edit-payload-${action.id}`}
                     placeholder={
                       editTrigger === "sticky"
-                        ? `Wrap template with ${WRAP_INPUT_TOKEN}`
+                        ? (editStickyType === "reminder" ? "Reminder text" : `Wrap template with ${WRAP_INPUT_TOKEN}`)
                         : "Payload text"
                     }
                     value={editPayload}
@@ -335,7 +361,9 @@ export function SettingsActionsSection({
                     ? action.effect.template
                     : action.effect.type === "submit"
                       ? action.effect.text
-                      : ""
+                      : action.effect.type === "reminder"
+                        ? action.effect.text
+                        : ""
                 }
               >
                 <div style={{ display: "flex", gap: "0.5rem" }}>

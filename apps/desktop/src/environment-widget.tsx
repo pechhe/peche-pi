@@ -57,6 +57,7 @@ export function EnvironmentPanel(props: EnvironmentPanelProps) {
   const [branchCreateName, setBranchCreateName] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsRef = useRef<HTMLDivElement | null>(null);
+  const [locationPickerOpen, setLocationPickerOpen] = useState(false);
 
   // Diff stats
   const [diffInsertions, setDiffInsertions] = useState(0);
@@ -198,46 +199,59 @@ export function EnvironmentPanel(props: EnvironmentPanelProps) {
       </button>
 
       {/* Location row */}
-      <div className="environment-panel__row environment-panel__row--location" data-testid="env-row-location">
+      <button
+        className="environment-panel__row environment-panel__row--location"
+        data-testid="env-row-location"
+        type="button"
+        onClick={() => {
+          playButtonClick();
+          setLocationPickerOpen(!locationPickerOpen);
+        }}
+      >
         <span className="environment-panel__row-left">
           {isWorktree ? <WorktreeIcon /> : <MonitorIcon />}
           <span>{isWorktree ? "Worktree" : "Local"}</span>
         </span>
-        <div className="environment-panel__location-actions">
-          {!isWorktree ? (
-            <button
-              className={`environment-panel__loc-switch${location === "worktree" ? " environment-panel__loc-switch--active" : ""}`}
-              type="button"
-              disabled={activeWorktrees.length === 0}
-              onClick={() => {
-                if (activeWorktrees.length > 0) {
+        <ChevronDownIcon />
+      </button>
+
+      {/* Location dropdown */}
+      {locationPickerOpen && rootWorkspace ? (
+        <div className="environment-panel__branch-list" data-testid="env-location-list">
+          <button
+            className={`environment-panel__branch-option${!isWorktree ? " environment-panel__branch-option--current" : ""}`}
+            data-testid={`env-location-option-${rootWorkspace.id}`}
+            type="button"
+            onClick={() => {
+              playButtonClick();
+              wsMenu.selectWorkspace(rootWorkspace.id);
+              setLocationPickerOpen(false);
+            }}
+          >
+            {!isWorktree ? "✓ " : ""}Local
+          </button>
+          {activeWorktrees.map((wt) => {
+            const isCurrent = selectedWorktree?.id === wt.id;
+            return (
+              <button
+                key={wt.id}
+                className={`environment-panel__branch-option${isCurrent ? " environment-panel__branch-option--current" : ""}`}
+                data-testid={`env-location-option-${wt.linkedWorkspaceId}`}
+                type="button"
+                onClick={() => {
                   playButtonClick();
-                  const firstWorktree = activeWorktrees[0];
-                  if (firstWorktree?.linkedWorkspaceId) {
-                    wsMenu.selectWorkspace(firstWorktree.linkedWorkspaceId);
+                  if (wt.linkedWorkspaceId) {
+                    wsMenu.selectWorkspace(wt.linkedWorkspaceId);
                   }
-                }
-              }}
-            >
-              <ChevronDownIcon />
-            </button>
-          ) : (
-            <button
-              className={`environment-panel__loc-switch${location === "local" ? " environment-panel__loc-switch--active" : ""}`}
-              type="button"
-              disabled={!rootWorkspace}
-              onClick={() => {
-                if (rootWorkspace) {
-                  playButtonClick();
-                  wsMenu.selectWorkspace(rootWorkspace.id);
-                }
-              }}
-            >
-              <ChevronDownIcon />
-            </button>
-          )}
+                  setLocationPickerOpen(false);
+                }}
+              >
+                {isCurrent ? "✓ " : ""}{wt.name}
+              </button>
+            );
+          })}
         </div>
-      </div>
+      ) : null}
 
       {/* Branch row */}
       {isWorktree ? (
@@ -255,37 +269,35 @@ export function EnvironmentPanel(props: EnvironmentPanelProps) {
           </span>
         </div>
       ) : (
-        <div className="environment-panel__row environment-panel__row--branch" data-testid="env-row-branch">
+        <button
+          className="environment-panel__row environment-panel__row--branch"
+          data-testid="env-branch-picker"
+          type="button"
+          onClick={async () => {
+            playButtonClick();
+            if (branchPickerOpen) {
+              setBranchPickerOpen(false);
+              return;
+            }
+            if (!rootWorkspace) return;
+            setBranchLoading(true);
+            setBranchPickerOpen(true);
+            try {
+              const result = await api.listBranches(rootWorkspace.id);
+              setBranchList(result.branches.filter((b) => !b.isRemote && !b.name.startsWith("origin/") && !b.name.includes("HEAD")));
+            } catch {
+              setBranchList([]);
+            } finally {
+              setBranchLoading(false);
+            }
+          }}
+        >
           <span className="environment-panel__row-left">
             <span className="environment-panel__branch-icon">⎇</span>
-            <button
-              className="environment-panel__branch-picker-btn"
-              data-testid="env-branch-picker"
-              type="button"
-              onClick={async () => {
-                playButtonClick();
-                if (branchPickerOpen) {
-                  setBranchPickerOpen(false);
-                  return;
-                }
-                if (!rootWorkspace) return;
-                setBranchLoading(true);
-                setBranchPickerOpen(true);
-                try {
-                  const result = await api.listBranches(rootWorkspace.id);
-                  setBranchList(result.branches.filter((b) => !b.isRemote && !b.name.startsWith("origin/") && !b.name.includes("HEAD")));
-                } catch {
-                  setBranchList([]);
-                } finally {
-                  setBranchLoading(false);
-                }
-              }}
-            >
-              {displayBranch}
-            </button>
+            <span>{displayBranch}</span>
           </span>
           <ChevronDownIcon />
-        </div>
+        </button>
       )}
 
       {/* Branch picker dropdown */}
@@ -430,14 +442,7 @@ export function EnvironmentPanel(props: EnvironmentPanelProps) {
         )}
       </div>
 
-      {/* Divider */}
-      <div className="environment-panel__divider" />
 
-      {/* Sources section */}
-      <div className="environment-panel__sources" data-testid="env-sources">
-        <span className="environment-panel__sources-title">Sources</span>
-        <span className="environment-panel__sources-empty">No sources yet</span>
-      </div>
     </div>
   );
 }

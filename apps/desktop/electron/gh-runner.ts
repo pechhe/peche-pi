@@ -27,7 +27,7 @@ function workspacePath(store: AppStoreInternals, workspaceId: string): string | 
   return store.state.workspaces.find((w) => w.id === workspaceId)?.path;
 }
 
-export async function refreshLoops(
+async function refreshLoops(
   store: AppStoreInternals,
   workspaceId: string,
 ): Promise<DesktopAppState> {
@@ -44,7 +44,7 @@ export async function refreshLoops(
   return store.emit();
 }
 
-export async function runLoop(
+async function runLoop(
   store: AppStoreInternals,
   workspaceId: string,
   loopNumber: number,
@@ -109,6 +109,8 @@ export function cancelRun(store: AppStoreInternals): void {
   cancelRequested = true;
   setRunner(store, { status: "cancelling" });
 }
+
+export { refreshLoops as refreshMilestones, runLoop as runMilestone };
 
 /* ── Helpers ────────────────────────────────────────────── */
 

@@ -40,7 +40,7 @@ test("environment panel shows rows on load for local thread", async () => {
     await expect(window.getByTestId("env-row-location")).toBeVisible();
     await expect(window.getByTestId("env-row-branch")).toBeVisible();
     await expect(window.getByTestId("env-row-commit-push")).toBeVisible();
-    await expect(window.getByTestId("env-sources")).toBeVisible();
+
   } finally {
     await harness.close();
   }

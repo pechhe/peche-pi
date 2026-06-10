@@ -101,7 +101,7 @@ export async function startThread(store: WorktreeStore, input: StartThreadInput)
         const status = await execGit(["status", "--porcelain"], rootWorkspace.path);
         if (status.code === 0 && status.stdout.trim().length > 0) {
           throw new Error(
-            `Can't switch to \"${target}\": you have uncommitted local changes. Commit or stash them first, or pick \"${currentBranch || "current"}\" to keep working on the current branch.`,
+            `Can't switch to "${target}": you have uncommitted local changes. Commit or stash them first, or pick "${currentBranch || "current"}" to keep working on the current branch.`,
           );
         }
         const checkout = await execGit(["checkout", target], rootWorkspace.path);
@@ -570,22 +570,6 @@ function sessionTitleForWorktree(store: WorktreeStore, workspaceId: string, sess
     .find((workspace) => workspace.id === workspaceId)
     ?.sessions.find((session) => session.id === sessionId)
     ?.title.trim();
-}
-
-function slugify(value: string): string {
-  const normalized = value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return normalized || "worktree";
-}
-
-function clampSlug(value: string, limit = 28): string {
-  if (value.length <= limit) {
-    return value;
-  }
-  const trimmed = value.slice(0, limit).replace(/-+$/g, "");
-  return trimmed || "worktree";
 }
 
 function shortUniqueSuffix(): string {

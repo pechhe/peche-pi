@@ -682,17 +682,14 @@ async function runComposerCommand(
   }
 
   if (parsed.type === "compact") {
+    // Live spinner while compaction runs; on completion append a persisted
+    // compaction card to the display transcript without wiping the history.
     store.sessionState.compactionActivityBySession.set(key, makeCompactionActivityItem("manual"));
     try {
       await store.driver.compactSession(sessionRef, parsed.customInstructions);
-      await store.reloadTranscriptFromDriver(sessionRef);
-      const activity = store.sessionState.compactionActivityBySession.get(key);
-      if (activity) {
-        activity.running = false;
-      }
-    } catch (error) {
+      await store.appendCompletedCompactionCard(sessionRef, key, "manual");
+    } finally {
       store.sessionState.compactionActivityBySession.delete(key);
-      throw error;
     }
     store.publishSelectedTranscriptFor(sessionRef);
     return finishComposerCommand(store, sessionRef, key, "Compacted session context");

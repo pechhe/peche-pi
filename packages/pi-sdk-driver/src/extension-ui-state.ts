@@ -11,6 +11,8 @@ export interface ExtensionUiState {
   readonly widgets: Map<string, ExtensionUiWidgetState>;
   title: string | undefined;
   editorText: string | undefined;
+  /** An extension command is currently executing (generic activity bracket). */
+  commandActive: boolean;
 }
 
 export type ExtensionUiDialogRequest = Extract<
@@ -24,6 +26,7 @@ export function createEmptyExtensionUiState(): ExtensionUiState {
     widgets: new Map(),
     title: undefined,
     editorText: undefined,
+    commandActive: false,
   };
 }
 
@@ -55,6 +58,9 @@ export function applyHostUiRequestToExtensionUiState(
       break;
     case "editorText":
       state.editorText = request.text;
+      break;
+    case "commandActivity":
+      state.commandActive = request.active;
       break;
     default:
       break;

@@ -682,16 +682,16 @@ export class DesktopAppStore implements AppStoreInternals {
 
   /* ── GitHub issue runner ────────────────────────────────── */
 
-  async listGhMilestones(workspaceId?: string): Promise<DesktopAppState> {
+  async listGhLoops(workspaceId?: string): Promise<DesktopAppState> {
     await this.initialize();
     const wsId = workspaceId ?? this.state.selectedWorkspaceId;
     if (!wsId) return this.emit();
     return ghRunner.refreshMilestones(this, wsId);
   }
 
-  async runGhMilestone(workspaceId: string, milestoneNumber: number): Promise<DesktopAppState> {
+  async runGhLoop(workspaceId: string, loopNumber: number): Promise<DesktopAppState> {
     await this.initialize();
-    void ghRunner.runMilestone(this, workspaceId, milestoneNumber);
+    void ghRunner.runMilestone(this, workspaceId, loopNumber);
     return this.emit();
   }
 
@@ -1934,6 +1934,39 @@ Return ONLY a JSON array of configuration fields, no explanation.`;
     this.publishSelectedTranscriptFor(sessionRef);
   }
 
+  /**
+   * Record a completed compaction WITHOUT discarding the visible chat history.
+   *
+   * pi truncates `session.messages` on compaction, so reloading from the driver
+   * would wipe the display log. Instead we keep peche-pi's own (persisted) full
+   * transcript and append a single compaction card carrying the summary the
+   * model just wrote. The card is collapsed by default; the user can expand it
+   * to read the summary.
+   */
+  async appendCompletedCompactionCard(
+    sessionRef: SessionRef,
+    key: string,
+    origin: "auto" | "manual",
+  ): Promise<void> {
+    const driverTranscript = await this.driver.getTranscript(sessionRef);
+    const summary = driverTranscript.find((m) => m.kind === "message" && m.role === "compactionSummary");
+    const summaryText = summary?.kind === "message" ? summary.text : undefined;
+    const base = makeCompactionActivityItem(origin);
+    const card: TranscriptMessage = {
+      kind: "compactionActivity",
+      id: base.id,
+      createdAt: base.createdAt,
+      origin,
+      running: false,
+      phaseLog: [],
+      ...(summaryText ? { summaryText } : {}),
+    };
+    const next = [...(this.sessionState.transcriptCache.get(key) ?? []), card];
+    this.sessionState.transcriptCache.set(key, next);
+    this.sessionState.loadedTranscriptKeys.add(key);
+    void this.writePersistedTranscript(key, next);
+  }
+
   private async ensureComposerAttachmentsLoaded(sessionRef: SessionRef): Promise<void> {
     const key = sessionKey(sessionRef);
     if (this.sessionState.composerAttachmentsBySession.has(key)) {
@@ -2234,18 +2267,16 @@ Return ONLY a JSON array of configuration fields, no explanation.`;
       return;
     }
     this.autoCompactInFlight.add(key);
+    // Live spinner card while compaction runs; the map entry is cleared on
+    // completion and replaced by a persisted card in the display transcript.
     this.sessionState.compactionActivityBySession.set(key, makeCompactionActivityItem("auto"));
     try {
       await this.driver.compactSession(sessionRef);
-      await this.reloadTranscriptFromDriver(sessionRef);
-      const activity = this.sessionState.compactionActivityBySession.get(key);
-      if (activity) {
-        activity.running = false;
-      }
+      await this.appendCompletedCompactionCard(sessionRef, key, "auto");
     } catch (error) {
       console.error(`[smart-compact] auto-compact failed for ${key}:`, error);
-      this.sessionState.compactionActivityBySession.delete(key);
     } finally {
+      this.sessionState.compactionActivityBySession.delete(key);
       this.autoCompactInFlight.delete(key);
     }
     this.publishSelectedTranscriptFor(sessionRef);

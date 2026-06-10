@@ -996,13 +996,18 @@ export default function App() {
       : EMPTY_TRANSCRIPT;
   // In clean mode (default), hide noise-tagged activities (extension chatter
   // like blackhole OM progress and cymbal nudges). Verbose mode shows them.
+  // When an extension command is actively running, keep its info-level output
+  // visible — it's user-invoked progress, not background noise.
   const transcriptVerbose = snapshot?.transcriptVerbose ?? false;
+  const commandActive = Boolean(
+    selectedSessionKey && snapshot?.sessionExtensionUiBySession[selectedSessionKey]?.commandActive,
+  );
   const visibleTranscript = useMemo(
     () =>
-      transcriptVerbose
+      transcriptVerbose || commandActive
         ? activeTranscript
         : activeTranscript.filter((item) => !(item.kind === "activity" && item.noise)),
-    [activeTranscript, transcriptVerbose],
+    [activeTranscript, transcriptVerbose, commandActive],
   );
   const isTranscriptLoading = Boolean(selectedSession) && activeTranscript.length === 0 && (
     !selectedTranscript ||

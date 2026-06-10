@@ -26,6 +26,7 @@
   "dependencies": {
     "@earendil-works/pi-coding-agent": "^0.78.1",
     "@pi-gui/catalogs": "workspace:*",
-    "@pi-gui/session-driver": "workspace:*"
+    "@pi-gui/session-driver": "workspace:*",
+    "undici": "6.21.3"
   }
 }

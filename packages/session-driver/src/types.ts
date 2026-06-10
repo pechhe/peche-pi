@@ -246,6 +246,12 @@ export type HostUiResponse =
   | {
       readonly requestId: string;
       readonly cancelled: true;
+    }
+  | {
+      // Non-terminating: a keystroke (raw terminal byte sequence) forwarded to a
+      // live `terminalCustom` component. Does not resolve the host UI request.
+      readonly requestId: string;
+      readonly terminalInput: string;
     };
 
 export type HostUiRequest =
@@ -315,6 +321,31 @@ export type HostUiRequest =
       readonly intro?: string;
       readonly questions: readonly HostUiQuestionnaireQuestion[];
       readonly timeoutMs?: number;
+    }
+  | {
+      // A terminal-only `custom` component bridged into pi-gui. The supervisor
+      // drives the component's render()/handleInput() and streams its output
+      // lines (ANSI) here; the renderer displays them in an xterm surface and
+      // forwards keystrokes back via a `terminalInput` HostUiResponse. When the
+      // component calls done(), the supervisor emits `closed: true`.
+      readonly kind: "terminalCustom";
+      readonly requestId: string;
+      readonly title?: string;
+      readonly lines: readonly string[];
+      // The component settled (done) but the owning command is still working
+      // toward the next screen. The renderer keeps the surface up with a
+      // spinner until the next screen arrives or other host UI activity clears
+      // it.
+      readonly busy?: boolean;
+      readonly closed?: boolean;
+    }
+  | {
+      // Generic "an extension command is executing" bracket, synthesized by the
+      // supervisor around extension-command runs (which bypass the normal
+      // run-lifecycle). Lets the GUI show activity for any extension during the
+      // dead zone between/after its UI screens while it does async work.
+      readonly kind: "commandActivity";
+      readonly active: boolean;
     }
   | {
       readonly kind: "reset";

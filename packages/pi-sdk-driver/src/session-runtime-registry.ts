@@ -64,7 +64,23 @@ export interface ManagedSessionRecord {
       reject: (error: Error) => void;
     }
   >;
+  /**
+   * Live terminal-only `custom` components bridged into pi-gui, keyed by the
+   * same requestId as their pending host UI request. The supervisor drives
+   * render()/handleInput(); resolution flows through pendingHostUiRequests.
+   */
+  terminalCustomComponents: Map<
+    string,
+    {
+      render(width: number): string[];
+      handleInput?(data: string): void;
+      invalidate?(): void;
+      dispose?(): void;
+    }
+  >;
   extensionUiState: ExtensionUiState;
+  /** True while an extension command (slash command) is executing. */
+  extensionCommandActive: boolean;
   bindingExtensions: boolean;
   sessionCommands: readonly import("@pi-gui/session-driver/runtime-types").RuntimeCommandRecord[];
 }
@@ -206,8 +222,10 @@ export class SessionRuntimeRegistry implements SessionRuntimeRegistryInterface {
       eventQueue: Promise.resolve(),
       unsubscribeAgent: undefined,
       pendingHostUiRequests: new Map(),
+      terminalCustomComponents: new Map(),
       extensionUiState: createEmptyExtensionUiState(),
       bindingExtensions: false,
+      extensionCommandActive: false,
       sessionCommands: [],
     };
     return record;
@@ -370,6 +388,10 @@ export class SessionRuntimeRegistry implements SessionRuntimeRegistryInterface {
     for (const [requestId, pending] of record.pendingHostUiRequests) {
       record.pendingHostUiRequests.delete(requestId);
       pending.resolve({ requestId, cancelled: true });
+    }
+    for (const [requestId, live] of record.terminalCustomComponents) {
+      record.terminalCustomComponents.delete(requestId);
+      live.dispose?.();
     }
   }
 

@@ -1,4 +1,5 @@
 export { JsonCatalogStore } from "./json-catalog-store.js";
+export { DEFAULT_HTTP_IDLE_TIMEOUT_MS, httpIdleDispatcherOptions, installHttpIdleTimeout } from "./http-idle-timeout.js";
 export {
   applyHostUiRequestToExtensionUiState,
   createEmptyExtensionUiState,

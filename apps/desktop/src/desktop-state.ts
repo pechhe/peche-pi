@@ -6,7 +6,7 @@ export type SessionStatus = "idle" | "running" | "failed";
 
 // ── Automation types ─────────────────────────────────────
 
-export type AutomationFrequency = "hourly" | "daily" | "weekly";
+export type AutomationFrequency = "hourly" | "daily" | "weekly" | "monthly";
 
 /** Simplified recurring schedule: a frequency plus a time-of-day. */
 export interface AutomationSchedule {
@@ -63,6 +63,8 @@ export function scheduleToCron(schedule: AutomationSchedule): string {
       return `${minute} ${hour} * * *`;
     case "weekly":
       return `${minute} ${hour} * * ${schedule.dayOfWeek ?? 1}`;
+    case "monthly":
+      return `${minute} ${hour} 1 * *`;
   }
 }
 
@@ -81,6 +83,8 @@ export function automationScheduleLabel(schedule: AutomationSchedule): string {
       const day = DAY_LABELS[schedule.dayOfWeek ?? 1] ?? "Monday";
       return `${day}s at ${formatScheduleTime(schedule.time)}`;
     }
+    case "monthly":
+      return `Monthly on the 1st at ${formatScheduleTime(schedule.time)}`;
   }
 }
 
@@ -334,6 +338,7 @@ export interface SessionRecord {
   readonly automationId?: string;
   readonly threadType?: string;
   readonly isCompacting?: boolean;
+  readonly sessionFilePath?: string;
 }
 
 export interface SelectedTranscriptRecord {
@@ -504,7 +509,10 @@ export interface DesktopAppState {
   readonly automationFilterWorkspaceId?: string;
   readonly threadTypeBySession: Readonly<Record<string, string>>;
   readonly ghMilestones?: readonly GhMilestoneRecord[];
+  readonly ghLoops?: readonly import("./gh-types").GhLoopRecord[];
   readonly ghRunnerState?: GhRunnerState;
+  readonly modelSelectorPinnedKeys?: readonly string[];
+  readonly modelSelectorHiddenKeys?: readonly string[];
   readonly revision: number;
   readonly lastError?: string;
 }

@@ -13,7 +13,7 @@
 
 import path from "node:path";
 import { execGit, execGh, isGitRepo } from "./git-runner";
-import { createPullRequest, generatePrDraft, getDefaultBranch, getHeadBranch, hasUpstream } from "./pr-service";
+import { createPullRequest, generatePrDraft, getDefaultBranch, hasUpstream } from "./pr-service";
 import { ensureCommitBranch } from "./lazy-branch";
 
 // ---------------------------------------------------------------------------

@@ -9,6 +9,7 @@ import type {
   SessionExtensionUiStateRecord,
   TranscriptMessage,
 } from "../src/desktop-state";
+
 import type { RunMetrics } from "./app-store-timeline";
 
 export interface MutableSessionExtensionUiState extends ExtensionUiState {
@@ -116,6 +117,7 @@ export function serializeExtensionUiState(state: MutableSessionExtensionUiState)
     statuses: [...state.statuses.entries()].map(([key, text]) => ({ key, text })),
     widgets: [...state.widgets.values()],
     pendingDialogs: [...state.pendingDialogs],
+    ...(state.commandActive ? { commandActive: true } : {}),
     ...(state.pendingTerminalCustom ? { pendingTerminalCustom: state.pendingTerminalCustom } : {}),
     ...(state.title ? { title: state.title } : {}),
     ...(state.editorText ? { editorText: state.editorText } : {}),

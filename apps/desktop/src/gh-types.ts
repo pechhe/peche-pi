@@ -28,6 +28,14 @@ export interface GhIssueOutcome {
   readonly sessionId?: string;
 }
 
+export interface GhMilestoneRecord {
+  readonly number: number;
+  readonly title: string;
+  readonly description: string;
+  readonly state: "open" | "closed";
+  readonly dueOn?: string;
+}
+
 export interface GhRunnerState {
   readonly status: GhRunStatus;
   readonly workspaceId?: string;

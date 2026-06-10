@@ -42,6 +42,8 @@ export interface PersistedUiState {
   readonly themeMode?: ThemeMode;
   readonly commitPushModel?: string;
   readonly autoShip?: boolean;
+  readonly modelSelectorPinnedKeys?: readonly string[];
+  readonly modelSelectorHiddenKeys?: readonly string[];
   readonly chats?: readonly ChatRecord[];
   readonly selectedChatId?: string;
   readonly threadTypeBySession?: Record<string, string>;

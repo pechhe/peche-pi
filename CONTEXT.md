@@ -82,6 +82,48 @@ an isolated git worktree (`worktree`). This is the laptop-row axis inside
 the Environment widget.
 _Avoid_: Environment (for this narrow axis), env, target
 
+**Chassis Action**:
+A user-defined, wired behavior the user can attach to the composer without
+the source repo: it submits text/a slash command, wraps the outgoing
+prompt, or sets a session reminder. A behavior only — it carries no
+position, color, or title-visibility. Built-in toggles (plan/build,
+caveman, orchestrate) are the prebuilt analogues a Chassis Action
+generalizes.
+_Avoid_: Tool, button, widget, custom command (when meaning the behavior)
+
+**Composer Layout**:
+A user-authored arrangement and styling of Composer Control Units on the
+composer surface: which cell each unit occupies in the controls strip,
+whether its title shows, its color. Consumes Chassis Actions; Actions know
+nothing about layout. Distinct from a **Composer Device Mode**
+(`modular-cream`/`modular-metal`), which is a prebuilt aesthetic skin.
+_Avoid_: Composer skin, device mode (for the user arrangement), grid config
+
+**Composer Layout Builder**:
+A config-authoring assistant that, through multi-turn chat with the user's
+configured model, produces a single **Chassis Action candidate** the user
+accepts or declines. It creates actions only — never layout, placement, or
+chassis — and never writes state directly: a candidate is schema-validated
+and persisted only on explicit accept.
+_Avoid_: Builder agent, AI session, layout generator
+
+**Composer Control Unit**:
+A single placeable control on the composer: a built-in control (mode
+selector, model selector, caveman dial, orchestrate, feature badges, send)
+or a Chassis Action. All controls — built-in and user-defined — are uniform
+units the Composer Layout positions in the controls strip's cell grid.
+Some units are **required** (Send, Reasoning, Model): they can be moved and
+restyled but never removed, and a layout missing one has it auto-inserted.
+All other units are removable.
+_Avoid_: Widget, button (when meaning the placeable unit), tool
+
+**Controls Strip**:
+The region below the composer screen (textarea) that holds the Composer
+Control Units. The Composer Layout grid is bounded to this strip; the
+screen above it is never part of the grid. In code this is the
+`composer__footer-row`.
+_Avoid_: Toolbar, button bar, composer bar
+
 ## Flagged ambiguities
 
 - "Backend" was used to mean both a hosted service and a local companion
@@ -91,6 +133,11 @@ _Avoid_: Environment (for this narrow axis), env, target
   (`/tree`, `/clone`, fork). The Environment widget means **git branch**.
   In GUI code and docs, always qualify: say "git branch" (or the branch
   name, e.g. `main`); reserve unqualified "branch"/"fork" for pi sessions.
+- Toggle scope differs by origin. Built-in composer toggles (plan/build,
+  caveman, orchestrate) are **per-thread**. A Chassis Action's sticky
+  on/off state and the Composer Layout are **app-global for MVP**, intended
+  to become **per-project-folder (workspace)** later — never per-thread.
+  When in doubt, qualify which scope you mean.
 - pi has no native worktree/branch/commit/PR management; it only *reads*
   the current git branch from a session's cwd (internal footer plumbing).
   The Desktop App owns git/worktree orchestration. The Environment widget's

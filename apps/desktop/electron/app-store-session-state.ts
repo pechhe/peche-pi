@@ -138,45 +138,26 @@ export class DesktopSessionState {
     const baseTranscript = this.sessionState.transcriptCache.get(key) ?? [];
     const activity = this.sessionState.compactionActivityBySession.get(key);
     if (!activity) {
+      // Completed compaction cards live directly in the transcript; the map
+      // only holds a transient entry while compaction is running.
       return { workspaceId: sessionRef.workspaceId, sessionId: sessionRef.sessionId, transcript: baseTranscript };
     }
-    const transcript = [...baseTranscript];
-    const summaryIdx = transcript.findIndex(
-      (m) => m.kind === "message" && m.role === "compactionSummary",
-    );
-    if (activity.running) {
-      transcript.push({
-        kind: "compactionActivity",
-        id: activity.id,
-        createdAt: activity.createdAt,
-        origin: activity.origin,
-        running: true,
-        phaseLog: activity.phaseLog,
-        lastPhase: activity.lastPhase || undefined,
-      });
-    } else if (summaryIdx >= 0) {
-      const summaryMsg = transcript[summaryIdx]!;
-      transcript[summaryIdx] = {
-        kind: "compactionActivity",
-        id: activity.id,
-        createdAt: activity.createdAt,
-        origin: activity.origin,
-        running: false,
-        phaseLog: activity.phaseLog,
-        summaryText: summaryMsg.kind === "message" ? summaryMsg.text : activity.summaryText,
-      };
-    } else {
-      transcript.push({
-        kind: "compactionActivity",
-        id: activity.id,
-        createdAt: activity.createdAt,
-        origin: activity.origin,
-        running: false,
-        phaseLog: activity.phaseLog,
-        summaryText: activity.summaryText,
-      });
-    }
-    return { workspaceId: sessionRef.workspaceId, sessionId: sessionRef.sessionId, transcript };
+    return {
+      workspaceId: sessionRef.workspaceId,
+      sessionId: sessionRef.sessionId,
+      transcript: [
+        ...baseTranscript,
+        {
+          kind: "compactionActivity",
+          id: activity.id,
+          createdAt: activity.createdAt,
+          origin: activity.origin,
+          running: true,
+          phaseLog: activity.phaseLog,
+          lastPhase: activity.lastPhase || undefined,
+        },
+      ],
+    };
   }
 
   private getOrCreateExtensionUiState(sessionRef: SessionRef) {
@@ -218,9 +199,10 @@ export class DesktopSessionState {
     }
 
     if (isExtensionUiDialogRequest(event.request)) {
+      const dialogRequest = event.request;
       uiState.pendingDialogs = [
-        ...uiState.pendingDialogs.filter((entry) => entry.requestId !== event.request.requestId),
-        event.request,
+        ...uiState.pendingDialogs.filter((entry) => entry.requestId !== dialogRequest.requestId),
+        dialogRequest,
       ];
     }
 
@@ -231,6 +213,7 @@ export class DesktopSessionState {
             requestId: event.request.requestId,
             ...(event.request.title ? { title: event.request.title } : {}),
             lines: [...event.request.lines],
+            ...(event.request.busy ? { busy: true } : {}),
           };
     }
 

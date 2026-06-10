@@ -10,7 +10,7 @@ function createUnsupportedHostUiIssue(capability: string): ExtensionCompatibilit
   };
 }
 
-export function createUnsupportedHostUiError(capability: string): Error {
+function createUnsupportedHostUiError(capability: string): Error {
   return new Error(serializeUnsupportedHostUiIssue(createUnsupportedHostUiIssue(capability)));
 }
 

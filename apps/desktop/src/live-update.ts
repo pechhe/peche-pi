@@ -17,7 +17,7 @@ export interface TranscriptDelta {
 export type DesktopLiveUpdate =
   | { readonly type: "snapshot"; readonly state: DesktopAppState }
   | { readonly type: "navigation"; readonly state: DesktopAppState }
-  | { readonly type: "workspace-session"; readonly workspaceId: string; readonly session: SessionRecord | null }
+  | { readonly type: "workspace-session"; readonly workspaceId: string; readonly session: SessionRecord | null; readonly extensionUi?: SessionExtensionUiStateRecord }
   | {
       readonly type: "selected-session-metadata";
       readonly workspaceId: string;
@@ -41,7 +41,7 @@ export function applyDesktopLiveUpdate(state: DesktopAppState | null, update: De
   }
   switch (update.type) {
     case "workspace-session":
-      return applyWorkspaceSessionPatch(state, update.workspaceId, update.session);
+      return applyWorkspaceSessionPatch(state, update.workspaceId, update.session, update.extensionUi);
     case "selected-session-metadata":
       return applySelectedSessionMetadataPatch(state, update);
     case "selected-transcript":
@@ -80,6 +80,7 @@ function applyWorkspaceSessionPatch(
   state: DesktopAppState,
   workspaceId: string,
   nextSession: SessionRecord | null,
+  extensionUi?: SessionExtensionUiStateRecord,
 ): DesktopAppState {
   const workspaceIndex = state.workspaces.findIndex((workspace) => workspace.id === workspaceId);
   if (workspaceIndex === -1) {
@@ -87,13 +88,24 @@ function applyWorkspaceSessionPatch(
   }
   const workspace = state.workspaces[workspaceIndex]!;
   const nextSessions = patchSessionArray(workspace.sessions, nextSession);
-  if (nextSessions === workspace.sessions) {
+  if (nextSessions === workspace.sessions && !extensionUi) {
     return state;
   }
   const nextWorkspace: WorkspaceRecord = { ...workspace, sessions: nextSessions };
   const nextWorkspaces = state.workspaces.slice();
   nextWorkspaces[workspaceIndex] = nextWorkspace;
-  return { ...state, workspaces: nextWorkspaces };
+  let nextState: DesktopAppState = { ...state, workspaces: nextWorkspaces };
+  if (extensionUi && nextSession) {
+    const key = `${workspaceId}:${nextSession.id}`;
+    nextState = {
+      ...nextState,
+      sessionExtensionUiBySession: {
+        ...nextState.sessionExtensionUiBySession,
+        [key]: extensionUi,
+      },
+    };
+  }
+  return nextState;
 }
 
 function patchSessionArray(

@@ -1355,37 +1355,43 @@ function TimelineSummaryItem({ item }: { readonly item: TimelineSummary }) {
 
 function TimelineCompactionActivityItem({ item }: { readonly item: TimelineCompactionActivity }) {
   const [expanded, setExpanded] = useState(false);
-  const eyebrow = item.running
-    ? item.origin === "auto" ? "Auto-compacting…" : "Compacting…"
-    : "Compaction summary";
-  const hasPhases = item.phaseLog.length > 0;
-  return (
-    <article className="timeline-item timeline-item--summary-card timeline-item--compaction-activity">
-      <div className="timeline-item__summary-eyebrow">
-        {item.running ? <span className="timeline-item__compaction-spinner" /> : null}
-        {eyebrow}
-      </div>
-      {item.running ? (
-        <div className="timeline-item__compaction-phase">
-          {item.lastPhase ?? "Preparing…"}
+
+  // Live spinner while compaction is running.
+  if (item.running) {
+    return (
+      <article className="timeline-item timeline-item--summary-card timeline-item--compaction-activity">
+        <div className="timeline-item__summary-eyebrow">
+          <span className="timeline-item__compaction-spinner" />
+          {item.origin === "auto" ? "Auto-compacting…" : "Compacting…"}
         </div>
-      ) : item.summaryText ? (
-        <MessageMarkdown text={item.summaryText} />
-      ) : null}
-      {hasPhases ? (
-        <button
-          type="button"
-          className="timeline-item__compaction-expand"
-          onClick={() => setExpanded(!expanded)}
-        >
-          {expanded ? "Hide phase log" : `Show phase log (${item.phaseLog.length})`}
-        </button>
-      ) : null}
-      {expanded && hasPhases ? (
-        <div className="timeline-item__compaction-log">
-          {item.phaseLog.map((phase, i) => (
-            <div key={i} className="timeline-item__compaction-log-line">{phase}</div>
-          ))}
+        <div className="timeline-item__compaction-phase">{item.lastPhase ?? "Preparing…"}</div>
+      </article>
+    );
+  }
+
+  // Completed: a small card marking the compaction point. Collapsed by default;
+  // click to read the summary the model wrote.
+  const hasSummary = Boolean(item.summaryText);
+  return (
+    <article className="timeline-item timeline-item--summary-card timeline-item--compaction-activity timeline-item--compaction-done">
+      <button
+        type="button"
+        className="timeline-item__compaction-header"
+        onClick={() => hasSummary && setExpanded((value) => !value)}
+        disabled={!hasSummary}
+        aria-expanded={expanded}
+      >
+        <span className="timeline-item__compaction-badge">⌘</span>
+        <span className="timeline-item__compaction-title">
+          Context compacted{item.origin === "auto" ? " automatically" : ""}
+        </span>
+        {hasSummary ? (
+          <span className="timeline-item__compaction-chevron">{expanded ? "Hide summary" : "View summary"}</span>
+        ) : null}
+      </button>
+      {expanded && item.summaryText ? (
+        <div className="timeline-item__compaction-summary">
+          <MessageMarkdown text={item.summaryText} />
         </div>
       ) : null}
     </article>
