@@ -58,6 +58,7 @@ export function EnvironmentPanel(props: EnvironmentPanelProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsRef = useRef<HTMLDivElement | null>(null);
   const [locationPickerOpen, setLocationPickerOpen] = useState(false);
+  const [branchSearch, setBranchSearch] = useState("");
 
   // Diff stats
   const [diffInsertions, setDiffInsertions] = useState(0);
@@ -198,7 +199,8 @@ export function EnvironmentPanel(props: EnvironmentPanelProps) {
         </span>
       </button>
 
-      {/* Location row */}
+      {/* Location row + menu */}
+      <div className="environment-panel__menu-anchor">
       <button
         className="environment-panel__row environment-panel__row--location"
         data-testid="env-row-location"
@@ -215,9 +217,8 @@ export function EnvironmentPanel(props: EnvironmentPanelProps) {
         <ChevronDownIcon />
       </button>
 
-      {/* Location dropdown */}
       {locationPickerOpen && rootWorkspace ? (
-        <div className="environment-panel__branch-list" data-testid="env-location-list">
+        <div className="environment-panel__menu" data-testid="env-location-list">
           <button
             className={`environment-panel__branch-option${!isWorktree ? " environment-panel__branch-option--current" : ""}`}
             data-testid={`env-location-option-${rootWorkspace.id}`}
@@ -232,6 +233,7 @@ export function EnvironmentPanel(props: EnvironmentPanelProps) {
           </button>
           {activeWorktrees.map((wt) => {
             const isCurrent = selectedWorktree?.id === wt.id;
+            const label = wt.branchName ?? `detached • ${wt.id.slice(0, 7)}`;
             return (
               <button
                 key={wt.id}
@@ -246,14 +248,16 @@ export function EnvironmentPanel(props: EnvironmentPanelProps) {
                   setLocationPickerOpen(false);
                 }}
               >
-                {isCurrent ? "✓ " : ""}{wt.name}
+                {isCurrent ? "✓ " : ""}{label}
               </button>
             );
           })}
         </div>
       ) : null}
+      </div>
 
-      {/* Branch row */}
+      {/* Branch row + menu */}
+      <div className="environment-panel__menu-anchor">
       {isWorktree ? (
         <div className="environment-panel__row environment-panel__row--branch" data-testid="env-row-branch">
           <span className="environment-panel__row-left">
@@ -282,6 +286,7 @@ export function EnvironmentPanel(props: EnvironmentPanelProps) {
             if (!rootWorkspace) return;
             setBranchLoading(true);
             setBranchPickerOpen(true);
+            setBranchSearch("");
             try {
               const result = await api.listBranches(rootWorkspace.id);
               setBranchList(result.branches.filter((b) => !b.isRemote && !b.name.startsWith("origin/") && !b.name.includes("HEAD")));
@@ -300,13 +305,21 @@ export function EnvironmentPanel(props: EnvironmentPanelProps) {
         </button>
       )}
 
-      {/* Branch picker dropdown */}
       {branchPickerOpen ? (
-        <div className="environment-panel__branch-list" data-testid="env-branch-list">
+        <div className="environment-panel__menu" data-testid="env-branch-list">
+          <input
+            className="environment-panel__menu-search"
+            data-testid="env-branch-search"
+            type="text"
+            placeholder="Search branches"
+            value={branchSearch}
+            onChange={(e) => setBranchSearch(e.target.value)}
+          />
+          <div className="environment-panel__menu-label">Branches</div>
           {branchLoading ? (
-            <span className="environment-panel__branch-loading">Loading…</span>
+            <span className="environment-panel__branch-loading">Loading branches…</span>
           ) : (
-            branchList.map((branch) => (
+            branchList.filter((b) => b.name.toLowerCase().includes(branchSearch.toLowerCase())).map((branch) => (
               <button
                 key={branch.name}
                 className={`environment-panel__branch-option${branch.isCurrent ? " environment-panel__branch-option--current" : ""}`}
@@ -413,6 +426,7 @@ export function EnvironmentPanel(props: EnvironmentPanelProps) {
           )}
         </div>
       ) : null}
+      </div>
 
       {/* Commit or push row */}
       <div className="environment-panel__row environment-panel__row--commit" data-testid="env-row-commit-push">
