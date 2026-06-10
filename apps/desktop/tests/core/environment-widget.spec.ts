@@ -182,10 +182,10 @@ test("local branch picker checks out a branch on select", async () => {
   }
 });
 
-test("auto-ship override swaps Commit & Push row for Ship button", async () => {
+test("environment panel shows both commit-push and ship buttons", async () => {
   test.setTimeout(90_000);
   const userDataDir = await makeUserDataDir();
-  const workspacePath = await makeGitWorkspace("env-autoship-override");
+  const workspacePath = await makeGitWorkspace("env-both-buttons");
   const harness = await launchDesktop(userDataDir, {
     initialWorkspaces: [workspacePath],
     testMode: "background",
@@ -196,44 +196,21 @@ test("auto-ship override swaps Commit & Push row for Ship button", async () => {
     await waitForWorkspaceByPath(window, workspacePath);
 
     // Create a local thread
-    await startThreadViaIpc(window, { environment: "local", prompt: "autoship probe" });
+    await startThreadViaIpc(window, { environment: "local", prompt: "both buttons probe" });
 
     // Panel is open by default
     const panel = window.getByTestId("environment-panel");
     await expect(panel).toBeVisible();
 
-    // By default (auto-ship OFF), the commit-push row should contain
-    // the CommitPushButton and NOT the Ship button.
+    // The commit-push row should contain both the CommitPushButton and the Ship button
     const commitPushRow = window.getByTestId("env-row-commit-push");
     await expect(commitPushRow).toBeVisible();
-    await expect(window.getByTestId("env-row-ship-button")).toHaveCount(0);
-
-    // Open settings gear to access auto-ship override
-    const gear = window.getByTestId("env-settings-gear");
-    await gear.click();
-
-    // The auto-ship override row should be visible in the settings popover
-    const overrideRow = window.getByTestId("env-row-autoship-override");
-    await expect(overrideRow).toBeVisible();
-
-    // Click "On" to set per-thread override
-    await overrideRow.getByRole("button", { name: "On" }).click();
-
-    // Now the commit-push row should show the Ship button instead
     const shipButton = window.getByTestId("env-row-ship-button");
     await expect(shipButton).toBeVisible();
     await expect(shipButton).toContainText("Ship");
 
-    // Settings popover is still open — click "Off" directly
-    await overrideRow.getByRole("button", { name: "Off", exact: true }).click();
-
-    // Ship button should disappear, CommitPushButton should be back
-    await expect(window.getByTestId("env-row-ship-button")).toHaveCount(0);
-
-    // Settings popover is still open — click "Default" directly
-    await overrideRow.getByRole("button", { name: /Default/ }).click();
-    await expect(window.getByTestId("env-row-ship-button")).toHaveCount(0);
-    await expect(commitPushRow).toBeVisible();
+    // Settings gear should not exist
+    await expect(window.getByTestId("env-settings-gear")).toHaveCount(0);
   } finally {
     await harness.close();
   }

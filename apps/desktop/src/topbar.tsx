@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import type { AppView, SessionRecord, WorkspaceRecord } from "./desktop-state";
-import { AdvisorIcon, ContextIcon, DiffIcon, ExternalTerminalIcon, FolderIcon, PanelRightIcon, SettingsIcon, TerminalIcon } from "./icons";
+import { AdvisorIcon, ContextIcon, DiffIcon, EnvironmentIcon, ExternalTerminalIcon, FolderIcon, SettingsIcon, TerminalIcon } from "./icons";
 import { playButtonClick } from "./button-click-sound";
 import { getDesktopShortcutLabel, type PiDesktopApi } from "./ipc";
 import { ProjectMapPopover } from "./project-map-popover";
@@ -118,6 +118,17 @@ export function Topbar(props: TopbarProps) {
             <span className="topbar__separator">/</span>
             <span className="topbar__session">New project</span>
           </>
+        ) : null}
+
+        {onToggleEnvironmentPanel ? (
+          <button
+            aria-label="Toggle environment panel"
+            className={`icon-button topbar__icon topbar__env-toggle ${environmentPanelOpen ? "icon-button--active" : ""}`}
+            type="button"
+            onClick={() => { playButtonClick(); onToggleEnvironmentPanel(); }}
+          >
+            <EnvironmentIcon />
+          </button>
         ) : null}
       </div>
 
@@ -242,14 +253,6 @@ export function Topbar(props: TopbarProps) {
             </span>
           </div>
         ) : null}
-        <button
-          aria-label="Toggle environment panel"
-          className={`icon-button topbar__icon ${environmentPanelOpen ? "icon-button--active" : ""}`}
-          type="button"
-          onClick={() => { playButtonClick(); onToggleEnvironmentPanel(); }}
-        >
-          <PanelRightIcon />
-        </button>
       </div>
     </header>
   );

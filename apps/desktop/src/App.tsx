@@ -543,7 +543,6 @@ export default function App() {
 
   const [showContextPanel, setShowContextPanel] = useState(false);
   const [featureDoneState, setFeatureDoneState] = useState<"idle" | "working" | "done" | "error">("idle");
-  const [autoShipOverrides, setAutoShipOverrides] = useState<Map<string, boolean>>(new Map());
   const [pendingScrollToMessageId, setPendingScrollToMessageId] = useState<string | null>(null);
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   // Query that produced the jump, captured before the search palette clears it.
@@ -1544,23 +1543,6 @@ export default function App() {
       showToast({ variant: "error", message: `Ship failed — ${String(err)}` });
     }
   }, [api, rootWorkspace, selectedSession, snapshot?.commitPushModel]);
-
-  // Auto-ship: per-thread override (session-scoped, not persisted)
-  const autoShipGlobal = snapshot?.autoShip ?? false;
-  const autoShipOverride = selectedSession ? autoShipOverrides.get(selectedSession.id) : undefined;
-  const autoShipEffective = autoShipOverride ?? autoShipGlobal;
-  const handleSetAutoShipOverride = useCallback((value: boolean | undefined) => {
-    if (!selectedSession) return;
-    setAutoShipOverrides((prev) => {
-      const next = new Map(prev);
-      if (value === undefined) {
-        next.delete(selectedSession.id);
-      } else {
-        next.set(selectedSession.id, value);
-      }
-      return next;
-    });
-  }, [selectedSession]);
 
   const toggleEnvironmentPanel = useCallback(() => {
     setEnvironmentPanelOpen((prev) => {
@@ -3131,7 +3113,7 @@ export default function App() {
             }}
           />
         ) : null}
-      {environmentPanelOpen && selectedWorkspace ? (
+      {environmentPanelOpen && selectedWorkspace && snapshot?.activeView !== "new-thread" ? (
         <EnvironmentPanel
           selectedWorkspace={selectedWorkspace}
           selectedWorktree={selectedWorktree}
@@ -3142,10 +3124,6 @@ export default function App() {
           onFeatureDone={handleFeatureDone}
           featureDoneState={featureDoneState}
           commitPushModel={snapshot.commitPushModel}
-          autoShipEffective={autoShipEffective}
-          autoShipGlobal={autoShipGlobal}
-          autoShipOverride={autoShipOverride}
-          onSetAutoShipOverride={handleSetAutoShipOverride}
           selectedRuntime={rootRuntime}
           api={api}
           sessionStatus={selectedSession?.status}

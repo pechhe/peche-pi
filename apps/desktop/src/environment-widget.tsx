@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { WorkspaceRecord, WorktreeRecord } from "./desktop-state";
 import type { WorkspaceMenuState } from "./hooks/use-workspace-menu";
 import type { BranchInfo, PiDesktopApi } from "./ipc";
 import { playButtonClick } from "./button-click-sound";
-import { DiffIcon, SettingsIcon, MonitorIcon, WorktreeIcon, ChevronDownIcon } from "./icons";
+import { DiffIcon, MonitorIcon, WorktreeIcon, ChevronDownIcon } from "./icons";
 import { CommitPushButton } from "./commit-push-button";
 import { showToast } from "./toast";
 import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
@@ -18,10 +18,6 @@ interface EnvironmentPanelProps {
   readonly onFeatureDone?: () => void;
   readonly featureDoneState?: "idle" | "working" | "done" | "error";
   readonly commitPushModel?: string;
-  readonly autoShipEffective?: boolean;
-  readonly autoShipGlobal?: boolean;
-  readonly autoShipOverride?: boolean;
-  readonly onSetAutoShipOverride?: (value: boolean | undefined) => void;
   readonly selectedRuntime?: RuntimeSnapshot;
   readonly api: PiDesktopApi;
   readonly sessionStatus?: string;
@@ -38,10 +34,6 @@ export function EnvironmentPanel(props: EnvironmentPanelProps) {
     onFeatureDone,
     featureDoneState,
     commitPushModel,
-    autoShipEffective,
-    autoShipGlobal,
-    autoShipOverride,
-    onSetAutoShipOverride,
     selectedRuntime,
     api,
     sessionStatus,
@@ -53,8 +45,6 @@ export function EnvironmentPanel(props: EnvironmentPanelProps) {
   const [checkoutInProgress, setCheckoutInProgress] = useState(false);
   const [branchCreateOpen, setBranchCreateOpen] = useState(false);
   const [branchCreateName, setBranchCreateName] = useState("");
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const settingsRef = useRef<HTMLDivElement | null>(null);
   const [locationPickerOpen, setLocationPickerOpen] = useState(false);
   const [branchSearch, setBranchSearch] = useState("");
 
@@ -72,24 +62,6 @@ export function EnvironmentPanel(props: EnvironmentPanelProps) {
     }).catch(() => { /* ignore */ });
     return () => { cancelled = true; };
   }, [selectedWorkspace, api]);
-
-  // Close settings popover on outside click
-  useEffect(() => {
-    if (!settingsOpen) return;
-    const handlePointerDown = (event: PointerEvent) => {
-      if (settingsRef.current?.contains(event.target as Node)) return;
-      setSettingsOpen(false);
-    };
-    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key === "Escape") setSettingsOpen(false);
-    };
-    document.addEventListener("pointerdown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("pointerdown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [settingsOpen]);
 
   // Close branch/location pickers on outside click
   useEffect(() => {
@@ -131,74 +103,6 @@ export function EnvironmentPanel(props: EnvironmentPanelProps) {
       {/* Header */}
       <div className="environment-panel__header">
         <span className="environment-panel__title">Environment</span>
-        <div className="environment-panel__gear-wrap" ref={settingsRef}>
-          <button
-            className="environment-panel__gear"
-            data-testid="env-settings-gear"
-            type="button"
-            aria-label="Environment settings"
-            aria-expanded={settingsOpen}
-            onClick={() => { playButtonClick(); setSettingsOpen((prev) => !prev); }}
-          >
-            <SettingsIcon />
-          </button>
-          {settingsOpen ? (
-            <div className="environment-panel__settings-popover" role="menu">
-              {onSetAutoShipOverride ? (
-                <div className="environment-panel__settings-section" data-testid="env-row-autoship-override">
-                  <span className="environment-panel__settings-label">Auto-ship</span>
-                  <div className="environment-widget__location-picker">
-                    <button
-                      className={`environment-widget__loc-btn${autoShipOverride === undefined ? " environment-widget__loc-btn--active" : ""}`}
-                      type="button"
-                      onClick={() => {
-                        playButtonClick();
-                        onSetAutoShipOverride(undefined);
-                      }}
-                    >
-                      Default{autoShipGlobal ? " (on)" : " (off)"}
-                    </button>
-                    <button
-                      className={`environment-widget__loc-btn${autoShipOverride === true ? " environment-widget__loc-btn--active" : ""}`}
-                      type="button"
-                      onClick={() => {
-                        playButtonClick();
-                        onSetAutoShipOverride(true);
-                      }}
-                    >
-                      On
-                    </button>
-                    <button
-                      className={`environment-widget__loc-btn${autoShipOverride === false ? " environment-widget__loc-btn--active" : ""}`}
-                      type="button"
-                      onClick={() => {
-                        playButtonClick();
-                        onSetAutoShipOverride(false);
-                      }}
-                    >
-                      Off
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-              {isWorktree && selectedWorktree && rootWorkspace ? (
-                <button
-                  className="environment-panel__settings-danger"
-                  data-testid="env-remove-worktree"
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    playButtonClick();
-                    wsMenu.removeWorktree(rootWorkspace.id, selectedWorktree);
-                    setSettingsOpen(false);
-                  }}
-                >
-                  Remove worktree
-                </button>
-              ) : null}
-            </div>
-          ) : null}
-        </div>
       </div>
 
       {/* Changes row */}
@@ -533,9 +437,18 @@ export function EnvironmentPanel(props: EnvironmentPanelProps) {
         </div>
       ) : null}
 
-      {/* Commit or push row */}
+      {/* Commit/push + Ship row */}
       <div className="environment-panel__row environment-panel__row--commit" data-testid="env-row-commit-push">
-        {autoShipEffective && onFeatureDone ? (
+        <CommitPushButton
+          workspaceId={rootWorkspace?.id ?? ""}
+          runtime={selectedRuntime}
+          commitPushModel={commitPushModel}
+          api={api}
+          sessionStatus={sessionStatus}
+          shortcutLabel={commitShortcut}
+          branchHint={selectedWorktree?.name}
+        />
+        {onFeatureDone ? (
           <button
             className="environment-panel__ship-btn"
             data-testid="env-row-ship-button"
@@ -543,22 +456,15 @@ export function EnvironmentPanel(props: EnvironmentPanelProps) {
             disabled={featureDoneState === "working"}
             onClick={() => {
               playButtonClick();
-              onFeatureDone();
+              const confirmed = window.confirm(
+                "Ship will commit and push all changes, then create or update a pull request. Continue?"
+              );
+              if (confirmed) onFeatureDone();
             }}
           >
             {featureDoneState === "working" ? "Shipping…" : featureDoneState === "done" ? "Shipped ✓" : "⚙ Ship"}
           </button>
-        ) : (
-          <CommitPushButton
-            workspaceId={rootWorkspace?.id ?? ""}
-            runtime={selectedRuntime}
-            commitPushModel={commitPushModel}
-            api={api}
-            sessionStatus={sessionStatus}
-            shortcutLabel={commitShortcut}
-            branchHint={selectedWorktree?.name}
-          />
-        )}
+        ) : null}
       </div>
 
 

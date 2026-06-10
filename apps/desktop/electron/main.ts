@@ -1246,7 +1246,7 @@ app.whenReady().then(async () => {
         if (result.code !== 0) {
           return { success: false, message: result.stderr || result.stdout || `git checkout failed (code ${result.code})` };
         }
-        await store.refreshState();
+        await store.refreshState({ refreshWorktrees: true });
         return { success: true, message: result.stdout || `Switched to branch '${branchName}'` };
       },
       createBranch: async (_event: unknown, workspaceId: string, branchName: string) => {
@@ -1259,7 +1259,7 @@ app.whenReady().then(async () => {
         if (result.code !== 0) {
           return { success: false, message: result.stderr || result.stdout || `git checkout -b failed (code ${result.code})` };
         }
-        await store.refreshState();
+        await store.refreshState({ refreshWorktrees: true });
         return { success: true, message: result.stdout || `Created and switched to branch '${name}'` };
       },
       getWorkspaceDiffStat: async (_event: unknown, workspaceId: string) => {

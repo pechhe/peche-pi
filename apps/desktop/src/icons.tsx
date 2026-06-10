@@ -520,6 +520,17 @@ export function InvestigateIcon() {
   );
 }
 
+export function EnvironmentIcon() {
+  // Terminal prompt — dev environment / shell environment.
+  return (
+    <Icon>
+      <rect x="2" y="3" width="20" height="18" rx="2" />
+      <path d="m7 8 4 3-4 3" />
+      <path d="M14 14h4" />
+    </Icon>
+  );
+}
+
 export function PanelRightIcon() {
   return (
     <Icon>

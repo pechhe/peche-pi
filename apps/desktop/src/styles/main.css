@@ -257,6 +257,28 @@
   color: var(--muted-soft);
 }
 
+.environment-panel__branch-create-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-left: 6px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted-soft);
+  font-size: 13px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.environment-panel__branch-create-icon:hover {
+  background: var(--hover-bg, rgba(255, 255, 255, 0.08));
+  color: var(--foreground);
+}
+
 .environment-widget__commit-row {
   padding: 4px 6px;
   border-radius: 10px;
@@ -632,7 +654,7 @@
 }
 
 .environment-panel__ship-btn {
-  width: 100%;
+  flex-shrink: 0;
   padding: 8px 12px;
   border-radius: 8px;
   border: 1px solid color-mix(in srgb, var(--success-ink, #30a46c) 30%, transparent);

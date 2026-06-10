@@ -45,7 +45,7 @@ export default defineConfig(({ command }) => {
       base: "./",
       plugins: [
         react(),
-        checker({ oxlint: { lintCommand: "npx oxlint src/" } }),
+        checker({ overlay: false, oxlint: { lintCommand: "npx oxlint src/" } }),
       ],
       resolve: {
         tsconfigPaths: true,
