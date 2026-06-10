@@ -61,3 +61,28 @@ export function buildPlanModePrompt(
     trimmed,
   ].join("\n\n");
 }
+
+/** Substitute every `{{input}}` token in a sticky wrap template with the raw text. */
+export function applyWrapTemplate(rawText: string, template: string): string {
+  return template.split("{{input}}").join(rawText);
+}
+
+/**
+ * Compose the outgoing prompt from the raw composer text, applying an optional
+ * sticky wrap *inside* plan mode so plan mode stays the outer, authoritative
+ * frame: `planModePrompt(userWrap(rawText))`.
+ */
+export function composeOutgoingPrompt(
+  rawText: string,
+  options: {
+    readonly mode: ComposerMode;
+    readonly ideology?: PlanModeIdeology;
+    readonly isFirst?: boolean;
+    readonly wrapTemplate?: string | null;
+  },
+): string {
+  const wrapped = options.wrapTemplate ? applyWrapTemplate(rawText, options.wrapTemplate) : rawText;
+  return options.mode === "plan"
+    ? buildPlanModePrompt(wrapped, options.ideology, options.isFirst)
+    : wrapped;
+}

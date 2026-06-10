@@ -3,14 +3,30 @@ export interface ChassisSubmitEffect {
   readonly text: string;
 }
 
-export type ChassisEffect = ChassisSubmitEffect;
+export interface ChassisWrapEffect {
+  readonly type: "wrap";
+  readonly template: string;
+}
+
+export type ChassisEffect = ChassisSubmitEffect | ChassisWrapEffect;
+
+export const WRAP_INPUT_TOKEN = "{{input}}";
 
 export interface ChassisAction {
   readonly id: string;
   readonly label: string;
   readonly showLabel: boolean;
-  readonly trigger: "oneShot";
+  /** oneShot pairs only with `submit`; sticky pairs only with `wrap`. */
+  readonly trigger: "oneShot" | "sticky";
   readonly effect: ChassisEffect;
+}
+
+/**
+ * Single-active sticky radio: turning the active id off clears activation;
+ * turning any other id on replaces the active one (never two at once).
+ */
+export function toggleStickyActivation(activeId: string | null, id: string): string | null {
+  return activeId === id ? null : id;
 }
 
 export interface ParsedChassisState {
@@ -23,18 +39,31 @@ function parseAction(value: unknown): ChassisAction | null {
   const v = value as Record<string, unknown>;
   if (typeof v.id !== "string" || v.id.length === 0) return null;
   if (typeof v.label !== "string") return null;
-  if (v.trigger !== "oneShot") return null;
   const effect = v.effect;
   if (typeof effect !== "object" || effect === null) return null;
   const e = effect as Record<string, unknown>;
-  if (e.type !== "submit" || typeof e.text !== "string") return null;
-  return {
-    id: v.id,
-    label: v.label,
-    showLabel: v.showLabel !== false,
-    trigger: "oneShot",
-    effect: { type: "submit", text: e.text },
-  };
+  if (v.trigger === "oneShot") {
+    if (e.type !== "submit" || typeof e.text !== "string") return null;
+    return {
+      id: v.id,
+      label: v.label,
+      showLabel: v.showLabel !== false,
+      trigger: "oneShot",
+      effect: { type: "submit", text: e.text },
+    };
+  }
+  if (v.trigger === "sticky") {
+    if (e.type !== "wrap" || typeof e.template !== "string") return null;
+    if (!e.template.includes(WRAP_INPUT_TOKEN)) return null;
+    return {
+      id: v.id,
+      label: v.label,
+      showLabel: v.showLabel !== false,
+      trigger: "sticky",
+      effect: { type: "wrap", template: e.template },
+    };
+  }
+  return null;
 }
 
 export function parseChassisState(raw: string): ParsedChassisState {
