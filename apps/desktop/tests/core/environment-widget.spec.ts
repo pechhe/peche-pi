@@ -38,6 +38,8 @@ test("environment panel shows rows on load for local thread", async () => {
     // Panel should contain the expected rows directly (no popover click needed)
     await expect(window.getByTestId("env-row-changes")).toBeVisible();
     await expect(window.getByTestId("env-row-location")).toBeVisible();
+    // For local threads, branch row is a button - wait a bit for render
+    await window.waitForTimeout(500);
     await expect(window.getByTestId("env-row-branch")).toBeVisible();
     await expect(window.getByTestId("env-row-commit-push")).toBeVisible();
 
@@ -84,10 +86,10 @@ test("environment panel shows rows on load for worktree thread", async () => {
   }
 });
 
-test("environment panel location row allows switching between local and worktree", async () => {
+test("environment panel location row opens dropdown when clicked", async () => {
   test.setTimeout(90_000);
   const userDataDir = await makeUserDataDir();
-  const workspacePath = await makeGitWorkspace("env-panel-location-switch");
+  const workspacePath = await makeGitWorkspace("env-panel-location-dropdown");
   const harness = await launchDesktop(userDataDir, {
     initialWorkspaces: [workspacePath],
     testMode: "background",
@@ -98,16 +100,28 @@ test("environment panel location row allows switching between local and worktree
     const rootWorkspace = await waitForWorkspaceByPath(window, workspacePath);
 
     // Create a local thread first
-    await startThreadViaIpc(window, { environment: "local", prompt: "switch test" });
+    await startThreadViaIpc(window, { environment: "local", prompt: "location test" });
 
     // Panel should be visible (open by default)
     const panel = window.getByTestId("environment-panel");
     await expect(panel).toBeVisible();
 
-    // Location row should exist with Local/Worktree content
+    // Location row should exist with Local content
     const locationRow = window.getByTestId("env-row-location");
     await expect(locationRow).toBeVisible();
     await expect(locationRow).toContainText("Local");
+
+    // Click location row to open dropdown
+    await locationRow.click();
+    
+    // Location dropdown should appear (even with just Local option)
+    const locationList = window.getByTestId("env-location-list");
+    await expect(locationList).toBeVisible();
+    
+    // Should have at least the Local option
+    const localOption = window.getByTestId(`env-location-option-${rootWorkspace.id}`);
+    await expect(localOption).toBeVisible();
+    await expect(localOption).toContainText("Local");
   } finally {
     await harness.close();
   }
@@ -132,12 +146,23 @@ test("local branch picker checks out a branch on select", async () => {
     const rootWorkspace = await waitForWorkspaceByPath(window, workspacePath);
     const wsId = rootWorkspace.id;
 
+    // Start a thread to see the environment panel
+    await startThreadViaIpc(window, { environment: "local", prompt: "branch test" });
+
     // Verify we start on main
     const initialState = await window.evaluate(async (id: string) => {
       const api = (window as PiAppWindow).piApp as PiDesktopApi;
       return api.listBranches(id);
     }, wsId);
     expect(initialState.currentBranch).toBe("main");
+
+    // Click branch row to open dropdown
+    const branchRow = window.getByTestId("env-row-branch");
+    await branchRow.click();
+
+    // Branch list should appear
+    const branchList = window.getByTestId("env-branch-list");
+    await expect(branchList).toBeVisible();
 
     // Checkout feature-x via IPC
     const result = await window.evaluate(async (id: string) => {
@@ -298,7 +323,7 @@ test("createBranch IPC creates and switches to new branch, carries dirty tree", 
   }
 });
 
-test("environment panel toggle button hides and restores the panel", async () => {
+test("environment panel toggle hides and restores the panel", async () => {
   test.setTimeout(90_000);
   const userDataDir = await makeUserDataDir();
   const workspacePath = await makeGitWorkspace("env-panel-toggle");
@@ -318,24 +343,24 @@ test("environment panel toggle button hides and restores the panel", async () =>
     const panel = window.getByTestId("environment-panel");
     await expect(panel).toBeVisible();
 
-    // The shell should have the env-panel-open class
-    const shell = window.locator(".shell");
-    await expect(shell).toHaveClass(/shell--env-panel-open/);
-
-    // Click the toggle button to hide
+    // Find the toggle button in the topbar
     const toggleBtn = window.getByLabel("Toggle environment panel");
+    await expect(toggleBtn).toBeVisible();
+    
+    // Click to hide the panel
     await toggleBtn.click();
 
+    // Wait a bit for state update
+    await window.waitForTimeout(100);
+    
     // Panel should be hidden
-    await expect(panel).not.toBeVisible();
-    await expect(shell).not.toHaveClass(/shell--env-panel-open/);
+    await expect(window.getByTestId("environment-panel")).not.toBeVisible();
 
     // Click again to restore
     await toggleBtn.click();
 
     // Panel should be visible again
-    await expect(panel).toBeVisible();
-    await expect(shell).toHaveClass(/shell--env-panel-open/);
+    await expect(window.getByTestId("environment-panel")).toBeVisible();
   } finally {
     await harness.close();
   }

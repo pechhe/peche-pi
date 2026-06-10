@@ -86,6 +86,7 @@ export interface ComposerOps {
   publishSelectedTranscript(): void;
   publishSelectedTranscriptFor(sessionRef: SessionRef): void;
   reloadTranscriptFromDriver(sessionRef: SessionRef): Promise<void>;
+  appendCompletedCompactionCard?(sessionRef: SessionRef, key: string, origin: "auto" | "manual"): Promise<void>;
 }
 
 /** Persistence: UI state, attachments, transcript cache. */

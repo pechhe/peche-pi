@@ -687,7 +687,7 @@ async function runComposerCommand(
     store.sessionState.compactionActivityBySession.set(key, makeCompactionActivityItem("manual"));
     try {
       await store.driver.compactSession(sessionRef, parsed.customInstructions);
-      await store.appendCompletedCompactionCard(sessionRef, key, "manual");
+      await store.appendCompletedCompactionCard?.(sessionRef, key, "manual");
     } finally {
       store.sessionState.compactionActivityBySession.delete(key);
     }

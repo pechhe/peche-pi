@@ -7,31 +7,6 @@ import { ArrowUpIcon } from "./icons";
 import type { CavemanLevel } from "./ipc";
 import { type ModelSelectorHandle } from "./model-selector";
 
-function resolveContextWindow(
-  runtime: RuntimeSnapshot | undefined,
-  provider: string | undefined,
-  modelId: string | undefined,
-): number | undefined {
-  if (!provider || !modelId || !runtime?.models) {
-    return undefined;
-  }
-  const model = runtime.models.find(
-    (record) => record.providerId === provider && record.modelId === modelId,
-  );
-  const contextWindow = model?.contextWindow;
-  return typeof contextWindow === "number" && contextWindow > 0 ? contextWindow : undefined;
-}
-
-function formatTokenCount(tokens: number): string {
-  if (tokens >= 1_000_000) {
-    return `${(tokens / 1_000_000).toFixed(1)}M`;
-  }
-  if (tokens >= 1_000) {
-    return `${Math.round(tokens / 1_000)}k`;
-  }
-  return String(Math.round(tokens));
-}
-
 interface PendingComposerProps {
   readonly runtime?: RuntimeSnapshot;
   readonly provider: string | undefined;
@@ -64,7 +39,6 @@ export function PendingComposer({
   onToggleChassisWrap,
 }: PendingComposerProps) {
   const modelSelectorRef = useRef<ModelSelectorHandle | null>(null);
-  const contextWindow = resolveContextWindow(runtime, provider, modelId);
 
   return (
     <footer className="composer">
@@ -81,13 +55,11 @@ export function PendingComposer({
             />
             <div className="composer__bar">
               <div className="composer__footer">
-                <div className="composer__context" aria-label="Context usage">
+                <div className="composer__context" aria-label="Context usage unavailable">
                   <div className="composer__context-track">
                     <div className="composer__context-fill" style={{ width: "0%" }} />
                   </div>
-                  <span className="composer__context-label">
-                    {contextWindow ? `0 / ${formatTokenCount(contextWindow)}` : "Context —"}
-                  </span>
+                  <span className="composer__context-label">Context —</span>
                 </div>
                 <div className="composer__footer-row">
                   <div className="composer__hint">

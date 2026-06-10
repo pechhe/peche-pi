@@ -271,7 +271,7 @@ export function EnvironmentPanel(props: EnvironmentPanelProps) {
       ) : (
         <button
           className="environment-panel__row environment-panel__row--branch"
-          data-testid="env-branch-picker"
+          data-testid="env-row-branch"
           type="button"
           onClick={async () => {
             playButtonClick();

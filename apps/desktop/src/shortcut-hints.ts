@@ -39,6 +39,12 @@ export function installShortcutHints(): () => void {
 
   const onKeyDown = (event: KeyboardEvent): void => {
     if (isModifierKey(event.key)) {
+      // Recovery: if hints are visible but armed is false, the Meta keyup
+      // was lost (common when focus shifts during a shortcut combo). Force
+      // hide and let the hold re-arm below.
+      if (document.documentElement.classList.contains(ROOT_CLASS) && !armed && event.repeat) {
+        hide();
+      }
       // Holding the modifier alone arms the reveal. Ignore OS auto-repeat —
       // without the `event.repeat` guard, a repeated Meta keydown after a
       // shortcut (which sets armed=false) would re-arm the timer and the
@@ -46,7 +52,11 @@ export function installShortcutHints(): () => void {
       if (!armed && !event.repeat) {
         armed = true;
         timer = window.setTimeout(() => {
-          document.documentElement.classList.add(ROOT_CLASS);
+          // Only show hints if still armed — prevents a race where hide()
+          // cleared the timer but the callback was already queued.
+          if (armed) {
+            document.documentElement.classList.add(ROOT_CLASS);
+          }
         }, HOLD_MS);
       }
       return;
