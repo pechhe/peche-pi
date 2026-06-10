@@ -35,6 +35,17 @@
   grid-template-columns: 0 minmax(0, 1fr);
 }
 
+/* Reserve a right gutter for the Environment card so it pushes content over
+   (instead of floating on top of it). The card itself is absolutely positioned
+   within this empty track via .environment-panel { right: 12px }. */
+.shell--env-panel-open {
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr) calc(var(--env-panel-width) + 24px);
+}
+
+.shell--sidebar-collapsed.shell--env-panel-open {
+  grid-template-columns: 0 minmax(0, 1fr) calc(var(--env-panel-width) + 24px);
+}
+
 
 
 /* Sidebar slides off-canvas with a GPU transform (no layout cost). */
