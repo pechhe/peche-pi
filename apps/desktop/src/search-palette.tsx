@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GlobalSearchArchiveFilter, GlobalSearchResult, GlobalSearchScope } from "./hooks/use-global-search";
 import { formatRelativeTime } from "./string-utils";
+import {
+  CommandDialog,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+  CommandSeparator,
+} from "@/components/ui/command";
+import { cn } from "@/lib/utils";
 
 /** Wraps case-insensitive occurrences of `query` in <mark> for visual highlight. */
 function HighlightedText({ text, query }: { readonly text: string; readonly query: string }) {
@@ -24,8 +33,51 @@ function HighlightedText({ text, query }: { readonly text: string; readonly quer
 
   return (
     <>
-      {parts.map((part, i) => (typeof part === "string" ? part : <mark key={i}>{part.mark}</mark>))}
+      {parts.map((part, i) =>
+        typeof part === "string" ? (
+          part
+        ) : (
+          <mark key={i} className="rounded-[3px] bg-brand/15 px-px text-brand">
+            {part.mark}
+          </mark>
+        ),
+      )}
     </>
+  );
+}
+
+function SegmentedControl({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  readonly label: string;
+  readonly value: string;
+  readonly options: readonly (readonly [string, string])[];
+  readonly onChange: (value: string) => void;
+}) {
+  return (
+    <div
+      className="flex items-center gap-0.5 rounded-full border border-border/70 bg-muted/50 p-0.5"
+      aria-label={label}
+    >
+      {options.map(([optionValue, optionLabel]) => (
+        <button
+          key={optionValue}
+          className={cn(
+            "rounded-full px-2.5 py-0.5 text-[11px] font-semibold text-muted-foreground transition-all duration-150",
+            optionValue === value
+              ? "bg-card text-brand shadow-sm"
+              : "hover:text-foreground",
+          )}
+          type="button"
+          onClick={() => onChange(optionValue)}
+        >
+          {optionLabel}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -61,84 +113,106 @@ export function SearchPalette({
   onClose,
   restoreFocus,
 }: SearchPaletteProps) {
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const [closing, setClosing] = useState(false);
+  const [open, setOpen] = useState(true);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Ref-stable so requestClose deps don't churn when the caller's
   // focusComposer is intentionally re-created every render.
   const restoreFocusRef = useRef(restoreFocus);
   restoreFocusRef.current = restoreFocus;
 
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
-
   useEffect(() => () => {
     if (closeTimer.current) clearTimeout(closeTimer.current);
   }, []);
 
-  // Play exit animation, then unmount via onClose. Idempotent for repeated triggers.
+  // Play the Radix exit animation, then unmount via onClose. Idempotent.
   const requestClose = useCallback(() => {
     if (closeTimer.current) return;
-    setClosing(true);
+    setOpen(false);
     closeTimer.current = setTimeout(() => {
       onClose();
-      // The palette autoFocus stole focus from the composer; hand it back
-      // after the exit animation so the user can keep typing.
+      // The palette stole focus from the composer; hand it back after the
+      // exit animation so the user can keep typing.
       restoreFocusRef.current?.();
     }, 160);
   }, [onClose]);
 
   const activeResult = results[activeIndex];
 
+  const { currentItems, otherItems } = useMemo(() => {
+    const current: GlobalSearchResult[] = [];
+    const other: GlobalSearchResult[] = [];
+    for (const r of results) {
+      if (currentProjectIds.has(r.id)) current.push(r);
+      else other.push(r);
+    }
+    return { currentItems: current, otherItems: other };
+  }, [results, currentProjectIds]);
+
+  const renderResult = (result: GlobalSearchResult) => {
+    return (
+      <CommandItem
+        key={result.id}
+        value={result.id}
+        className="search-palette__result flex flex-col items-start gap-0.5 rounded-lg px-3 py-2"
+        onSelect={() => onSelect(result)}
+      >
+        <span className="w-full truncate text-[13px] font-semibold text-foreground">
+          {result.title}
+        </span>
+        <span className="text-[11px] text-muted-foreground">
+          {result.kind === "chat" ? "Chat" : result.projectName} · {result.archived ? "Past" : "Active"} · {formatRelativeTime(result.updatedAt)}
+        </span>
+        {result.transcriptSnippet ? (
+          <span className="line-clamp-2 w-full text-xs text-muted-foreground/90">
+            <HighlightedText text={result.transcriptSnippet} query={query} />
+          </span>
+        ) : result.preview ? (
+          <span className="line-clamp-2 w-full text-xs text-muted-foreground/90">
+            <HighlightedText text={result.preview} query={query} />
+          </span>
+        ) : null}
+      </CommandItem>
+    );
+  };
+
   return (
-    <div
-      className={`search-palette${closing ? " search-palette--closing" : ""}`}
-      role="dialog"
-      aria-modal="true"
-      aria-label="Search threads"
+    <CommandDialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) requestClose();
+      }}
+      title="Search threads"
+      description="Search threads and chats"
+      showCloseButton={false}
+      className="search-palette top-[18%] max-w-xl translate-y-0"
+      commandProps={{
+        shouldFilter: false,
+        loop: true,
+        value: activeResult?.id ?? "",
+        onValueChange: (value) => {
+          const index = results.findIndex((r) => r.id.toLowerCase() === value.toLowerCase());
+          if (index !== -1 && index !== activeIndex) onActiveIndexChange(index);
+        },
+      }}
     >
-      <div className="search-palette__backdrop" onClick={requestClose} />
-      <div className="search-palette__panel">
-        <input
-          ref={inputRef}
-          className="search-palette__input"
-          value={query}
-          placeholder="Search threads and chats..."
-          onChange={(event) => onQueryChange(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Escape") {
-              event.preventDefault();
-              requestClose();
-              return;
-            }
-            if (event.key === "ArrowDown") {
-              event.preventDefault();
-              onActiveIndexChange(results.length === 0 ? 0 : (activeIndex + 1) % results.length);
-              return;
-            }
-            if (event.key === "ArrowUp") {
-              event.preventDefault();
-              onActiveIndexChange(results.length === 0 ? 0 : (activeIndex - 1 + results.length) % results.length);
-              return;
-            }
-            if (event.key === "Tab") {
-              event.preventDefault();
-              onArchiveFilterChange(archiveFilter === "all" ? "active" : "all");
-              return;
-            }
-            if (event.key === "A" && (event.metaKey || event.ctrlKey) && event.shiftKey) {
-              event.preventDefault();
-              onScopeChange(scope === "all" ? "project" : "all");
-              return;
-            }
-            if (event.key === "Enter" && activeResult) {
-              event.preventDefault();
-              onSelect(activeResult);
-            }
-          }}
-        />
-        <div className="search-palette__controls">
+      <CommandInput
+        value={query}
+        placeholder="Search threads and chats..."
+        onValueChange={onQueryChange}
+        onKeyDown={(event) => {
+          if (event.key === "Tab") {
+            event.preventDefault();
+            onArchiveFilterChange(archiveFilter === "all" ? "active" : "all");
+            return;
+          }
+          if (event.key === "A" && (event.metaKey || event.ctrlKey) && event.shiftKey) {
+            event.preventDefault();
+            onScopeChange(scope === "all" ? "project" : "all");
+          }
+        }}
+      />
+      <div className="flex items-center justify-between gap-2 border-b border-border/60 px-3 py-2">
+        <div className="flex items-center gap-2">
           <SegmentedControl
             label="Scope"
             value={scope}
@@ -148,113 +222,46 @@ export function SearchPalette({
             ]}
             onChange={(value) => onScopeChange(value as GlobalSearchScope)}
           />
-          <div className="search-palette__archive-toggle">
-            <SegmentedControl
-              label="Thread state"
-              value={archiveFilter}
-              options={[
-                ["all", "All"],
-                ["active", "Active"],
-              ]}
-              onChange={(value) => onArchiveFilterChange(value as GlobalSearchArchiveFilter)}
-
-            />
-          </div>
+          <SegmentedControl
+            label="Thread state"
+            value={archiveFilter}
+            options={[
+              ["all", "All"],
+              ["active", "Active"],
+            ]}
+            onChange={(value) => onArchiveFilterChange(value as GlobalSearchArchiveFilter)}
+          />
         </div>
-        {query.trim() && results.length > 0 && (
-          <div className="search-palette__controls-hint">
-            <kbd>Tab</kbd> active · <kbd>⌘⇧A</kbd> scope
+        {query.trim() && results.length > 0 ? (
+          <div className="hidden items-center gap-1 text-[11px] text-muted-foreground sm:flex">
+            <kbd className="rounded border border-border bg-muted px-1">Tab</kbd> active ·{" "}
+            <kbd className="rounded border border-border bg-muted px-1">⌘⇧A</kbd> scope
           </div>
-        )}
-        <div className="search-palette__results" role="listbox" aria-label="Search results">
-          {!query.trim() ? (
-            <div className="search-palette__empty">Type to search titles, previews, and message history.</div>
-          ) : results.length === 0 ? (
-            <div className="search-palette__empty">No matches.</div>
-          ) : (() => {
-            const currentItems: GlobalSearchResult[] = [];
-            const otherItems: GlobalSearchResult[] = [];
-            for (const r of results) {
-              if (currentProjectIds.has(r.id)) currentItems.push(r);
-              else otherItems.push(r);
-            }
-            const renderResult = (result: GlobalSearchResult, index: number) => (
-              <button
-                key={result.id}
-                className={`search-palette__result ${index === activeIndex ? "search-palette__result--active" : ""}`}
-                type="button"
-                role="option"
-                aria-selected={index === activeIndex}
-                onMouseEnter={() => onActiveIndexChange(index)}
-                onClick={() => onSelect(result)}
-              >
-                <span className="search-palette__result-title">{result.title}</span>
-                <span className="search-palette__result-meta">
-                  {result.kind === "chat" ? "Chat" : result.projectName} · {result.archived ? "Past" : "Active"} · {formatRelativeTime(result.updatedAt)}
-                </span>
-                {result.transcriptSnippet ? (
-                  <span className="search-palette__result-preview search-palette__result-preview--transcript">
-                    <HighlightedText text={result.transcriptSnippet} query={query} />
-                  </span>
-                ) : result.preview ? (
-                  <span className="search-palette__result-preview">
-                    <HighlightedText text={result.preview} query={query} />
-                  </span>
-                ) : null}
-              </button>
-            );
-            return (
-              <>
-                {currentItems.length > 0 && (
-                  <div className="search-palette__group">
-                    <span className="search-palette__group-label">This Project</span>
-                    {currentItems.map((r) => renderResult(r, results.indexOf(r)))}
-                  </div>
-                )}
-                {currentItems.length > 0 && otherItems.length > 0 && (
-                  <div className="search-palette__group-divider" />
-                )}
-                {otherItems.length > 0 && (
-                  <div className="search-palette__group">
-                    {scope === "all" && currentItems.length > 0 && <span className="search-palette__group-label">All Projects</span>}
-                    {otherItems.map((r) => renderResult(r, results.indexOf(r)))}
-                  </div>
-                )}
-              </>
-            );
-          })()}
-        </div>
+        ) : null}
       </div>
-    </div>
-  );
-}
-
-function SegmentedControl({
-  label,
-  value,
-  options,
-  onChange,
-  showKbdHint,
-}: {
-  readonly label: string;
-  readonly value: string;
-  readonly options: readonly (readonly [string, string])[];
-  readonly onChange: (value: string) => void;
-  readonly showKbdHint?: string;
-}) {
-  return (
-    <div className="search-palette__segmented" aria-label={label}>
-      {options.map(([optionValue, optionLabel]) => (
-        <button
-          key={optionValue}
-          className={optionValue === value ? "search-palette__segmented-button search-palette__segmented-button--active" : "search-palette__segmented-button"}
-          type="button"
-          onClick={() => onChange(optionValue)}
-        >
-          {optionLabel}
-        </button>
-      ))}
-      {showKbdHint && <kbd className="search-palette__kbd-hint" title="Press to toggle">{showKbdHint}</kbd>}
-    </div>
+      <CommandList className="search-palette__results max-h-[420px] p-1">
+        {!query.trim() ? (
+          <div className="py-8 text-center text-sm text-muted-foreground">
+            Type to search titles, previews, and message history.
+          </div>
+        ) : results.length === 0 ? (
+          <div className="py-8 text-center text-sm text-muted-foreground">No matches.</div>
+        ) : (
+          <>
+            {currentItems.length > 0 && (
+              <CommandGroup heading="This Project">{currentItems.map(renderResult)}</CommandGroup>
+            )}
+            {currentItems.length > 0 && otherItems.length > 0 && <CommandSeparator />}
+            {otherItems.length > 0 && (
+              <CommandGroup
+                heading={scope === "all" && currentItems.length > 0 ? "All Projects" : undefined}
+              >
+                {otherItems.map(renderResult)}
+              </CommandGroup>
+            )}
+          </>
+        )}
+      </CommandList>
+    </CommandDialog>
   );
 }
