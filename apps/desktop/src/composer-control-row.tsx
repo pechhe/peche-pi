@@ -33,6 +33,8 @@ interface ComposerControlRowProps {
   readonly onToggleOrchestrator?: () => void;
   readonly chassisActions?: readonly ChassisAction[];
   readonly onRunChassisAction?: (action: ChassisAction) => void;
+  readonly activeWrapId?: string | null;
+  readonly onToggleChassisWrap?: (action: ChassisAction) => void;
 }
 
 /**
@@ -67,6 +69,8 @@ export const ComposerControlRow = memo(function ComposerControlRow({
   onToggleOrchestrator,
   chassisActions,
   onRunChassisAction,
+  activeWrapId,
+  onToggleChassisWrap,
 }: ComposerControlRowProps) {
   return (
     <span className="composer__controls">
@@ -95,11 +99,20 @@ export const ComposerControlRow = memo(function ComposerControlRow({
       {chassisActions?.map((action) => (
         <span key={action.id}>
           <span className="composer__controls-sep">{" \u00b7 "}</span>
-          <ChassisActionControl
-            action={action}
-            disabled={disabled}
-            onRun={() => onRunChassisAction?.(action)}
-          />
+          {action.trigger === "sticky" ? (
+            <ChassisActionControl
+              action={action}
+              disabled={disabled}
+              active={activeWrapId === action.id}
+              onToggle={() => onToggleChassisWrap?.(action)}
+            />
+          ) : (
+            <ChassisActionControl
+              action={action}
+              disabled={disabled}
+              onRun={() => onRunChassisAction?.(action)}
+            />
+          )}
         </span>
       ))}
       <ModelFeatureBadges runtime={runtime} provider={provider} modelId={modelId} />

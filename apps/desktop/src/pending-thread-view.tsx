@@ -41,6 +41,8 @@ interface PendingComposerProps {
   readonly composerMode: ComposerMode;
   readonly chassisActions?: readonly ChassisAction[];
   readonly onRunChassisAction?: (action: ChassisAction) => void;
+  readonly activeWrapId?: string | null;
+  readonly onToggleChassisWrap?: (action: ChassisAction) => void;
 }
 
 /**
@@ -58,6 +60,8 @@ export function PendingComposer({
   composerMode,
   chassisActions,
   onRunChassisAction,
+  activeWrapId,
+  onToggleChassisWrap,
 }: PendingComposerProps) {
   const modelSelectorRef = useRef<ModelSelectorHandle | null>(null);
   const contextWindow = resolveContextWindow(runtime, provider, modelId);
@@ -103,6 +107,8 @@ export function PendingComposer({
                       onSetCavemanLevel={() => undefined}
                       chassisActions={chassisActions}
                       onRunChassisAction={onRunChassisAction}
+                      activeWrapId={activeWrapId}
+                      onToggleChassisWrap={onToggleChassisWrap}
                     />
                   </div>
                   <div className="composer__actions">

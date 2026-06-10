@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { sessionKey } from "@pi-gui/pi-sdk-driver";
 import type { RuntimeCommandRecord, SessionConfig, SessionRef } from "@pi-gui/session-driver";
 import type { ComposerAttachment, DesktopAppState, QueuedComposerMessage, WorkspaceSessionTarget } from "../src/desktop-state";
-import { buildPlanModePrompt, type ComposerMode, type PlanModeIdeology } from "../src/composer-mode";
+import { buildPlanModePrompt, composeOutgoingPrompt, type ComposerMode, type PlanModeIdeology } from "../src/composer-mode";
 import { toSessionRef } from "./app-store-utils";
 import {
   formatSessionConfigStatus,
@@ -377,14 +377,16 @@ export async function submitComposer(
     readonly deliverAs?: "steer" | "followUp";
     readonly mode?: ComposerMode;
     readonly isFirstPlanPrompt?: boolean;
+    readonly wrapTemplate?: string;
   } = {},
 ): Promise<DesktopAppState> {
   await store.initialize();
   const planIdeology = resolvePlanModeIdeology(textInput, store.state.planModeIdeology);
   const isFirst = options.isFirstPlanPrompt !== false; // default true for safety
-  const submittedText = options.mode === "plan"
-    ? buildPlanModePrompt(stripPlanModeIdeologyPrefix(textInput, planIdeology), planIdeology, isFirst)
-    : textInput;
+  const submittedText = composeOutgoingPrompt(
+    stripPlanModeIdeologyPrefix(textInput, planIdeology),
+    { mode: options.mode ?? "build", ideology: planIdeology, isFirst, wrapTemplate: options.wrapTemplate },
+  );
   const text = submittedText.trim();
   const sessionRef = store.selectedSessionRef();
   const attachments = sessionRef

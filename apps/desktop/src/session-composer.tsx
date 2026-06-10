@@ -127,6 +127,9 @@ interface SessionComposerProps {
   readonly onUnarchiveSession?: (target: { workspaceId: string; sessionId: string }) => void;
   readonly chassisActions?: readonly import("./chassis").ChassisAction[];
   readonly onRunChassisAction?: (action: import("./chassis").ChassisAction) => void;
+  readonly activeWrapId?: string | null;
+  readonly onToggleChassisWrap?: (action: import("./chassis").ChassisAction) => void;
+  readonly activeWrapTemplate?: string | null;
 }
 
 function isNearBottom(element: HTMLDivElement): boolean {
@@ -187,6 +190,9 @@ const SessionComposerInner = forwardRef<SessionComposerHandle, SessionComposerPr
     onUnarchiveSession,
     chassisActions,
     onRunChassisAction,
+    activeWrapId,
+    onToggleChassisWrap,
+    activeWrapTemplate,
   },
   ref,
 ) {
@@ -415,8 +421,8 @@ const SessionComposerInner = forwardRef<SessionComposerHandle, SessionComposerPr
         api.submitComposer(
           previousDraft,
           selectedSession.status === "running"
-            ? { deliverAs: options.deliverAs ?? "followUp", mode: submitMode, isFirstPlanPrompt }
-            : { mode: submitMode, isFirstPlanPrompt },
+            ? { deliverAs: options.deliverAs ?? "followUp", mode: submitMode, isFirstPlanPrompt, wrapTemplate: activeWrapTemplate ?? undefined }
+            : { mode: submitMode, isFirstPlanPrompt, wrapTemplate: activeWrapTemplate ?? undefined },
         ),
       );
       setComposerDraft(nextState.composerDraft);
@@ -571,6 +577,8 @@ const SessionComposerInner = forwardRef<SessionComposerHandle, SessionComposerPr
       smartCompactSettings={smartCompactSettings}
       chassisActions={chassisActions}
       onRunChassisAction={onRunChassisAction}
+      activeWrapId={activeWrapId}
+      onToggleChassisWrap={onToggleChassisWrap}
       onClearSlashCommand={slashMenu.resetSlashUi}
       onComposerKeyDown={handleComposerKeyDown}
       onComposerPaste={handleComposerPaste}
@@ -705,7 +713,10 @@ function sameSessionComposerProps(
     previous.orchestratorMode === next.orchestratorMode &&
     previous.onToggleOrchestrator === next.onToggleOrchestrator &&
     previous.chassisActions === next.chassisActions &&
-    previous.onRunChassisAction === next.onRunChassisAction
+    previous.onRunChassisAction === next.onRunChassisAction &&
+    previous.activeWrapId === next.activeWrapId &&
+    previous.onToggleChassisWrap === next.onToggleChassisWrap &&
+    previous.activeWrapTemplate === next.activeWrapTemplate
   );
 }
 

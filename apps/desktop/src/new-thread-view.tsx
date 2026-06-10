@@ -78,6 +78,8 @@ interface NewThreadViewProps {
   readonly onSubmit: (prompt: string) => void;
   readonly chassisActions?: readonly import("./chassis").ChassisAction[];
   readonly onRunChassisAction?: (action: import("./chassis").ChassisAction) => void;
+  readonly activeWrapId?: string | null;
+  readonly onToggleChassisWrap?: (action: import("./chassis").ChassisAction) => void;
 }
 
 function BranchGlyph({ dot = false }: { dot?: boolean }) {
@@ -246,6 +248,8 @@ export function NewThreadView({
   onSubmit,
   chassisActions,
   onRunChassisAction,
+  activeWrapId,
+  onToggleChassisWrap,
 }: NewThreadViewProps) {
   const workspace = workspaces.find((entry) => entry.id === selectedWorkspaceId);
   const [draft, setDraft] = useState(prompt);
@@ -502,6 +506,8 @@ export function NewThreadView({
                   onSubmit={submitDraft}
                   chassisActions={chassisActions}
                   onRunChassisAction={onRunChassisAction}
+                  activeWrapId={activeWrapId}
+                  onToggleChassisWrap={onToggleChassisWrap}
                 />
               )}
             />
@@ -531,6 +537,8 @@ interface NewThreadComposerFooterProps {
   readonly onSubmit: () => void;
   readonly chassisActions?: readonly import("./chassis").ChassisAction[];
   readonly onRunChassisAction?: (action: import("./chassis").ChassisAction) => void;
+  readonly activeWrapId?: string | null;
+  readonly onToggleChassisWrap?: (action: import("./chassis").ChassisAction) => void;
 }
 
 function NewThreadComposerFooter({
@@ -552,6 +560,8 @@ function NewThreadComposerFooter({
   onSubmit,
   chassisActions,
   onRunChassisAction,
+  activeWrapId,
+  onToggleChassisWrap,
 }: NewThreadComposerFooterProps) {
   const submitButtonSound = useButtonSound({ variant: "click", disabled: !hasContent || modelOnboarding.requiresModelSelection });
   return (
@@ -581,6 +591,8 @@ function NewThreadComposerFooter({
               onToggleOrchestrator={onToggleOrchestrator}
               chassisActions={chassisActions}
               onRunChassisAction={onRunChassisAction}
+              activeWrapId={activeWrapId}
+              onToggleChassisWrap={onToggleChassisWrap}
             />
           </div>
 

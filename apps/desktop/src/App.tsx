@@ -20,7 +20,7 @@ import {
   zoomFactorToPercent,
 } from "./desktop-state";
 import { SessionComposer, type SessionComposerHandle } from "./session-composer";
-import { buildPlanModePrompt, type ComposerMode } from "./composer-mode";
+import { composeOutgoingPrompt, type ComposerMode } from "./composer-mode";
 import { DiffPanel, type DiffPanelFileRequest } from "./diff-panel";
 import { AdvisorPanel } from "./advisor-panel";
 import { SubagentSessionPanel, SubagentSessionOpenProvider } from "./subagent-session-panel";
@@ -39,6 +39,7 @@ import {
   type UndoEditOp,
 } from "./ipc";
 import type { ChassisAction } from "./chassis";
+import { toggleStickyActivation } from "./chassis";
 import { deriveModelOnboardingState } from "./model-onboarding";
 import { type ModelSelectorHandle } from "./model-selector";
 import { UtilitySurface, SettingsSurface, SkillsSurface, ExtensionsSurface, AutomationsSurface, ContextSurface, AgentsSurface, TestingSurface } from "./surfaces/utility-surface";
@@ -451,6 +452,7 @@ export default function App() {
   const [settingsSection, setSettingsSection] = useState<SettingsSection>("general");
   const [cavemanLevel, setCavemanLevel] = useState<CavemanLevel>("off");
   const [chassisActions, setChassisActions] = useState<ChassisAction[]>([]);
+  const [activeWrapId, setActiveWrapId] = useState<string | null>(null);
   const [settingsWorkspaceId, setSettingsWorkspaceId] = useState("");
   const [skillsWorkspaceId, setSkillsWorkspaceId] = useState("");
   const [skillsQuery, setSkillsQuery] = useState("");
@@ -905,9 +907,20 @@ export default function App() {
   }, [api, selectedSessionKey, setSnapshot]);
 
   const handleRunChassisAction = useCallback((action: ChassisAction) => {
-    if (!api) return;
-    void updateSnapshot(api, setSnapshot, () => api.submitComposer(action.effect.text));
+    if (!api || action.effect.type !== "submit") return;
+    const text = action.effect.text;
+    void updateSnapshot(api, setSnapshot, () => api.submitComposer(text));
   }, [api, setSnapshot]);
+
+  const handleToggleChassisWrap = useCallback((action: ChassisAction) => {
+    setActiveWrapId((prev) => toggleStickyActivation(prev, action.id));
+  }, []);
+
+  const activeWrapTemplate = useMemo(() => {
+    if (!activeWrapId) return null;
+    const active = chassisActions.find((a) => a.id === activeWrapId);
+    return active && active.trigger === "sticky" && active.effect.type === "wrap" ? active.effect.template : null;
+  }, [activeWrapId, chassisActions]);
 
   const refreshChassisActions = useCallback(() => {
     const piApi = window.piApp;
@@ -2189,7 +2202,7 @@ export default function App() {
       return;
     }
     const input: StartChatInput = {
-      prompt: newThreadComposerMode === "plan" ? buildPlanModePrompt(submittedPrompt) : submittedPrompt,
+      prompt: composeOutgoingPrompt(submittedPrompt, { mode: newThreadComposerMode, isFirst: true, wrapTemplate: activeWrapTemplate ?? undefined }),
       attachments: newThreadAttachments,
       provider: resolvedNewThreadProvider,
       modelId: resolvedNewThreadModelId,
@@ -2280,7 +2293,7 @@ export default function App() {
       return;
     }
     const modelConfig = {
-      prompt: newThreadComposerMode === "plan" ? buildPlanModePrompt(submittedPrompt) : submittedPrompt,
+      prompt: composeOutgoingPrompt(submittedPrompt, { mode: newThreadComposerMode, isFirst: true, wrapTemplate: activeWrapTemplate ?? undefined }),
       attachments: newThreadAttachments,
       provider: resolvedNewThreadProvider,
       modelId: resolvedNewThreadModelId,
@@ -2808,6 +2821,8 @@ export default function App() {
               onSubmit={handleStartThread}
               chassisActions={chassisActions}
               onRunChassisAction={handleRunChassisAction}
+              activeWrapId={activeWrapId}
+              onToggleChassisWrap={handleToggleChassisWrap}
             />
           ) : (
             <section className="canvas canvas--empty">
@@ -2921,6 +2936,9 @@ export default function App() {
               onUnarchiveSession={handleUnarchiveSession}
               chassisActions={chassisActions}
               onRunChassisAction={handleRunChassisAction}
+              activeWrapId={activeWrapId}
+              onToggleChassisWrap={handleToggleChassisWrap}
+              activeWrapTemplate={activeWrapTemplate}
             />
             ) : (
               <PendingComposer
@@ -2932,6 +2950,8 @@ export default function App() {
                 composerMode={pendingThreadStart?.composerMode ?? "build"}
                 chassisActions={chassisActions}
                 onRunChassisAction={handleRunChassisAction}
+                activeWrapId={activeWrapId}
+                onToggleChassisWrap={handleToggleChassisWrap}
               />
             )}
             {activeExtensionDialog ? (

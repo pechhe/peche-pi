@@ -79,6 +79,8 @@ interface ComposerPanelProps {
   readonly onCompactNow?: () => void;
   readonly chassisActions?: readonly import("./chassis").ChassisAction[];
   readonly onRunChassisAction?: (action: import("./chassis").ChassisAction) => void;
+  readonly activeWrapId?: string | null;
+  readonly onToggleChassisWrap?: (action: import("./chassis").ChassisAction) => void;
 }
 
 function resolveFallbackContextWindow(
@@ -162,6 +164,8 @@ export function ComposerPanel({
   onCompactNow,
   chassisActions,
   onRunChassisAction,
+  activeWrapId,
+  onToggleChassisWrap,
 }: ComposerPanelProps) {
   const questionnaireContent = questionnaireRequest && onRespondToQuestionnaire
     ? <QuestionnaireComposer request={questionnaireRequest} onRespond={onRespondToQuestionnaire} />
@@ -325,6 +329,8 @@ export function ComposerPanel({
                     onSetCavemanLevel={onSetCavemanLevel}
                     chassisActions={chassisActions}
                     onRunChassisAction={onRunChassisAction}
+                    activeWrapId={activeWrapId}
+                    onToggleChassisWrap={onToggleChassisWrap}
                   />
                 </div>
                 <div className="composer__actions">
