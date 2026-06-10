@@ -1,94 +1,83 @@
-import { expect, test } from "@playwright/test";
 import { join } from "node:path";
-import {
-  getDesktopState,
-  launchDesktop,
-  makeUserDataDir,
-  makeWorkspace,
-  waitForWorkspaceByPath,
-  seedAgentDir,
-} from "../helpers/electron-app";
+import { expect, test } from "@playwright/test";
+import { launchDesktop, makeUserDataDir, makeWorkspace, openNewThread, seedAgentDir } from "../helpers/electron-app";
 
-test.describe("Composer Layout Default Parity", () => {
-  test("default layout renders controls in exact same order as hardcoded row", async ({ page }) => {
-    test.setTimeout(30_000);
-    
-    const userDataDir = await makeUserDataDir();
-    const workspaceRoot = await makeWorkspace("layout-parity");
-    await seedAgentDir(workspaceRoot);
-    
-    const { app } = await launchDesktop({ userDataDir });
-    await waitForWorkspaceByPath(app, workspaceRoot);
-    
-    // Check the composer controls are present and in the right order
-    const controls = page.locator('.composer__controls, .composer-layout-grid');
-    await expect(controls).toBeVisible();
-    
-    // Verify the default layout shows controls in this order:
-    // mode · model · reasoning (caveman) · orchestrate · badges · send
-    const modeSelector = page.locator('[data-testid="composer-mode-selector"]');
-    const modelSelector = page.locator('.model-selector');
-    const cavemanSelector = page.locator('.caveman-selector');
-    const orchestrateSwitch = page.locator('[data-testid="orchestrate-switch"]');
-    const badges = page.locator('.model-feature-badges');
-    const sendButton = page.locator('[data-testid="send"]');
-    
-    // All controls should be visible
-    await expect(modeSelector).toBeVisible();
-    await expect(modelSelector).toBeVisible();
-    await expect(cavemanSelector).toBeVisible();
-    await expect(orchestrateSwitch).toBeVisible();
-    await expect(badges).toBeVisible();
-    await expect(sendButton).toBeVisible();
-    
-    // Verify they're in the expected order using bounding boxes
-    const modeBox = await modeSelector.boundingBox();
-    const modelBox = await modelSelector.boundingBox();
-    const cavemanBox = await cavemanSelector.boundingBox();
-    const orchestrateBox = await orchestrateSwitch.boundingBox();
-    const sendBox = await sendButton.boundingBox();
-    
-    expect(modeBox).toBeTruthy();
-    expect(modelBox).toBeTruthy();
-    expect(cavemanBox).toBeTruthy();
-    expect(orchestrateBox).toBeTruthy();
-    expect(sendBox).toBeTruthy();
-    
-    // Mode should be leftmost
-    expect(modelBox!.x).toBeGreaterThan(modeBox!.x);
-    expect(cavemanBox!.x).toBeGreaterThan(modelBox!.x);
-    expect(orchestrateBox!.x).toBeGreaterThan(cavemanBox!.x);
-    // Send should be rightmost
-    expect(sendBox!.x).toBeGreaterThan(orchestrateBox!.x);
-    
-    await app.close();
+// Headline gate for #54: the layout engine rendering the DEFAULT layout must be
+// structurally equivalent to the old hardcoded control row — same controls, same
+// left-to-right order — so users who never open the editor see no change.
+
+test("default layout renders built-in controls in the canonical order", async () => {
+  test.setTimeout(90_000);
+  const userDataDir = await makeUserDataDir();
+  const agentDir = join(userDataDir, "agent");
+  const workspacePath = await makeWorkspace("composer-parity-order");
+  await seedAgentDir(agentDir);
+
+  const run = await launchDesktop(userDataDir, {
+    agentDir,
+    initialWorkspaces: [workspacePath],
+    testMode: "background",
   });
 
-  test("required controls cannot be removed", async ({ page }) => {
-    test.setTimeout(30_000);
-    
-    const userDataDir = await makeUserDataDir();
-    const workspaceRoot = await makeWorkspace("required-controls");
-    await seedAgentDir(workspaceRoot);
-    
-    const { app } = await launchDesktop({ userDataDir });
-    await waitForWorkspaceByPath(app, workspaceRoot);
-    
-    // Verify the required controls are marked as such
-    const modelControl = page.locator('[data-unit-id="builtin:model"]');
-    const reasoningControl = page.locator('[data-unit-id="builtin:reasoning"]');
-    const sendControl = page.locator('[data-unit-id="builtin:send"]');
-    
-    // All required controls should be present
-    await expect(modelControl).toBeVisible();
-    await expect(reasoningControl).toBeVisible();
-    await expect(sendControl).toBeVisible();
-    
-    // They should have the required attribute
-    await expect(modelControl).toHaveAttribute('data-required', '');
-    await expect(reasoningControl).toHaveAttribute('data-required', '');
-    await expect(sendControl).toHaveAttribute('data-required', '');
-    
-    await app.close();
+  try {
+    const window = await run.firstWindow();
+    await openNewThread(window);
+
+    const grid = window.locator(".composer-layout-grid").first();
+    await expect(grid).toBeVisible({ timeout: 15_000 });
+    // Wait for the built-in cells to be placed before reading their order.
+    await expect(grid.locator('[data-unit-id="builtin:send"]')).toHaveCount(1, { timeout: 15_000 });
+
+    // Canonical order from the old ComposerControlRow. (builtin:badges renders
+    // empty when the model has no feature badges — same as the old row — so we
+    // assert structural DOM order, not per-cell visibility.)
+    const expectedOrder = [
+      "builtin:mode",
+      "builtin:model",
+      "builtin:reasoning",
+      "builtin:orchestrate",
+      "builtin:badges",
+      "builtin:send",
+    ];
+
+    const actualOrder = await grid
+      .locator('[data-unit-id^="builtin:"]')
+      .evaluateAll((cells) => cells.map((c) => c.getAttribute("data-unit-id")));
+    expect(actualOrder).toEqual(expectedOrder);
+
+    // The send button is still wired through the layout renderer.
+    await expect(window.getByTestId("send").first()).toBeVisible();
+  } finally {
+    await run.close();
+  }
+});
+
+test("required controls are present and marked required in the default layout", async () => {
+  test.setTimeout(90_000);
+  const userDataDir = await makeUserDataDir();
+  const agentDir = join(userDataDir, "agent");
+  const workspacePath = await makeWorkspace("composer-parity-required");
+  await seedAgentDir(agentDir);
+
+  const run = await launchDesktop(userDataDir, {
+    agentDir,
+    initialWorkspaces: [workspacePath],
+    testMode: "background",
   });
+
+  try {
+    const window = await run.firstWindow();
+    await openNewThread(window);
+
+    const grid = window.locator(".composer-layout-grid").first();
+    await expect(grid).toBeVisible({ timeout: 15_000 });
+
+    for (const unitId of ["builtin:model", "builtin:reasoning", "builtin:send"]) {
+      const cell = grid.locator(`[data-unit-id="${unitId}"]`).first();
+      await expect(cell, `${unitId} should render`).toBeVisible({ timeout: 10_000 });
+      await expect(cell, `${unitId} should be marked required`).toHaveAttribute("data-required", "");
+    }
+  } finally {
+    await run.close();
+  }
 });
