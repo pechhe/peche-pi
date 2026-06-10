@@ -171,7 +171,7 @@ export type { TranscriptMessage } from "./timeline-types";
 import type { TranscriptMessage } from "./timeline-types";
 
 
-export type AppView = "threads" | "new-thread" | "skills" | "extensions" | "settings" | "context" | "queue" | "kanban" | "automations" | "agents" | "graph" | "testing";
+export type AppView = "threads" | "new-thread" | "skills" | "extensions" | "settings" | "context" | "queue" | "kanban" | "automations" | "agents" | "graph" | "testing" | "composer-layout";
 export type WorkspaceKind = "primary" | "worktree";
 export type WorktreeStatus = "ready" | "missing" | "error";
 /**

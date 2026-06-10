@@ -59,6 +59,7 @@ interface SettingsAppearanceSectionProps {
   readonly onSetStreamRevealSpeed: (speed: StreamRevealSpeed) => void;
   readonly threadTransition: ThreadTransitionSettings;
   readonly onSetThreadTransition: (settings: Partial<ThreadTransitionSettings>) => void;
+  readonly onSetActiveView: (view: import("./desktop-state").AppView) => void;
 }
 
 const THREAD_TRANSITION_MOTION_OPTIONS: { motion: ThreadTransitionMotion; label: string; description: string }[] = [
@@ -105,6 +106,7 @@ export function SettingsAppearanceSection({
   onSetStreamRevealSpeed,
   threadTransition,
   onSetThreadTransition,
+  onSetActiveView,
 }: SettingsAppearanceSectionProps) {
   return (
     <>
@@ -136,6 +138,17 @@ export function SettingsAppearanceSection({
             />
           </SettingsRow>
         ))}
+        <SettingsRow
+          title="Composer layout"
+          description="Arrange and style the control units in your composer"
+        >
+          <button
+            className="settings-button settings-button--primary"
+            onClick={() => onSetActiveView("composer-layout")}
+          >
+            Edit layout
+          </button>
+        </SettingsRow>
       </SettingsGroup>
 
       <SettingsGroup title="Streaming text reveal">

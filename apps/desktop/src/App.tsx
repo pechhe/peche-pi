@@ -41,8 +41,9 @@ import {
 import type { ChassisAction } from "./chassis";
 import { toggleStickyActivation } from "./chassis";
 import { deriveModelOnboardingState } from "./model-onboarding";
+import { getDefaultLayout } from "./composer-layout";
 import { type ModelSelectorHandle } from "./model-selector";
-import { UtilitySurface, SettingsSurface, SkillsSurface, ExtensionsSurface, AutomationsSurface, ContextSurface, AgentsSurface, TestingSurface } from "./surfaces/utility-surface";
+import { UtilitySurface, SettingsSurface, SkillsSurface, ExtensionsSurface, AutomationsSurface, ContextSurface, AgentsSurface, TestingSurface, ComposerLayoutSurface } from "./surfaces/utility-surface";
 import { GraphSurface } from "./surfaces/graph-surface";
 import { type SettingsSection } from "./settings-view";
 import { NewThreadView } from "./new-thread-view";
@@ -2685,6 +2686,21 @@ export default function App() {
         <GraphSurface
           api={api!}
           rootWorkspaceId={rootWorkspace?.id}
+        />
+      } />
+    );
+  }
+
+  if (snapshot.activeView === "composer-layout") {
+    return (
+      <UtilitySurface {...utilityShellProps} content={
+        <ComposerLayoutSurface
+          composerLayout={composerLayout || getDefaultLayout()}
+          deviceMode={snapshot.composerDeviceMode}
+          api={api!}
+          setSnapshot={setSnapshot}
+          updateSnapshot={updateSnapshot}
+          onBack={() => setActiveView("settings")}
         />
       } />
     );

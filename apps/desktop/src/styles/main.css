@@ -8002,7 +8002,7 @@ mark.thread-find-active {
 }
 
 .composer-device--modular .composer__screen {
-  contain: layout;
+  contain: layout paint;
   display: flex;
   min-height: 76px;
   flex-direction: column;

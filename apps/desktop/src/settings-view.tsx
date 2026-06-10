@@ -259,6 +259,7 @@ export function SettingsView({
                     onSetStreamRevealSpeed={onSetStreamRevealSpeed}
                     threadTransition={threadTransition}
                     onSetThreadTransition={onSetThreadTransition}
+                    onSetActiveView={onSetActiveView}
                   />
                 </div>
               </div>
@@ -375,6 +376,7 @@ export function SettingsView({
                   onSetStreamRevealSpeed={onSetStreamRevealSpeed}
                   threadTransition={threadTransition}
                   onSetThreadTransition={onSetThreadTransition}
+                  onSetActiveView={onSetActiveView}
                 />
               ) : null}
               {section === "general" ? (

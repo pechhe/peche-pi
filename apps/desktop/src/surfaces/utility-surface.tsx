@@ -1,4 +1,4 @@
-import { Dispatch, SetStateAction, useMemo, type ReactNode } from "react";
+import { Dispatch, SetStateAction, useMemo, useCallback, type ReactNode } from "react";
 
 import type {
   AppView,
@@ -30,6 +30,8 @@ import { SidebarToggleButton } from "../sidebar-toggle-button";
 import { ShortcutsSheet } from "../shortcuts-sheet";
 import { SearchPalette } from "../search-palette";
 import { Agentation } from "agentation";
+import { ComposerLayoutEditor } from "../composer-layout-editor";
+import type { ComposerLayoutData } from "../composer-layout";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -237,6 +239,34 @@ export function UtilitySurface(props: UtilitySurfaceProps) {
       <main className="main main--skills">{content}</main>
       {import.meta.env.DEV && <Agentation />}
     </div>
+  );
+}
+
+// ── Composer Layout surface ────────────────────────────────────────────────────
+
+export interface ComposerLayoutSurfaceProps {
+  readonly composerLayout: ComposerLayoutData;
+  readonly deviceMode: import("../desktop-state").ComposerDeviceMode;
+  readonly api: PiDesktopApi;
+  readonly setSnapshot: Dispatch<SetStateAction<DesktopAppState | null>>;
+  readonly updateSnapshot: UpdateSnapshotFn;
+  readonly onBack: () => void;
+}
+
+export function ComposerLayoutSurface(props: ComposerLayoutSurfaceProps) {
+  const { composerLayout, deviceMode, api, setSnapshot, updateSnapshot, onBack } = props;
+
+  const handleSave = useCallback((layout: ComposerLayoutData) => {
+    void api.setComposerLayout(layout).then(() => { onBack(); });
+  }, [api, onBack]);
+
+  return (
+    <ComposerLayoutEditor
+      currentLayout={composerLayout}
+      deviceMode={deviceMode}
+      onSave={handleSave}
+      onBack={onBack}
+    />
   );
 }
 

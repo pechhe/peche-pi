@@ -2,4 +2,5 @@
 @import "./styles/sidebar.css";
 @import "./styles/main.css";
 @import "./styles/composer-layout.css";
+@import "./styles/composer-layout-editor.css";
 @import "./styles/syntax-highlight.css";
