@@ -1,0 +1,200 @@
+/*
+ * Preflight intentionally skipped during migration: legacy CSS (main.css
+ * et al.) relies on browser default styles. Enable full preflight in the
+ * Phase 5 cleanup once legacy CSS is gone.
+ */
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+/*
+ * Dark-mode variant: `.dark` and `.dracula` on <html> both count as dark.
+ * Dracula gets its own variant for theme-specific tweaks.
+ */
+@custom-variant dark (&:where(.dark, .dark *, .dracula, .dracula *));
+@custom-variant dracula (&:where(.dracula, .dracula *));
+
+/*
+ * shadcn/ui semantic tokens, mapped from the legacy pi palette
+ * (see base.css). Legacy tokens stay until migration completes.
+ */
+:root {
+  --radius: 0.625rem;
+
+  --background: #f8f8fb; /* legacy --main */
+  --foreground: #39435b; /* legacy --text */
+  --card: #ffffff; /* legacy --surface */
+  --card-foreground: #1f2638; /* legacy --text-strong */
+  --popover: #ffffff;
+  --popover-foreground: #1f2638;
+  --primary: #1f2638; /* legacy --button-primary-bg */
+  --primary-foreground: #ffffff;
+  --secondary: #f1f3f7; /* legacy --surface-muted */
+  --secondary-foreground: #1f2638;
+  --muted: #f1f3f7;
+  --muted-foreground: #747d93; /* legacy --muted */
+  --accent: #eceef3; /* hover wash, legacy --window */
+  --accent-foreground: #1f2638;
+  --destructive: #c45666; /* legacy --error */
+  --destructive-foreground: #ffffff;
+  --border: #dde1ea; /* legacy --line */
+  --input: #d2d7e2; /* legacy --line-strong */
+  --ring: #6a55f2; /* legacy --accent */
+
+  --brand: #6a55f2; /* pi accent, kept as its own token */
+  --brand-foreground: #ffffff;
+
+  --sidebar-bg: #eef0f4; /* legacy --sidebar */
+  --sidebar-foreground: #39435b;
+  --sidebar-border: #dde1ea;
+  --sidebar-accent: #e3e6ee;
+  --sidebar-accent-foreground: #1f2638;
+}
+
+:root.dark {
+  --background: #1e1f22;
+  --foreground: #d4d4d8;
+  --card: #2b2d31;
+  --card-foreground: #f4f4f5;
+  --popover: #232428;
+  --popover-foreground: #f4f4f5;
+  --primary: #f4f4f5;
+  --primary-foreground: #1f2638;
+  --secondary: #232428;
+  --secondary-foreground: #f4f4f5;
+  --muted: #232428;
+  --muted-foreground: #8b8d94;
+  --accent: #2f3136;
+  --accent-foreground: #f4f4f5;
+  --destructive: #e05467;
+  --destructive-foreground: #ffffff;
+  --border: #3a3c42;
+  --input: #4a4d55;
+  --ring: #7c6bf5;
+
+  --brand: #7c6bf5;
+  --brand-foreground: #ffffff;
+
+  --sidebar-bg: #202124;
+  --sidebar-foreground: #d4d4d8;
+  --sidebar-border: #3a3c42;
+  --sidebar-accent: #2b2d31;
+  --sidebar-accent-foreground: #f4f4f5;
+}
+
+:root.dracula {
+  --background: #282a36;
+  --foreground: #f8f8f2;
+  --card: #44475a;
+  --card-foreground: #f8f8f2;
+  --popover: #343746;
+  --popover-foreground: #f8f8f2;
+  --primary: #bd93f9;
+  --primary-foreground: #282a36;
+  --secondary: #343746;
+  --secondary-foreground: #f8f8f2;
+  --muted: #343746;
+  --muted-foreground: #bd93f9;
+  --accent: #44475a;
+  --accent-foreground: #f8f8f2;
+  --destructive: #ff5555;
+  --destructive-foreground: #f8f8f2;
+  --border: #6272a4;
+  --input: #6d7eb0;
+  --ring: #bd93f9;
+
+  --brand: #bd93f9;
+  --brand-foreground: #282a36;
+
+  --sidebar-bg: #21222c;
+  --sidebar-foreground: #f8f8f2;
+  --sidebar-border: #44475a;
+  --sidebar-accent: #343746;
+  --sidebar-accent-foreground: #f8f8f2;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-sidebar: var(--sidebar-bg);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto,
+    Helvetica, Arial, sans-serif;
+  --font-mono:
+    "SF Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, "Cascadia Mono",
+    monospace;
+
+  /* Motion primitives for app-wide micro-animations */
+  --animate-fade-in: fade-in 0.15s ease-out;
+  --animate-slide-up-fade: slide-up-fade 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-slide-down-fade: slide-down-fade 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-scale-in: scale-in 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @keyframes slide-up-fade {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @keyframes slide-down-fade {
+    from {
+      opacity: 0;
+      transform: translateY(-4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @keyframes scale-in {
+    from {
+      opacity: 0;
+      transform: scale(0.97);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+}
