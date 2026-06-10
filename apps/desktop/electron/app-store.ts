@@ -54,6 +54,7 @@ import {
   type StreamRevealMode,
   type StreamRevealSpeed,
   type PlanModeIdeologySetting,
+  type CommitPushMode,
   type ThreadTransitionSettings,
   type ThemeMode,
   type QueuedComposerMessage,
@@ -815,6 +816,16 @@ export class DesktopAppStore implements AppStoreInternals {
 
   async setAutoShip(value: boolean): Promise<DesktopAppState> {
     const next = reduce(this.state, { type: "settings/setAutoShip", autoShip: value });
+    if (next === this.state) {
+      return this.emit();
+    }
+    this.state = next;
+    await this.persistUiState();
+    return this.emit();
+  }
+
+  async setCommitPushMode(mode: CommitPushMode): Promise<DesktopAppState> {
+    const next = reduce(this.state, { type: "settings/setCommitPushMode", commitPushMode: mode });
     if (next === this.state) {
       return this.emit();
     }

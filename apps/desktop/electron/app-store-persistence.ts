@@ -42,6 +42,7 @@ export interface PersistedUiState {
   readonly themeMode?: ThemeMode;
   readonly commitPushModel?: string;
   readonly autoShip?: boolean;
+  readonly commitPushMode?: string;
   readonly modelSelectorPinnedKeys?: readonly string[];
   readonly modelSelectorHiddenKeys?: readonly string[];
   readonly chats?: readonly ChatRecord[];
@@ -85,6 +86,10 @@ function normalizeModelSettingsScopeMode(raw: unknown): ModelSettingsScopeMode |
   return raw === "per-repo" || raw === "app-global" ? raw : undefined;
 }
 
+function normalizeCommitPushMode(raw: unknown): string | undefined {
+  return raw === "manual" || raw === "semi-auto" || raw === "auto-ship" ? raw : undefined;
+}
+
 export async function readPersistedUiState(uiStateFilePath: string): Promise<LegacyPersistedUiState> {
   try {
     const raw = await readFile(uiStateFilePath, "utf8");
@@ -119,6 +124,7 @@ export async function readPersistedUiState(uiStateFilePath: string): Promise<Leg
       themeMode: normalizeThemeMode(parsed.themeMode),
       commitPushModel: typeof parsed.commitPushModel === "string" ? parsed.commitPushModel : undefined,
       autoShip: typeof parsed.autoShip === "boolean" ? parsed.autoShip : undefined,
+      commitPushMode: normalizeCommitPushMode(parsed.commitPushMode),
       chats: Array.isArray(parsed.chats) ? (parsed.chats as readonly ChatRecord[]) : undefined,
       selectedChatId: typeof parsed.selectedChatId === "string" ? parsed.selectedChatId : undefined,
       composerAttachmentsBySession: parsed.composerAttachmentsBySession,

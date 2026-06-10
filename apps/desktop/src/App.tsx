@@ -3123,9 +3123,11 @@ export default function App() {
           onFeatureDone={handleFeatureDone}
           featureDoneState={featureDoneState}
           commitPushModel={snapshot.commitPushModel}
+          commitPushMode={snapshot.commitPushMode}
           selectedRuntime={rootRuntime}
           api={api}
           sessionStatus={selectedSession?.status}
+          onSetCommitPushMode={(mode) => { void api.setCommitPushMode(mode); }}
         />
       ) : null}
 

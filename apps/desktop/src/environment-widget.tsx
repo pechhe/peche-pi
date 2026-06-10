@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { WorkspaceRecord, WorktreeRecord } from "./desktop-state";
+import type { CommitPushMode, WorkspaceRecord, WorktreeRecord } from "./desktop-state";
 import type { WorkspaceMenuState } from "./hooks/use-workspace-menu";
 import type { BranchInfo, PiDesktopApi } from "./ipc";
 import { playButtonClick } from "./button-click-sound";
@@ -18,7 +18,9 @@ interface EnvironmentPanelProps {
   readonly onFeatureDone?: () => void;
   readonly featureDoneState?: "idle" | "working" | "done" | "error";
   readonly commitPushModel?: string;
+  readonly commitPushMode?: CommitPushMode;
   readonly selectedRuntime?: RuntimeSnapshot;
+  readonly onSetCommitPushMode?: (mode: CommitPushMode) => void;
   readonly api: PiDesktopApi;
   readonly sessionStatus?: string;
 }
@@ -33,9 +35,11 @@ export function EnvironmentPanel(props: EnvironmentPanelProps) {
     onFeatureDone,
     featureDoneState,
     commitPushModel,
+    commitPushMode,
     selectedRuntime,
     api,
     sessionStatus,
+    onSetCommitPushMode,
   } = props;
 
   const [branchPickerOpen, setBranchPickerOpen] = useState(false);
@@ -411,10 +415,12 @@ export function EnvironmentPanel(props: EnvironmentPanelProps) {
           workspaceId={selectedWorkspace.id}
           runtime={selectedRuntime}
           commitPushModel={commitPushModel}
+          commitPushMode={commitPushMode}
           api={api}
           sessionStatus={sessionStatus}
           shortcutLabel={commitShortcut}
           branchHint={selectedWorktree?.branchName}
+          onSetCommitPushMode={onSetCommitPushMode}
         />
         {onFeatureDone ? (
           <button

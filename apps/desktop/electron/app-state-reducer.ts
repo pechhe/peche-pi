@@ -1,6 +1,7 @@
 import type {
   AppView,
   ChatRecord,
+  CommitPushMode,
   ComposerAttachment,
   ComposerDeviceMode,
   StreamRevealMode,
@@ -51,6 +52,7 @@ export type DesktopAction =
   | { readonly type: "settings/setExternalTerminalApp"; readonly externalTerminalApp: string }
   | { readonly type: "settings/setCommitPushModel"; readonly commitPushModel: string }
   | { readonly type: "settings/setAutoShip"; readonly autoShip: boolean }
+  | { readonly type: "settings/setCommitPushMode"; readonly commitPushMode: CommitPushMode }
   | { readonly type: "settings/mergeNotificationPreferences"; readonly preferences: Partial<NotificationPreferences> }
   | { readonly type: "view/setActiveView"; readonly activeView: AppView }
   | { readonly type: "settings/setModelSettingsScopeMode"; readonly modelSettingsScopeMode: ModelSettingsScopeMode }
@@ -109,6 +111,8 @@ export function reduce(state: DesktopAppState, action: DesktopAction): DesktopAp
       return setPropIfChanged(state, "commitPushModel", action.commitPushModel);
     case "settings/setAutoShip":
       return setPropIfChanged(state, "autoShip", action.autoShip);
+    case "settings/setCommitPushMode":
+      return setPropIfChanged(state, "commitPushMode", action.commitPushMode);
     case "settings/mergeNotificationPreferences": {
       return bump({
         ...state,

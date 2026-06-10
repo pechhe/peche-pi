@@ -25,10 +25,13 @@ import { DesktopAppStore } from "./app-store";
 import { getChangedFiles, getFileDiff, getWorkspaceGitInfo, redoEdits, stageFile, undoEdits } from "./workspace-review";
 import { configureCommitPushLogDir, executeCommitPush } from "./commit-push-service";
 import {
+  checkPrMergeStatus,
   configurePrLogDir,
   createPullRequest,
   generatePrDraft,
   getWorkspacePrInfo,
+  mergePr,
+  openPrInBrowser,
 } from "./pr-service";
 import { featureDone as featureDoneOrchestrator } from "./feature-done";
 import { listWorkspaceFiles } from "./workspace-review";
@@ -41,7 +44,7 @@ import {
 import { checkForUpdate, downloadUpdate, initAutoUpdater, onUpdateStateChange, quitAndInstall, startPeriodicChecks } from "./update-checker";
 import { ThemeManager } from "./theme-manager";
 import { TerminalService } from "./terminal-service";
-import type { DesktopAppState, ThemeMode } from "../src/desktop-state";
+import type { CommitPushMode, DesktopAppState, ThemeMode } from "../src/desktop-state";
 import { buildContextSnapshot, readContextFiles } from "./context-snapshot";
 import type { ComposerMode } from "../src/composer-mode";
 import { desktopIpc, getDesktopCommandFromShortcut, type CavemanConfigSnapshot, type CavemanLevel, type GraphifyCommunitySummary, type GraphifyProjectMapStatus, type GraphifyRunResult, type UndoEditOp } from "../src/ipc";
@@ -1169,6 +1172,8 @@ app.whenReady().then(async () => {
         store.setCommitPushModel(workspaceId, model),
       setAutoShip: (_event: unknown, value: boolean) =>
         store.setAutoShip(value),
+      setCommitPushMode: (_event: unknown, mode: string) =>
+        store.setCommitPushMode(mode as CommitPushMode),
       getSmartCompactSettings: () => store.getSmartCompactSettings(),
       setSmartCompactSettings: (_event: unknown, settings: Record<string, unknown>) =>
         store.setSmartCompactSettings(settings),
@@ -1350,6 +1355,21 @@ app.whenReady().then(async () => {
         const workspacePath = store.getWorkspacePath(workspaceId);
         if (!workspacePath) return { success: false, message: `Unknown workspace: ${workspaceId}` };
         return createPullRequest(workspacePath, input);
+      },
+      checkPrMergeStatus: async (_event: unknown, workspaceId: string, prNumber: number) => {
+        const workspacePath = store.getWorkspacePath(workspaceId);
+        if (!workspacePath) return { status: "unknown" as const, url: "", number: prNumber };
+        return checkPrMergeStatus(workspacePath, prNumber);
+      },
+      mergePr: async (_event: unknown, workspaceId: string, prNumber: number) => {
+        const workspacePath = store.getWorkspacePath(workspaceId);
+        if (!workspacePath) return { success: false, message: `Unknown workspace: ${workspaceId}` };
+        return mergePr(workspacePath, prNumber);
+      },
+      openPrInBrowser: async (_event: unknown, workspaceId: string, prNumber: number) => {
+        const workspacePath = store.getWorkspacePath(workspaceId);
+        if (!workspacePath) return;
+        await openPrInBrowser(workspacePath, prNumber);
       },
       featureDone: async (_event: unknown, input: { workspaceId: string; threadTitle: string; modelString: string }) => {
         const workspacePath = store.getWorkspacePath(input.workspaceId);

@@ -470,3 +470,59 @@ export async function createPullRequest(
     number: numberMatch ? Number(numberMatch[1]) : undefined,
   };
 }
+
+// ---------------------------------------------------------------------------
+
+export async function checkPrMergeStatus(
+  workspacePath: string,
+  prNumber: number,
+): Promise<{ status: "mergeable" | "conflicts" | "unknown"; url: string; number: number }> {
+  const result = await execGh(
+    ["pr", "view", String(prNumber), "--json", "mergeable,url,number"],
+    workspacePath,
+  );
+  if (result.code !== 0) {
+    log("merge-status.failed", { prNumber, stderr: result.stderr });
+    return { status: "unknown", url: "", number: prNumber };
+  }
+  try {
+    const data = JSON.parse(result.stdout);
+    const mergeable = data.mergeable as string | undefined;
+    const status = mergeable === "MERGEABLE" ? "mergeable" : mergeable === "CONFLICTING" ? "conflicts" : "unknown";
+    return { status, url: data.url ?? "", number: data.number ?? prNumber };
+  } catch {
+    return { status: "unknown", url: "", number: prNumber };
+  }
+}
+
+// ---------------------------------------------------------------------------
+
+export async function mergePr(
+  workspacePath: string,
+  prNumber: number,
+): Promise<{ success: boolean; message: string; url?: string }> {
+  log("merge.start", { prNumber });
+  const result = await execGh(
+    ["pr", "merge", String(prNumber), "--merge"],
+    workspacePath,
+  );
+  if (result.code !== 0) {
+    log("merge.failed", { prNumber, stderr: result.stderr });
+    return {
+      success: false,
+      message: `gh pr merge failed: ${(result.stderr || result.stdout).slice(0, 400)}`,
+    };
+  }
+  const url = result.stdout.split("\n").map((l) => l.trim()).reverse().find((l) => l.startsWith("http"));
+  log("merge.ok", { prNumber, url });
+  return { success: true, message: "Pull request merged.", url };
+}
+
+// ---------------------------------------------------------------------------
+
+export async function openPrInBrowser(
+  workspacePath: string,
+  prNumber: number,
+): Promise<void> {
+  await execGh(["pr", "view", String(prNumber), "--web"], workspacePath);
+}

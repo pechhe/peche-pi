@@ -462,6 +462,8 @@ export interface RemoveWorktreeInput {
 
 export type PlanModeIdeologySetting = "default" | "grill";
 
+export type CommitPushMode = "manual" | "semi-auto" | "auto-ship";
+
 export interface DesktopAppState {
   readonly workspaces: readonly WorkspaceRecord[];
   readonly worktreesByWorkspace: Readonly<Record<string, readonly WorktreeRecord[]>>;
@@ -503,6 +505,7 @@ export interface DesktopAppState {
   readonly buttonSoundSettings: ButtonSoundSettings;
   readonly commitPushModel?: string;
   readonly autoShip?: boolean;
+  readonly commitPushMode?: CommitPushMode;
   readonly chats: readonly ChatRecord[];
   readonly selectedChatId: string;
   readonly automations: readonly Automation[];
@@ -623,6 +626,7 @@ export function createEmptyDesktopAppState(): DesktopAppState {
     buttonSoundSettings: { primary: "click", navigation: "none", toggle: "key", secondary: "none", destructive: "click" },
     commitPushModel: undefined,
     autoShip: false,
+    commitPushMode: "semi-auto",
     chats: [],
     selectedChatId: "",
     automations: [],
