@@ -93,6 +93,30 @@ export function EnvironmentPanel(props: EnvironmentPanelProps) {
     };
   }, [settingsOpen]);
 
+  // Close branch/location pickers on outside click
+  useEffect(() => {
+    if (!branchPickerOpen && !locationPickerOpen) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (document.querySelector("[data-testid='env-branch-list']")?.contains(target)) return;
+      if (document.querySelector("[data-testid='env-location-list']")?.contains(target)) return;
+      setBranchPickerOpen(false);
+      setLocationPickerOpen(false);
+    };
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setBranchPickerOpen(false);
+        setLocationPickerOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [branchPickerOpen, locationPickerOpen]);
+
   if (!selectedWorkspace) return null;
 
   const isWorktree = selectedWorkspace.kind === "worktree";
