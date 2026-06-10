@@ -38,6 +38,10 @@ interface ComposerControlRowProps {
 }
 
 /**
+ * DEPRECATED: This component has been replaced by ComposerLayoutRenderer
+ * which uses the new layout engine. This file is kept temporarily for
+ * reference during the migration.
+ *
  * The shared composer control cluster: plan/build mode, model selector,
  * caveman dial, and model feature badges. Rendered identically across the
  * in-thread composer (composer-panel), the new-thread surface

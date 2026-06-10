@@ -1,11 +1,13 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type RefObject } from "react";
 import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
 import type { ComposerAttachment, ThreadLocation, WorkspaceRecord, WorktreeRecord } from "./desktop-state";
 import type { BranchInfo } from "./ipc";
 import type { ComposerMode } from "./composer-mode";
-import { ComposerControlRow } from "./composer-control-row";
-import { ArrowUpIcon, ChevronDownIcon, MonitorIcon, PiLogoMark, WorktreeIcon } from "./icons";
-import { useButtonSound } from "./use-button-sound";
+import { ComposerLayoutRenderer } from "./composer-layout-renderer";
+import { getDefaultLayout, mergeChassisActionsIntoLayout, validateComposerLayout, controlUnitRegistry } from "./composer-layout";
+import { registerChassisActionUnits } from "./composer-builtin-units";
+import { ChevronDownIcon, MonitorIcon, PiLogoMark, WorktreeIcon } from "./icons";
+
 import { playClick } from "./button-click-sound";
 import {
   MODEL_OPTIONS_EMPTY_TITLE,
@@ -563,14 +565,33 @@ function NewThreadComposerFooter({
   activeWrapId,
   onToggleChassisWrap,
 }: NewThreadComposerFooterProps) {
-  const submitButtonSound = useButtonSound({ variant: "click", disabled: !hasContent || modelOnboarding.requiresModelSelection });
+
+  
+  // Register chassis actions as control units whenever they change
+  useEffect(() => {
+    if (chassisActions) {
+      registerChassisActionUnits(chassisActions);
+    }
+  }, [chassisActions]);
+
+  // Get effective layout - use default layout and add chassis actions
+  const effectiveLayout = useMemo(() => {
+    const availableUnitIds = new Set([
+      ...controlUnitRegistry.getAll().map(u => u.id),
+      ...(chassisActions?.map(a => `chassis:${a.id}`) ?? []),
+    ]);
+    const validatedLayout = validateComposerLayout(getDefaultLayout(), availableUnitIds);
+    return mergeChassisActionsIntoLayout(validatedLayout, chassisActions ?? []);
+  }, [chassisActions]);
+  
   return (
     <>
       <div className="composer__footer">
         <div className="composer__footer-row">
           <div className="composer__hint new-thread__hint">
             <span className="composer__hint-prose">Enter to send · Shift+Enter for newline</span>
-            <ComposerControlRow
+            <ComposerLayoutRenderer
+              layout={effectiveLayout}
               runtime={runtime}
               provider={provider}
               modelId={modelId}
@@ -593,23 +614,12 @@ function NewThreadComposerFooter({
               onRunChassisAction={onRunChassisAction}
               activeWrapId={activeWrapId}
               onToggleChassisWrap={onToggleChassisWrap}
+              onSubmit={onSubmit}
+              hasModelSelection={hasContent && !modelOnboarding.requiresModelSelection}
             />
           </div>
 
           <div className="composer__actions">
-            <span className="composer__key-mount composer__key-mount--send">
-              <button
-                aria-label="Start project"
-                className="button button--primary button--cta-icon composer__send"
-                type="button"
-                disabled={!hasContent || modelOnboarding.requiresModelSelection}
-                data-has-input={hasContent ? "" : undefined}
-                {...submitButtonSound}
-                onClick={onSubmit}
-              >
-                <ArrowUpIcon />
-              </button>
-            </span>
           </div>
         </div>
       </div>

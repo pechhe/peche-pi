@@ -1,9 +1,11 @@
-import { useRef } from "react";
+import { useRef, useEffect, useMemo } from "react";
 import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
 import type { ChassisAction } from "./chassis";
-import { ComposerControlRow } from "./composer-control-row";
+import { ComposerLayoutRenderer } from "./composer-layout-renderer";
+import { getDefaultLayout, mergeChassisActionsIntoLayout, validateComposerLayout, controlUnitRegistry } from "./composer-layout";
+import { registerChassisActionUnits } from "./composer-builtin-units";
 import type { ComposerMode } from "./composer-mode";
-import { ArrowUpIcon } from "./icons";
+
 import type { CavemanLevel } from "./ipc";
 import { type ModelSelectorHandle } from "./model-selector";
 
@@ -14,6 +16,7 @@ interface PendingComposerProps {
   readonly thinkingLevel: string | undefined;
   readonly cavemanLevel: CavemanLevel;
   readonly composerMode: ComposerMode;
+  readonly prompt?: string;
   readonly chassisActions?: readonly ChassisAction[];
   readonly onRunChassisAction?: (action: ChassisAction) => void;
   readonly activeWrapId?: string | null;
@@ -33,11 +36,28 @@ export function PendingComposer({
   thinkingLevel,
   cavemanLevel,
   composerMode,
+  prompt,
   chassisActions,
   onRunChassisAction,
   activeWrapId,
   onToggleChassisWrap,
 }: PendingComposerProps) {
+  // Register chassis actions as control units whenever they change
+  useEffect(() => {
+    if (chassisActions) {
+      registerChassisActionUnits(chassisActions);
+    }
+  }, [chassisActions]);
+
+  // Get effective layout - use default layout and add chassis actions
+  const effectiveLayout = useMemo(() => {
+    const availableUnitIds = new Set([
+      ...controlUnitRegistry.getAll().map(u => u.id),
+      ...(chassisActions?.map(a => `chassis:${a.id}`) ?? []),
+    ]);
+    const validatedLayout = validateComposerLayout(getDefaultLayout(), availableUnitIds);
+    return mergeChassisActionsIntoLayout(validatedLayout, chassisActions ?? []);
+  }, [chassisActions]);
   const modelSelectorRef = useRef<ModelSelectorHandle | null>(null);
 
   return (
@@ -47,11 +67,11 @@ export function PendingComposer({
           <div className="composer__editor">
             <textarea
               aria-label="Composer"
-              disabled
               placeholder=" message the clanker"
               readOnly
               rows={1}
-              value=""
+              value={prompt ?? ""}
+              tabIndex={-1}
             />
             <div className="composer__bar">
               <div className="composer__footer">
@@ -64,14 +84,15 @@ export function PendingComposer({
                 <div className="composer__footer-row">
                   <div className="composer__hint">
                     <span className="composer__hint-prose">Enter to send · Shift+Enter for newline</span>
-                    <ComposerControlRow
+                    <ComposerLayoutRenderer
+                      layout={effectiveLayout}
                       runtime={runtime}
                       provider={provider}
                       modelId={modelId}
                       thinkingLevel={thinkingLevel}
                       cavemanLevel={cavemanLevel}
-                      composerMode={composerMode}
                       disabled
+                      composerMode={composerMode}
                       modelSelectorRef={modelSelectorRef}
                       onSetComposerMode={() => undefined}
                       onSetModel={() => undefined}
@@ -81,19 +102,10 @@ export function PendingComposer({
                       onRunChassisAction={onRunChassisAction}
                       activeWrapId={activeWrapId}
                       onToggleChassisWrap={onToggleChassisWrap}
+                      hasModelSelection={false}
                     />
                   </div>
                   <div className="composer__actions">
-                    <span className="composer__key-mount composer__key-mount--send">
-                      <button
-                        aria-label="Send message"
-                        className="button button--primary button--cta-icon composer__send"
-                        type="button"
-                        disabled
-                      >
-                        <ArrowUpIcon />
-                      </button>
-                    </span>
                   </div>
                 </div>
               </div>

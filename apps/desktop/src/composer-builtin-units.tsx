@@ -4,7 +4,7 @@ import { CavemanSelector } from "./caveman-selector";
 import { OrchestrateSwitch } from "./orchestrate-switch";
 import { ModelFeatureBadges } from "./model-feature-badges";
 import { ChassisActionControl } from "./chassis-action-control";
-import { ArrowUpIcon } from "./icons";
+
 import { controlUnitRegistry } from "./composer-layout";
 
 // Register built-in control units
