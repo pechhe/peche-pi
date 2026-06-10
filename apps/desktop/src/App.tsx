@@ -954,6 +954,17 @@ export default function App() {
     return active && active.trigger === "sticky" && active.effect.type === "wrap" ? active.effect.template : null;
   }, [activeStickyId, chassisActions]);
 
+  // Load composer layout (app-global for MVP)
+  useEffect(() => {
+    const piApi = window.piApp;
+    if (!piApi) return;
+    void piApi.getComposerLayout().then((layout) => {
+      if (layout) {
+        setComposerLayout(layout);
+      }
+    }).catch(() => {});
+  }, []);
+
   // Mark a session's plan as ready to execute when its plan-mode run finishes
   // (running -> idle). Edge-detecting on the prior snapshot status dedupes and
   // works even if the run completes while another session is on screen.

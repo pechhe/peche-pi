@@ -6,6 +6,8 @@ import type { ComposerMode } from "./composer-mode";
 import type { CavemanLevel } from "./ipc";
 import type { ChassisAction } from "./chassis";
 import type { ModelSelectorHandle } from "./model-selector";
+import { ArrowUpIcon, StopSquareIcon } from "./icons";
+import { playClick } from "./button-click-sound";
 
 interface ComposerLayoutRendererProps {
   readonly layout: ComposerLayoutData;
@@ -158,16 +160,10 @@ export const ComposerLayoutRenderer = memo(function ComposerLayoutRenderer({
                 data-testid="send"
                 type="button"
                 disabled={!primaryActionIsStop && !hasModelSelection}
-                onPointerDown={() => { (window as any).playClick?.("down"); }}
+                onPointerDown={() => { playClick("down"); }}
                 onClick={onSubmit}
               >
-                {primaryActionIsStop ? (
-                  // Would import StopSquareIcon here
-                  <span>■</span>
-                ) : (
-                  // Would import ArrowUpIcon here
-                  <span>↑</span>
-                )}
+                {primaryActionIsStop ? <StopSquareIcon /> : <ArrowUpIcon />}
               </button>
             ) : (
               // Regular unit rendering

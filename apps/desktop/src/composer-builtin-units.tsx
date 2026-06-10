@@ -95,25 +95,16 @@ controlUnitRegistry.register({
 });
 
 // Send button - special handling as it's a required control
+// Note: The send button is handled specially in ComposerLayoutRenderer
+// because it needs access to onSubmit and primaryActionIsStop from the parent
 controlUnitRegistry.register({
   id: "builtin:send",
   kind: "builtin",
   label: "Send",
   defaultSpan: 1,
-  render: (props) => {
-    // Note: Send button needs additional props from parent context
-    // This is a placeholder - actual implementation will need to be passed from parent
-    return (
-      <button
-        aria-label="Send message"
-        className="button button--primary button--cta-icon composer__send"
-        data-testid="send"
-        type="button"
-        disabled={props.disabled}
-      >
-        <ArrowUpIcon />
-      </button>
-    );
+  render: (_props) => {
+    // This is never actually rendered - the layout renderer has special handling for send
+    return <></>;
   },
 });
 

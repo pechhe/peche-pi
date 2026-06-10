@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert";
-import { validateComposerLayout, getEffectiveControlStyle, getDefaultLayout, mergeChassisActionsIntoLayout, type ComposerLayoutData, type ComposerUnitPlacement } from "./composer-layout";
-import type { ChassisAction } from "./chassis";
+import { validateComposerLayout, getEffectiveControlStyle, getDefaultLayout, mergeChassisActionsIntoLayout, type ComposerLayoutData, type ComposerUnitPlacement } from "./composer-layout.ts";
+import type { ChassisAction } from "./chassis.ts";
 
 test("validateComposerLayout - returns default layout for invalid input", () => {
   const availableUnitIds = new Set(["builtin:mode", "builtin:model", "builtin:reasoning", "builtin:orchestrate", "builtin:badges", "builtin:send"]);
@@ -210,20 +210,20 @@ test("mergeChassisActionsIntoLayout - adds new chassis actions after built-ins",
   const result = mergeChassisActionsIntoLayout(layout, chassisActions);
   
   // Original placements preserved
-  assert.strictEqual(result.placements[0].unitId, "builtin:mode");
-  assert.strictEqual(result.placements[1].unitId, "builtin:model");
-  assert.strictEqual(result.placements[2].unitId, "builtin:send");
+  assert.strictEqual(result.placements[0]!.unitId, "builtin:mode");
+  assert.strictEqual(result.placements[1]!.unitId, "builtin:model");
+  assert.strictEqual(result.placements[2]!.unitId, "builtin:send");
   
   // New chassis actions added
-  assert.strictEqual(result.placements[3].unitId, "chassis:act1");
-  assert.strictEqual(result.placements[3].row, 0);
-  assert.strictEqual(result.placements[3].col, 5); // After model
-  assert.strictEqual(result.placements[3].colSpan, 2);
+  assert.strictEqual(result.placements[3]!.unitId, "chassis:act1");
+  assert.strictEqual(result.placements[3]!.row, 0);
+  assert.strictEqual(result.placements[3]!.col, 5); // After model
+  assert.strictEqual(result.placements[3]!.colSpan, 2);
   
-  assert.strictEqual(result.placements[4].unitId, "chassis:act2");
-  assert.strictEqual(result.placements[4].row, 0);
-  assert.strictEqual(result.placements[4].col, 7);
-  assert.strictEqual(result.placements[4].colSpan, 2);
+  assert.strictEqual(result.placements[4]!.unitId, "chassis:act2");
+  assert.strictEqual(result.placements[4]!.row, 0);
+  assert.strictEqual(result.placements[4]!.col, 7);
+  assert.strictEqual(result.placements[4]!.colSpan, 2);
 });
 
 test("mergeChassisActionsIntoLayout - wraps to next row when needed", () => {

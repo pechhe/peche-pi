@@ -7,6 +7,14 @@ import type { CavemanLevel } from "./ipc";
 /** Built-in control IDs that must exist in every layout. */
 export const REQUIRED_UNIT_IDS = ["builtin:send", "builtin:reasoning", "builtin:model"] as const;
 
+// Fallback spans for required units when the control-unit registry is not
+// populated (headless contexts). Mirrors the default layout spans.
+const REQUIRED_DEFAULT_SPANS: Record<string, number> = {
+  "builtin:model": 3,
+  "builtin:reasoning": 2,
+  "builtin:send": 1,
+};
+
 /** A placeable control unit in the composer - built-in or chassis action. */
 export interface ComposerControlUnit {
   readonly id: string;
@@ -128,12 +136,13 @@ export function validateComposerLayout(
       seenRequiredIds.add(placement.unitId);
     }
 
-    // Fix invalid positions
+    // Fix invalid positions (clamp colSpan against the FIXED col, not the raw one)
+    const fixedCol = Math.max(0, Math.min(11, Math.floor(placement.col)));
     const validPlacement: ComposerUnitPlacement = {
       unitId: placement.unitId,
       row: Math.max(0, Math.floor(placement.row)),
-      col: Math.max(0, Math.min(11, Math.floor(placement.col))),
-      colSpan: Math.max(1, Math.min(12 - placement.col, Math.floor(placement.colSpan))),
+      col: fixedCol,
+      colSpan: Math.max(1, Math.min(12 - fixedCol, Math.floor(placement.colSpan))),
       color: placement.color,
       showLabel: placement.showLabel,
     };
@@ -147,23 +156,22 @@ export function validateComposerLayout(
 
   for (const requiredId of REQUIRED_UNIT_IDS) {
     if (!seenRequiredIds.has(requiredId)) {
-      const unit = controlUnitRegistry.get(requiredId);
-      if (unit) {
-        // Place on next available position
-        if (nextCol + unit.defaultSpan > 12) {
-          nextCol = 0;
-          nextRow++;
-        }
-        
-        validPlacements.push({
-          unitId: requiredId,
-          row: nextRow,
-          col: nextCol,
-          colSpan: unit.defaultSpan,
-        });
-        
-        nextCol += unit.defaultSpan;
+      // Required units must always be inserted even if the registry isn't
+      // populated (e.g. headless unit tests); fall back to known default spans.
+      const span = controlUnitRegistry.get(requiredId)?.defaultSpan ?? REQUIRED_DEFAULT_SPANS[requiredId] ?? 1;
+      if (nextCol + span > 12) {
+        nextCol = 0;
+        nextRow++;
       }
+
+      validPlacements.push({
+        unitId: requiredId,
+        row: nextRow,
+        col: nextCol,
+        colSpan: span,
+      });
+
+      nextCol += span;
     }
   }
 
