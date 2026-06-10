@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { Search } from "lucide-react";
+import { cn } from "@/lib/utils";
 import type { RuntimeSettingsSnapshot, RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
 import type { ModelSettingsScopeMode, NotificationPreferences, ThreadTransitionSettings, WorkspaceRecord } from "./desktop-state";
 import type { ButtonSoundSettings } from "./button-click-sound";
@@ -211,15 +213,16 @@ export function SettingsView({
   }
 
   return (
-    <div className="settings-view">
-      <nav className="settings-sidebar">
-        <div className="settings-search-bar">
-          <svg className="settings-search-bar__icon" viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
-            <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85Zm-5.44.856a5.3 5.3 0 1 1 0-10.6 5.3 5.3 0 0 1 0 10.6Z"/>
-          </svg>
+    <div className="settings-view mx-auto flex w-full max-w-[1080px] gap-10 animate-in fade-in duration-300">
+      <nav className="settings-sidebar flex w-44 shrink-0 flex-col gap-1">
+        <div className="settings-search-bar relative mb-2">
+          <Search
+            aria-hidden
+            className="settings-search-bar__icon pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground"
+          />
           <input
             ref={searchInputRef}
-            className="settings-search-bar__input"
+            className="settings-search-bar__input h-8 w-full rounded-lg border border-input bg-card pr-2 pl-8 text-[13px] text-foreground shadow-xs outline-none transition-[border-color,box-shadow] placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
             type="text"
             placeholder="Search settings…"
             value={searchQuery}
@@ -231,7 +234,11 @@ export function SettingsView({
         {(["appearance", "general", "providers", "models", "notifications", "sounds", "actions"] as const).map((item) => (
           <button
             key={item}
-            className={`settings-sidebar__item${section === item ? " settings-sidebar__item--active" : ""}`}
+            className={cn(
+              "settings-sidebar__item rounded-lg px-3 py-1.5 text-left text-[13px] font-medium text-muted-foreground transition-colors duration-150 hover:bg-accent/60 hover:text-foreground",
+              section === item &&
+                "settings-sidebar__item--active bg-brand/10 text-brand hover:bg-brand/10 hover:text-brand",
+            )}
             type="button"
             onClick={() => onSelectSection(item)}
           >
@@ -240,14 +247,14 @@ export function SettingsView({
         ))}
       </nav>
 
-      <div className="settings-content" ref={settingsContentRef}>
+      <div className="settings-content min-w-0 flex-1" ref={settingsContentRef}>
         {isSearching ? (
           <>
-            <h1 className="view-header__title">Search results</h1>
-            <div className="settings-grid">
+            <h1 className="view-header__title mt-0 mb-6 text-2xl font-semibold tracking-tight text-foreground">Search results</h1>
+            <div className="settings-grid grid gap-8">
               <div data-section="appearance">
-                <h2 className="settings-section-heading">{sectionTitle("appearance")}</h2>
-                <div className="settings-grid__section">
+                <h2 className="settings-section-heading mt-2 mb-4 border-b border-border pb-2 text-base font-semibold text-foreground">{sectionTitle("appearance")}</h2>
+                <div className="settings-grid__section grid gap-7">
                   <SettingsAppearanceSection
                     themeMode={themeMode}
                     onSetThemeMode={onSetThemeMode}
@@ -264,8 +271,8 @@ export function SettingsView({
                 </div>
               </div>
               <div data-section="general">
-                <h2 className="settings-section-heading">{sectionTitle("general")}</h2>
-                <div className="settings-grid__section">
+                <h2 className="settings-section-heading mt-2 mb-4 border-b border-border pb-2 text-base font-semibold text-foreground">{sectionTitle("general")}</h2>
+                <div className="settings-grid__section grid gap-7">
                   <SettingsGeneralSection
                     runtime={runtime}
                     modelSettingsScopeMode={modelSettingsScopeMode}
@@ -297,8 +304,8 @@ export function SettingsView({
                 </div>
               </div>
               <div data-section="providers">
-                <h2 className="settings-section-heading">{sectionTitle("providers")}</h2>
-                <div className="settings-grid__section">
+                <h2 className="settings-section-heading mt-2 mb-4 border-b border-border pb-2 text-base font-semibold text-foreground">{sectionTitle("providers")}</h2>
+                <div className="settings-grid__section grid gap-7">
                   <SettingsProvidersSection
                     runtime={runtime}
                     onLoginProvider={onLoginProvider}
@@ -311,8 +318,8 @@ export function SettingsView({
                 </div>
               </div>
               <div data-section="models">
-                <h2 className="settings-section-heading">{sectionTitle("models")}</h2>
-                <div className="settings-grid__section">
+                <h2 className="settings-section-heading mt-2 mb-4 border-b border-border pb-2 text-base font-semibold text-foreground">{sectionTitle("models")}</h2>
+                <div className="settings-grid__section grid gap-7">
                   <SettingsModelsSection
                     runtime={runtime}
                     onSetDefaultModel={onSetDefaultModel}
@@ -322,8 +329,8 @@ export function SettingsView({
                 </div>
               </div>
               <div data-section="notifications">
-                <h2 className="settings-section-heading">{sectionTitle("notifications")}</h2>
-                <div className="settings-grid__section">
+                <h2 className="settings-section-heading mt-2 mb-4 border-b border-border pb-2 text-base font-semibold text-foreground">{sectionTitle("notifications")}</h2>
+                <div className="settings-grid__section grid gap-7">
                   <SettingsNotificationsSection
                     notificationPreferences={notificationPreferences}
                     notificationPermissionStatus={notificationPermissionStatus}
@@ -335,8 +342,8 @@ export function SettingsView({
                 </div>
               </div>
               <div data-section="sounds">
-                <h2 className="settings-section-heading">{sectionTitle("sounds")}</h2>
-                <div className="settings-grid__section">
+                <h2 className="settings-section-heading mt-2 mb-4 border-b border-border pb-2 text-base font-semibold text-foreground">{sectionTitle("sounds")}</h2>
+                <div className="settings-grid__section grid gap-7">
                   <SettingsSoundsSection
                     soundSettings={buttonSoundSettings}
                     onSetSoundSettings={onSetButtonSoundSettings}
@@ -344,8 +351,8 @@ export function SettingsView({
                 </div>
               </div>
               <div data-section="actions">
-                <h2 className="settings-section-heading">{sectionTitle("actions")}</h2>
-                <div className="settings-grid__section">
+                <h2 className="settings-section-heading mt-2 mb-4 border-b border-border pb-2 text-base font-semibold text-foreground">{sectionTitle("actions")}</h2>
+                <div className="settings-grid__section grid gap-7">
                   <SettingsActionsSection
                     api={window.piApp}
                     chassisActions={chassisActions ?? []}
@@ -357,13 +364,13 @@ export function SettingsView({
               </div>
             </div>
             {noResults ? (
-              <p className="settings-search-empty">No matching settings found.</p>
+              <p className="settings-search-empty py-10 text-center text-sm text-muted-foreground">No matching settings found.</p>
             ) : null}
           </>
         ) : (
           <>
-            <h1 className="view-header__title">{sectionTitle(section)}</h1>
-            <div className="settings-grid">
+            <h1 className="view-header__title mt-0 mb-6 text-2xl font-semibold tracking-tight text-foreground">{sectionTitle(section)}</h1>
+            <div className="settings-grid grid gap-7 animate-in fade-in slide-in-from-bottom-1 duration-200" key={section}>
               {section === "appearance" ? (
                 <SettingsAppearanceSection
                   themeMode={themeMode}

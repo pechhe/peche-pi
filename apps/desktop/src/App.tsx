@@ -2528,7 +2528,7 @@ export default function App() {
 
   if (snapshot.activeView === "settings") {
     return (
-      <UtilitySurface {...utilityShellProps} content={
+      <UtilitySurface {...utilityShellProps} testId="settings-surface" content={
         <SettingsSurface
           snapshot={snapshot}
           rootWorkspaceOptions={rootWorkspaceOptions}
@@ -2573,7 +2573,7 @@ export default function App() {
 
   if (snapshot.activeView === "skills") {
     return (
-      <UtilitySurface {...utilityShellProps} content={
+      <UtilitySurface {...utilityShellProps} testId="skills-surface" content={
         <SkillsSurface
           skillsWorkspace={skillsWorkspace}
           rootWorkspaceOptions={rootWorkspaceOptions}
@@ -2599,7 +2599,7 @@ export default function App() {
 
   if (snapshot.activeView === "extensions") {
     return (
-      <UtilitySurface {...utilityShellProps} content={
+      <UtilitySurface {...utilityShellProps} testId="extensions-surface" content={
         <ExtensionsSurface
           extensionsWorkspace={extensionsWorkspace}
           extensionsRuntime={extensionsRuntime}
@@ -2616,7 +2616,7 @@ export default function App() {
 
   if (snapshot.activeView === "testing") {
     return (
-      <UtilitySurface {...utilityShellProps} content={
+      <UtilitySurface {...utilityShellProps} testId="testing-surface" content={
         <TestingSurface
           snapshot={snapshot}
           onSelectSession={handleSelectSession}
@@ -2629,7 +2629,7 @@ export default function App() {
 
   if (snapshot.activeView === "automations") {
     return (
-      <UtilitySurface {...utilityShellProps} content={
+      <UtilitySurface {...utilityShellProps} testId="automations-surface" content={
         <AutomationsSurface
           snapshot={snapshot}
           selectedWorkspace={selectedWorkspace}
@@ -2670,7 +2670,7 @@ export default function App() {
 
   if (snapshot.activeView === "agents") {
     return (
-      <UtilitySurface {...utilityShellProps} content={
+      <UtilitySurface {...utilityShellProps} testId="agents-surface" content={
         <AgentsSurface
           snapshot={snapshot}
           agentsWorkspace={rootWorkspace}
@@ -2683,7 +2683,7 @@ export default function App() {
 
   if (snapshot.activeView === "graph") {
     return (
-      <UtilitySurface {...utilityShellProps} content={
+      <UtilitySurface {...utilityShellProps} testId="graph-surface" content={
         <GraphSurface
           api={api!}
           rootWorkspaceId={rootWorkspace?.id}

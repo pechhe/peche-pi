@@ -204,3 +204,118 @@
     }
   }
 }
+
+/* ── Settings form controls (shared across all settings sections) ──
+   Component classes so dozens of call sites stay consistent without
+   per-site utility soup. Themed via shadcn tokens (all 3 themes). */
+@layer components {
+  .settings-pill {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-[12px] font-semibold text-muted-foreground transition-all duration-150 hover:text-foreground hover:border-ring/40 active:scale-[0.97];
+  }
+  .settings-pill--active {
+    @apply border-brand/40 bg-brand/10 text-brand hover:text-brand;
+  }
+  .settings-text-input,
+  .settings-select,
+  .settings-search,
+  .settings-input {
+    @apply h-9 w-full max-w-105 rounded-lg border border-input bg-card px-3 text-[13px] text-foreground shadow-xs transition-[color,border-color,box-shadow] outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30;
+  }
+  .settings-select {
+    @apply appearance-none cursor-pointer pr-8 bg-no-repeat;
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-position: right 0.6rem center;
+  }
+  .settings-textarea {
+    @apply w-full rounded-lg border border-input bg-card px-3 py-2 font-mono text-xs text-foreground shadow-xs transition-[color,border-color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30;
+  }
+}
+
+@layer components {
+  .settings-text-input--small {
+    @apply max-w-28;
+  }
+  .settings-pill-row {
+    @apply flex flex-wrap items-center gap-1.5;
+  }
+  .settings-hint {
+    @apply text-xs text-muted-foreground italic;
+  }
+  .settings-warning {
+    @apply text-xs font-medium text-amber-600 dark:text-amber-400;
+  }
+  .settings-field {
+    @apply grid gap-1.5 text-[13px] font-medium text-foreground;
+  }
+  .settings-list {
+    @apply grid gap-2;
+  }
+  .settings-list__row {
+    @apply flex items-center justify-between gap-4 rounded-lg border border-border bg-card px-3 py-2;
+  }
+  .settings-list__body {
+    @apply grid min-w-0 gap-0.5;
+  }
+  .settings-list__title {
+    @apply truncate text-[13px] font-medium text-foreground;
+  }
+  .settings-list__meta {
+    @apply text-xs text-muted-foreground;
+  }
+  .settings-option {
+    @apply flex items-center justify-between gap-4 rounded-lg border border-border bg-card px-3 py-2 transition-colors hover:border-ring/40;
+  }
+  .settings-option--active {
+    @apply border-brand/40 bg-brand/5;
+  }
+  .settings-option__title {
+    @apply text-[13px] font-medium text-foreground;
+  }
+  .settings-option__meta {
+    @apply text-xs text-muted-foreground;
+  }
+  .settings-toggle {
+    @apply flex items-center gap-2 text-[13px] text-foreground;
+  }
+  .settings-toggle input[type="checkbox"] {
+    @apply size-3.5 accent-brand;
+  }
+  .settings-toggle--row {
+    @apply rounded-lg border border-border bg-card px-3 py-2 transition-colors hover:border-ring/40;
+  }
+  .settings-toggle--inline {
+    @apply shrink-0;
+  }
+  .settings-disclosure {
+    @apply rounded-xl border border-border bg-card shadow-xs;
+  }
+  .settings-disclosure__summary {
+    @apply flex cursor-pointer items-center justify-between gap-3 rounded-xl px-4 py-3 text-sm font-medium text-foreground select-none transition-colors hover:bg-accent/40 [&::-webkit-details-marker]:hidden;
+  }
+  .settings-disclosure__summary::after {
+    content: "›";
+    @apply text-muted-foreground transition-transform duration-200;
+  }
+  .settings-disclosure[open] > .settings-disclosure__summary::after {
+    @apply rotate-90;
+  }
+  .settings-disclosure__body {
+    @apply grid gap-3 border-t border-border/60 px-4 py-3;
+  }
+  .settings-inline-actions {
+    @apply flex flex-wrap items-center gap-2;
+  }
+  .settings-row--stacked {
+    @apply !flex-col !items-start gap-2.5;
+  }
+  .settings-row__actions {
+    @apply flex items-center gap-2;
+  }
+}
+
+@layer components {
+  /* Disclosure nested inside a settings card: flatten instead of card-in-card. */
+  .settings-group .settings-disclosure {
+    @apply rounded-none border-0 bg-transparent shadow-none;
+  }
+}

@@ -56,7 +56,7 @@ test("settings lets the user save an API key for a built-in provider", async () 
     });
     await expect(connectedProviders).toContainText("openai");
     await expect(connectedProviders).toContainText("API key");
-    await expect(connectedProviders.getByRole("button", { name: "Manage" })).toBeVisible();
+    await expect(connectedProviders.getByRole("button", { name: "Manage", exact: true })).toBeVisible();
 
     await window.getByRole("button", { name: "Models", exact: true }).click();
     const enabledModels = window.locator(".settings-section", {

@@ -416,7 +416,7 @@ export function Sidebar(props: SidebarProps) {
         >
           <SearchIcon />
           <span className="sidebar__search-label">Search</span>
-          <kbd className="sidebar__search-shortcut">{getDesktopShortcutLabel(api.platform, "K")}</kbd>
+          <kbd aria-hidden className="sidebar__search-shortcut">{getDesktopShortcutLabel(api.platform, "K")}</kbd>
         </button>
         <MovingSidebarHighlight className="sidebar__nav" itemSelector=".sidebar__nav-item">
           <button
@@ -426,7 +426,7 @@ export function Sidebar(props: SidebarProps) {
           >
             <SparkIcon />
             <span>Agents</span>
-            <kbd className="sidebar__nav-shortcut shortcut-hint">{getDesktopShortcutLabel(api.platform, "⇧1")}</kbd>
+            <kbd aria-hidden className="sidebar__nav-shortcut shortcut-hint">{getDesktopShortcutLabel(api.platform, "⇧1")}</kbd>
           </button>
           <button
             className={`sidebar__nav-item ${activeView === "skills" ? "sidebar__nav-item--active" : ""}`}
@@ -435,7 +435,7 @@ export function Sidebar(props: SidebarProps) {
           >
             <SkillIcon />
             <span>Skills</span>
-            <kbd className="sidebar__nav-shortcut shortcut-hint">{getDesktopShortcutLabel(api.platform, "⇧2")}</kbd>
+            <kbd aria-hidden className="sidebar__nav-shortcut shortcut-hint">{getDesktopShortcutLabel(api.platform, "⇧2")}</kbd>
           </button>
           <button
             className={`sidebar__nav-item ${activeView === "extensions" ? "sidebar__nav-item--active" : ""}`}
@@ -444,7 +444,7 @@ export function Sidebar(props: SidebarProps) {
           >
             <ExtensionIcon />
             <span>Extensions</span>
-            <kbd className="sidebar__nav-shortcut shortcut-hint">{getDesktopShortcutLabel(api.platform, "⇧3")}</kbd>
+            <kbd aria-hidden className="sidebar__nav-shortcut shortcut-hint">{getDesktopShortcutLabel(api.platform, "⇧3")}</kbd>
           </button>
           <button
             className={`sidebar__nav-item ${activeView === "automations" ? "sidebar__nav-item--active" : ""}`}
@@ -467,7 +467,7 @@ export function Sidebar(props: SidebarProps) {
                 ) : null}
               </span>
             ) : null}
-            <kbd className="sidebar__nav-shortcut shortcut-hint">{getDesktopShortcutLabel(api.platform, "⇧4")}</kbd>
+            <kbd aria-hidden className="sidebar__nav-shortcut shortcut-hint">{getDesktopShortcutLabel(api.platform, "⇧4")}</kbd>
           </button>
           <button
             className={`sidebar__nav-item ${activeView === "testing" ? "sidebar__nav-item--active" : ""}`}
@@ -483,7 +483,7 @@ export function Sidebar(props: SidebarProps) {
                 </span>
               </span>
             ) : null}
-            <kbd className="sidebar__nav-shortcut shortcut-hint">{getDesktopShortcutLabel(api.platform, "⇧6")}</kbd>
+            <kbd aria-hidden className="sidebar__nav-shortcut shortcut-hint">{getDesktopShortcutLabel(api.platform, "⇧6")}</kbd>
           </button>
           <button
             className={`sidebar__nav-item ${activeView === "settings" ? "sidebar__nav-item--active" : ""}`}
@@ -492,7 +492,7 @@ export function Sidebar(props: SidebarProps) {
           >
             <SettingsIcon />
             <span>Settings</span>
-            <kbd className="sidebar__nav-shortcut shortcut-hint">{getDesktopShortcutLabel(api.platform, ",")}</kbd>
+            <kbd aria-hidden className="sidebar__nav-shortcut shortcut-hint">{getDesktopShortcutLabel(api.platform, ",")}</kbd>
           </button>
         </MovingSidebarHighlight>
       </div>

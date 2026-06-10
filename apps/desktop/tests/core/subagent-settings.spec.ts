@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
-import { desktopShortcut, getDesktopState, launchDesktop, makeUserDataDir, makeWorkspace } from "../helpers/electron-app";
+import { getDesktopState, launchDesktop, makeUserDataDir, makeWorkspace } from "../helpers/electron-app";
 
 test("subagents settings expose config and project agent manager", async () => {
   test.setTimeout(60_000);
@@ -29,8 +29,7 @@ Scout prompt.
 
   try {
     const window = await harness.firstWindow();
-    await openSettings(window);
-    await openSettingsSection(window, "Subagents");
+    await openAgentsView(window);
 
     await expect(window.getByRole("heading", { name: "Subagents", exact: true })).toBeVisible();
     await expect(window.getByText("Agent manager", { exact: true })).toBeVisible();
@@ -65,12 +64,8 @@ Scout prompt.
   }
 });
 
-async function openSettings(window: Page): Promise<void> {
-  await window.keyboard.press(desktopShortcut(","));
-  await expect(window.getByTestId("settings-surface")).toBeVisible();
-}
-
-async function openSettingsSection(window: Page, section: "Subagents"): Promise<void> {
-  await window.getByRole("button", { name: section, exact: true }).click();
-  await expect(window.locator(".view-header__title")).toContainText(section);
+async function openAgentsView(window: Page): Promise<void> {
+  await window.getByRole("button", { name: "Agents", exact: true }).click();
+  await expect(window.getByTestId("agents-surface")).toBeVisible();
+  await expect(window.locator(".view-header__title")).toContainText("Subagents");
 }

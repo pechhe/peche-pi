@@ -3,6 +3,7 @@ import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
 import type { SmartCompactSettings } from "./ipc";
 import { buildModelOptions } from "./composer-commands";
 import { SettingsGroup, SettingsInfoRow, SettingsRow } from "./settings-utils";
+import { Switch } from "@/components/ui/switch";
 
 interface SettingsSmartCompactSectionProps {
   readonly runtime?: RuntimeSnapshot;
@@ -33,9 +34,9 @@ export function SettingsSmartCompactSection({
     <SettingsGroup title="Smart compact" description="Configure automatic conversation compaction to manage context window usage.">
       <SettingsRow title="Summary model" description="Model used for handoff and analysis summaries. (Conversation compaction itself uses the session's own model.)">
         {modelOptions.length === 0 ? (
-          <span className="settings-info-row__value">{summaryModelLabel}</span>
+          <span className="settings-info-row__value text-[13px] text-muted-foreground">{summaryModelLabel}</span>
         ) : (
-          <div className="settings-pill-row" style={{ flexWrap: "wrap" }}>
+          <div className="settings-pill-row">
             <button
               className={`settings-pill${!settings.summaryModel ? " settings-pill--active" : ""}`}
               type="button"
@@ -63,12 +64,10 @@ export function SettingsSmartCompactSection({
       </SettingsRow>
 
       <SettingsRow title="Auto-trigger" description="Automatically compact when context gets full.">
-        <input
+        <Switch
           aria-label="Enable auto-trigger"
           checked={autoTrigger}
-          type="checkbox"
-          onChange={(event) => {
-            const next = event.target.checked;
+          onCheckedChange={(next) => {
             setAutoTrigger(next);
             onSetSettings({ autoTrigger: next });
           }}
@@ -95,7 +94,7 @@ export function SettingsSmartCompactSection({
             }
           }}
         />
-        <span className="settings-info-row__value">%</span>
+        <span className="settings-info-row__value text-[13px] text-muted-foreground">%</span>
       </SettingsRow>
 
       <SettingsRow title="Token threshold" description="Auto-compact at this token count. Set to 0 to use percentage only. Whichever threshold is hit first triggers compaction.">
@@ -118,7 +117,7 @@ export function SettingsSmartCompactSection({
             }
           }}
         />
-        <span className="settings-info-row__value">{minTokenThreshold > 0 ? `${(minTokenThreshold / 1000).toFixed(0)}K tokens` : "Disabled"}</span>
+        <span className="settings-info-row__value text-[13px] text-muted-foreground">{minTokenThreshold > 0 ? `${(minTokenThreshold / 1000).toFixed(0)}K tokens` : "Disabled"}</span>
       </SettingsRow>
 
       <SettingsInfoRow

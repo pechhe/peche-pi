@@ -1,6 +1,8 @@
 import type { DesktopNotificationPermissionStatus } from "./ipc";
 import type { NotificationPreferences } from "./desktop-state";
 import { SettingsGroup, SettingsRow } from "./settings-utils";
+import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { playButtonClick } from "./button-click-sound";
 
 interface SettingsNotificationsSectionProps {
@@ -30,7 +32,7 @@ export function SettingsNotificationsSection({
     <>
       <SettingsGroup title="System" description="macOS decides whether pi-gui can show desktop notifications at all.">
         <SettingsRow title="macOS notification access" description={statusDescription}>
-          <span className="settings-row__value">{statusLabel}</span>
+          <span className="settings-row__value text-[13px] font-medium text-muted-foreground">{statusLabel}</span>
         </SettingsRow>
         {showRecoveryActions ? (
           <SettingsRow
@@ -43,24 +45,26 @@ export function SettingsNotificationsSection({
           >
             <div className="settings-row__actions">
               {showAskMacOs ? (
-                <button
-                  className="button button--secondary"
+                <Button
                   disabled={notificationPermissionPending}
+                  size="sm"
                   type="button"
+                  variant="outline"
                   onClick={() => { playButtonClick(); onRequestNotificationPermission(); }}
                 >
                   Ask macOS
-                </button>
+                </Button>
               ) : null}
               {showOpenSystemSettings ? (
-                <button
-                  className="button button--secondary"
+                <Button
                   disabled={notificationPermissionPending}
+                  size="sm"
                   type="button"
+                  variant="outline"
                   onClick={() => { playButtonClick(); onOpenSystemNotificationSettings(); }}
                 >
                   Open System Settings
-                </button>
+                </Button>
               ) : null}
             </div>
           </SettingsRow>
@@ -69,27 +73,24 @@ export function SettingsNotificationsSection({
 
       <SettingsGroup title="In-app alerts" description="Choose which background events should try to notify once macOS access is enabled.">
         <SettingsRow title="Background completion" description="Notify when a background session finishes.">
-          <input
+          <Switch
             aria-label="Background completion"
             checked={notificationPreferences.backgroundCompletion}
-            type="checkbox"
-            onChange={(event) => onSetNotificationPreferences({ backgroundCompletion: event.target.checked })}
+            onCheckedChange={(checked) => onSetNotificationPreferences({ backgroundCompletion: checked })}
           />
         </SettingsRow>
         <SettingsRow title="Background failures" description="Notify when a background session fails.">
-          <input
+          <Switch
             aria-label="Background failures"
             checked={notificationPreferences.backgroundFailure}
-            type="checkbox"
-            onChange={(event) => onSetNotificationPreferences({ backgroundFailure: event.target.checked })}
+            onCheckedChange={(checked) => onSetNotificationPreferences({ backgroundFailure: checked })}
           />
         </SettingsRow>
         <SettingsRow title="Needs input or approval" description="Notify when input is needed to continue.">
-          <input
+          <Switch
             aria-label="Needs input or approval"
             checked={notificationPreferences.attentionNeeded}
-            type="checkbox"
-            onChange={(event) => onSetNotificationPreferences({ attentionNeeded: event.target.checked })}
+            onCheckedChange={(checked) => onSetNotificationPreferences({ attentionNeeded: checked })}
           />
         </SettingsRow>
       </SettingsGroup>

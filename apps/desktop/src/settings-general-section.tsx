@@ -4,6 +4,7 @@ import type { ModelSettingsScopeMode, PlanModeIdeologySetting } from "./desktop-
 import type { CavemanLevel, SmartCompactSettings } from "./ipc";
 import { buildModelOptions } from "./composer-commands";
 import { SettingsGroup, SettingsInfoRow, SettingsRow } from "./settings-utils";
+import { Switch } from "@/components/ui/switch";
 import { SettingsSmartCompactSection } from "./settings-smart-compact-section";
 
 interface RetrySettings {
@@ -183,7 +184,7 @@ export function SettingsGeneralSection({
         >
           <select
             aria-label="Caveman level"
-            className="settings-text-input"
+            className="settings-select"
             value={cavemanLevel === "off" ? "full" : cavemanLevel}
             onChange={(event) => onSetCavemanLevel(event.target.value as CavemanLevel)}
           >
@@ -193,11 +194,10 @@ export function SettingsGeneralSection({
           </select>
         </SettingsRow>
         <SettingsRow title="Enable skill slash commands" description="Keep skill slash commands available in the composer.">
-          <input
+          <Switch
             aria-label="Enable skill slash commands"
             checked={runtime?.settings.enableSkillCommands ?? true}
-            type="checkbox"
-            onChange={(event) => onToggleSkillCommands(event.target.checked)}
+            onCheckedChange={onToggleSkillCommands}
           />
         </SettingsRow>
         <SettingsRow title="Shell of integrated terminal" description="Leave blank to use your default login shell.">
@@ -222,7 +222,7 @@ export function SettingsGeneralSection({
           description="Used by the “Open in external terminal” button to resume a session."
         >
           <div className="settings-pill-row">
-            <span className="settings-info-row__value">{terminalAppLabel(externalTerminalApp)}</span>
+            <span className="settings-info-row__value text-[13px] text-muted-foreground">{terminalAppLabel(externalTerminalApp)}</span>
             <button className="settings-pill" type="button" onClick={onChooseExternalTerminalApp}>
               Choose…
             </button>
@@ -238,9 +238,9 @@ export function SettingsGeneralSection({
       <SettingsGroup title="Commit message model" description="Model used to generate commit messages when committing and pushing.">
         <SettingsRow title="Model" description="Choose the model for auto-generated commit messages.">
           {modelOptions.length === 0 ? (
-            <span className="settings-info-row__value">No models available</span>
+            <span className="settings-info-row__value text-[13px] text-muted-foreground">No models available</span>
           ) : (
-            <div className="settings-pill-row" style={{ flexWrap: "wrap" }}>
+            <div className="settings-pill-row">
               {modelOptions.map((option) => {
                 const modelString = `${option.providerId}:${option.modelId}`;
                 const isActive = commitPushModel === modelString;
@@ -263,12 +263,7 @@ export function SettingsGeneralSection({
 
       <SettingsGroup title="Auto-ship" description="When on, completed threads can be shipped (commit → push → PR → merge) in one click.">
         <SettingsRow title="Enable auto-ship" description="Show a single Ship button instead of Commit & Push when a thread is done.">
-          <input
-            aria-label="Enable auto-ship"
-            checked={autoShip ?? false}
-            type="checkbox"
-            onChange={(event) => onSetAutoShip(event.target.checked)}
-          />
+          <Switch aria-label="Enable auto-ship" checked={autoShip ?? false} onCheckedChange={onSetAutoShip} />
         </SettingsRow>
       </SettingsGroup>
 
@@ -297,12 +292,14 @@ export function SettingsGeneralSection({
 
       <SettingsGroup title="Retry on connection loss" description="Auto-retry when the LLM connection drops or the provider returns an error.">
         <SettingsRow title="Enable auto-retry" description="Automatically retry on transient errors (connection lost, rate limits, server errors).">
-          <input
+          <Switch
             aria-label="Enable auto-retry"
             checked={retryDraft.enabled}
-            type="checkbox"
-            onChange={(event) => setRetryDraft({ ...retryDraft, enabled: event.target.checked })}
-            onBlur={commitRetryDraft}
+            onCheckedChange={(checked) => {
+              const next = { ...retryDraft, enabled: checked };
+              setRetryDraft(next);
+              onSetRetrySettings(next);
+            }}
           />
         </SettingsRow>
         <SettingsRow title="Max retries" description="Maximum number of retry attempts before giving up.">
