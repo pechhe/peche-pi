@@ -1,19 +1,23 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { ChassisAction } from "./chassis";
 import { WRAP_INPUT_TOKEN } from "./chassis";
+import { buildSlashCommandSections } from "./composer-commands";
 import type { PiDesktopApi } from "./ipc";
 import { SettingsGroup, SettingsRow } from "./settings-utils";
+import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
 
 interface SettingsActionsSectionProps {
   readonly api: PiDesktopApi | null | undefined;
   readonly chassisActions: readonly ChassisAction[];
   readonly refreshChassisActions?: () => void;
+  readonly runtime?: RuntimeSnapshot;
 }
 
 export function SettingsActionsSection({
   api,
   chassisActions,
   refreshChassisActions,
+  runtime,
 }: SettingsActionsSectionProps) {
   const [label, setLabel] = useState("");
   const [payload, setPayload] = useState("");
@@ -27,6 +31,14 @@ export function SettingsActionsSection({
   const [editShowLabel, setEditShowLabel] = useState(true);
   const [editTrigger, setEditTrigger] = useState<"oneShot" | "sticky">("oneShot");
   const [editTemplateError, setEditTemplateError] = useState<string | null>(null);
+
+  const runtimeCommands = useMemo(() => {
+    const sections = buildSlashCommandSections("/", runtime, []);
+    return sections
+      .flatMap((s) => s.items)
+      .filter((cmd) => cmd.runtimeCommand)
+      .map((cmd) => ({ label: cmd.title, value: cmd.command }));
+  }, [runtime]);
 
   const handleCreate = () => {
     if (!api || !label.trim() || !payload.trim()) return;
@@ -148,6 +160,23 @@ export function SettingsActionsSection({
             <option value="oneShot">One-shot</option>
             <option value="sticky">Sticky wrap</option>
           </select>
+          {trigger === "oneShot" && runtimeCommands.length > 0 ? (
+            <select
+              data-testid="chassis-action-command-picker"
+              value=""
+              onChange={(e) => {
+                if (e.target.value) setPayload(e.target.value);
+              }}
+              style={{ flex: "0 0 auto" }}
+            >
+              <option value="">Pick command…</option>
+              {runtimeCommands.map((cmd) => (
+                <option key={cmd.value} value={cmd.value}>
+                  {cmd.label}
+                </option>
+              ))}
+            </select>
+          ) : null}
           <input
             type="text"
             data-testid="chassis-action-payload-input"
@@ -207,6 +236,23 @@ export function SettingsActionsSection({
                     <option value="oneShot">One-shot</option>
                     <option value="sticky">Sticky wrap</option>
                   </select>
+                  {editTrigger === "oneShot" && runtimeCommands.length > 0 ? (
+                    <select
+                      data-testid="chassis-action-command-picker"
+                      value=""
+                      onChange={(e) => {
+                        if (e.target.value) setEditPayload(e.target.value);
+                      }}
+                      style={{ flex: "0 0 auto" }}
+                    >
+                      <option value="">Pick command…</option>
+                      {runtimeCommands.map((cmd) => (
+                        <option key={cmd.value} value={cmd.value}>
+                          {cmd.label}
+                        </option>
+                      ))}
+                    </select>
+                  ) : null}
                   <input
                     type="text"
                     data-testid={`chassis-action-edit-payload-${action.id}`}

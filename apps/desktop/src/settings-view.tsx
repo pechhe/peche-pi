@@ -347,6 +347,7 @@ export function SettingsView({
                     api={window.piApp}
                     chassisActions={chassisActions ?? []}
                     refreshChassisActions={refreshChassisActions}
+                    runtime={runtime}
                   />
                 </div>
               </div>
@@ -444,6 +445,7 @@ export function SettingsView({
                     api={window.piApp}
                     chassisActions={chassisActions ?? []}
                     refreshChassisActions={refreshChassisActions}
+                    runtime={runtime}
                   />
                 </div>
               ) : null}
