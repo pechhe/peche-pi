@@ -1,4 +1,5 @@
 import type { RuntimeSettingsSnapshot } from "@pi-gui/session-driver/runtime-types";
+import type { ChassisAction } from "./chassis";
 import type {
   NavigateSessionTreeOptions,
   NavigateSessionTreeResult,
@@ -805,6 +806,8 @@ export interface PiDesktopApi {
   getCavemanConfig(): Promise<CavemanConfigSnapshot>;
   setCavemanDefaultLevel(level: CavemanLevel): Promise<CavemanConfigSnapshot>;
   setCavemanOnLevel(level: CavemanLevel): Promise<CavemanConfigSnapshot>;
+  getChassisActions(): Promise<ChassisAction[]>;
+  setChassisActions(actions: ChassisAction[]): Promise<ChassisAction[]>;
   setSessionModel(
     workspaceId: string,
     sessionId: string,

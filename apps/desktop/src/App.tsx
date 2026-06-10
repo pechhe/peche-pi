@@ -38,6 +38,7 @@ import {
   type CavemanLevel,
   type UndoEditOp,
 } from "./ipc";
+import type { ChassisAction } from "./chassis";
 import { deriveModelOnboardingState } from "./model-onboarding";
 import { type ModelSelectorHandle } from "./model-selector";
 import { UtilitySurface, SettingsSurface, SkillsSurface, ExtensionsSurface, AutomationsSurface, ContextSurface, AgentsSurface, TestingSurface } from "./surfaces/utility-surface";
@@ -449,6 +450,7 @@ export default function App() {
   const prevPlanStatusRef = useRef<Map<string, SessionStatus>>(new Map());
   const [settingsSection, setSettingsSection] = useState<SettingsSection>("general");
   const [cavemanLevel, setCavemanLevel] = useState<CavemanLevel>("off");
+  const [chassisActions, setChassisActions] = useState<ChassisAction[]>([]);
   const [settingsWorkspaceId, setSettingsWorkspaceId] = useState("");
   const [skillsWorkspaceId, setSkillsWorkspaceId] = useState("");
   const [skillsQuery, setSkillsQuery] = useState("");
@@ -570,6 +572,8 @@ export default function App() {
     void piApi.getCavemanConfig().then((config) => {
       setCavemanLevel(config.enabled ? config.defaultLevel : "off");
     });
+
+    void piApi.getChassisActions().then(setChassisActions).catch(() => {});
 
     void piApi.getResolvedTheme().then((theme) => {
       document.documentElement.classList.toggle("dark", theme === "dark");
@@ -899,6 +903,18 @@ export default function App() {
       api.submitComposer("Execute the plan above.", { mode: "build" }),
     );
   }, [api, selectedSessionKey, setSnapshot]);
+
+  const handleRunChassisAction = useCallback((action: ChassisAction) => {
+    if (!api) return;
+    void updateSnapshot(api, setSnapshot, () => api.submitComposer(action.effect.text));
+  }, [api, setSnapshot]);
+
+  const refreshChassisActions = useCallback(() => {
+    const piApi = window.piApp;
+    if (!piApi) return;
+    void piApi.getChassisActions().then(setChassisActions).catch(() => {});
+  }, []);
+
   // Mark a session's plan as ready to execute when its plan-mode run finishes
   // (running -> idle). Edge-detecting on the prior snapshot status dedupes and
   // works even if the run completes while another session is on screen.
@@ -2490,6 +2506,8 @@ export default function App() {
           onSetActiveView={setActiveView}
           onSetQueueMode={setQueueMode}
           onOpenKanban={openKanbanView}
+          chassisActions={chassisActions}
+          refreshChassisActions={refreshChassisActions}
         />
       } />
     );
@@ -2788,6 +2806,8 @@ export default function App() {
               onSelectMention={newThreadMentionMenu.insertMention}
               onRemoveAttachment={handleNewThreadRemoveAttachment}
               onSubmit={handleStartThread}
+              chassisActions={chassisActions}
+              onRunChassisAction={handleRunChassisAction}
             />
           ) : (
             <section className="canvas canvas--empty">
@@ -2899,6 +2919,8 @@ export default function App() {
               questionnaireRequest={activeQuestionnaireRequest}
               onRespondToQuestionnaire={handleRespondToExtensionDialog}
               onUnarchiveSession={handleUnarchiveSession}
+              chassisActions={chassisActions}
+              onRunChassisAction={handleRunChassisAction}
             />
             ) : (
               <PendingComposer
@@ -2908,6 +2930,8 @@ export default function App() {
                 thinkingLevel={pendingThreadStart?.thinkingLevel}
                 cavemanLevel={pendingThreadStart?.cavemanLevel ?? cavemanLevel}
                 composerMode={pendingThreadStart?.composerMode ?? "build"}
+                chassisActions={chassisActions}
+                onRunChassisAction={handleRunChassisAction}
               />
             )}
             {activeExtensionDialog ? (

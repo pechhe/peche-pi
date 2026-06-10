@@ -7,6 +7,8 @@ import type { CavemanLevel } from "./ipc";
 import { ModelFeatureBadges } from "./model-feature-badges";
 import { ModelSelector, type ModelSelectorHandle } from "./model-selector";
 import { OrchestrateSwitch } from "./orchestrate-switch";
+import type { ChassisAction } from "./chassis";
+import { ChassisActionControl } from "./chassis-action-control";
 
 interface ComposerControlRowProps {
   readonly runtime: RuntimeSnapshot | undefined;
@@ -29,6 +31,8 @@ interface ComposerControlRowProps {
   readonly onSetThinking: (level: string) => void;
   readonly onSetCavemanLevel: (level: CavemanLevel) => void;
   readonly onToggleOrchestrator?: () => void;
+  readonly chassisActions?: readonly ChassisAction[];
+  readonly onRunChassisAction?: (action: ChassisAction) => void;
 }
 
 /**
@@ -61,6 +65,8 @@ export const ComposerControlRow = memo(function ComposerControlRow({
   onSetThinking,
   onSetCavemanLevel,
   onToggleOrchestrator,
+  chassisActions,
+  onRunChassisAction,
 }: ComposerControlRowProps) {
   return (
     <span className="composer__controls">
@@ -86,6 +92,16 @@ export const ComposerControlRow = memo(function ComposerControlRow({
       <CavemanSelector level={cavemanLevel} disabled={disabled} onSetLevel={onSetCavemanLevel} />
       <span className="composer__controls-sep">{" \u00b7 "}</span>
       <OrchestrateSwitch on={orchestratorMode ?? false} disabled={disabled} onToggle={onToggleOrchestrator} />
+      {chassisActions?.map((action) => (
+        <span key={action.id}>
+          <span className="composer__controls-sep">{" \u00b7 "}</span>
+          <ChassisActionControl
+            action={action}
+            disabled={disabled}
+            onRun={() => onRunChassisAction?.(action)}
+          />
+        </span>
+      ))}
       <ModelFeatureBadges runtime={runtime} provider={provider} modelId={modelId} />
     </span>
   );

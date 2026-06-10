@@ -157,6 +157,8 @@ const desktopIpc = {
   getCavemanConfig: "pi-gui:get-caveman-config",
   setCavemanDefaultLevel: "pi-gui:set-caveman-default-level",
   setCavemanOnLevel: "pi-gui:set-caveman-on-level",
+  getChassisActions: "pi-gui:get-chassis-actions",
+  setChassisActions: "pi-gui:set-chassis-actions",
   setSessionModel: "pi-gui:set-session-model",
   setSessionThinkingLevel: "pi-gui:set-session-thinking-level",
   loginProvider: "pi-gui:login-provider",
@@ -376,6 +378,8 @@ export const desktopIpcContracts: readonly IpcContractEntry[] = [
   { methodName: "getCavemanConfig", channel: desktopIpc.getCavemanConfig, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
   { methodName: "setCavemanDefaultLevel", channel: desktopIpc.setCavemanDefaultLevel, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
   { methodName: "setCavemanOnLevel", channel: desktopIpc.setCavemanOnLevel, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
+  { methodName: "getChassisActions", channel: desktopIpc.getChassisActions, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
+  { methodName: "setChassisActions", channel: desktopIpc.setChassisActions, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
   { methodName: "setSessionModel", channel: desktopIpc.setSessionModel, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
   { methodName: "setSessionThinkingLevel", channel: desktopIpc.setSessionThinkingLevel, direction: "renderer-to-main", kind: "invoke", adapter: "store" },
 

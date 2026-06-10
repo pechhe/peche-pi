@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import type { RuntimeSettingsSnapshot, RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
 
-export type SettingsSection = "appearance" | "general" | "providers" | "models" | "notifications" | "sounds";
+export type SettingsSection = "appearance" | "general" | "providers" | "models" | "notifications" | "sounds" | "actions";
 
 export const THINKING_LEVELS: NonNullable<RuntimeSettingsSnapshot["defaultThinkingLevel"]>[] = [
   "low",
@@ -33,6 +33,8 @@ export function sectionTitle(section: SettingsSection): string {
       return "Notifications";
     case "sounds":
       return "Sounds";
+    case "actions":
+      return "Actions";
     default:
       return "General";
   }

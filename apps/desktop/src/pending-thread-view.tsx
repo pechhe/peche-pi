@@ -1,5 +1,6 @@
 import { useRef } from "react";
 import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
+import type { ChassisAction } from "./chassis";
 import { ComposerControlRow } from "./composer-control-row";
 import type { ComposerMode } from "./composer-mode";
 import { ArrowUpIcon } from "./icons";
@@ -38,6 +39,8 @@ interface PendingComposerProps {
   readonly thinkingLevel: string | undefined;
   readonly cavemanLevel: CavemanLevel;
   readonly composerMode: ComposerMode;
+  readonly chassisActions?: readonly ChassisAction[];
+  readonly onRunChassisAction?: (action: ChassisAction) => void;
 }
 
 /**
@@ -53,6 +56,8 @@ export function PendingComposer({
   thinkingLevel,
   cavemanLevel,
   composerMode,
+  chassisActions,
+  onRunChassisAction,
 }: PendingComposerProps) {
   const modelSelectorRef = useRef<ModelSelectorHandle | null>(null);
   const contextWindow = resolveContextWindow(runtime, provider, modelId);
@@ -96,6 +101,8 @@ export function PendingComposer({
                       onSetModel={() => undefined}
                       onSetThinking={() => undefined}
                       onSetCavemanLevel={() => undefined}
+                      chassisActions={chassisActions}
+                      onRunChassisAction={onRunChassisAction}
                     />
                   </div>
                   <div className="composer__actions">

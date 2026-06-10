@@ -9,6 +9,7 @@ import { SettingsModelsSection } from "./settings-models-section";
 import { SettingsNotificationsSection } from "./settings-notifications-section";
 import { SettingsProvidersSection } from "./settings-providers-section";
 import { SettingsSoundsSection } from "./settings-sounds-section";
+import { SettingsActionsSection } from "./settings-actions-section";
 import { type SettingsSection, sectionTitle } from "./settings-utils";
 
 export type { SettingsSection } from "./settings-utils";
@@ -71,6 +72,8 @@ interface SettingsViewProps {
   readonly onSetActiveView: (view: import("./desktop-state").AppView) => void;
   readonly onSetQueueMode: (enabled: boolean) => void;
   readonly onOpenKanban: () => void;
+  readonly chassisActions?: readonly import("./chassis").ChassisAction[];
+  readonly refreshChassisActions?: () => void;
 }
 
 export function SettingsView({
@@ -131,6 +134,8 @@ export function SettingsView({
   onSetActiveView,
   onSetQueueMode,
   onOpenKanban,
+  chassisActions,
+  refreshChassisActions,
 }: SettingsViewProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [noResults, setNoResults] = useState(false);
@@ -193,7 +198,7 @@ export function SettingsView({
 
   const isSearching = searchQuery.trim().length > 0;
 
-  if (!workspace && section !== "general" && section !== "notifications" && section !== "appearance" && section !== "sounds") {
+  if (!workspace && section !== "general" && section !== "notifications" && section !== "appearance" && section !== "sounds" && section !== "actions") {
     return (
       <div className="empty-panel">
         <div className="session-header__eyebrow">Settings</div>
@@ -221,7 +226,7 @@ export function SettingsView({
             onKeyDown={(e) => { if (e.key === "Escape") setSearchQuery(""); }}
           />
         </div>
-        {(["appearance", "general", "providers", "models", "notifications", "sounds"] as const).map((item) => (
+        {(["appearance", "general", "providers", "models", "notifications", "sounds", "actions"] as const).map((item) => (
           <button
             key={item}
             className={`settings-sidebar__item${section === item ? " settings-sidebar__item--active" : ""}`}
@@ -335,6 +340,16 @@ export function SettingsView({
                   />
                 </div>
               </div>
+              <div data-section="actions">
+                <h2 className="settings-section-heading">{sectionTitle("actions")}</h2>
+                <div className="settings-grid__section">
+                  <SettingsActionsSection
+                    api={window.piApp}
+                    chassisActions={chassisActions ?? []}
+                    refreshChassisActions={refreshChassisActions}
+                  />
+                </div>
+              </div>
             </div>
             {noResults ? (
               <p className="settings-search-empty">No matching settings found.</p>
@@ -422,6 +437,15 @@ export function SettingsView({
                   soundSettings={buttonSoundSettings}
                   onSetSoundSettings={onSetButtonSoundSettings}
                 />
+              ) : null}
+              {section === "actions" ? (
+                <div data-testid="settings-actions-section">
+                  <SettingsActionsSection
+                    api={window.piApp}
+                    chassisActions={chassisActions ?? []}
+                    refreshChassisActions={refreshChassisActions}
+                  />
+                </div>
               ) : null}
             </div>
           </>

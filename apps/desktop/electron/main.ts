@@ -45,6 +45,7 @@ import type { DesktopAppState, ThemeMode } from "../src/desktop-state";
 import { buildContextSnapshot, readContextFiles } from "./context-snapshot";
 import type { ComposerMode } from "../src/composer-mode";
 import { desktopIpc, getDesktopCommandFromShortcut, type CavemanConfigSnapshot, type CavemanLevel, type GraphifyCommunitySummary, type GraphifyProjectMapStatus, type GraphifyRunResult, type UndoEditOp } from "../src/ipc";
+import { parseChassisState, type ChassisAction } from "../src/chassis";
 import { registerMainHandlers, type MainHandlerAdapters } from "./desktop-ipc-seam-main";
 import { SUPPORTED_COMPOSER_IMAGE_TYPES } from "../src/composer-attachments";
 import type {
@@ -1004,6 +1005,8 @@ app.whenReady().then(async () => {
         await writeCavemanConfig(next);
         return next;
       },
+      getChassisActions: () => readChassisActions(),
+      setChassisActions: (_event: unknown, actions: ChassisAction[]) => writeChassisActions(actions),
       setSessionThinkingLevel: (_event: unknown, workspaceId: string, sessionId: string, thinkingLevel: unknown) =>
         store.setSessionThinkingLevel({ workspaceId, sessionId }, thinkingLevel as never),
 
@@ -1866,6 +1869,28 @@ async function writeCavemanConfig(config: CavemanConfigSnapshot): Promise<void> 
   await mkdir(path.dirname(CAVEMAN_STATE_PATH), { recursive: true });
   const state = { enabled: config.enabled, level: config.defaultLevel };
   await writeFile(CAVEMAN_STATE_PATH, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+}
+
+const CHASSIS_STATE_PATH = path.join(
+  process.env.PI_CODING_AGENT_DIR ?? path.join(homedir(), ".pi", "agent"),
+  "chassis",
+  "state.json",
+);
+
+async function readChassisActions(): Promise<ChassisAction[]> {
+  try {
+    return parseChassisState(await readFile(CHASSIS_STATE_PATH, "utf8")).actions;
+  } catch {
+    return [];
+  }
+}
+
+async function writeChassisActions(actions: ChassisAction[]): Promise<ChassisAction[]> {
+  await mkdir(path.dirname(CHASSIS_STATE_PATH), { recursive: true });
+  // Re-validate through the parser so a malformed entry can never be persisted.
+  const normalized = parseChassisState(JSON.stringify({ version: 1, actions })).actions;
+  await writeFile(CHASSIS_STATE_PATH, `${JSON.stringify({ version: 1, actions: normalized }, null, 2)}\n`, "utf8");
+  return normalized;
 }
 
 async function promptForText(message: string, placeholder = ""): Promise<string> {

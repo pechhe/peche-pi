@@ -76,6 +76,8 @@ interface NewThreadViewProps {
   readonly onSelectMention: (filePath: string) => void;
   readonly onRemoveAttachment: (attachmentId: string) => void;
   readonly onSubmit: (prompt: string) => void;
+  readonly chassisActions?: readonly import("./chassis").ChassisAction[];
+  readonly onRunChassisAction?: (action: import("./chassis").ChassisAction) => void;
 }
 
 function BranchGlyph({ dot = false }: { dot?: boolean }) {
@@ -242,6 +244,8 @@ export function NewThreadView({
   onSelectMention,
   onRemoveAttachment,
   onSubmit,
+  chassisActions,
+  onRunChassisAction,
 }: NewThreadViewProps) {
   const workspace = workspaces.find((entry) => entry.id === selectedWorkspaceId);
   const [draft, setDraft] = useState(prompt);
@@ -496,6 +500,8 @@ export function NewThreadView({
                   orchestratorMode={orchestratorMode}
                   onToggleOrchestrator={onToggleOrchestrator}
                   onSubmit={submitDraft}
+                  chassisActions={chassisActions}
+                  onRunChassisAction={onRunChassisAction}
                 />
               )}
             />
@@ -523,6 +529,8 @@ interface NewThreadComposerFooterProps {
   readonly orchestratorMode?: boolean;
   readonly onToggleOrchestrator?: () => void;
   readonly onSubmit: () => void;
+  readonly chassisActions?: readonly import("./chassis").ChassisAction[];
+  readonly onRunChassisAction?: (action: import("./chassis").ChassisAction) => void;
 }
 
 function NewThreadComposerFooter({
@@ -542,6 +550,8 @@ function NewThreadComposerFooter({
   orchestratorMode,
   onToggleOrchestrator,
   onSubmit,
+  chassisActions,
+  onRunChassisAction,
 }: NewThreadComposerFooterProps) {
   const submitButtonSound = useButtonSound({ variant: "click", disabled: !hasContent || modelOnboarding.requiresModelSelection });
   return (
@@ -569,6 +579,8 @@ function NewThreadComposerFooter({
               onSetCavemanLevel={onSetCavemanLevel}
               orchestratorMode={orchestratorMode}
               onToggleOrchestrator={onToggleOrchestrator}
+              chassisActions={chassisActions}
+              onRunChassisAction={onRunChassisAction}
             />
           </div>
 

@@ -125,6 +125,8 @@ interface SessionComposerProps {
   readonly questionnaireRequest?: Extract<SessionExtensionDialogRecord, { readonly kind: "questionnaire" }>;
   readonly onRespondToQuestionnaire?: (response: import("@pi-gui/session-driver").HostUiResponse) => void;
   readonly onUnarchiveSession?: (target: { workspaceId: string; sessionId: string }) => void;
+  readonly chassisActions?: readonly import("./chassis").ChassisAction[];
+  readonly onRunChassisAction?: (action: import("./chassis").ChassisAction) => void;
 }
 
 function isNearBottom(element: HTMLDivElement): boolean {
@@ -183,6 +185,8 @@ const SessionComposerInner = forwardRef<SessionComposerHandle, SessionComposerPr
     questionnaireRequest,
     onRespondToQuestionnaire,
     onUnarchiveSession,
+    chassisActions,
+    onRunChassisAction,
   },
   ref,
 ) {
@@ -565,6 +569,8 @@ const SessionComposerInner = forwardRef<SessionComposerHandle, SessionComposerPr
       orchestratorMode={orchestratorMode}
       onToggleOrchestrator={onToggleOrchestrator}
       smartCompactSettings={smartCompactSettings}
+      chassisActions={chassisActions}
+      onRunChassisAction={onRunChassisAction}
       onClearSlashCommand={slashMenu.resetSlashUi}
       onComposerKeyDown={handleComposerKeyDown}
       onComposerPaste={handleComposerPaste}
@@ -697,7 +703,9 @@ function sameSessionComposerProps(
     previous.onRespondToQuestionnaire === next.onRespondToQuestionnaire &&
     previous.onUnarchiveSession === next.onUnarchiveSession &&
     previous.orchestratorMode === next.orchestratorMode &&
-    previous.onToggleOrchestrator === next.onToggleOrchestrator
+    previous.onToggleOrchestrator === next.onToggleOrchestrator &&
+    previous.chassisActions === next.chassisActions &&
+    previous.onRunChassisAction === next.onRunChassisAction
   );
 }
 

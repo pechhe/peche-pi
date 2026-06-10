@@ -77,6 +77,8 @@ interface ComposerPanelProps {
   readonly questionnaireRequest?: Extract<SessionExtensionDialogRecord, { readonly kind: "questionnaire" }>;
   readonly onRespondToQuestionnaire?: (response: import("@pi-gui/session-driver").HostUiResponse) => void;
   readonly onCompactNow?: () => void;
+  readonly chassisActions?: readonly import("./chassis").ChassisAction[];
+  readonly onRunChassisAction?: (action: import("./chassis").ChassisAction) => void;
 }
 
 function resolveFallbackContextWindow(
@@ -158,6 +160,8 @@ export function ComposerPanel({
   questionnaireRequest,
   onRespondToQuestionnaire,
   onCompactNow,
+  chassisActions,
+  onRunChassisAction,
 }: ComposerPanelProps) {
   const questionnaireContent = questionnaireRequest && onRespondToQuestionnaire
     ? <QuestionnaireComposer request={questionnaireRequest} onRespond={onRespondToQuestionnaire} />
@@ -319,6 +323,8 @@ export function ComposerPanel({
                     onSetModel={onSetModel}
                     onSetThinking={onSetThinking}
                     onSetCavemanLevel={onSetCavemanLevel}
+                    chassisActions={chassisActions}
+                    onRunChassisAction={onRunChassisAction}
                   />
                 </div>
                 <div className="composer__actions">

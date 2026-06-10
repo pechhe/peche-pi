@@ -405,6 +405,8 @@ export interface SettingsSurfaceProps {
   readonly onSetActiveView: (view: AppView) => void;
   readonly onSetQueueMode: (enabled: boolean) => void;
   readonly onOpenKanban: () => void;
+  readonly chassisActions?: readonly import("../chassis").ChassisAction[];
+  readonly refreshChassisActions?: () => void;
 }
 
 export function SettingsSurface(props: SettingsSurfaceProps) {
@@ -439,6 +441,8 @@ export function SettingsSurface(props: SettingsSurfaceProps) {
     onSetActiveView,
     onSetQueueMode,
     onOpenKanban,
+    chassisActions,
+    refreshChassisActions,
   } = props;
 
   return (
@@ -540,6 +544,8 @@ export function SettingsSurface(props: SettingsSurfaceProps) {
             setSmartCompactSettings(next);
           }).catch(() => {});
         }}
+        chassisActions={chassisActions}
+        refreshChassisActions={refreshChassisActions}
       />
     </>
   );
