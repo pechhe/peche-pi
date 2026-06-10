@@ -1,8 +1,8 @@
-import { useState, useRef, useEffect, useCallback } from "react";
-import type { ComposerLayoutData, ComposerUnitPlacement, ComposerControlUnit } from "./composer-layout";
+import { useState, useRef, useCallback } from "react";
+import type { ComposerLayoutData, ComposerUnitPlacement } from "./composer-layout";
 import { controlUnitRegistry, validateComposerLayout, getDefaultLayout, getEffectiveControlStyle, REQUIRED_UNIT_IDS } from "./composer-layout";
-import { ComposerLayoutRenderer } from "./composer-layout-renderer";
 import type { ComposerDeviceMode } from "./desktop-state";
+import { ArrowUpIcon } from "./icons";
 import "./composer-builtin-units"; // Register built-in units
 // Simple classname utility
 const cn = (...classes: (string | boolean | undefined)[]) => 
@@ -43,6 +43,10 @@ export function ComposerLayoutEditor(props: ComposerLayoutEditorProps) {
   const allUnits = controlUnitRegistry.getAll();
   const placedUnitIds = new Set(workingLayout.placements.map(p => p.unitId));
   const availableUnits = allUnits.filter(unit => !placedUnitIds.has(unit.id));
+  
+  // Split available units by kind
+  const builtinUnits = allUnits.filter(u => u.kind === "builtin");
+  const chassisUnits = allUnits.filter(u => u.kind === "chassis");
   
   // Selected placement
   const selectedPlacement = workingLayout.placements.find(p => p.unitId === selectedPlacementId);
@@ -221,109 +225,148 @@ export function ComposerLayoutEditor(props: ComposerLayoutEditorProps) {
       </div>
 
       <div className="composer-layout-editor__body">
-        {/* Preview */}
-        <div className="composer-layout-editor__preview-section">
-          <h2 className="composer-layout-editor__section-title">Preview</h2>
-          <div className="composer-layout-editor__device-frame">
-            <div 
-              className={cn(
-                "composer-layout-editor__preview",
-                `composer--device-${deviceMode}`
-              )}
-              ref={gridRef}
-              onDragOver={handleDragOver}
-              onDrop={handleDrop}
-            >
-              {/* Ghost preview during drag */}
-              {dropTarget && dragState && (
-                <div
-                  className="composer-layout-editor__drop-ghost"
-                  style={{
-                    gridRow: dropTarget.row + 1,
-                    gridColumn: `${dropTarget.col + 1} / span ${dropTarget.colSpan}`,
-                  }}
+        {/* Tools palette — left side */}
+        <div className="composer-layout-editor__tools-panel">
+          <h2 className="composer-layout-editor__section-title">Your Tools</h2>
+          <div className="composer-layout-editor__tools-section">
+            <h3 className="composer-layout-editor__tools-section-heading">Built-in</h3>
+            {builtinUnits.map((unit) => (
+              <ToolItem
+                key={unit.id}
+                unit={unit}
+                isPlaced={placedUnitIds.has(unit.id)}
+                onDragStart={handleDragStart}
+                onDragEnd={handleDragEnd}
+              />
+            ))}
+          </div>
+          {chassisUnits.length > 0 && (
+            <div className="composer-layout-editor__tools-section">
+              <h3 className="composer-layout-editor__tools-section-heading">Actions</h3>
+              {chassisUnits.map((unit) => (
+                <ToolItem
+                  key={unit.id}
+                  unit={unit}
+                  isPlaced={placedUnitIds.has(unit.id)}
+                  onDragStart={handleDragStart}
+                  onDragEnd={handleDragEnd}
                 />
-              )}
-              
-              {/* Render actual layout with click handlers */}
-              <div className="composer-layout-grid">
-                {workingLayout.placements.map((placement) => {
-                  const unit = controlUnitRegistry.get(placement.unitId);
-                  if (!unit) return null;
-                  
-                  const effectiveStyle = getEffectiveControlStyle(placement, deviceModeDefaults);
-                  const isSelected = placement.unitId === selectedPlacementId;
-                  
-                  return (
-                    <div
-                      key={placement.unitId}
-                      className={cn(
-                        "composer-layout-cell",
-                        "composer-layout-editor__cell",
-                        isSelected && "composer-layout-editor__cell--selected"
-                      )}
-                      style={{
-                        gridRow: placement.row + 1,
-                        gridColumn: `${placement.col + 1} / span ${placement.colSpan}`,
-                      }}
-                      data-unit-id={placement.unitId}
-                      data-required={REQUIRED_UNIT_IDS.includes(placement.unitId as any) || undefined}
-                      draggable
-                      onClick={() => setSelectedPlacementId(placement.unitId)}
-                      onDragStart={(e) => handleDragStart(e, placement.unitId, false, placement)}
-                      onDragEnd={handleDragEnd}
-                    >
-                      {unit.render({
-                        showLabel: effectiveStyle.showLabel,
-                        color: effectiveStyle.color,
-                        disabled: false,
-                        cavemanLevel: "off",
-                        composerMode: "build",
-                        onSetComposerMode: () => {},
-                        onSetModel: () => {},
-                        onSetThinking: () => {},
-                        onSetCavemanLevel: () => {},
-                      })}
-                    </div>
-                  );
-                })}
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Composer device preview — center */}
+        <div className="composer-layout-editor__preview-section">
+          <div className="composer-layout-editor__device-wrapper composer-device composer-device--modular">
+            <div className="composer__surface">
+              {/* Mock screen / text area */}
+              <div className="composer-layout-editor__mock-screen">
+                <div className="composer-layout-editor__mock-textarea">
+                  <span className="composer-layout-editor__mock-placeholder">Type a message...</span>
+                </div>
               </div>
             </div>
+            <footer className="composer">
+              <div className="conversation conversation--composer">
+                <div className="composer__footer">
+                  <div className="composer__footer-row">
+                    <div className="composer__hint">
+                      {/* Drag target: the controls grid */}
+                      <div
+                        className={cn(
+                          "composer-layout-grid",
+                          "composer-layout-editor__drag-target"
+                        )}
+                        ref={gridRef}
+                        onDragOver={handleDragOver}
+                        onDrop={handleDrop}
+                      >
+                        {/* Ghost preview during drag */}
+                        {dropTarget && dragState && (
+                          <div
+                            className="composer-layout-editor__drop-ghost"
+                            style={{
+                              gridRow: dropTarget.row + 1,
+                              gridColumn: `${dropTarget.col + 1} / span ${dropTarget.colSpan}`,
+                            }}
+                          />
+                        )}
+
+                        {/* Render placed controls */}
+                        {workingLayout.placements.map((placement) => {
+                          const unit = controlUnitRegistry.get(placement.unitId);
+                          if (!unit) return null;
+
+                          const effectiveStyle = getEffectiveControlStyle(placement, deviceModeDefaults);
+                          const isSelected = placement.unitId === selectedPlacementId;
+
+                          return (
+                            <div
+                              key={placement.unitId}
+                              className={cn(
+                                "composer-layout-cell",
+                                "composer-layout-editor__cell",
+                                isSelected && "composer-layout-editor__cell--selected"
+                              )}
+                              style={{
+                                gridRow: placement.row + 1,
+                                gridColumn: `${placement.col + 1} / span ${placement.colSpan}`,
+                              }}
+                              data-unit-id={placement.unitId}
+                              data-required={REQUIRED_UNIT_IDS.includes(placement.unitId as any) || undefined}
+                              draggable
+                              onClick={() => setSelectedPlacementId(placement.unitId)}
+                              onDragStart={(e) => handleDragStart(e, placement.unitId, false, placement)}
+                              onDragEnd={handleDragEnd}
+                            >
+                              <span className="composer-control-wrapper">
+                                {placement.unitId === "builtin:send" ? (
+                                  <span className="composer__key-mount composer__key-mount--send" style={{ pointerEvents: "none" }}>
+                                    <button
+                                      className="button button--primary button--cta-icon composer__send"
+                                      type="button"
+                                      disabled
+                                      tabIndex={-1}
+                                    >
+                                      <ArrowUpIcon />
+                                    </button>
+                                  </span>
+                                ) : (
+                                  unit.render({
+                                    showLabel: effectiveStyle.showLabel,
+                                    color: effectiveStyle.color,
+                                    disabled: false,
+                                    cavemanLevel: "off",
+                                    composerMode: "build",
+                                    onSetComposerMode: () => {},
+                                    onSetModel: () => {},
+                                    onSetThinking: () => {},
+                                    onSetCavemanLevel: () => {},
+                                  })
+                                )}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div className="composer__actions">
+                      {/* Send button placeholder in actions slot */}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </footer>
           </div>
           {workingLayout.placements.length === 0 && (
             <p className="composer-layout-editor__empty-message">
-              Drag controls from the palette to start building your layout
+              Drag controls from the palette onto the composer
             </p>
           )}
         </div>
 
-        {/* Palette */}
-        <div className="composer-layout-editor__palette-section">
-          <h2 className="composer-layout-editor__section-title">Available Controls</h2>
-          <div className="composer-layout-editor__palette">
-            {availableUnits.length === 0 ? (
-              <p className="composer-layout-editor__palette-empty">All controls are placed</p>
-            ) : (
-              availableUnits.map((unit) => (
-                <div
-                  key={unit.id}
-                  className="composer-layout-editor__palette-item"
-                  draggable
-                  onDragStart={(e) => handleDragStart(e, unit.id, true)}
-                  onDragEnd={handleDragEnd}
-                >
-                  <div className="composer-layout-editor__palette-item-icon">
-                    {unit.kind === "builtin" ? "⚙" : "⚡"}
-                  </div>
-                  <div className="composer-layout-editor__palette-item-label">{unit.label}</div>
-                  <div className="composer-layout-editor__palette-item-span">×{unit.defaultSpan}</div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        {/* Inspector */}
+        {/* Inspector — right side */}
         <div className="composer-layout-editor__inspector-section">
           <h2 className="composer-layout-editor__section-title">Inspector</h2>
           {selectedPlacement && selectedUnit ? (
@@ -402,6 +445,37 @@ export function ComposerLayoutEditor(props: ComposerLayoutEditorProps) {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Draggable tool item for the left panel */
+function ToolItem({
+  unit,
+  isPlaced,
+  onDragStart,
+  onDragEnd,
+}: {
+  readonly unit: { id: string; kind: string; label: string; defaultSpan: number };
+  readonly isPlaced: boolean;
+  readonly onDragStart: (e: React.DragEvent, unitId: string, fromPalette: boolean) => void;
+  readonly onDragEnd: () => void;
+}) {
+  return (
+    <div
+      className={cn(
+        "composer-layout-editor__tool-item",
+        isPlaced && "composer-layout-editor__tool-item--placed"
+      )}
+      draggable={!isPlaced}
+      onDragStart={(e) => !isPlaced && onDragStart(e, unit.id, true)}
+      onDragEnd={onDragEnd}
+    >
+      <span className="composer-layout-editor__tool-icon">
+        {unit.kind === "builtin" ? "⚙" : "⚡"}
+      </span>
+      <span className="composer-layout-editor__tool-label">{unit.label}</span>
+      {isPlaced && <span className="composer-layout-editor__tool-placed-badge">✓</span>}
     </div>
   );
 }

@@ -39,14 +39,15 @@ test.describe("Composer Layout Editor", () => {
 
       // Preview grid contains all 6 built-in placements (mode, model, reasoning,
       // orchestrate, badges, send) in the default layout.
-      const grid = window.locator(".composer-layout-editor__preview .composer-layout-grid");
+      const grid = window.locator(".composer-layout-editor__drag-target");
       await expect(grid).toBeVisible({ timeout: 15_000 });
 
       const cellCount = await grid.locator("[data-unit-id^='builtin:']").count();
       expect(cellCount).toBe(6);
 
-      // The default layout places all built-ins, so palette shows "All controls are placed".
-      await expect(window.locator(".composer-layout-editor__palette-empty")).toContainText("All controls are placed");
+      // The default layout places all built-ins, so all tool items show as placed.
+      const placedBadges = window.locator(".composer-layout-editor__tool-placed-badge");
+      await expect(placedBadges.first()).toBeVisible();
 
       // Inspector starts empty (no selection).
       await expect(window.locator(".composer-layout-editor__inspector-empty")).toContainText("Select a control");
@@ -126,7 +127,7 @@ test.describe("Composer Layout Editor", () => {
       // Reopen — layout persisted (all 6 built-ins still present).
       await window.getByRole("button", { name: "Edit layout" }).click();
       await window.waitForSelector(".composer-layout-editor");
-      const grid = window.locator(".composer-layout-editor__preview .composer-layout-grid");
+      const grid = window.locator(".composer-layout-editor__drag-target");
       const cellCount = await grid.locator("[data-unit-id^='builtin:']").count();
       expect(cellCount).toBe(6);
     } finally {
@@ -160,7 +161,7 @@ test.describe("Composer Layout Editor", () => {
       await window.getByRole("button", { name: "Edit layout" }).click();
       await window.waitForSelector(".composer-layout-editor");
 
-      const grid = window.locator(".composer-layout-editor__preview .composer-layout-grid");
+      const grid = window.locator(".composer-layout-editor__drag-target");
 
       // All three required units have the data-required boolean attribute.
       for (const unitId of ["builtin:model", "builtin:reasoning", "builtin:send"]) {
