@@ -1903,3 +1903,103 @@
 :root.dark .plan-row__control-button:hover {
   background: rgba(255, 255, 255, 0.08);
 }
+
+/* ── Worktree sub-groups ────────────────────────────────────── */
+
+.worktree-subgroup {
+  margin-top: 2px;
+}
+
+.worktree-subgroup__header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px 1px;
+  border-radius: 9px;
+}
+
+.worktree-subgroup__header:hover {
+  background: var(--sidebar-hover-bg, rgba(0, 0, 0, 0.04));
+}
+
+.worktree-subgroup__toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  padding: 2px 4px;
+  border: none;
+  background: none;
+  color: var(--text-muted, #888);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+}
+
+.worktree-subgroup__toggle:hover {
+  color: var(--text);
+}
+
+.worktree-subgroup__icon {
+  width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+
+.worktree-subgroup__icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.worktree-subgroup__chevron {
+  width: 12px;
+  height: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+}
+
+.worktree-subgroup__chevron svg {
+  width: 12px;
+  height: 12px;
+}
+
+.worktree-subgroup__chevron[data-collapsed] {
+  transform: rotate(-90deg);
+}
+
+.worktree-subgroup__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.worktree-subgroup__branch {
+  font-size: 11px;
+  color: var(--text-muted, #888);
+  background: var(--bg-secondary, rgba(0, 0, 0, 0.06));
+  padding: 1px 5px;
+  border-radius: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100px;
+  flex-shrink: 0;
+}
+
+.worktree-subgroup__compose {
+  flex-shrink: 0;
+}
+
+.session-list--worktree {
+  padding-left: 20px;
+}

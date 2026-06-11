@@ -17,11 +17,6 @@ import { homedir } from "node:os";
 // Minimal chassis-state parse (mirrors src/chassis.ts logic)
 // ---------------------------------------------------------------------------
 
-interface ReminderEffect {
-  readonly type: "reminder";
-  readonly text: string;
-}
-
 interface ChassisAction {
   readonly id: string;
   readonly trigger: string;
@@ -90,7 +85,7 @@ function getAgentDir(): string {
   return process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent");
 }
 
-export default function chassisReminderExtension(pi: ExtensionAPI): void {
+function chassisReminderExtension(pi: ExtensionAPI): void {
   pi.on("before_agent_start", async (_event, ctx) => {
     const cwd = ctx.cwd;
     if (!cwd) return undefined;

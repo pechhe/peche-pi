@@ -129,6 +129,7 @@ export async function readPersistedUiState(uiStateFilePath: string): Promise<Leg
       selectedChatId: typeof parsed.selectedChatId === "string" ? parsed.selectedChatId : undefined,
       composerAttachmentsBySession: parsed.composerAttachmentsBySession,
       transcripts: parsed.transcripts,
+      threadTypeBySession: parsed.threadTypeBySession,
     };
   } catch {
     return {};

@@ -20,9 +20,17 @@ export interface ThreadListEntry {
   readonly environment: ThreadEnvironmentMeta;
 }
 
+export interface WorktreeThreadSubgroup {
+  readonly worktreeId: string;
+  readonly worktreeName: string;
+  readonly branchName?: string;
+  readonly threads: readonly ThreadListEntry[];
+}
+
 export interface ThreadGroup {
   readonly rootWorkspace: WorkspaceRecord;
   readonly threads: readonly ThreadListEntry[];
+  readonly worktreeSubgroups: readonly WorktreeThreadSubgroup[];
   readonly snoozedThreads: readonly ThreadListEntry[];
   readonly archivedThreads: readonly ThreadListEntry[];
 }
@@ -105,23 +113,23 @@ function buildRootGroup(
     return left.session.title.localeCompare(right.session.title);
   });
 
-  return partitionThreads(rootWorkspace, threads);
+  const partitioned = partitionThreads(rootWorkspace, threads);
+  return { ...partitioned, worktreeSubgroups: buildWorktreeSubgroups(partitioned.threads) };
 }
 
 function buildOrphanGroup(workspace: WorkspaceRecord): ThreadGroup {
-  return partitionThreads(
-    workspace,
-    workspace.sessions.map((session) => ({
-      workspaceId: workspace.id,
-      session,
-      environment: {
-        kind: "worktree",
-        label: workspace.name,
-        branchName: workspace.branchName,
-        detached: !workspace.branchName,
-      },
-    })),
-  );
+  const entries = workspace.sessions.map((session) => ({
+    workspaceId: workspace.id,
+    session,
+    environment: {
+      kind: "worktree" as const,
+      label: workspace.name,
+      branchName: workspace.branchName,
+      detached: !workspace.branchName,
+    },
+  }));
+  const partitioned = partitionThreads(workspace, entries);
+  return { ...partitioned, worktreeSubgroups: buildWorktreeSubgroups(partitioned.threads) };
 }
 
 function partitionThreads(rootWorkspace: WorkspaceRecord, entries: readonly ThreadListEntry[]): ThreadGroup {
@@ -129,7 +137,28 @@ function partitionThreads(rootWorkspace: WorkspaceRecord, entries: readonly Thre
   return {
     rootWorkspace,
     threads: entries.filter((entry) => !entry.session.archivedAt && (!entry.session.snoozedUntil || new Date(entry.session.snoozedUntil).getTime() <= now)),
+    worktreeSubgroups: [],
     snoozedThreads: entries.filter((entry) => !entry.session.archivedAt && entry.session.snoozedUntil && new Date(entry.session.snoozedUntil).getTime() > now),
     archivedThreads: entries.filter((entry) => Boolean(entry.session.archivedAt)),
   };
+}
+
+function buildWorktreeSubgroups(threads: readonly ThreadListEntry[]): readonly WorktreeThreadSubgroup[] {
+  const byWorktree = new Map<string, { name: string; branchName?: string; threads: ThreadListEntry[] }>();
+  for (const thread of threads) {
+    if (thread.environment.kind !== "worktree") continue;
+    const key = thread.environment.label;
+    let group = byWorktree.get(key);
+    if (!group) {
+      group = { name: key, branchName: thread.environment.branchName, threads: [] };
+      byWorktree.set(key, group);
+    }
+    group.threads.push(thread);
+  }
+  return [...byWorktree.entries()].map(([key, group]) => ({
+    worktreeId: key,
+    worktreeName: group.name,
+    branchName: group.branchName,
+    threads: group.threads,
+  }));
 }

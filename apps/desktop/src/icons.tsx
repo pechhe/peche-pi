@@ -531,7 +531,7 @@ export function EnvironmentIcon() {
   );
 }
 
-export function PanelRightIcon() {
+function _PanelRightIcon() {
   return (
     <Icon>
       <rect x="3" y="3" width="18" height="18" rx="2" />

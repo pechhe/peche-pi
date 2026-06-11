@@ -255,7 +255,7 @@ export function useKeyboardShortcuts({
 
         // Mod+<key> shortcuts (no shift)
         if (!event.shiftKey) {
-          const handler = modKeyMap.get(key);
+          const handler = modKeyMap.get(key) ?? modKeyMap.get(event.key);
           if (handler) {
             event.preventDefault();
             handler();

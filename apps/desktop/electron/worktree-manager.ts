@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdir, realpath } from "node:fs/promises";
+import { mkdir, realpath, symlink } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import type {
@@ -81,6 +81,10 @@ export class GitWorktreeManager {
       input.startPoint?.trim() || "HEAD",
     ];
     await runGit(args);
+
+    // Symlink node_modules from the repo root so the worktree shares
+    // the same installed dependencies without running pnpm install.
+    await symlinkNodeModules(repoRoot, worktreePath);
 
     const canonicalWorktreePath = await canonicalPath(worktreePath);
     const snapshot = await this.refreshWorktrees(workspace);
@@ -277,6 +281,31 @@ function defaultWorktreeDisplayName(workspace: WorkspaceRef, path: string, kind:
 function normalizeBranchName(value: string): string | undefined {
   const branch = value.replace(/^refs\/heads\//, "").trim();
   return branch.length > 0 && branch !== "detached" ? branch : undefined;
+}
+
+/**
+ * Symlink node_modules from the source repo into a worktree so it shares
+ * the same installed dependencies without running pnpm install.
+ *
+ * Handles the root node_modules and common workspace sub-paths (e.g.
+ * apps/desktop/node_modules). Silently skips paths that don't exist in
+ * the source or already exist in the destination.
+ */
+async function symlinkNodeModules(sourceRoot: string, worktreePath: string): Promise<void> {
+  const candidates = [
+    "node_modules",
+    "apps/desktop/node_modules",
+  ];
+  for (const rel of candidates) {
+    const src = join(sourceRoot, rel);
+    const dst = join(worktreePath, rel);
+    try {
+      await realpath(src); // verify source exists
+      await symlink(src, dst, "junction");
+    } catch {
+      // Source doesn't exist or dst already exists — skip.
+    }
+  }
 }
 
 async function runGit(args: readonly string[]): Promise<string> {

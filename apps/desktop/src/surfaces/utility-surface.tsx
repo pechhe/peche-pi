@@ -1,4 +1,4 @@
-import { Dispatch, SetStateAction, useMemo, useCallback, type ReactNode } from "react";
+import { Dispatch, SetStateAction, useMemo, useCallback, useEffect, useRef, type ReactNode } from "react";
 
 import type {
   AppView,
@@ -68,6 +68,7 @@ export interface UtilitySurfaceProps {
 
   // Sidebar callbacks
   readonly onNewThreadForWorkspace: (rootWorkspaceId: string) => void;
+  readonly onNewThreadInWorktree: (rootWorkspaceId: string, worktreeId: string) => void;
   readonly onSetActiveView: (view: AppView) => void;
   readonly onOpenSkills: (workspaceId?: string) => void;
   readonly onOpenExtensions: (workspaceId?: string) => void;
@@ -127,6 +128,7 @@ export function UtilitySurface(props: UtilitySurfaceProps) {
     pendingSidebarSelection,
     automations,
     onNewThreadForWorkspace,
+    onNewThreadInWorktree,
     onSetActiveView,
     onOpenSkills,
     onOpenExtensions,
@@ -211,6 +213,7 @@ export function UtilitySurface(props: UtilitySurfaceProps) {
           setSnapshot={props.setSnapshot}
           updateSnapshot={props.updateSnapshot}
           onNewThreadForWorkspace={onNewThreadForWorkspace}
+          onNewThreadInWorktree={onNewThreadInWorktree}
           onSetActiveView={onSetActiveView}
           onOpenSkills={onOpenSkills}
           onOpenExtensions={onOpenExtensions}
@@ -256,10 +259,13 @@ export interface ComposerLayoutSurfaceProps {
 }
 
 export function ComposerLayoutSurface(props: ComposerLayoutSurfaceProps) {
-  const { composerLayout, deviceMode, api, setSnapshot, updateSnapshot, onBack } = props;
+  const { composerLayout, deviceMode, api, onBack } = props;
+
+  const mountedRef = useRef(true);
+  useEffect(() => { return () => { mountedRef.current = false; }; }, []);
 
   const handleSave = useCallback((layout: ComposerLayoutData) => {
-    void api.setComposerLayout(layout).then(() => { onBack(); });
+    void api.setComposerLayout(layout).then(() => { if (mountedRef.current) onBack(); });
   }, [api, onBack]);
 
   return (

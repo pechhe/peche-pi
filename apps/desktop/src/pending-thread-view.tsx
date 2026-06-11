@@ -1,13 +1,13 @@
 import { useRef, useEffect, useMemo } from "react";
 import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
 import type { ChassisAction } from "./chassis";
-import { ComposerLayoutLegacyRow } from "./composer-layout-renderer";
+import { ComposerLayoutRenderer } from "./composer-layout-renderer";
 import { getDefaultLayout, mergeChassisActionsIntoLayout, validateComposerLayout, controlUnitRegistry } from "./composer-layout";
 import { registerChassisActionUnits } from "./composer-builtin-units";
 import type { ComposerMode } from "./composer-mode";
 
 import type { CavemanLevel } from "./ipc";
-import { ArrowUpIcon } from "./icons";
+import {} from "./icons";
 import { type ModelSelectorHandle } from "./model-selector";
 
 interface PendingComposerProps {
@@ -85,7 +85,7 @@ export function PendingComposer({
                 <div className="composer__footer-row">
                   <div className="composer__hint">
                     <span className="composer__hint-prose">Enter to send · Shift+Enter for newline</span>
-                    <ComposerLayoutLegacyRow
+                    <ComposerLayoutRenderer
                       layout={effectiveLayout}
                       runtime={runtime}
                       provider={provider}
@@ -99,23 +99,13 @@ export function PendingComposer({
                       onSetModel={() => undefined}
                       onSetThinking={() => undefined}
                       onSetCavemanLevel={() => undefined}
+                      onSubmit={() => {}}
+                      hasModelSelection={false}
                       chassisActions={chassisActions}
                       onRunChassisAction={onRunChassisAction}
                       activeWrapId={activeWrapId}
                       onToggleChassisWrap={onToggleChassisWrap}
                     />
-                  </div>
-                  <div className="composer__actions">
-                    <span className="composer__key-mount composer__key-mount--send">
-                      <button
-                        aria-label="Send message"
-                        className="button button--primary button--cta-icon composer__send"
-                        type="button"
-                        disabled
-                      >
-                        <ArrowUpIcon />
-                      </button>
-                    </span>
                   </div>
                 </div>
               </div>

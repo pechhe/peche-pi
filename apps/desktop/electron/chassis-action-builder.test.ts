@@ -13,13 +13,11 @@ import assert from "node:assert/strict";
 
 import {
   validateChassisActionCandidate,
-  type ChassisAction,
 } from "../src/chassis.ts";
 import {
   buildChassisActionCandidate,
   extractCandidateJson,
   type BuildChassisActionCandidateInput,
-  type BuildChassisActionCandidateResult,
 } from "./chassis-action-builder.ts";
 
 // ── validateChassisActionCandidate ────────────────────────────────────────
@@ -249,7 +247,7 @@ describe("buildChassisActionCandidate — validation gate", () => {
 describe("buildChassisActionCandidate — multi-turn history threading", () => {
   it("forwards messages[] in order to the LLM call", async () => {
     // Capture the messages that would be sent to the LLM
-    let capturedMessages: ReadonlyArray<{ role: string; content: string }> = [];
+    let _capturedMessages: ReadonlyArray<{ role: string; content: string }> = [];
 
     // We can't easily mock fetch in node:test without overriding globalThis.
     // Instead, verify the function signature accepts the expected input shape.

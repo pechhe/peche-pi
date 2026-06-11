@@ -4,6 +4,8 @@ import { CavemanSelector } from "./caveman-selector";
 import { OrchestrateSwitch } from "./orchestrate-switch";
 import { ModelFeatureBadges } from "./model-feature-badges";
 import { ChassisActionControl } from "./chassis-action-control";
+import { ArrowUpIcon, StopSquareIcon } from "./icons";
+import { playClick } from "./button-click-sound";
 
 import { controlUnitRegistry } from "./composer-layout";
 
@@ -94,17 +96,27 @@ controlUnitRegistry.register({
   ),
 });
 
-// Send button - special handling as it's a required control
-// Note: The send button is handled specially in ComposerLayoutRenderer
-// because it needs access to onSubmit and primaryActionIsStop from the parent
+// Send button
 controlUnitRegistry.register({
   id: "builtin:send",
   kind: "builtin",
   label: "Send",
   defaultSpan: 1,
-  render: (_props) => {
-    // This is never actually rendered - the layout renderer has special handling for send
-    return <></>;
+  render: (props) => {
+    if (!props.onSubmit) return <></>;
+    return (
+      <button
+        aria-label={props.primaryActionIsStop ? "Stop run" : "Send message"}
+        className="button button--primary button--cta-icon composer__send"
+        data-testid="send"
+        type="button"
+        disabled={!props.primaryActionIsStop && !props.hasModelSelection}
+        onPointerDown={() => { playClick("down"); }}
+        onClick={props.onSubmit}
+      >
+        {props.primaryActionIsStop ? <StopSquareIcon /> : <ArrowUpIcon />}
+      </button>
+    );
   },
 });
 

@@ -804,8 +804,8 @@ export default function App() {
   const [newThreadSelectedBranch, setNewThreadSelectedBranch] = useState<string>("");
   const [newThreadCurrentBranch, setNewThreadCurrentBranch] = useState<string>("");
   const [newThreadIsDirty, setNewThreadIsDirty] = useState<boolean>(false);
-  const [newThreadWorktreeMode, setNewThreadWorktreeMode] = useState<"new" | "existing">("new");
-  const [newThreadSelectedWorktreeId, setNewThreadSelectedWorktreeId] = useState<string>("");
+  const _newThreadWorktreeMode = nt.worktreeMode;
+  const _newThreadSelectedWorktreeId = nt.selectedExistingWorktreeId;
 
   // Fetch branches when workspace changes or new-thread view opens
   useEffect(() => {
@@ -2348,7 +2348,7 @@ export default function App() {
       environment: newThreadEnvironment,
       ...modelConfig,
       ...(newThreadSelectedBranch && newThreadSelectedBranch !== newThreadCurrentBranch ? { startBranch: newThreadSelectedBranch } : {}),
-      ...(newThreadEnvironment === "worktree" && newThreadWorktreeMode === "existing" && newThreadSelectedWorktreeId ? { existingWorktreeId: newThreadSelectedWorktreeId } : {}),
+      ...(newThreadEnvironment === "worktree" && nt.worktreeMode === "existing" && nt.selectedExistingWorktreeId ? { existingWorktreeId: nt.selectedExistingWorktreeId } : {}),
     };
     wsMenu.expandWorkspace(newThreadRootWorkspaceId);
     // Capture a snapshot of what the user just sent so we can render an
@@ -2493,6 +2493,7 @@ export default function App() {
     pendingSidebarSelection,
     automations: snapshot.automations ?? [],
     onNewThreadForWorkspace: openNewThreadSurface,
+    onNewThreadInWorktree: nt.openInWorktree,
     onSetActiveView: setActiveView,
     onOpenSkills: openSkills,
     onOpenExtensions: openExtensions,
@@ -2742,6 +2743,7 @@ export default function App() {
           setSnapshot={setSnapshot}
           updateSnapshot={updateSnapshot}
           onNewThreadForWorkspace={(rootWorkspaceId) => openNewThreadSurface(rootWorkspaceId)}
+          onNewThreadInWorktree={nt.openInWorktree}
           onSetActiveView={setActiveView}
           onOpenSkills={openSkills}
           onOpenExtensions={openExtensions}
@@ -2845,10 +2847,10 @@ export default function App() {
               currentBranch={newThreadCurrentBranch}
               isDirty={newThreadIsDirty}
               existingWorktrees={activeWorktrees}
-              worktreeMode={newThreadWorktreeMode}
-              onSelectWorktreeMode={setNewThreadWorktreeMode}
-              selectedExistingWorktreeId={newThreadSelectedWorktreeId}
-              onSelectExistingWorktree={setNewThreadSelectedWorktreeId}
+              worktreeMode={nt.worktreeMode}
+              onSelectWorktreeMode={nt.setWorktreeMode}
+              selectedExistingWorktreeId={nt.selectedExistingWorktreeId}
+              onSelectExistingWorktree={nt.setSelectedExistingWorktreeId}
               onSetModel={(provider, modelId) => { setNewThreadProvider(provider); setNewThreadModelId(modelId); }}
               onSetThinking={setNewThreadThinkingLevel}
               onSetCavemanLevel={settingsHandlers.handleSetDefaultCavemanLevel}

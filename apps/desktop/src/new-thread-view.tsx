@@ -3,10 +3,10 @@ import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
 import type { ComposerAttachment, ThreadLocation, WorkspaceRecord, WorktreeRecord } from "./desktop-state";
 import type { BranchInfo } from "./ipc";
 import type { ComposerMode } from "./composer-mode";
-import { ComposerLayoutLegacyRow } from "./composer-layout-renderer";
+import { ComposerLayoutRenderer } from "./composer-layout-renderer";
 import { getDefaultLayout, mergeChassisActionsIntoLayout, validateComposerLayout, controlUnitRegistry } from "./composer-layout";
 import { registerChassisActionUnits } from "./composer-builtin-units";
-import { ArrowUpIcon, ChevronDownIcon, MonitorIcon, PiLogoMark, WorktreeIcon } from "./icons";
+import { ChevronDownIcon, MonitorIcon, PiLogoMark, WorktreeIcon } from "./icons";
 
 import { playClick } from "./button-click-sound";
 import {
@@ -97,21 +97,77 @@ function BranchGlyph({ dot = false }: { dot?: boolean }) {
   );
 }
 
+function BranchSwitchDialog({
+  fromBranch,
+  toBranch,
+  onSwitchBranch,
+  onUseWorktree,
+  onCancel,
+}: {
+  readonly fromBranch: string;
+  readonly toBranch: string;
+  readonly onSwitchBranch: () => void;
+  readonly onUseWorktree: () => void;
+  readonly onCancel: () => void;
+}) {
+  return (
+    <div className="tree-modal-backdrop" onClick={onCancel}>
+      <div className="tree-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="tree-modal__header">
+          <h2 className="tree-modal__title">Switch project branch?</h2>
+        </div>
+        <div className="tree-modal__meta" style={{ marginBottom: 12 }}>
+          This will change the project from <strong>{fromBranch}</strong> to <strong>{toBranch}</strong>.
+          All local threads share the same branch.
+        </div>
+        <div className="tree-modal__actions">
+          <button
+            className="button button--secondary"
+            type="button"
+            onClick={onCancel}
+          >
+            Cancel
+          </button>
+          <button
+            className="button"
+            type="button"
+            onClick={onSwitchBranch}
+          >
+            Switch Branch
+          </button>
+          <button
+            className="button button--primary"
+            type="button"
+            onClick={onUseWorktree}
+          >
+            Use Worktree instead
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function BranchPicker({
   branches,
   selectedBranch,
   currentBranch,
   isDirty,
+  environment,
   onSelectBranch,
+  onSwitchToWorktree,
 }: {
   readonly branches: readonly BranchInfo[];
   readonly selectedBranch: string;
   readonly currentBranch: string;
   readonly isDirty: boolean;
+  readonly environment: ThreadLocation;
   readonly onSelectBranch: (branch: string) => void;
+  readonly onSwitchToWorktree: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const [pendingBranch, setPendingBranch] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -132,6 +188,11 @@ function BranchPicker({
   const label = selectedBranch || currentBranch || "branch";
   const localStateLabel = currentBranch || "current";
   const select = (name: string) => {
+    if (environment === "local" && currentBranch && name !== currentBranch) {
+      setPendingBranch(name);
+      setOpen(false);
+      return;
+    }
     onSelectBranch(name);
     setOpen(false);
   };
@@ -187,6 +248,21 @@ function BranchPicker({
             </button>
           ))}
         </div>
+      ) : null}
+      {pendingBranch ? (
+        <BranchSwitchDialog
+          fromBranch={currentBranch}
+          toBranch={pendingBranch}
+          onSwitchBranch={() => {
+            onSelectBranch(pendingBranch);
+            setPendingBranch(null);
+          }}
+          onUseWorktree={() => {
+            setPendingBranch(null);
+            onSwitchToWorktree();
+          }}
+          onCancel={() => setPendingBranch(null)}
+        />
       ) : null}
     </div>
   );
@@ -435,7 +511,9 @@ export function NewThreadView({
                   selectedBranch={selectedBranch || ""}
                   currentBranch={currentBranch || ""}
                   isDirty={isDirty ?? false}
+                  environment={environment}
                   onSelectBranch={onSelectBranch}
+                  onSwitchToWorktree={() => onSelectEnvironment("worktree")}
                 />
               </div>
             ) : null}
@@ -590,7 +668,7 @@ function NewThreadComposerFooter({
         <div className="composer__footer-row">
           <div className="composer__hint new-thread__hint">
             <span className="composer__hint-prose">Enter to send · Shift+Enter for newline</span>
-            <ComposerLayoutLegacyRow
+            <ComposerLayoutRenderer
               layout={effectiveLayout}
               runtime={runtime}
               provider={provider}
@@ -610,28 +688,14 @@ function NewThreadComposerFooter({
               onSetCavemanLevel={onSetCavemanLevel}
               orchestratorMode={orchestratorMode}
               onToggleOrchestrator={onToggleOrchestrator}
+              onSubmit={onSubmit}
+              primaryActionIsStop={false}
+              hasModelSelection={hasContent && !modelOnboarding.requiresModelSelection}
               chassisActions={chassisActions}
               onRunChassisAction={onRunChassisAction}
               activeWrapId={activeWrapId}
               onToggleChassisWrap={onToggleChassisWrap}
             />
-          </div>
-
-          <div className="composer__actions">
-            <span className="composer__key-mount composer__key-mount--send">
-              <button
-                aria-label="Start project"
-                className="button button--primary button--cta-icon composer__send"
-                data-testid="send"
-                type="button"
-                disabled={!hasContent || modelOnboarding.requiresModelSelection}
-                data-has-input={hasContent ? "" : undefined}
-                onPointerDown={() => { playClick("down"); }}
-                onClick={onSubmit}
-              >
-                <ArrowUpIcon />
-              </button>
-            </span>
           </div>
         </div>
       </div>

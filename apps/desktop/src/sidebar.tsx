@@ -266,6 +266,7 @@ interface SidebarProps {
     action: () => Promise<DesktopAppState>,
   ) => Promise<DesktopAppState>;
   readonly onNewThreadForWorkspace: (rootWorkspaceId: string) => void;
+  readonly onNewThreadInWorktree: (rootWorkspaceId: string, worktreeId: string) => void;
   readonly onSetActiveView: (view: AppView) => void;
   readonly onOpenSkills: (workspaceId?: string) => void;
   readonly onOpenExtensions: (workspaceId?: string) => void;
@@ -317,6 +318,7 @@ export function Sidebar(props: SidebarProps) {
     setSnapshot,
     updateSnapshot,
     onNewThreadForWorkspace,
+    onNewThreadInWorktree,
     onSetActiveView: _onSetActiveView,
     onOpenSkills,
     onOpenExtensions,
@@ -561,6 +563,7 @@ export function Sidebar(props: SidebarProps) {
                     onMarkToTestSession={onMarkToTestSession}
                     onUnmarkToTestSession={onUnmarkToTestSession}
                     onNewThreadForWorkspace={onNewThreadForWorkspace}
+                    onNewThreadInWorktree={onNewThreadInWorktree}
                     pendingSidebarSelection={pendingSidebarSelection}
                     onOpenAutomations={onOpenAutomations}
                     sessionsWithRunningSubagents={sessionsWithRunningSubagents}
@@ -587,6 +590,7 @@ export function Sidebar(props: SidebarProps) {
                     onMarkToTestSession={onMarkToTestSession}
                     onUnmarkToTestSession={onUnmarkToTestSession}
                     onNewThreadForWorkspace={onNewThreadForWorkspace}
+                    onNewThreadInWorktree={onNewThreadInWorktree}
                     pendingSidebarSelection={pendingSidebarSelection}
                     onOpenAutomations={onOpenAutomations}
                     sessionsWithRunningSubagents={sessionsWithRunningSubagents}
@@ -616,6 +620,7 @@ export function Sidebar(props: SidebarProps) {
                     onMarkToTestSession={onMarkToTestSession}
                     onUnmarkToTestSession={onUnmarkToTestSession}
                     onNewThreadForWorkspace={onNewThreadForWorkspace}
+                    onNewThreadInWorktree={onNewThreadInWorktree}
                     pendingSidebarSelection={pendingSidebarSelection}
                     onOpenAutomations={onOpenAutomations}
                     sessionsWithRunningSubagents={sessionsWithRunningSubagents}
@@ -694,6 +699,7 @@ interface WorkspaceGroupProps {
   readonly onMarkToTestSession: (target: { workspaceId: string; sessionId: string }) => void;
   readonly onUnmarkToTestSession: (target: { workspaceId: string; sessionId: string }) => void;
   readonly onNewThreadForWorkspace: (rootWorkspaceId: string) => void;
+  readonly onNewThreadInWorktree: (rootWorkspaceId: string, worktreeId: string) => void;
   readonly pendingSidebarSelection: SidebarNavEntry | null;
   readonly onOpenAutomations: (workspaceId?: string) => void;
   readonly sessionsWithRunningSubagents?: ReadonlySet<string>;
@@ -738,7 +744,7 @@ function WorkspaceGroupContent(
   props: WorkspaceGroupProps & { readonly dragHandleProps?: DragHandleProps },
 ) {
   const {
-    group: { rootWorkspace, threads, snoozedThreads, archivedThreads },
+    group: { rootWorkspace, threads, worktreeSubgroups, snoozedThreads, archivedThreads },
     activeView,
     selectedWorkspace,
     selectedSession,
@@ -753,6 +759,7 @@ function WorkspaceGroupContent(
     onUnsnoozeSession,
     onMarkToTestSession,
     onNewThreadForWorkspace,
+    onNewThreadInWorktree,
     dragHandleProps,
     pendingSidebarSelection,
     onOpenAutomations,
@@ -986,8 +993,17 @@ function WorkspaceGroupContent(
       ) : null}
       {!isCollapsed ? (
         <>
+          {/* Local threads + worktree threads from single-thread worktrees */}
+          {(() => {
+            const subgroupWorktreeIds = new Set(
+              worktreeSubgroups.filter((sg) => sg.threads.length > 1).map((sg) => sg.worktreeId),
+            );
+            const flatThreads = threads.filter(
+              (t) => t.environment.kind !== "worktree" || !subgroupWorktreeIds.has(t.environment.label),
+            );
+            return flatThreads.length > 0 ? (
           <MovingSidebarHighlight className="session-list" itemSelector=".session-row">
-            {threads.map((thread, index) => {
+            {flatThreads.map((thread, index) => {
               const active =
                 thread.session.id === PENDING_THREAD_SESSION_ID ||
                 (activeView === "threads" &&
@@ -997,7 +1013,7 @@ function WorkspaceGroupContent(
                 pendingSidebarSelection?.kind === "thread" &&
                 pendingSidebarSelection.workspaceId === thread.workspaceId &&
                 pendingSidebarSelection.sessionId === thread.session.id;
-              const nextThread = threads[index + 1] ?? (index > 0 ? threads[index - 1] : undefined);
+              const nextThread = flatThreads[index + 1] ?? (index > 0 ? flatThreads[index - 1] : undefined);
               return (
                 <ThreadSessionRow
                   key={`${thread.workspaceId}:${thread.session.id}`}
@@ -1021,6 +1037,82 @@ function WorkspaceGroupContent(
               );
             })}
           </MovingSidebarHighlight>
+            ) : null;
+          })()}
+          {/* Worktree sub-groups (only for worktrees with >1 active thread) */}
+          {worktreeSubgroups.filter((sg) => sg.threads.length > 1).map((subgroup) => {
+            const isSubgroupCollapsed = wsMenu.collapsedWorkspaces[`wt:${subgroup.worktreeId}`] ?? false;
+            return (
+              <div key={subgroup.worktreeId} className="worktree-subgroup">
+                <div className="worktree-subgroup__header">
+                  <button
+                    className="worktree-subgroup__toggle"
+                    type="button"
+                    onClick={() => wsMenu.toggleWorkspaceCollapsed(`wt:${subgroup.worktreeId}`)}
+                  >
+                    <span className="worktree-subgroup__icon" aria-hidden="true">
+                      <WorktreeIcon />
+                    </span>
+                    <span className="worktree-subgroup__chevron" aria-hidden="true" data-collapsed={isSubgroupCollapsed || undefined}>
+                      <ChevronDownIcon />
+                    </span>
+                    <span className="worktree-subgroup__name">{subgroup.worktreeName}</span>
+                    {subgroup.branchName ? (
+                      <span className="worktree-subgroup__branch">{subgroup.branchName}</span>
+                    ) : null}
+                  </button>
+                  <button
+                    aria-label={`New thread in ${subgroup.worktreeName}`}
+                    className="icon-button worktree-subgroup__compose"
+                    type="button"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      onNewThreadInWorktree(rootWorkspace.id, subgroup.worktreeId);
+                    }}
+                  >
+                    <ComposeIcon />
+                  </button>
+                </div>
+                {!isSubgroupCollapsed ? (
+                  <MovingSidebarHighlight className="session-list session-list--worktree" itemSelector=".session-row">
+                    {subgroup.threads.map((thread, index) => {
+                      const active =
+                        activeView === "threads" &&
+                        thread.workspaceId === selectedWorkspace?.id &&
+                        thread.session.id === selectedSession?.id;
+                      const pending =
+                        pendingSidebarSelection?.kind === "thread" &&
+                        pendingSidebarSelection.workspaceId === thread.workspaceId &&
+                        pendingSidebarSelection.sessionId === thread.session.id;
+                      const nextThread = subgroup.threads[index + 1] ?? (index > 0 ? subgroup.threads[index - 1] : undefined);
+                      return (
+                        <ThreadSessionRow
+                          key={`${thread.workspaceId}:${thread.session.id}`}
+                          active={active}
+                          pending={pending}
+                          entering={enteringSessions.has(thread.session.id)}
+                          thread={thread}
+                          hasRunningSubagents={sessionsWithRunningSubagents?.has(`${thread.workspaceId}:${thread.session.id}`) ?? false}
+                          threadType={threadTypeBySession?.[thread.session.id]}
+                          onAction={() =>
+                            onArchiveSession({
+                              workspaceId: thread.workspaceId,
+                              sessionId: thread.session.id,
+                              selectNextSessionId: nextThread?.session.id,
+                            })
+                          }
+                          onSelect={() => onSelectSession({ workspaceId: thread.workspaceId, sessionId: thread.session.id })}
+                          onSnooze={(until) => onSnoozeSession({ workspaceId: thread.workspaceId, sessionId: thread.session.id }, until)}
+                          onMarkToTest={() => onMarkToTestSession({ workspaceId: thread.workspaceId, sessionId: thread.session.id })}
+                        />
+                      );
+                    })}
+                  </MovingSidebarHighlight>
+                ) : null}
+              </div>
+            );
+          })}
           {snoozedThreads.length > 0 ? (
             <div className="snoozed-thread-group">
               <button

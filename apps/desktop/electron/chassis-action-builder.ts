@@ -172,8 +172,6 @@ async function callChatCompletion(
 
 // ── Public entry point ────────────────────────────────────────────────────
 
-const MAX_RETRIES = 1;
-
 /**
  * Build a Chassis Action candidate via LLM completion.
  *
@@ -196,17 +194,12 @@ export async function buildChassisActionCandidate(
     ...input.messages.map((m) => ({ role: m.role, content: m.content })),
   ];
 
-  let assistantMessage: string;
-  try {
-    assistantMessage = await callChatCompletion(
-      apiMessages,
-      providerId,
-      modelId,
-      getApiKey,
-    );
-  } catch (err) {
-    throw err;
-  }
+  const assistantMessage: string = await callChatCompletion(
+    apiMessages,
+    providerId,
+    modelId,
+    getApiKey,
+  );
 
   // Try to extract and validate a candidate from the response
   const raw = extractCandidateJson(assistantMessage);

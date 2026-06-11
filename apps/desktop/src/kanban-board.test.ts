@@ -44,6 +44,7 @@ test("buildKanbanColumns groups threads by existing session state", () => {
       thread(session("awaiting", { isAwaitingAssistantText: true })),
       thread(session("idle")),
     ],
+    worktreeSubgroups: [],
     archivedThreads: [thread(session("done", { archivedAt: "2026-01-02T00:00:00.000Z" }))],
     snoozedThreads: [],
   };

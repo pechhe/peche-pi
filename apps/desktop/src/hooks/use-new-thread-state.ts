@@ -23,6 +23,8 @@ export interface NewThreadState {
   readonly pendingWorkspaceId: string;
   readonly composerMode: ComposerMode;
   readonly orchestratorMode: boolean;
+  readonly worktreeMode: "new" | "existing";
+  readonly selectedExistingWorktreeId: string;
 
   readonly setRootWorkspaceId: Dispatch<SetStateAction<string>>;
   readonly setIsChat: Dispatch<SetStateAction<boolean>>;
@@ -35,9 +37,12 @@ export interface NewThreadState {
   readonly setPendingWorkspaceId: Dispatch<SetStateAction<string>>;
   readonly setComposerMode: Dispatch<SetStateAction<ComposerMode>>;
   readonly setOrchestratorMode: Dispatch<SetStateAction<boolean>>;
+  readonly setWorktreeMode: Dispatch<SetStateAction<"new" | "existing">>;
+  readonly setSelectedExistingWorktreeId: Dispatch<SetStateAction<string>>;
 
   readonly reset: (workspaceId?: string) => void;
   readonly open: (workspaceId?: string) => void;
+  readonly openInWorktree: (rootWorkspaceId: string, worktreeId: string) => void;
   readonly openChat: () => void;
   readonly addAttachments: (files: File[]) => void;
   readonly removeAttachment: (attachmentId: string) => void;
@@ -62,6 +67,8 @@ export function useNewThreadState(params: {
   const [pendingWorkspaceId, setPendingWorkspaceId] = useState("");
   const [composerMode, setComposerMode] = useState<ComposerMode>("build");
   const [orchestratorMode, setOrchestratorMode] = useState(snapshot?.subagentSettings.orchestratorMode ?? false);
+  const [worktreeMode, setWorktreeMode] = useState<"new" | "existing">("new");
+  const [selectedExistingWorktreeId, setSelectedExistingWorktreeId] = useState("");
 
   // Per-project draft text + attachments. Keyed by rootWorkspaceId so each
   // project remembers what the user typed while navigating elsewhere.
@@ -139,6 +146,16 @@ export function useNewThreadState(params: {
     if (api) setActiveView("new-thread");
   }, [api, setActiveView, reset]);
 
+  const openInWorktree = useCallback((rootWorkspaceId: string, worktreeId: string) => {
+    setPendingWorkspaceId("");
+    setIsChat(false);
+    reset(rootWorkspaceId);
+    setEnvironment("worktree");
+    setWorktreeMode("existing");
+    setSelectedExistingWorktreeId(worktreeId);
+    if (api) setActiveView("new-thread");
+  }, [api, setActiveView, reset]);
+
   const openChat = useCallback(() => {
     setPendingWorkspaceId("");
     setIsChat(true);
@@ -191,8 +208,13 @@ export function useNewThreadState(params: {
     setPendingWorkspaceId,
     setComposerMode,
     setOrchestratorMode,
+    worktreeMode,
+    selectedExistingWorktreeId,
+    setWorktreeMode,
+    setSelectedExistingWorktreeId,
     reset,
     open,
+    openInWorktree,
     openChat,
     addAttachments,
     removeAttachment,

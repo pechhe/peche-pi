@@ -199,6 +199,12 @@ function createDesktopHarness(electronApp: ElectronApplication): DesktopHarness 
         .toBe(true);
     },
     close: async () => {
+      // On macOS, closing the last window does not quit the app (standard
+      // platform behaviour).  Force-quit so the Electron process actually
+      // terminates and doesn't linger in the Dock as a zombie.
+      await electronApp.evaluate(({ app }) => {
+        app.quit();
+      }).catch(() => {});
       await electronApp.close();
     },
   };

@@ -54,6 +54,9 @@ export interface ComposerControlUnitRenderProps {
   readonly onToggleChassisWrap?: (action: ChassisAction) => void;
   readonly showLabel: boolean;
   readonly color?: string;
+  readonly onSubmit?: () => void;
+  readonly primaryActionIsStop?: boolean;
+  readonly hasModelSelection?: boolean;
 }
 
 /** Placement of a unit in the grid. */
@@ -78,7 +81,7 @@ export interface ComposerLayoutData {
 }
 
 /** Registry of all available control units. */
-export class ComposerControlUnitRegistry {
+class ComposerControlUnitRegistry {
   private units = new Map<string, ComposerControlUnit>();
 
   register(unit: ComposerControlUnit): void {
@@ -294,6 +297,26 @@ export function mergeChassisActionsIntoLayout(
     ...layout,
     placements: newPlacements,
   };
+}
+
+/**
+ * Check if a proposed placement collides with any existing placement in the layout.
+ * Returns true if the target cells are already occupied.
+ */
+export function hasCollision(
+  placements: readonly ComposerUnitPlacement[],
+  row: number,
+  col: number,
+  colSpan: number,
+  excludeUnitId?: string,
+): boolean {
+  return placements.some(p => {
+    if (excludeUnitId && p.unitId === excludeUnitId) return false;
+    if (p.row !== row) return false;
+    const pEnd = p.col + p.colSpan;
+    const newEnd = col + colSpan;
+    return col < pEnd && newEnd > p.col;
+  });
 }
 
 /**
