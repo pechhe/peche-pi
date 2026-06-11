@@ -1,9 +1,11 @@
 import { useMemo } from "react";
 import type { RuntimeSkillRecord, RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
+import { ChevronDown, ChevronRight, FolderOpen, Plus, RefreshCw, Sparkles } from "lucide-react";
 import type { WorkspaceRecord } from "./desktop-state";
-import { ChevronDownIcon, ChevronRightIcon, FolderIcon, PlusIcon, RefreshIcon, SkillIcon } from "./icons";
 import { titleCase } from "./string-utils";
 import { playButtonClick } from "./button-click-sound";
+import { Switch } from "@/components/ui/switch";
+import { cn } from "@/lib/utils";
 
 interface SkillGroup {
   readonly key: string;
@@ -50,8 +52,25 @@ function groupSkills(skills: readonly RuntimeSkillRecord[]): readonly SkillGroup
     .sort((a, b) => a.label.localeCompare(b.label));
 }
 
+function StatusBadge({ enabled, className }: { enabled: boolean; className?: string }) {
+  return (
+    <span
+      className={cn(
+        "skill-status inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium",
+        enabled
+          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+          : "border-border bg-muted/60 text-muted-foreground",
+        className,
+      )}
+    >
+      <span className={cn("size-1.5 rounded-full", enabled ? "bg-emerald-500" : "bg-muted-foreground/50")} />
+      {enabled ? "Enabled" : "Disabled"}
+    </span>
+  );
+}
+
 /* ──────────────────────────────────────────────────────────────
- * Sidebar (renders inside SecondarySurface's left rail)
+ * Skill list rail
  * ────────────────────────────────────────────────────────────── */
 
 interface SkillsSidebarProps {
@@ -86,70 +105,64 @@ function SkillsSidebar({
   const enabledCount = allSkills.filter((skill) => skill.enabled).length;
 
   return (
-    <div className="skills-rail">
-      <div className="skills-rail__search">
-        <input
-          aria-label="Search skills"
-          className="skills-rail__search-input"
-          placeholder="Search skills, sources, or descriptions…"
-          value={query}
-          onChange={(event) => onQueryChange(event.target.value)}
-        />
-      </div>
+    <div className="flex h-full min-h-0 flex-col gap-3">
+      <input
+        aria-label="Search skills"
+        className="settings-search w-full"
+        placeholder="Search skills, sources, or descriptions…"
+        value={query}
+        onChange={(event) => onQueryChange(event.target.value)}
+      />
 
-      <label className="skills-rail__toggle">
-        <input
-          type="checkbox"
-          checked={showDisabled}
-          onChange={(event) => onShowDisabledChange(event.target.checked)}
-        />
+      <label className="flex items-center gap-2 px-1 text-[13px] text-muted-foreground">
+        <Switch checked={showDisabled} onCheckedChange={onShowDisabledChange} aria-label="Show disabled" />
         <span>Show disabled</span>
       </label>
 
-      <div className="skills-rail__list" data-testid="skills-list">
+      <div className="min-h-0 flex-1 overflow-y-auto pr-1" data-testid="skills-list">
         {groups.length === 0 ? (
-          <div className="skills-rail__empty">No skills match your search.</div>
+          <div className="rounded-lg border border-dashed border-border px-3 py-6 text-center text-[13px] text-muted-foreground">
+            No skills match your search.
+          </div>
         ) : (
           groups.map((group) => {
             const collapsed = collapsedGroups.has(group.key);
             return (
-              <div className="skills-group" key={group.key}>
+              <div className="mb-3" key={group.key}>
                 <button
                   type="button"
-                  className="skills-group__header"
+                  className="flex w-full items-center gap-1 rounded-md px-1.5 py-1 text-[12px] font-semibold tracking-wide text-muted-foreground uppercase transition-colors hover:text-foreground"
                   onClick={() => { playButtonClick(); onToggleGroup(group.key); }}
                   aria-expanded={!collapsed}
                 >
-                  {collapsed ? <ChevronRightIcon /> : <ChevronDownIcon />}
-                  <span className="skills-group__label">{group.label}</span>
-                  <span className="skills-group__count">({group.skills.length})</span>
+                  {collapsed ? <ChevronRight className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+                  <span>{group.label}</span>
+                  <span className="font-normal">({group.skills.length})</span>
                 </button>
                 {collapsed ? null : (
-                  <div className="skills-group__items">
+                  <div className="mt-1 grid gap-1">
                     {group.skills.map((skill) => (
                       <button
                         key={skill.filePath}
                         type="button"
-                        className={`skill-row ${
-                          selectedSkillPath === skill.filePath ? "skill-row--active" : ""
-                        }`}
+                        className={cn(
+                          "flex w-full items-center gap-2.5 rounded-lg border px-2.5 py-2 text-left transition-colors",
+                          selectedSkillPath === skill.filePath
+                            ? "border-brand/40 bg-brand/10"
+                            : "border-transparent hover:bg-accent/50",
+                        )}
                         onClick={() => { playButtonClick(); onSelectSkill(skill.filePath); }}
                       >
-                        <span className="skill-row__avatar">
-                          <SkillIcon />
+                        <span className="grid size-7 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground [&_svg]:size-4">
+                          <Sparkles />
                         </span>
-                        <span className="skill-row__body">
-                          <span className="skill-row__title">{titleCase(skill.name)}</span>
-                          <span className="skill-row__description">{skill.description}</span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[13px] font-medium text-foreground">{titleCase(skill.name)}</span>
+                          <span className="block truncate text-[12px] text-muted-foreground">{skill.description}</span>
                         </span>
-                        <span
-                          className={`skill-status ${
-                            skill.enabled ? "skill-status--enabled" : "skill-status--disabled"
-                          }`}
-                        >
-                          <span className="skill-status__dot" />
-                          {skill.enabled ? "Enabled" : "Disabled"}
-                        </span>
+                        {skill.enabled ? null : (
+                          <span className="size-1.5 shrink-0 rounded-full bg-muted-foreground/50" title="Disabled" />
+                        )}
                       </button>
                     ))}
                   </div>
@@ -160,11 +173,11 @@ function SkillsSidebar({
         )}
       </div>
 
-      <footer className="skills-rail__footer">
+      <footer className="flex items-center gap-1.5 border-t border-border px-1 pt-2 text-[12px] text-muted-foreground">
         <span>
           {allSkills.length} skill{allSkills.length === 1 ? "" : "s"}
         </span>
-        <span className="skills-rail__footer-dot">•</span>
+        <span>•</span>
         <span>{enabledCount} enabled</span>
       </footer>
     </div>
@@ -227,10 +240,10 @@ export function SkillsView({
   }
 
   return (
-    <div className="skills-content skills-view">
+    <div className="skills-view mx-auto flex h-full min-h-0 w-full max-w-[1100px] flex-col animate-in fade-in duration-300">
       <header className="view-header">
         <div>
-          <div className="chat-header__eyebrow">Skills</div>
+          <div className="text-[12px] font-semibold tracking-wide text-muted-foreground uppercase">Skills</div>
           <h1 className="view-header__title">Skills</h1>
           <p className="view-header__body">
             Give pi workspace-specific capabilities and reusable workflows.
@@ -238,7 +251,7 @@ export function SkillsView({
         </div>
         <div className="view-header__actions">
           <button className="button button--secondary" type="button" onClick={() => { playButtonClick(); onRefresh(); }}>
-            <RefreshIcon />
+            <RefreshCw className="size-4" />
             <span>Refresh</span>
           </button>
           <button
@@ -258,14 +271,14 @@ export function SkillsView({
               });
             }}
           >
-            <PlusIcon />
+            <Plus className="size-4" />
             <span>New skill</span>
           </button>
         </div>
       </header>
 
-      <div className="skills-main-grid">
-        <section className="skills-main-list" aria-label="Skills list">
+      <div className="grid min-h-0 flex-1 grid-cols-[300px_minmax(0,1fr)] gap-4 max-[900px]:grid-cols-1">
+        <section className="min-h-0 rounded-xl border border-border bg-card p-3" aria-label="Skills list">
           <SkillsSidebar
             runtime={runtime}
             query={query}
@@ -279,7 +292,7 @@ export function SkillsView({
           />
         </section>
 
-        <div className="skill-detail">
+        <div className="skill-detail min-h-0 overflow-y-auto rounded-xl border border-border bg-card p-5">
           {selectedSkill ? (
             <SkillDetail
               skill={selectedSkill}
@@ -308,63 +321,52 @@ interface SkillDetailProps {
 
 function SkillDetail({ skill, onOpenFolder, onToggle, onTry }: SkillDetailProps) {
   return (
-    <>
-      <header className="skill-detail__header">
-        <div className="skill-detail__identity">
-          <span className="skill-detail__avatar">
-            <SkillIcon />
-          </span>
-          <div className="skill-detail__heading">
-            <div className="skill-detail__title-row">
-              <h2>{titleCase(skill.name)}</h2>
-              <span
-                className={`skill-status skill-detail__status ${
-                  skill.enabled
-                    ? "skill-status--enabled skill-detail__status--enabled"
-                    : "skill-status--disabled"
-                }`}
-              >
-                <span className="skill-status__dot" />
-                {skill.enabled ? "Enabled" : "Disabled"}
-              </span>
-            </div>
-            <div className="skill-detail__tags">
-              <span className="skill-tag">{titleCase(skill.source)}</span>
-              {skill.disableModelInvocation ? (
-                <span className="skill-tag skill-tag--muted">Slash only</span>
-              ) : null}
-            </div>
-            <p className="skill-detail__description">{skill.description}</p>
+    <div key={skill.filePath} className="animate-in fade-in slide-in-from-bottom-1 duration-200">
+      <header className="mb-5 flex items-start gap-3.5">
+        <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-brand/10 text-brand [&_svg]:size-5.5">
+          <Sparkles />
+        </span>
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <h2 className="m-0 text-lg font-semibold tracking-tight text-foreground">{titleCase(skill.name)}</h2>
+            <StatusBadge enabled={skill.enabled} className="skill-detail__status" />
           </div>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">{titleCase(skill.source)}</span>
+            {skill.disableModelInvocation ? (
+              <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground/70">Slash only</span>
+            ) : null}
+          </div>
+          <p className="mt-2 mb-0 text-[13.5px] leading-relaxed text-muted-foreground">{skill.description}</p>
         </div>
       </header>
 
-      <div className="skill-detail__grid">
-        <div className="skill-detail__panel skill-detail__panel--details">
-          <h3 className="skill-detail__panel-title">Details</h3>
-          <dl className="skill-detail__meta">
-            <div>
-              <dt>Source</dt>
-              <dd>{titleCase(skill.source)}</dd>
+      <div className="grid grid-cols-[minmax(0,1fr)_220px] gap-4 max-[760px]:grid-cols-1">
+        <div className="rounded-lg border border-border bg-background/40 p-4">
+          <h3 className="mt-0 mb-3 text-[12px] font-semibold tracking-wide text-muted-foreground uppercase">Details</h3>
+          <dl className="m-0 grid gap-2.5 text-[13px]">
+            <div className="grid grid-cols-[90px_minmax(0,1fr)] gap-2">
+              <dt className="text-muted-foreground">Source</dt>
+              <dd className="m-0 text-foreground">{titleCase(skill.source)}</dd>
             </div>
-            <div>
-              <dt>Slash</dt>
-              <dd className="skill-detail__mono">{skill.slashCommand}</dd>
+            <div className="grid grid-cols-[90px_minmax(0,1fr)] gap-2">
+              <dt className="text-muted-foreground">Slash</dt>
+              <dd className="m-0 font-mono text-[12.5px] text-foreground">{skill.slashCommand}</dd>
             </div>
-            <div>
-              <dt>Invocation</dt>
-              <dd>{skill.disableModelInvocation ? "Slash only" : "Auto + slash"}</dd>
+            <div className="grid grid-cols-[90px_minmax(0,1fr)] gap-2">
+              <dt className="text-muted-foreground">Invocation</dt>
+              <dd className="m-0 text-foreground">{skill.disableModelInvocation ? "Slash only" : "Auto + slash"}</dd>
             </div>
-            <div>
-              <dt>Path</dt>
-              <dd className="skill-detail__mono skill-detail__path">{skill.filePath}</dd>
+            <div className="grid grid-cols-[90px_minmax(0,1fr)] gap-2">
+              <dt className="text-muted-foreground">Path</dt>
+              <dd className="m-0 font-mono text-[12px] break-all text-muted-foreground">{skill.filePath}</dd>
             </div>
           </dl>
         </div>
 
-        <div className="skill-detail__panel skill-detail__panel--actions">
-          <h3 className="skill-detail__panel-title">Actions</h3>
-          <div className="skill-detail__action-stack">
+        <div className="rounded-lg border border-border bg-background/40 p-4">
+          <h3 className="mt-0 mb-3 text-[12px] font-semibold tracking-wide text-muted-foreground uppercase">Actions</h3>
+          <div className="grid gap-2">
             <button className="button button--primary" type="button" onClick={() => onTry(skill)}>
               Try skill
             </button>
@@ -373,13 +375,11 @@ function SkillDetail({ skill, onOpenFolder, onToggle, onTry }: SkillDetailProps)
               type="button"
               onClick={() => onOpenFolder(skill.filePath)}
             >
-              <FolderIcon />
+              <FolderOpen className="size-4" />
               <span>Open folder</span>
             </button>
             <button
-              className={`button button--secondary ${
-                skill.enabled ? "skill-detail__danger" : ""
-              }`}
+              className={cn("button button--secondary", skill.enabled && "text-destructive")}
               type="button"
               onClick={() => onToggle(skill.filePath, !skill.enabled)}
             >
@@ -388,6 +388,6 @@ function SkillDetail({ skill, onOpenFolder, onToggle, onTry }: SkillDetailProps)
           </div>
         </div>
       </div>
-    </>
+    </div>
   );
 }

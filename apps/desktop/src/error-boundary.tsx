@@ -26,26 +26,16 @@ export class ErrorBoundary extends React.Component<{ readonly children: React.Re
       return this.props.children;
     }
     return (
-      <div
-        style={{
-          padding: "24px",
-          fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-          fontSize: "12.5px",
-          color: "#e06c6c",
-          whiteSpace: "pre-wrap",
-          overflow: "auto",
-          height: "100vh",
-        }}
-      >
-        <div style={{ fontWeight: 600, marginBottom: 8 }}>Renderer crashed: {error.message}</div>
+      <div className="h-screen overflow-auto bg-background p-6 font-mono text-[12.5px] whitespace-pre-wrap text-destructive">
+        <div className="mb-2 font-semibold">Renderer crashed: {error.message}</div>
         <button
           type="button"
           onClick={() => this.setState({ error: undefined })}
-          style={{ marginBottom: 16, padding: "4px 12px", cursor: "pointer" }}
+          className="mb-4 cursor-pointer rounded-md border border-border bg-card px-3 py-1 text-foreground"
         >
           Try to recover
         </button>
-        <div style={{ opacity: 0.8 }}>{error.stack}</div>
+        <div className="opacity-80">{error.stack}</div>
       </div>
     );
   }

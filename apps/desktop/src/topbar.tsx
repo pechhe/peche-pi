@@ -1,14 +1,26 @@
-import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { FolderOpen, SquareArrowOutUpRight, Terminal } from "lucide-react";
 import type { AppView, SessionRecord, WorkspaceRecord } from "./desktop-state";
-import { AdvisorIcon, ContextIcon, DiffIcon, EnvironmentIcon, ExternalTerminalIcon, FolderIcon, SettingsIcon, TerminalIcon } from "./icons";
+import { AdvisorIcon, ContextIcon, DiffIcon, EnvironmentIcon, SettingsIcon } from "./icons";
 import { playButtonClick } from "./button-click-sound";
 import { getDesktopShortcutLabel, type PiDesktopApi } from "./ipc";
 import { ProjectMapPopover } from "./project-map-popover";
-
-
 import { UpdatePill } from "./update-pill";
-
 import { showToast } from "./toast";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Switch } from "@/components/ui/switch";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 
 interface TopbarProps {
   readonly activeView: AppView;
@@ -35,6 +47,57 @@ interface TopbarProps {
   readonly onToggleEnvironmentPanel: () => void;
 }
 
+function TopbarIconButton({
+  label,
+  shortcut,
+  active = false,
+  disabled = false,
+  onClick,
+  children,
+}: {
+  readonly label: string;
+  readonly shortcut?: string;
+  readonly active?: boolean;
+  readonly disabled?: boolean;
+  readonly onClick: () => void;
+  readonly children: ReactNode;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          aria-label={label}
+          variant="ghost"
+          size="icon"
+          disabled={disabled}
+          className={cn(
+            "size-7 rounded-md text-muted-foreground transition-all duration-150 hover:text-foreground active:scale-95",
+            active && "bg-accent text-foreground",
+          )}
+          onClick={() => {
+            playButtonClick();
+            onClick();
+          }}
+        >
+          {children}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent
+        aria-label={label}
+        className="topbar__tooltip flex items-center gap-1.5"
+        sideOffset={6}
+      >
+        <span>{label}</span>
+        {shortcut ? (
+          <kbd className="rounded border border-border bg-muted px-1 font-sans text-[10px] text-muted-foreground">
+            {shortcut}
+          </kbd>
+        ) : null}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 export function Topbar(props: TopbarProps) {
   const {
     activeView,
@@ -43,7 +106,6 @@ export function Topbar(props: TopbarProps) {
     selectedSession,
     selectedSessionTitle,
     api,
-
     terminalAvailable,
     terminalVisible,
     onToggleTerminal,
@@ -64,21 +126,6 @@ export function Topbar(props: TopbarProps) {
   const diffShortcut = getDesktopShortcutLabel(api.platform, "D");
   const contextShortcut = getDesktopShortcutLabel(api.platform, "⇧5");
   const [viewSettingsOpen, setViewSettingsOpen] = useState(false);
-  const viewSettingsRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (!viewSettingsOpen) {
-      return;
-    }
-    const handlePointerDown = (event: PointerEvent) => {
-      if (viewSettingsRef.current?.contains(event.target as Node)) {
-        return;
-      }
-      setViewSettingsOpen(false);
-    };
-    document.addEventListener("pointerdown", handlePointerDown);
-    return () => document.removeEventListener("pointerdown", handlePointerDown);
-  }, [viewSettingsOpen]);
 
   const handleDoubleClick = (event: ReactMouseEvent<HTMLElement>) => {
     const target = event.target;
@@ -94,166 +141,143 @@ export function Topbar(props: TopbarProps) {
   };
 
   return (
-    <header className="topbar" data-testid="topbar" onDoubleClick={handleDoubleClick}>
-      <div className="topbar__title">
-        <span className="topbar__workspace">
-          {rootWorkspace ? rootWorkspace.name : "Open a folder to begin"}
-        </span>
+    <TooltipProvider delayDuration={350} skipDelayDuration={200}>
+      <header
+        className="topbar flex items-center justify-between gap-3 border-b border-border/60 bg-background px-[18px] pb-2.5 pt-3"
+        data-testid="topbar"
+        onDoubleClick={handleDoubleClick}
+      >
+        <div className="topbar__title flex min-w-0 items-center gap-1.5 text-[13px]">
+          <span className="topbar__workspace shrink-0 font-semibold text-card-foreground">
+            {rootWorkspace ? rootWorkspace.name : "Open a folder to begin"}
+          </span>
 
-        {selectedWorkspace && activeView === "threads" && selectedSession ? (
-          <>
-            <span className="topbar__separator">/</span>
-            <span
-              className="topbar__session topbar__session--clickable"
-              title="Click to copy session path"
+          {selectedWorkspace && activeView === "threads" && selectedSession ? (
+            <>
+              <span className="topbar__separator text-muted-foreground/60">/</span>
+              <span
+                className="topbar__session topbar__session--clickable cursor-pointer truncate text-muted-foreground transition-colors duration-150 hover:text-foreground"
+                title="Click to copy session path"
+                onClick={() => {
+                  const text = selectedSession.sessionFilePath ?? selectedSession.id;
+                  void navigator.clipboard.writeText(text);
+                  showToast({ variant: "success", message: selectedSession.sessionFilePath ? "Session path copied" : "Session ID copied", autoDismissMs: 2000 });
+                }}
+              >{selectedSessionTitle ?? selectedSession.title}</span>
+            </>
+          ) : activeView === "new-thread" && rootWorkspace ? (
+            <>
+              <span className="topbar__separator text-muted-foreground/60">/</span>
+              <span className="topbar__session truncate text-muted-foreground">New project</span>
+            </>
+          ) : null}
+
+          {onToggleEnvironmentPanel ? (
+            <Button
+              aria-label="Toggle environment panel"
+              variant="ghost"
+              size="icon"
+              className={cn(
+                "topbar__env-toggle ml-1 size-7 rounded-md text-muted-foreground transition-all duration-150 hover:text-foreground active:scale-95",
+                environmentPanelOpen && "bg-accent text-foreground",
+              )}
               onClick={() => {
-                const text = selectedSession.sessionFilePath ?? selectedSession.id;
-                void navigator.clipboard.writeText(text);
-                showToast({ variant: "success", message: selectedSession.sessionFilePath ? "Session path copied" : "Session ID copied", autoDismissMs: 2000 });
+                playButtonClick();
+                onToggleEnvironmentPanel();
               }}
-            >{selectedSessionTitle ?? selectedSession.title}</span>
-          </>
-        ) : activeView === "new-thread" && rootWorkspace ? (
-          <>
-            <span className="topbar__separator">/</span>
-            <span className="topbar__session">New project</span>
-          </>
-        ) : null}
-
-        {onToggleEnvironmentPanel ? (
-          <button
-            aria-label="Toggle environment panel"
-            className={`icon-button topbar__icon topbar__env-toggle ${environmentPanelOpen ? "icon-button--active" : ""}`}
-            type="button"
-            onClick={() => { playButtonClick(); onToggleEnvironmentPanel(); }}
-          >
-            <EnvironmentIcon />
-          </button>
-        ) : null}
-      </div>
-
-      <div className="topbar__actions">
-        <UpdatePill api={api} />
-        <ProjectMapPopover rootWorkspace={rootWorkspace} api={api} onOpenGraph={props.onOpenGraph} />
-        <div className="view-settings" ref={viewSettingsRef}>
-          <button
-            aria-label="View settings"
-            aria-expanded={viewSettingsOpen}
-            aria-haspopup="menu"
-            className={`icon-button topbar__icon ${viewSettingsOpen ? "icon-button--active" : ""}`}
-            type="button"
-            onClick={() => { playButtonClick(); setViewSettingsOpen((current) => !current); }}
-          >
-            <SettingsIcon />
-          </button>
-          {viewSettingsOpen ? (
-            <div className="view-settings__menu" role="menu">
-              <label className="view-settings__item">
-                <span>
-                  <strong>Verbose transcript</strong>
-                  <small>Show blackhole + cymbal chatter.</small>
-                </span>
-                <input
-                  aria-label="Verbose transcript"
-                  type="checkbox"
-                  checked={transcriptVerbose}
-                  onChange={(event) => onSetTranscriptVerbose(event.currentTarget.checked)}
-                />
-              </label>
-            </div>
+            >
+              <EnvironmentIcon />
+            </Button>
           ) : null}
         </div>
-        <div className="shortcut-tooltip-wrap topbar__tooltip-wrap">
-          <button
-            aria-label="Toggle terminal"
-            className={`icon-button topbar__icon ${terminalVisible ? "icon-button--active" : ""}`}
-            type="button"
+
+        <div className="topbar__actions flex items-center gap-1">
+          <UpdatePill api={api} />
+          <ProjectMapPopover rootWorkspace={rootWorkspace} api={api} onOpenGraph={props.onOpenGraph} />
+          <DropdownMenu open={viewSettingsOpen} onOpenChange={setViewSettingsOpen}>
+            <DropdownMenuTrigger asChild>
+              <Button
+                aria-label="View settings"
+                variant="ghost"
+                size="icon"
+                className={cn(
+                  "size-7 rounded-md text-muted-foreground transition-all duration-150 hover:text-foreground active:scale-95",
+                  viewSettingsOpen && "bg-accent text-foreground",
+                )}
+                onClick={() => playButtonClick()}
+              >
+                <SettingsIcon />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" sideOffset={6} className="w-64">
+              <label className="flex cursor-pointer items-start justify-between gap-3 rounded-sm px-2 py-1.5 transition-colors hover:bg-accent">
+                <span className="flex flex-col gap-0.5">
+                  <strong className="text-[13px] font-semibold text-popover-foreground">Verbose transcript</strong>
+                  <small className="text-xs text-muted-foreground">Show blackhole + cymbal chatter.</small>
+                </span>
+                <Switch
+                  aria-label="Verbose transcript"
+                  checked={transcriptVerbose}
+                  onCheckedChange={(checked) => onSetTranscriptVerbose(checked)}
+                  className="mt-0.5"
+                />
+              </label>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <TopbarIconButton
+            label="Toggle terminal"
+            shortcut={terminalShortcut}
+            active={terminalVisible}
             disabled={!terminalAvailable}
-            onClick={() => { playButtonClick(); onToggleTerminal(); }}
+            onClick={onToggleTerminal}
           >
-            <TerminalIcon />
-          </button>
-          <span className="shortcut-tooltip topbar__tooltip" role="tooltip">
-            <span>Toggle terminal</span>
-            <kbd>{terminalShortcut}</kbd>
-          </span>
-        </div>
-        <div className="shortcut-tooltip-wrap topbar__tooltip-wrap">
-          <button
-            aria-label="Open in external terminal"
-            className="icon-button topbar__icon"
-            type="button"
+            <Terminal className="size-4" />
+          </TopbarIconButton>
+          <TopbarIconButton
+            label="Open in external terminal"
             disabled={!externalTerminalAvailable}
-            onClick={() => { playButtonClick(); onOpenExternalTerminal(); }}
+            onClick={onOpenExternalTerminal}
           >
-            <ExternalTerminalIcon />
-          </button>
-          <span className="shortcut-tooltip topbar__tooltip" role="tooltip">
-            <span>Open in external terminal</span>
-          </span>
-        </div>
-        <div className="shortcut-tooltip-wrap topbar__tooltip-wrap">
-          <button
-            aria-label="Toggle changes"
-            className={`icon-button topbar__icon ${showDiffPanel ? "icon-button--active" : ""}`}
-            type="button"
-            onClick={() => { playButtonClick(); onToggleDiffPanel(); }}
+            <SquareArrowOutUpRight className="size-4" />
+          </TopbarIconButton>
+          <TopbarIconButton
+            label="Toggle changes"
+            shortcut={diffShortcut}
+            active={showDiffPanel}
+            onClick={onToggleDiffPanel}
           >
             <DiffIcon />
-          </button>
-          <span className="shortcut-tooltip topbar__tooltip" role="tooltip">
-            <span>Toggle changes</span>
-            <kbd>{diffShortcut}</kbd>
-          </span>
-        </div>
-        {onToggleContextPanel ? (
-          <div className="shortcut-tooltip-wrap topbar__tooltip-wrap">
-            <button
-              aria-label="Toggle context"
-              className={`icon-button topbar__icon ${showContextPanel ? "icon-button--active" : ""}`}
-              type="button"
-              onClick={() => { playButtonClick(); onToggleContextPanel(); }}
+          </TopbarIconButton>
+          {onToggleContextPanel ? (
+            <TopbarIconButton
+              label="Toggle context"
+              shortcut={contextShortcut}
+              active={showContextPanel}
+              onClick={onToggleContextPanel}
             >
               <ContextIcon />
-            </button>
-            <span className="shortcut-tooltip topbar__tooltip" role="tooltip">
-              <span>Toggle context</span>
-              <kbd>{contextShortcut}</kbd>
-            </span>
-          </div>
-        ) : null}
-        {onToggleAdvisorPanel ? (
-          <div className="shortcut-tooltip-wrap topbar__tooltip-wrap">
-            <button
-              aria-label="Toggle advisor"
-              className={`icon-button topbar__icon ${showAdvisorPanel ? "icon-button--active" : ""}`}
-              type="button"
-              onClick={() => { playButtonClick(); onToggleAdvisorPanel(); }}
+            </TopbarIconButton>
+          ) : null}
+          {onToggleAdvisorPanel ? (
+            <TopbarIconButton
+              label="Toggle advisor"
+              shortcut={api.platform === "darwin" ? "⌘⇧A" : "Ctrl+Shift+A"}
+              active={showAdvisorPanel}
+              onClick={onToggleAdvisorPanel}
             >
               <AdvisorIcon />
-            </button>
-            <span className="shortcut-tooltip topbar__tooltip" role="tooltip">
-              <span>Toggle advisor</span>
-              <kbd>{api.platform === "darwin" ? "⌘⇧A" : "Ctrl+Shift+A"}</kbd>
-            </span>
-          </div>
-        ) : null}
-        {rootWorkspace ? (
-          <div className="shortcut-tooltip-wrap topbar__tooltip-wrap">
-            <button
-              aria-label="Open project in Finder"
-              className="icon-button topbar__icon"
-              type="button"
-              onClick={() => { playButtonClick(); void api.openWorkspaceInFinder(rootWorkspace.id); }}
+            </TopbarIconButton>
+          ) : null}
+          {rootWorkspace ? (
+            <TopbarIconButton
+              label="Open in Finder"
+              onClick={() => void api.openWorkspaceInFinder(rootWorkspace.id)}
             >
-              <FolderIcon />
-            </button>
-            <span className="shortcut-tooltip topbar__tooltip" role="tooltip">
-              <span>Open in Finder</span>
-            </span>
-          </div>
-        ) : null}
-      </div>
-    </header>
+              <FolderOpen className="size-4" />
+            </TopbarIconButton>
+          ) : null}
+        </div>
+      </header>
+    </TooltipProvider>
   );
 }

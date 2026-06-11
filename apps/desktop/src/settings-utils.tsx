@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { RuntimeSettingsSnapshot, RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
+import { Button } from "@/components/ui/button";
 
 export type SettingsSection = "appearance" | "general" | "providers" | "models" | "notifications" | "sounds" | "actions";
 
@@ -12,6 +13,35 @@ export const THINKING_LEVELS: NonNullable<RuntimeSettingsSnapshot["defaultThinki
 
 export function settingsPill(active: boolean): string {
   return `settings-pill${active ? " settings-pill--active" : ""}`;
+}
+
+/** Single-choice pill group for 1-of-N settings. */
+export function PillGroup<T extends string>({
+  options,
+  value,
+  onChange,
+  label,
+}: {
+  readonly options: readonly { readonly value: T; readonly label: string }[];
+  readonly value: T;
+  readonly onChange: (value: T) => void;
+  readonly label?: string;
+}) {
+  return (
+    <div aria-label={label} className="flex flex-wrap items-center gap-1.5" role="group">
+      {options.map((option) => (
+        <button
+          key={option.value}
+          aria-pressed={option.value === value}
+          className={settingsPill(option.value === value)}
+          type="button"
+          onClick={() => onChange(option.value)}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 export function labelForThinking(level: NonNullable<RuntimeSettingsSnapshot["defaultThinkingLevel"]>): string {
@@ -81,10 +111,16 @@ export function SettingsGroup({
 }) {
   const searchable = [title, description].filter(Boolean).join(" ");
   return (
-    <div className="settings-section" data-searchable={searchable || undefined}>
-      {title ? <h3 className="settings-section__title">{title}</h3> : null}
-      {description ? <p className="settings-section__description">{description}</p> : null}
-      <div className="settings-group">{children}</div>
+    <div className="settings-section grid gap-2" data-searchable={searchable || undefined}>
+      {title ? (
+        <h3 className="settings-section__title m-0 text-[15px] font-semibold tracking-tight text-foreground">{title}</h3>
+      ) : null}
+      {description ? (
+        <p className="settings-section__description m-0 -mt-1 text-[13px] text-muted-foreground">{description}</p>
+      ) : null}
+      <div className="settings-group overflow-hidden rounded-xl border border-border bg-card shadow-xs divide-y divide-border/60">
+        {children}
+      </div>
     </div>
   );
 }
@@ -92,32 +128,48 @@ export function SettingsGroup({
 export function SettingsRow({
   title,
   description,
+  stacked,
   children,
 }: {
   readonly title: string;
   readonly description?: string;
+  /** Render the control under the label instead of beside it (for wide controls like pill groups). */
+  readonly stacked?: boolean;
   readonly children?: ReactNode;
 }) {
   const searchable = [title, description].filter(Boolean).join(" ");
   return (
-    <div className="settings-row" data-searchable={searchable || undefined}>
-      <div className="settings-row__label">
-        <div className="settings-row__title">{title}</div>
-        {description ? <div className="settings-row__description">{description}</div> : null}
+    <div
+      className={
+        stacked
+          ? "settings-row flex flex-col items-start gap-2.5 px-4 py-3"
+          : "settings-row flex items-center justify-between gap-6 px-4 py-3 max-sm:flex-col max-sm:items-start"
+      }
+      data-searchable={searchable || undefined}
+    >
+      <div className="settings-row__label min-w-0 flex-1">
+        <div className="settings-row__title text-sm font-medium text-foreground">{title}</div>
+        {description ? (
+          <div className="settings-row__description mt-0.5 text-[12.5px] leading-snug text-muted-foreground">{description}</div>
+        ) : null}
       </div>
-      {children ? <div className="settings-row__control">{children}</div> : null}
+      {children ? (
+        <div className={stacked ? "settings-row__control w-full" : "settings-row__control flex shrink-0 items-center gap-2"}>
+          {children}
+        </div>
+      ) : null}
     </div>
   );
 }
 
 export function SettingsInfoRow({ label, value }: { readonly label: string; readonly value: string }) {
   return (
-    <div className="settings-row" data-searchable={`${label} ${value}`}>
-      <div className="settings-row__label">
-        <div className="settings-row__title">{label}</div>
+    <div className="settings-row flex items-center justify-between gap-6 px-4 py-2.5" data-searchable={`${label} ${value}`}>
+      <div className="settings-row__label min-w-0 flex-1">
+        <div className="settings-row__title text-sm font-medium text-foreground">{label}</div>
       </div>
-      <div className="settings-row__control">
-        <span className="settings-row__value">{value}</span>
+      <div className="settings-row__control shrink-0">
+        <span className="settings-row__value text-[13px] text-muted-foreground">{value}</span>
       </div>
     </div>
   );
@@ -136,20 +188,17 @@ export function ProviderRow({
 }) {
   const action = resolveProviderAction(provider, onLoginProvider, onLogoutProvider, onConfigureApiKey);
   return (
-    <div className="settings-row">
-      <div className="settings-row__label">
-        <div className="settings-row__title">{provider.name}</div>
-        <div className="settings-row__description">{describeProviderStatus(provider)}</div>
+    <div className="settings-row flex items-center justify-between gap-6 px-4 py-3">
+      <div className="settings-row__label min-w-0 flex-1">
+        <div className="settings-row__title text-sm font-medium text-foreground">{provider.name}</div>
+        <div className="settings-row__description mt-0.5 text-[12.5px] text-muted-foreground">
+          {describeProviderStatus(provider)}
+        </div>
       </div>
-      <div className="settings-row__control">
-        <button
-          className="button button--secondary"
-          disabled={action.disabled}
-          type="button"
-          onClick={action.onClick}
-        >
+      <div className="settings-row__control shrink-0">
+        <Button disabled={action.disabled} size="sm" type="button" variant="outline" onClick={action.onClick}>
           {action.label}
-        </button>
+        </Button>
       </div>
     </div>
   );

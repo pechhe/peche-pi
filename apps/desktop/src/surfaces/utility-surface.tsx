@@ -105,6 +105,8 @@ export interface UtilitySurfaceProps {
 
   // View-specific children
   readonly content: ReactNode;
+  /** data-testid applied to the surface shell (e.g. "settings-surface"). */
+  readonly testId?: string;
 }
 
 // ── Component ──────────────────────────────────────────────────────────────────
@@ -165,7 +167,7 @@ export function UtilitySurface(props: UtilitySurfaceProps) {
     : ({ ["--sidebar-width" as string]: `${sidebarResize.width}px` } as React.CSSProperties);
 
   return (
-    <div className={shellClass} style={shellStyle}>
+    <div className={shellClass} style={shellStyle} data-testid={props.testId}>
       {globalSearch.isOpen ? (
         <SearchPalette
           query={globalSearch.query}
@@ -597,7 +599,11 @@ export function AgentsSurface(props: AgentsSurfaceProps) {
   const { snapshot, agentsWorkspace, agentsRuntime, settingsHandlers } = props;
 
   return (
-    <SettingsSubagentsSection
+    <div className="settings-view mx-auto flex w-full max-w-[860px] animate-in fade-in duration-300">
+      <div className="min-w-0 flex-1">
+        <h1 className="view-header__title mt-0 mb-6 text-2xl font-semibold tracking-tight text-foreground">Subagents</h1>
+        <div className="settings-grid grid gap-7">
+          <SettingsSubagentsSection
       workspace={agentsWorkspace}
       settings={snapshot.subagentSettings}
       agents={agentsWorkspace ? snapshot.subagentAgentsByWorkspace[agentsWorkspace.id] ?? [] : []}
@@ -606,7 +612,10 @@ export function AgentsSurface(props: AgentsSurfaceProps) {
       onRefreshAgents={settingsHandlers.handleRefreshSubagentAgents}
       onSaveAgent={settingsHandlers.handleSaveSubagentAgent}
       onDeleteAgent={settingsHandlers.handleDeleteSubagentAgent}
-    />
+          />
+        </div>
+      </div>
+    </div>
   );
 }
 

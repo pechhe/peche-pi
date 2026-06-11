@@ -8,6 +8,7 @@ import {
   type ButtonSoundSettings,
 } from "./button-click-sound";
 import { SettingsGroup, SettingsRow } from "./settings-utils";
+import { Switch } from "@/components/ui/switch";
 
 interface SettingsSoundsSectionProps {
   readonly soundSettings: ButtonSoundSettings;
@@ -59,9 +60,9 @@ export function SettingsSoundsSection({ soundSettings, onSetSoundSettings }: Set
             title={BUTTON_CATEGORY_LABELS[category]}
             description={BUTTON_CATEGORY_DESCRIPTIONS[category]}
           >
-            <div className="sound-settings__control">
+            <div className="sound-settings__control flex items-center gap-2">
               <select
-                className="sound-settings__select"
+                className="sound-settings__select settings-select !w-28"
                 value={soundSettings[category]}
                 onChange={(e) => handleChange(category, e.target.value as ButtonClickVariant)}
                 aria-label={`Sound for ${BUTTON_CATEGORY_LABELS[category]}`}
@@ -73,7 +74,7 @@ export function SettingsSoundsSection({ soundSettings, onSetSoundSettings }: Set
                 ))}
               </select>
               <button
-                className={`sound-settings__preview${previewing?.category === category ? " sound-settings__preview--active" : ""}`}
+                className={`sound-settings__preview grid size-8 place-items-center rounded-lg border border-border bg-card text-muted-foreground transition-all duration-150 hover:text-foreground hover:border-ring/40 active:scale-95 disabled:opacity-40 disabled:pointer-events-none${previewing?.category === category ? " !text-brand !border-brand/40" : ""}`}
                 type="button"
                 onClick={() => handlePreview(category, soundSettings[category])}
                 disabled={soundSettings[category] === "none"}
@@ -109,10 +110,9 @@ export function SettingsSoundsSection({ soundSettings, onSetSoundSettings }: Set
 
       <SettingsGroup title="All sounds off" description="Quickly disable all button sounds.">
         <SettingsRow title="Mute all sounds" description="Disable audio feedback for all buttons.">
-          <input
-            type="checkbox"
+          <Switch
             checked={CATEGORIES.every((c) => soundSettings[c] === "none")}
-            onChange={(_e) => {
+            onCheckedChange={() => {
               const allNone = CATEGORIES.every((c) => soundSettings[c] === "none");
               const newValue: ButtonClickVariant = allNone ? "click" : "none";
               const newSettings: ButtonSoundSettings = {

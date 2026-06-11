@@ -9,7 +9,9 @@ import {
   type ThreadTransitionSettings,
 } from "./desktop-state";
 import { StreamingMessageText } from "./message-markdown";
-import { SettingsGroup, SettingsRow } from "./settings-utils";
+import { PillGroup, SettingsGroup, SettingsRow } from "./settings-utils";
+import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 
 const STREAM_PREVIEW_TEXT =
   "Streaming responses fade in word by word, so the model's output feels calm and deliberate instead of janky. " +
@@ -108,114 +110,93 @@ export function SettingsAppearanceSection({
   onSetThreadTransition,
   onSetActiveView,
 }: SettingsAppearanceSectionProps) {
+  const selectedTheme = THEME_OPTIONS.find((o) => o.mode === themeMode) ?? THEME_OPTIONS[0]!;
+  const selectedDevice = COMPOSER_DEVICE_OPTIONS.find((o) => o.mode === composerDeviceMode) ?? COMPOSER_DEVICE_OPTIONS[0]!;
+  const selectedReveal = STREAM_REVEAL_OPTIONS.find((o) => o.mode === streamReveal) ?? STREAM_REVEAL_OPTIONS[0]!;
+  const selectedSpeed = STREAM_SPEED_OPTIONS.find((o) => o.speed === streamRevealSpeed) ?? STREAM_SPEED_OPTIONS[0]!;
+  const selectedMotion =
+    THREAD_TRANSITION_MOTION_OPTIONS.find((o) => o.motion === threadTransition.motion) ?? THREAD_TRANSITION_MOTION_OPTIONS[0]!;
+
   return (
     <>
       <SettingsGroup title="Theme">
-        {THEME_OPTIONS.map((option) => (
-          <SettingsRow key={option.mode} title={option.label} description={option.description}>
-            <input
-              checked={themeMode === option.mode}
-              name="theme"
-              type="radio"
-              onChange={() => onSetThemeMode(option.mode)}
-            />
-          </SettingsRow>
-        ))}
+        <SettingsRow stacked title="Theme" description={selectedTheme.description}>
+          <PillGroup
+            label="Theme"
+            options={THEME_OPTIONS.map((o) => ({ value: o.mode, label: o.label }))}
+            value={themeMode}
+            onChange={onSetThemeMode}
+          />
+        </SettingsRow>
       </SettingsGroup>
 
-      <SettingsGroup title="Visuals">
-        {COMPOSER_DEVICE_OPTIONS.map((option) => (
-          <SettingsRow
-            key={option.mode}
-            title={`Composer device mode: ${option.label}`}
-            description={option.description}
-          >
-            <input
-              checked={composerDeviceMode === option.mode}
-              name="composer-device-mode"
-              type="radio"
-              onChange={() => onSetComposerDeviceMode(option.mode)}
-            />
-          </SettingsRow>
-        ))}
-        <SettingsRow
-          title="Composer layout"
-          description="Arrange and style the control units in your composer"
-        >
-          <button
-            className="settings-button settings-button--primary"
-            onClick={() => onSetActiveView("composer-layout")}
-          >
+      <SettingsGroup title="Composer">
+        <SettingsRow stacked title="Device style" description={selectedDevice.description}>
+          <PillGroup
+            label="Composer device mode"
+            options={COMPOSER_DEVICE_OPTIONS.map((o) => ({ value: o.mode, label: o.label }))}
+            value={composerDeviceMode}
+            onChange={onSetComposerDeviceMode}
+          />
+        </SettingsRow>
+        <SettingsRow title="Composer layout" description="Arrange and style the control units in your composer">
+          <Button size="sm" type="button" variant="outline" onClick={() => onSetActiveView("composer-layout")}>
             Edit layout
-          </button>
+          </Button>
         </SettingsRow>
       </SettingsGroup>
 
       <SettingsGroup title="Streaming text reveal">
-        {STREAM_REVEAL_OPTIONS.map((option) => (
-          <SettingsRow key={option.mode} title={option.label} description={option.description}>
-            <input
-              checked={streamReveal === option.mode}
-              name="stream-reveal"
-              type="radio"
-              onChange={() => onSetStreamReveal(option.mode)}
-            />
-          </SettingsRow>
-        ))}
-        {STREAM_SPEED_OPTIONS.map((option) => (
-          <SettingsRow
-            key={option.speed}
-            title={`Reveal speed: ${option.label}`}
-            description={option.description}
-          >
-            <input
-              checked={streamRevealSpeed === option.speed}
-              name="stream-reveal-speed"
-              type="radio"
-              onChange={() => onSetStreamRevealSpeed(option.speed)}
-            />
-          </SettingsRow>
-        ))}
-        <StreamRevealPreview mode={streamReveal} />
+        <SettingsRow stacked title="Reveal style" description={selectedReveal.description}>
+          <PillGroup
+            label="Streaming text reveal"
+            options={STREAM_REVEAL_OPTIONS.map((o) => ({ value: o.mode, label: o.label }))}
+            value={streamReveal}
+            onChange={onSetStreamReveal}
+          />
+        </SettingsRow>
+        <SettingsRow stacked title="Reveal speed" description={selectedSpeed.description}>
+          <PillGroup
+            label="Reveal speed"
+            options={STREAM_SPEED_OPTIONS.map((o) => ({ value: o.speed, label: o.label }))}
+            value={streamRevealSpeed}
+            onChange={onSetStreamRevealSpeed}
+          />
+        </SettingsRow>
+        <div className="px-4 pb-4" data-searchable="stream reveal preview">
+          <StreamRevealPreview mode={streamReveal} />
+        </div>
       </SettingsGroup>
 
       <SettingsGroup title="Thread transition">
-        {THREAD_TRANSITION_MOTION_OPTIONS.map((option) => (
-          <SettingsRow
-            key={option.motion}
-            title={`Composer motion: ${option.label}`}
-            description={option.description}
-          >
-            <input
-              checked={threadTransition.motion === option.motion}
-              name="thread-transition-motion"
-              type="radio"
-              onChange={() => onSetThreadTransition({ motion: option.motion })}
-            />
-          </SettingsRow>
-        ))}
+        <SettingsRow stacked title="Composer motion" description={selectedMotion.description}>
+          <PillGroup
+            label="Composer motion"
+            options={THREAD_TRANSITION_MOTION_OPTIONS.map((o) => ({ value: o.motion, label: o.label }))}
+            value={threadTransition.motion}
+            onChange={(motion) => onSetThreadTransition({ motion })}
+          />
+        </SettingsRow>
         <SettingsRow
           title="Animate hero out"
           description="Lift and fade the logo and title away as the composer leaves the center."
         >
-          <input
+          <Switch
             aria-label="Animate hero out"
-            type="checkbox"
             checked={threadTransition.heroExit}
             disabled={threadTransition.motion === "off"}
-            onChange={(event) => onSetThreadTransition({ heroExit: event.currentTarget.checked })}
+            onCheckedChange={(checked) => onSetThreadTransition({ heroExit: checked })}
           />
         </SettingsRow>
         <SettingsRow
           title="Lift message from composer"
           description="Delay the first message so it rises out of the composer as it docks."
         >
-          <input
+          <Switch
             aria-label="Lift message from composer"
-            type="checkbox"
             checked={threadTransition.bubbleHandoff}
             disabled={threadTransition.motion === "off"}
-            onChange={(event) => onSetThreadTransition({ bubbleHandoff: event.currentTarget.checked })}
+            onCheckedChange={(checked) => onSetThreadTransition({ bubbleHandoff: checked })}
           />
         </SettingsRow>
       </SettingsGroup>

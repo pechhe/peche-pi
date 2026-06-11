@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "electron-vite";
 import react from "@vitejs/plugin-react";
 import checker from "vite-plugin-checker";
+import tailwindcss from "@tailwindcss/vite";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = __dirname;
@@ -45,10 +46,14 @@ export default defineConfig(({ command }) => {
       base: "./",
       plugins: [
         react(),
+        tailwindcss(),
         checker({ overlay: false, oxlint: { lintCommand: "npx oxlint src/" } }),
       ],
       resolve: {
         tsconfigPaths: true,
+        alias: {
+          "@": path.resolve(projectRoot, "src"),
+        },
       },
       server: {
         port: devPort,
